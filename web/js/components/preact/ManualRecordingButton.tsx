@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { useI18n } from '../../i18n.ts';
-import type { ApiErrorBody } from '../../types/core.ts';
+import { getStreamRecording, controlStreamRecording } from '../../api/mediaLifecycle.ts';
 import type { ManualRecordingStatus } from '../../types/live.ts';
 
 export interface ManualRecordingButtonProps {
@@ -13,16 +13,13 @@ export function ManualRecordingButton({ streamName }: ManualRecordingButtonProps
   const [status, setStatus] = useState<ManualRecordingStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const statusUrl = `/api/streams/${encodeURIComponent(streamName)}/recording`;
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch(statusUrl, { credentials: 'same-origin' });
-      if (!response.ok) return;
-      setStatus(await response.json());
+      setStatus(await getStreamRecording(streamName));
     } catch {
       // A transient status failure should not disrupt live video controls.
     }
-  }, [statusUrl]);
+  }, [streamName]);
 
   useEffect(() => {
     refresh();
@@ -46,16 +43,7 @@ export function ManualRecordingButton({ streamName }: ManualRecordingButtonProps
     setBusy(true);
     try {
       const action = isManual ? 'stop' : 'start';
-      const response = await fetch(statusUrl, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
-      });
-      const data: ApiErrorBody = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error || data.message || `HTTP ${response.status}`);
-      }
+      await controlStreamRecording(streamName, action);
       showStatusMessage(
         t(action === 'start' ? 'live.manualRecordingStarted' : 'live.manualRecordingStopped'),
         'success'

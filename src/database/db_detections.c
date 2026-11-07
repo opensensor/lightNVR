@@ -700,6 +700,64 @@ int get_detection_time_ranges(const char *stream_name,
     return count < 0 ? -1 : 0;
 }
 
+int get_detection_results_for_camera_readonly(const char *camera_uuid,
+    const char *legacy_stream_name, detection_result_t *result,
+    time_t *timestamps, time_t *end_timestamps, uint64_t max_age,
+    time_t start_time, time_t end_time) {
+    if (!camera_uuid || !*camera_uuid || !legacy_stream_name || !result || !timestamps)
+        return -1;
+    memset(result, 0, sizeof(*result));
+    sqlite3 *connection = NULL;
+    if (db_open_readonly_connection(&connection) != 0) return -1;
+    sqlite3_busy_timeout(connection, 1000);
+    time_t now = time(NULL);
+    time_t lower = start_time;
+    if (start_time <= 0 && end_time <= 0 && max_age > 0)
+        lower = now - (time_t)max_age;
+    /* Bind the already-authorized capture identity in the same SELECT as rows
+     * and timestamps. Reusing a display name cannot attach another camera's
+     * captured detections; legacy NULL/empty identities retain name fallback. */
+    const char *sql =
+        "SELECT timestamp, COALESCE(event_end_time, CASE WHEN source='external_motion' "
+        "THEN ?5 ELSE timestamp END), label,confidence,x,y,width,height "
+        "FROM detections WHERE (camera_uuid=?1 OR "
+        "((camera_uuid IS NULL OR camera_uuid='') AND stream_name=?2)) "
+        "AND (?3<=0 OR (source='external_motion' AND COALESCE(event_end_time,?5)>=?3) "
+        "OR (source!='external_motion' AND timestamp>=?3)) "
+        "AND (?4<=0 OR timestamp<=?4) ORDER BY timestamp DESC LIMIT ?6";
+    sqlite3_stmt *statement = NULL;
+    int rc = sqlite3_prepare_v2(connection, sql, -1, &statement, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(statement, 1, camera_uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 2, legacy_stream_name, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(statement, 3, (sqlite3_int64)lower);
+        sqlite3_bind_int64(statement, 4, (sqlite3_int64)end_time);
+        sqlite3_bind_int64(statement, 5, (sqlite3_int64)now);
+        sqlite3_bind_int(statement, 6, MAX_DETECTIONS);
+        while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+            int index = result->count;
+            detection_t *detection = &result->detections[index];
+            timestamps[index] = (time_t)sqlite3_column_int64(statement, 0);
+            if (end_timestamps) end_timestamps[index] = (time_t)sqlite3_column_int64(statement, 1);
+            const char *label = (const char *)sqlite3_column_text(statement, 2);
+            safe_strcpy(detection->label, label ? label : "unknown", MAX_LABEL_LENGTH, 0);
+            detection->confidence = (float)sqlite3_column_double(statement, 3);
+            detection->x = (float)sqlite3_column_double(statement, 4);
+            detection->y = (float)sqlite3_column_double(statement, 5);
+            detection->width = (float)sqlite3_column_double(statement, 6);
+            detection->height = (float)sqlite3_column_double(statement, 7);
+            result->count++;
+        }
+    }
+    sqlite3_finalize(statement);
+    db_close_readonly_connection(connection);
+    if (rc != SQLITE_DONE) {
+        memset(result, 0, sizeof(*result));
+        return -1;
+    }
+    return result->count;
+}
+
 int get_detection_results_readonly(const char *stream_name,
                                    detection_result_t *result,
                                    time_t *timestamps, time_t *end_timestamps,

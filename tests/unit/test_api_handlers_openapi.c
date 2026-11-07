@@ -86,7 +86,11 @@ static void test_viewer_cannot_override_identity(void) {
     safe_strcpy(request.headers[0].value,viewer_key,sizeof(request.headers[0].value),0);
     safe_strcpy(request.query_string,"user_id=1&role=admin",sizeof(request.query_string),0);
     invoke(200);
-    TEST_ASSERT_NULL(get(get(document,"paths"),"/api/streams/{name}"));
+    cJSON *stream_path = get(get(document,"paths"),"/api/streams/{name}");
+    TEST_ASSERT_NOT_NULL(get(stream_path,"get"));
+    TEST_ASSERT_NULL(get(stream_path,"put"));
+    TEST_ASSERT_NULL(get(stream_path,"delete"));
+    TEST_ASSERT_NULL(get(get(get(document,"components"),"schemas"),"StreamPrivileged"));
     TEST_ASSERT_NOT_NULL(get(get(document,"paths"),"/api/streams/{name}/full"));
 }
 static void test_anonymous(void) { request.num_headers = 0; invoke(401); TEST_ASSERT_NOT_NULL(get(document,"error")); }

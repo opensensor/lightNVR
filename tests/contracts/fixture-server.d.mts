@@ -1,6 +1,6 @@
 import type { APIRequest, APIRequestContext, Browser, BrowserContext } from '@playwright/test';
 export interface FixtureCredentials { username: string; password: string }
-export interface FixtureOptions { binary?: string; webRoot?: string; maxStreams?: number; port?: number; startupTimeoutMs?: number; seed?: boolean; retain?: boolean }
+export interface FixtureOptions { lprMasterKeyHex?: string; binary?: string; webRoot?: string; maxStreams?: number; port?: number; startupTimeoutMs?: number; seed?: boolean; retain?: boolean }
 export interface FixtureRequestOptions extends Omit<RequestInit, 'body' | 'headers' | 'method'> {
   principal?: string; method?: string; body?: unknown; headers?: Record<string, string>;
 }

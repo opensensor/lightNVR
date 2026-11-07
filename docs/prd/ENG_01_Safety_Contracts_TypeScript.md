@@ -1,34 +1,37 @@
 # PRD — Engineering Hardening and Permission-Aware API Contracts
 
-**Status**: TS/TSX migration and the first permission-aware API hardening wave
-are merged in [PR #804](https://github.com/opensensor/lightNVR/pull/804).
-Recording pathname/export integrity is merged in [PR #805](https://github.com/opensensor/lightNVR/pull/805),
-and minimatch remediation in [PR #806](https://github.com/opensensor/lightNVR/pull/806).
-The recording CodeQL correction is merged in [PR #807](https://github.com/opensensor/lightNVR/pull/807).
-The identity/MFA boundary correction merged in [PR #808](https://github.com/opensensor/lightNVR/pull/808).
-The session/trusted-device contract and Settings slice is implemented for review;
-the remaining MFA/password/logout contract work follows. Rust remains deferred.
+**Status**: TS/TSX migration, permission-aware discovery, authentication/MFA,
+recording integrity and fleet reads are merged. The four-workstream follow-up is
+in review: [media authority #835](https://github.com/opensensor/lightNVR/pull/835),
+[identity administration #836](https://github.com/opensensor/lightNVR/pull/836),
+[fleet writes #837](https://github.com/opensensor/lightNVR/pull/837), and
+[remaining API families #838](https://github.com/opensensor/lightNVR/pull/838).
+The [integration receipt](../api/contracts/integration-evidence.md) records local
+validation and qualification limits. These review branches are not yet claims
+about released main.
 **Created**: 2026-10-31
-**Reconciled**: 2026-11-06 against main at `7aa0968045cc427e1a1eb018290c1706a83873ef`.
+**Reconciled**: 2026-11-07 against main at `84ed0174` and the current review stack.
 **Owner**: LightNVR maintainers; name an owner when starting each implementation slice.
 **Scope**: API contracts, permission-aware discovery, runtime boundary validation,
 focused correctness fixes, operational regression coverage, and measured resource costs.
 
-**Original execution baseline**: `dea6094a731c86debb03cc1c75d0251ab3b96cec` (0.46.3 version
-bump after the reconciliation baseline). The authoritative task/evidence log is
-[engineering-api-contracts-plan.md](../../engineering-api-contracts-plan.md).
+The current execution and evidence index is
+[engineering-hardening-four-pr-plan.md](../../engineering-hardening-four-pr-plan.md).
+The [expansion plan](../../engineering-api-expansion-plan.md) records the family
+roadmap; [the original execution plan](../../engineering-api-contracts-plan.md)
+and [identity plan](../../engineering-identity-contracts-plan.md) retain historical
+receipts. Main at the current baseline has 57 accepted operations and 183 residual
+registrations out of 240. The media review adds one internal lease callback;
+its fork pin is published in [go2rtc #4](https://github.com/opensensor/go2rtc/pull/4).
+The canonical contract and coverage map on each branch describe that branch.
+The combined review branch accounts for all 241 registrations: 232 OpenAPI
+operations, eight media-protocol dispositions and one internal callback.
 
-**Current follow-up**: [engineering API expansion](../../engineering-api-expansion-plan.md)
-and [bounded identity contracts plan](../../engineering-identity-contracts-plan.md).
-PR #809 merged the session/device follow-up. Main now contains 37 accepted
-operations / 34 paths and 203 residual registered
-operations; its bounded acceptance receipt is in the identity plan. Main's forked go2rtc pins `6c311990` including rejected
-HTTP response cleanup; the temporary parent patch delivery has been removed.
-Main at `b9d3ac61` has successful hosted [Integration Tests](https://github.com/opensensor/lightNVR/actions/runs/42215794378),
-[Sanitizer Build](https://github.com/opensensor/lightNVR/actions/runs/42215794273),
-and [Static Analysis](https://github.com/opensensor/lightNVR/actions/runs/42215794248).
-These historical results predate PR #805. See the expansion plan's security
-follow-up receipt for the current correction and its acceptance requirements.
+Basic and legacy-key compatibility, HTTP-only cameras, and `/etc/lightnvr`
+defaults remain supported. At-rest encryption, automated Rust conversion,
+representative-hardware capacity measurements and physical-camera qualification
+remain separate decisions. Local synthetic-media evidence does not qualify
+arbitrary devices, remote storage providers or production capacity.
 
 ## 1. History and current direction
 
@@ -89,9 +92,10 @@ an earlier iteration of #802. Normal retention/protection rules still apply.
 
 E1–E3 are implemented and locally accepted by T21. The following requirements
 describe the delivered pilot and its expansion rules; the main-baseline table
-above remains historical evidence. The accepted T24 contract covers 33
-operations across 30 paths; 207 remaining registered operations are tracked in the
-[coverage map](../api/contracts/coverage.json).
+above remains historical evidence. The historical T24 contract covered 33
+operations across 30 paths. The current branch inventory and dispositions are in the
+[coverage map](../api/contracts/coverage.json); the four-PR execution receipt
+records the later family expansion.
 
 ### 3.1 One canonical contract, personalized discovery
 

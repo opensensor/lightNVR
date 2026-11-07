@@ -1,3 +1,4 @@
+import {validatePlayerTelemetry} from '../../generated/api/validators.js';
 /**
  * Player Telemetry - Client-side QoE metrics collection
  * Tracks TTFF, rebuffer events, and sends to POST /api/telemetry/player
@@ -42,6 +43,7 @@ export function createPlayerTelemetry(streamName: string, transport: LiveTranspo
             webrtc_rtt_ms: webrtcRttMs,
         };
 
+        if (!validatePlayerTelemetry(payload)) return;
         try {
             // Use sendBeacon for reliability (works during page unload)
             if (navigator.sendBeacon) {

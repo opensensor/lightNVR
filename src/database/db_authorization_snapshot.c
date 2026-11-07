@@ -179,6 +179,20 @@ bool authorization_snapshot_allows_non_scoped_identity(
     return snapshot && !snapshot->principal.authenticated_via_scoped_token;
 }
 
+int authorization_snapshot_setup_complete(const authorization_snapshot_t *snapshot) {
+    if (!snapshot || !snapshot->connection) return -1;
+    sqlite3_stmt *statement = NULL;
+    int result = -1;
+    if (sqlite3_prepare_v2(snapshot->connection,
+        "SELECT (SELECT value FROM system_settings WHERE key='setup_complete');",
+        -1, &statement, NULL) == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW) {
+        const char *value = (const char *)sqlite3_column_text(statement, 0);
+        result = value && value[0] == '1' ? 1 : 0;
+    }
+    sqlite3_finalize(statement);
+    return result;
+}
+
 int authorization_snapshot_camera_count(const authorization_snapshot_t *snapshot) {
     return snapshot ? snapshot->count : 0;
 }

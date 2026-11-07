@@ -1,3 +1,5 @@
+import {ContractValidationError} from '../../api/contractErrors.ts';
+import {getSystemInformation,clearSystemLogs,restartSystem,SystemRequestError} from '../../api/system.ts';
 /**
  * LightNVR Web Interface SystemView Component
  * Preact component for the system page
@@ -6,7 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { ContentLoader } from './LoadingIndicator.tsx';
-import { useQuery, useMutation, fetchJSON } from '../../query-client.ts';
+import { useQuery, useMutation } from '../../query-client.ts';
 import { validateSession } from '../../utils/auth-utils.ts';
 import { useI18n } from '../../i18n.ts';
 import type { SystemInfoData, SystemLogEntry } from '../../types/system.ts';
@@ -134,26 +136,16 @@ export function SystemView() {
   // Define all query hooks next
   const {
     data: systemInfoData,
+    error: systemInfoError,
+    refetch: refetchSystemInfo,
     isLoading
-  } = useQuery<SystemInfoData>(
-    ['systemInfo'],
-    '/api/system/info',
-    {
-      timeout: 15000,
-      retries: 2,
-      retryDelay: 1000
-    }
-  );
+  } = useQuery<SystemInfoData>({queryKey:['systemInfo'],queryFn:({signal}) => getSystemInformation({signal})});
 
   // Define all mutation hooks next
   const clearLogsMutation = useMutation({
     mutationKey: ['clearLogs'],
     mutationFn: async () => {
-      return await fetchJSON('/api/system/logs/clear', {
-        method: 'POST',
-        timeout: 10000,
-        retries: 1
-      });
+      return await clearSystemLogs();
     },
     onSuccess: () => {
       showStatusMessage(t('system.logsCleared'));
@@ -197,11 +189,7 @@ export function SystemView() {
   // Restart system mutation
   const restartSystemMutation = useMutation({
     mutationFn: async () => {
-      return await fetchJSON('/api/system/restart', {
-        method: 'POST',
-        timeout: 30000, // 30 second timeout for system restart
-        retries: 0      // No retries for system restart
-      });
+      return await restartSystem({timeout:30000});
     },
     onMutate: () => {
       setIsRestarting(true);
@@ -213,13 +201,14 @@ export function SystemView() {
     },
     onError: (error) => {
       console.error('Error restarting system:', error);
-      // Only show error and reset state if it's not a network error
-      // (network errors are expected during restart)
-      if (error.message && !error.message.includes('fetch') && !error.message.includes('network')) {
-        showStatusMessage(t('system.restartError', { message: error.message }));
-        setIsRestarting(false);
+      // A lost or malformed acknowledgement cannot prove the write failed.
+      // Keep observing outage/recovery, without submitting another restart.
+      if ((error instanceof SystemRequestError || error instanceof ContractValidationError) && error.mayHaveApplied) {
+        showStatusMessage(t('system.systemRestartingWait'));
+        return;
       }
-      // Otherwise, the restart was likely initiated successfully and the server is shutting down
+      showStatusMessage(t('system.restartError', { message: error.message }));
+      setIsRestarting(false);
     }
   });
 
@@ -319,6 +308,10 @@ export function SystemView() {
           </div>
       </div>
 
+      {systemInfoError && activeTab !== 'health' && <div role="alert" class="rounded-lg border border-border p-4">
+        <p>{systemInfoError.message}</p>
+        <button type="button" class="btn-secondary mt-3" onClick={() => refetchSystemInfo()}>{t('common.retry')}</button>
+      </div>}
       {activeTab === 'health' && canViewSystemHealth ? (
         <div role="tabpanel" id="health-panel" aria-labelledby="health-tab">
           <SystemHealth />
@@ -326,7 +319,7 @@ export function SystemView() {
       ) : (
         <ContentLoader
           isLoading={isLoading}
-          hasData={hasData}
+          hasData={hasData && !systemInfoError}
           loadingMessage={t('system.loadingSystemInformation')}
           emptyMessage={t('system.systemInformationUnavailable')}
         >

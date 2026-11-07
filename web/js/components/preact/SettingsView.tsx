@@ -1,3 +1,4 @@
+import {getSystemSettings,updateSystemSettings} from '../../api/system.ts';
 /**
  * LightNVR Web Interface SettingsView Component
  *
@@ -11,7 +12,7 @@
 import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { ContentLoader } from './LoadingIndicator.tsx';
-import { useQuery, useMutation, fetchJSON } from '../../query-client.ts';
+import { useQuery, useMutation } from '../../query-client.ts';
 import { listAuthSessions, listTrustedDevices, revokeAuthSession, revokeTrustedDevice } from '../../api/identity.ts';
 import type { CredentialRevoked } from '../../api/identity.ts';
 import { AsyncButton } from './AsyncButton.tsx';
@@ -226,30 +227,16 @@ export function SettingsView() {
   // Fetch settings
   const {
     data: settingsData,
+    error: settingsError,
     isLoading,
     refetch
-  } = useQuery<SettingsResponse>(
-    ['settings'],
-    '/api/settings',
-    {
-      timeout: 15000,
-      retries: 2,
-      retryDelay: 1000
-    }
-  );
+  } = useQuery<SettingsResponse>({queryKey:['settings'], queryFn:({signal}) => getSystemSettings({signal})});
 
   // Save settings mutation
   const saveSettingsMutation = useMutation<SaveSettingsResponse, Error, Record<string, unknown>>({
     mutationKey: ['saveSettings'],
     mutationFn: async (mappedSettings) => {
-      return await fetchJSON<SaveSettingsResponse>('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mappedSettings),
-        timeout: 20000,
-        retries: 1,
-        retryDelay: 2000
-      });
+      return await updateSystemSettings(mappedSettings);
     },
     onSuccess: (response) => {
       if (response?.restart_required) {
@@ -841,9 +828,13 @@ export function SettingsView() {
         </div>
       </div>
 
+      {settingsError && <div role="alert" class="rounded-lg border border-border p-4">
+        <p>{settingsError.message}</p>
+        <button type="button" class="btn-secondary mt-3" onClick={() => refetch()}>{t('common.retry')}</button>
+      </div>}
       <ContentLoader
         isLoading={isLoading}
-        hasData={!!settingsData}
+        hasData={!!settingsData && !settingsError}
         loadingMessage={t('settings.loading')}
         emptyMessage={t('settings.empty')}
       >

@@ -248,7 +248,9 @@ target_link_options(test_floor_plan_background_publication PRIVATE -Wl,--wrap=mk
 set_tests_properties(test_floor_plan_background_publication PROPERTIES TIMEOUT 30)
 add_layer3_test(test_delete_stream_launch_failure CI_UNIT CI_SANITIZER)
 target_link_options(test_delete_stream_launch_failure PRIVATE
-    "-Wl,--wrap=pthread_create" "-Wl,--wrap=free")
+    "-Wl,--wrap=pthread_create" "-Wl,--wrap=free"
+    "-Wl,--wrap=go2rtc_integration_full_start"
+    "-Wl,--wrap=go2rtc_integration_unregister_stream")
 set_tests_properties(test_delete_stream_launch_failure PROPERTIES TIMEOUT 15)
 add_layer3_test(test_put_stream_launch_failure CI_UNIT CI_SANITIZER)
 target_link_options(test_put_stream_launch_failure PRIVATE
@@ -315,6 +317,7 @@ add_layer2_test(test_totp CI_UNIT CI_SANITIZER)
 add_layer2_test(test_authorization CI_UNIT)
 add_layer2_test(test_openapi_projection CI_UNIT CI_SANITIZER)
 target_link_options(test_openapi_projection PRIVATE
+    "-Wl,--wrap=authorization_snapshot_setup_complete"
     "-Wl,--wrap=authorization_snapshot_camera_count"
     "-Wl,--wrap=authorization_snapshot_allows_non_scoped_identity"
     "-Wl,--wrap=authorization_snapshot_evaluate")
@@ -353,7 +356,8 @@ add_layer2_test(test_db_event_destinations)
 add_layer2_test(test_api_handlers_event_destinations)
 add_layer2_test(test_db_storage_targets CI_UNIT)
 add_layer2_test(test_db_storage_policies CI_UNIT)
-add_layer2_test(test_api_handlers_storage_targets CI_UNIT)
+add_layer2_test(test_api_handlers_storage_targets CI_UNIT CI_SANITIZER)
+target_link_options(test_api_handlers_storage_targets PRIVATE -Wl,--wrap=trigger_storage_cleanup)
 add_layer2_test(test_api_handlers_storage_policies CI_UNIT)
 add_layer2_test(test_db_transactions CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_maintenance CI_UNIT CI_SANITIZER)
@@ -612,3 +616,23 @@ target_link_options(test_recording_file PRIVATE "-Wl,--wrap=write" "-Wl,--wrap=c
 add_layer1_test(test_uuid CI_UNIT CI_SANITIZER)
 target_sources(test_uuid PRIVATE ${CMAKE_SOURCE_DIR}/src/utils/uuid.c)
 target_link_options(test_uuid PRIVATE "-Wl,--wrap=getrandom" "-Wl,--wrap=fread")
+
+# Compile the MQTT producer even in the isolated no-MQTT API variant, when the
+# development headers are available. Wrappers exercise identity changes during
+# capture without a broker or go2rtc process.
+find_path(MQTT_SNAPSHOT_TEST_INCLUDE mosquitto.h)
+find_library(MQTT_SNAPSHOT_TEST_LIBRARY mosquitto)
+if(MQTT_SNAPSHOT_TEST_INCLUDE AND MQTT_SNAPSHOT_TEST_LIBRARY)
+    add_layer2_test(test_mqtt_snapshot_identity CI_UNIT CI_SANITIZER)
+    target_include_directories(test_mqtt_snapshot_identity PRIVATE ${MQTT_SNAPSHOT_TEST_INCLUDE})
+    target_compile_definitions(test_mqtt_snapshot_identity PRIVATE ENABLE_MQTT=1)
+    target_compile_options(test_mqtt_snapshot_identity PRIVATE -ffunction-sections -fdata-sections)
+    target_link_libraries(test_mqtt_snapshot_identity ${MQTT_SNAPSHOT_TEST_LIBRARY})
+    target_link_options(test_mqtt_snapshot_identity PRIVATE -Wl,--gc-sections
+        -Wl,--wrap=get_stream_config_by_name -Wl,--wrap=go2rtc_get_snapshot
+        -Wl,--wrap=mosquitto_publish)
+endif()
+add_layer2_test(test_api_handlers_device CI_UNIT CI_SANITIZER)
+target_link_options(test_api_handlers_device PRIVATE
+    "-Wl,--wrap=discover_onvif_devices" "-Wl,--wrap=get_onvif_device_profiles"
+    "-Wl,--wrap=add_onvif_device_as_stream")

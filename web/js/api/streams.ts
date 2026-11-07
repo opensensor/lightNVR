@@ -35,7 +35,7 @@ function validate<T>(value: unknown, guard: ContractValidator<T>, operation: Str
 async function request(url: string, operation: StreamOperation, options: EnhancedFetchOptions,
   privacy = false): Promise<Response> {
   try {
-    return await enhancedFetch(url, { ...options, sensitive: true });
+    return await enhancedFetch(url, { ...options, redirect: 'error', credentials: 'same-origin', sensitive: true });
   } catch (error: unknown) {
     // Keep native body/transport cancellation recognizable to query consumers.
     if (typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError') throw error;

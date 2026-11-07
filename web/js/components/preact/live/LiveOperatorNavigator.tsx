@@ -1,4 +1,6 @@
+import {getWorkspaces} from '../../../api/system.ts';
 import { fleetWriteJSON } from '../../../api/fleetWrites.ts';
+import { evidenceJSON } from '../../../api/evidence.ts';
 import { listFleetLocations } from '../../../api/fleet.ts';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.ts';
@@ -136,7 +138,7 @@ export function LiveOperatorNavigator({
 
   const workspaceQuery = useQuery<WorkspacesResponse>({
     queryKey: ['ui-workspaces'],
-    queryFn: ({ signal }) => fetchJSON('/api/ui/workspaces', { signal }),
+    queryFn: ({ signal }) => getWorkspaces({signal}),
     staleTime: 60000,
   });
   const locationsQuery = useQuery<LiveLocationsResponse>({
@@ -226,7 +228,7 @@ export function LiveOperatorNavigator({
     queryFn: async ({ signal }) => {
       const responses = await Promise.all(buildRecentEventsRequests(
         [...effectiveCameraUuids],
-      ).map((request) => fetchJSON<LiveEventsResponse>('/api/investigations/search', {
+      ).map((request) => evidenceJSON<LiveEventsResponse>('/api/investigations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),

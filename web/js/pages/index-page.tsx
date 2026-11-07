@@ -1,3 +1,4 @@
+import {getSetupStatus} from '../api/system.ts';
 import '../sentry.ts';
 /**
  * LightNVR Web Interface Live View Page
@@ -31,12 +32,6 @@ interface IndexClientConfig extends ClientConfig {
     mseDisabled?: boolean;
 }
 
-/** GET /api/setup/status: api_handlers_setup.c */
-interface SetupStatusResponse {
-    complete: boolean;
-    setup_completed_at: number;
-}
-
 /**
  * Main App component. Renders the LiveView in its WebRTC-first variant unless
  * WebRTC is disabled in settings.
@@ -56,13 +51,16 @@ function App() {
         // Check setup wizard status and view-method settings in parallel.
         async function init() {
             try {
-                const [settingsRes, setupRes] = await Promise.all([
-                    fetch('/api/client-config'),
-                    fetch('/api/setup/status'),
+                const [settingsResult, setupResult] = await Promise.allSettled([
+                    fetch('/api/client-config').then(response => {
+                        if (!response.ok) throw new Error(`Client configuration unavailable (HTTP ${response.status})`);
+                        return response.json() as Promise<IndexClientConfig>;
+                    }),
+                    getSetupStatus(),
                 ]);
 
-                if (settingsRes.ok) {
-                    const settings: IndexClientConfig = await settingsRes.json();
+                if (settingsResult.status === 'fulfilled') {
+                    const settings = settingsResult.value;
                     // WebRTC requires go2rtc. If go2rtc is off, treat WebRTC
                     // and MSE as unavailable regardless of the user's flags.
                     // #397
@@ -77,14 +75,14 @@ function App() {
                         mseDisabled:    settings.mseDisabled !== undefined ? !!settings.mseDisabled || go2rtcOff : !!settings.mse_disabled || go2rtcOff,
                     });
                 } else {
-                    console.error('Failed to fetch settings:', settingsRes.status, settingsRes.statusText);
+                    console.error('Failed to fetch settings:', settingsResult.reason);
                 }
 
-                if (setupRes.ok) {
-                    const setupData: SetupStatusResponse = await setupRes.json();
-                    if (!setupData.complete) {
-                        setShowWizard(true);
-                    }
+                // Setup availability must not discard an independently valid client config.
+                if (setupResult.status === 'fulfilled') {
+                    if (!setupResult.value.complete) setShowWizard(true);
+                } else {
+                    console.error('Failed to fetch setup status:', setupResult.reason);
                 }
             } catch (error) {
                 console.error('Error during init:', error);

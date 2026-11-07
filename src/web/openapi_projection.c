@@ -35,9 +35,10 @@ static int predicate_valid(const cJSON *predicate) {
     if (!cJSON_IsObject(predicate) || !unique_keys(predicate)) return -1;
     cJSON *version = item(predicate, "version"), *kind = item(predicate, "kind");
     if (!cJSON_IsNumber(version) || version->valuedouble != 1 || !cJSON_IsString(kind)) return -1;
-    bool simple = string_is(kind, "authenticated") || string_is(kind, "public") ||
+    bool simple = string_is(kind, "authenticated") || string_is(kind, "public") || string_is(kind, "bootstrap_setup") ||
                   string_is(kind, "non_scoped_identity") || string_is(kind, "identity_management");
-    bool camera = string_is(kind, "camera") || string_is(kind, "non_scoped_camera");
+    bool camera = string_is(kind, "camera") || string_is(kind, "non_scoped_camera") ||
+                  string_is(kind, "global_or_camera");
     bool global = string_is(kind, "global") || string_is(kind, "non_scoped_global");
     if ((!simple && !camera && !global) || cJSON_GetArraySize(predicate) != (simple ? 2 : 3)) return -1;
     if (simple) return item(predicate, "requirements") ? -1 : 0;
@@ -48,7 +49,7 @@ static int predicate_valid(const cJSON *predicate) {
         cJSON *action = item(req, "action"), *resource = item(req, "resource");
         if (!cJSON_IsString(action) || authorization_action_from_key(action->valuestring) == AUTHZ_ACTION_INVALID ||
             !(string_is(resource, "raw") || string_is(resource, "runtime") || string_is(resource, "live")) ||
-            (global && !string_is(resource, "raw"))) return -1;
+            ((global || string_is(kind, "global_or_camera")) && !string_is(resource, "raw"))) return -1;
     }
     return 0;
 }
@@ -58,6 +59,15 @@ int openapi_snapshot_access(void *opaque, const cJSON *predicate) {
     if (!snapshot || predicate_valid(predicate) != 0) return -1;
     cJSON *kind = item(predicate, "kind");
     if (string_is(kind, "authenticated") || string_is(kind, "public")) return 1;
+    if (string_is(kind, "bootstrap_setup")) {
+        int complete = authorization_snapshot_setup_complete(snapshot);
+        if (complete < 0) return -1;
+        if (!complete) return 1;
+        authorization_evaluation_t evaluation;
+        if (authorization_snapshot_evaluate(snapshot, AUTHZ_SYSTEM_ADMIN, -1,
+                                             "raw", &evaluation) != 0) return -1;
+        return evaluation.decision == AUTHZ_DECISION_ALLOW ? 1 : 0;
+    }
     if (string_is(kind, "non_scoped_identity"))
         return authorization_snapshot_allows_non_scoped_identity(snapshot) ? 1 : 0;
     if (string_is(kind, "identity_management")) {
@@ -71,7 +81,7 @@ int openapi_snapshot_access(void *opaque, const cJSON *predicate) {
     if ((string_is(kind, "non_scoped_global") || string_is(kind, "non_scoped_camera")) &&
         !authorization_snapshot_allows_non_scoped_identity(snapshot)) return 0;
     int count = global ? 0 : authorization_snapshot_camera_count(snapshot);
-    for (int index = global ? -1 : 0; index < count; index++) {
+    for (int index = (global || string_is(kind, "global_or_camera")) ? -1 : 0; index < count; index++) {
         bool allowed = true;
         for (cJSON *req = item(predicate, "requirements")->child; req; req = req->next) {
             authorization_evaluation_t evaluation;

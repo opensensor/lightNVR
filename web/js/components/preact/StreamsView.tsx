@@ -1,3 +1,6 @@
+import {getSystemSettings} from '../../api/system.ts';
+import { evidenceJSON } from '../../api/evidence.ts';
+import {deviceRequest} from '../../api/device.ts';
 /**
  * LightNVR Web Interface StreamsView Component
  * React component for the streams page
@@ -58,6 +61,7 @@ import type {
 } from '../../types/streams.ts';
 import { normalizePlaybackTransport } from '../../utils/playback-transport.ts';
 import { getStreamFull, listStreamSummaries, updateStream } from '../../api/streams.ts';
+import { createStream, probeStream, deleteStream as requestDeleteStream } from '../../api/mediaLifecycle.ts';
 import type { StreamSummaryQuery, StreamUpdateResult } from '../../api/streams.ts';
 import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
 
@@ -421,11 +425,7 @@ export function StreamsView() {
   // Fetch detection models
   const {
     data: detectionModelsData
-  } = useQuery<DetectionModelsResponse>(['detectionModels'], '/api/detection/models', {
-    timeout: 5000,
-    retries: 1,
-    retryDelay: 1000
-  });
+  } = useQuery<DetectionModelsResponse>({queryKey:['detectionModels'], queryFn:({signal})=>evidenceJSON('/api/detection/models',{signal,timeout:5000,retries:1}),retry:false});
 
   const { data: clientConfig = {} } = useQuery<ClientConfig>(
     ['client-config'],
@@ -543,16 +543,7 @@ export function StreamsView() {
         return { editing: true, result: await updateStream(name, body, { timeout: 15000 }) };
       }
       // Create new stream via POST
-      return { editing: false, result: await fetchJSON('/api/streams', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(streamData),
-        timeout: 45000,
-        retries: 1,
-        retryDelay: 1000
-      }) };
+      return { editing: false, result: await createStream(streamData, {timeout: 45000}) };
     },
     onSuccess: (data, variables) => {
       if (variables.editing) {
@@ -594,14 +585,8 @@ export function StreamsView() {
   });
 
   // Mutation for testing stream connection
-  const testStreamMutation = usePostMutation<StreamTestResponse, StreamTestRequest>(
-    '/api/streams/test',
-    {
-      timeout: 20000,
-      retries: 1,
-      retryDelay: 2000
-    },
-    {
+  const testStreamMutation = useMutation<StreamTestResponse, Error, StreamTestRequest>({
+      mutationFn: (body) => probeStream(body, {timeout: 20000}),
       onMutate: () => {
         showStatusMessage(t('streams.testingStreamConnection'));
       },
@@ -615,20 +600,13 @@ export function StreamsView() {
       onError: (error) => {
         showStatusMessage(t('streams.errorTestingStream', { message: error.message }), 'error', 5000);
       }
-    }
-  );
+  });
 
   // Mutation for deleting stream
   const deleteStreamMutation = useMutation<unknown, Error, { streamId: string }>({
     mutationFn: async (params) => {
       const { streamId } = params;
-      const url = `/api/streams/${encodeURIComponent(streamId)}?permanent=true`;
-      return await fetchJSON(url, {
-        method: 'DELETE',
-        timeout: 15000,
-        retries: 1,
-        retryDelay: 1000
-      });
+      return await requestDeleteStream(streamId, true, {timeout: 15000});
     },
     onSuccess: () => {
       showStatusMessage(t('streams.streamSuccessfullyDeleted'));
@@ -648,13 +626,7 @@ export function StreamsView() {
   const disableStreamMutation = useMutation<unknown, Error, { streamId: string }>({
     mutationFn: async (params) => {
       const { streamId } = params;
-      const url = `/api/streams/${encodeURIComponent(streamId)}`;
-      return await fetchJSON(url, {
-        method: 'DELETE',
-        timeout: 15000,
-        retries: 1,
-        retryDelay: 1000
-      });
+      return await requestDeleteStream(streamId, false, {timeout: 15000});
     },
     onSuccess: () => {
       showStatusMessage(t('streams.streamSuccessfullyDisabled'));
@@ -961,7 +933,7 @@ export function StreamsView() {
     setCustomStreamName('');
     // Reopen the durable staging inbox before the operator starts another scan.
     try {
-      const inventory = await fetchJSON<OnvifDevicesResponse>('/api/onvif/devices', { timeout: 5000 });
+      const inventory = await deviceRequest('getOnvifDevices', { timeout: 5000 });
       if (generation !== onvifGeneration.current) return;
       setDiscoveredDevices(inventory?.devices || []);
     } catch (e) {
@@ -970,7 +942,7 @@ export function StreamsView() {
     if (generation !== onvifGeneration.current) return;
     // Fetch the configured default network from settings
     try {
-      const settings = await fetchJSON<{ onvif_discovery_network?: string }>('/api/settings', { timeout: 5000 });
+      const settings = await getSystemSettings({timeout:5000});
       if (generation !== onvifGeneration.current) return;
       if (settings && settings.onvif_discovery_network) {
         setOnvifNetworkOverride(settings.onvif_discovery_network);
@@ -1063,6 +1035,7 @@ export function StreamsView() {
       retries: 0
     },
     {
+      mutationFn: body => deviceRequest('discoverOnvifDevices', {body, timeout:120000}),
       onMutate: () => {
         setIsDiscovering(true);
         return onvifGeneration.current;
@@ -1142,19 +1115,7 @@ export function StreamsView() {
       const httpFallbackUrl = buildDeviceServiceUrl('http', ipAddress);
 
       const attemptFetch = (deviceUrl: string): Promise<OnvifProfilesResponse> => {
-        return fetch('/api/onvif/device/profiles', {
-          method: 'GET',
-          headers: {
-            'X-Device-URL': deviceUrl,
-            'X-Username': credentials.username,
-            'X-Password': credentials.password
-          }
-        }).then(response => {
-          if (!response.ok) {
-            throw new Error(`HTTP error ${response.status}`);
-          }
-          return response.json();
-        });
+        return deviceRequest('getOnvifProfiles', {headers:{'X-Device-URL':deviceUrl,'X-Username':credentials.username,'X-Password':credentials.password}});
       };
 
       if (discoveredUrl) {
@@ -1204,6 +1165,7 @@ export function StreamsView() {
       retries: 0
     },
     {
+      mutationFn: body => deviceRequest('testOnvifDevice', {body, timeout:15000}),
       onMutate: () => {
         setIsLoadingProfiles(true);
         return { generation: onvifGeneration.current, selection: onvifSelection.current, device: selectedDeviceRef.current };
@@ -1253,8 +1215,8 @@ export function StreamsView() {
       streaming_enabled: true,
       // Note: width, height, fps, and codec are auto-detected from the stream
       // (ONVIF discovery on the backend will also populate these from the camera profile)
-      protocol: '0', // TCP
-      priority: '5', // Medium
+      protocol: 0, // TCP
+      priority: 5, // Medium
       segment_duration: 30,
       record: true,
       record_audio: !clientConfig.audio_disabled,
@@ -1273,13 +1235,11 @@ export function StreamsView() {
       onSuccess: async () => {
         if (selectedDevice.inventory_uuid) {
           try {
-            await fetchJSON('/api/onvif/device/claim', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+            await deviceRequest('claimOnvifDevice', {
+              body: {
                 inventory_uuid: selectedDevice.inventory_uuid,
                 stream_name: streamData.name
-              }),
+              },
               timeout: 5000
             });
             if (generation !== onvifGeneration.current) return;

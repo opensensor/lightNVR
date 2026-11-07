@@ -9,8 +9,9 @@ test('snapshot requests stay stable until a camera is re-enabled @ui @streams', 
     if (path === '/api/streams/cam_a') {
       const enabling = route.request().method() === 'PUT';
       streams[0].enabled = enabling;
-      await route.fulfill({ status: enabling ? 202 : 200,
-        json: { success: true, message: enabling ? 'Stream update queued' : 'Stream disabled' } });
+      await route.fulfill({ status: 202,
+        json: enabling ? { success: true, message: 'Stream update queued' }
+          : { success: true, permanent: false, status: 'accepted' } });
       return;
     }
     if (path === '/go2rtc/api/frame.jpeg') {

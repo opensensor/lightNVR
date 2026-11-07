@@ -1,3 +1,4 @@
+import {validateGo2rtcConfiguration,getGo2rtcEffectiveConfiguration,getGo2rtcOverrideDiagnostics} from '../../../api/system.ts';
 /**
  * Go2rtcTab — go2rtc integration settings + the override editor.
  *
@@ -11,7 +12,6 @@
  */
 
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
 import type {
   Go2rtcEffectiveConfig,
   Go2rtcOverrideStatus,
@@ -122,11 +122,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   const validateOverride = async (yaml: string) => {
     if (isMountedRef.current) setOverrideValidating(true);
     try {
-      const result = await fetchJSON<Go2rtcOverrideValidation>('/api/settings/go2rtc/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ override: yaml || '' }),
-      });
+      const result = await validateGo2rtcConfiguration({override:yaml || ''});
       if (isMountedRef.current) setOverrideValidation(result);
     } catch (_err) {
       // Network/HTTP failure — don't block the user, just clear stale state.
@@ -165,8 +161,8 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
        * quarantine state so that when override.yaml is empty, the user
        * can see WHY instead of just seeing "(none)" (see #394). */
       const [cfg, status] = await Promise.all([
-        fetchJSON<Go2rtcEffectiveConfig>('/api/system/go2rtc/effective-config'),
-        fetchJSON<Go2rtcOverrideStatus>('/api/system/go2rtc/override-status').catch(() => null),
+        getGo2rtcEffectiveConfiguration(),
+        getGo2rtcOverrideDiagnostics().catch(() => null),
       ]);
       if (isMountedRef.current) {
         setEffectiveConfig(cfg);

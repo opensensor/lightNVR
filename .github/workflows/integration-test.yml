@@ -42,6 +42,7 @@ jobs:
             libcurl4-openssl-dev \
             libcjson-dev \
             libmbedtls-dev \
+            libmosquitto-dev \
             lcov \
             curl \
             gpg
@@ -331,7 +332,7 @@ jobs:
           apt-get install -y git build-essential cmake pkg-config python3 ca-certificates ffmpeg lcov curl gnupg \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libavfilter-dev \
             libswresample-dev libsqlite3-dev libuv1-dev libllhttp-dev \
-            libcurl4-openssl-dev libcjson-dev libmbedtls-dev
+            libcurl4-openssl-dev libcjson-dev libmbedtls-dev libmosquitto-dev
       - uses: actions/checkout@v6
         with:
           submodules: false
@@ -355,7 +356,7 @@ jobs:
         run: |
           cmake -S . -B build/contracts-ci -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON \
             -DENABLE_SOD=OFF -DENABLE_LITERT=OFF -DENABLE_GO2RTC=OFF \
-            -DENABLE_MQTT=OFF -DENABLE_SSL=ON \
+            -DENABLE_MQTT=ON -DENABLE_SSL=ON \
             -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
             -DCMAKE_EXE_LINKER_FLAGS="--coverage"
           cmake --build build/contracts-ci --parallel 2 --target lightnvr \
@@ -379,6 +380,7 @@ jobs:
           python3 tests/reliability/test_qualification_cleanup.py
       - name: Real-server API contracts
         env:
+          LIGHTNVR_CONTRACT_MQTT: "1"
           LIGHTNVR_CONTRACT_BIN: ${{ github.workspace }}/build/contracts-ci/bin/lightnvr
           PLAYWRIGHT_JSON_OUTPUT_FILE: build/contracts-ci/api-raw.json
         run: npx playwright test -c tests/contracts/playwright.config.ts --project=api --workers=1 --retries=0 --forbid-only --reporter=list,json

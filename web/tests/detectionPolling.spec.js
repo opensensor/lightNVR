@@ -1,3 +1,4 @@
+const validDetections={detections:[],timestamp:'2026-01-01 00:00:00',stream_status:'Running'};
 import { startDetectionPolling } from '../js/utils/detection-polling.ts';
 
 describe('detection polling under slow responses', () => {
@@ -29,16 +30,16 @@ describe('detection polling under slow responses', () => {
   test('waits for the complete response before starting another poll', async () => {
     let completeBody;
     global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
+      ok:true,status:200,headers:new Headers({'Content-Type':'application/json'}),
       json: () => new Promise(resolve => { completeBody = resolve; }),
     });
     start();
     await jest.advanceTimersByTimeAsync(4000);
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch.mock.calls[0][0]).toContain('front%20door');
-    completeBody({ detections: [] });
+    completeBody(validDetections);
     await jest.advanceTimersByTimeAsync(0);
-    expect(onResults).toHaveBeenCalledWith({ detections: [] });
+    expect(onResults).toHaveBeenCalledWith(validDetections);
     await jest.advanceTimersByTimeAsync(999);
     expect(global.fetch).toHaveBeenCalledTimes(1);
     await jest.advanceTimersByTimeAsync(1);

@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
@@ -161,6 +162,25 @@ void handle_put_stream_retention(const http_request_t *req, http_response_t *res
     if (get_stream_retention_config(stream_name, &config) != 0) {
         cJSON_Delete(json);
         http_response_set_json_error(res, 404, "Stream not found");
+        return;
+    }
+
+    /* Validate before narrowing or applying any member. In particular, negative
+     * or oversized doubles must never be converted to uint64_t. */
+    const char *fields[] = {"retention_days", "detection_retention_days", "max_storage_mb"};
+    bool valid = cJSON_IsObject(json);
+    for (size_t i = 0; valid && i < sizeof(fields) / sizeof(fields[0]); ++i) {
+        const cJSON *value = cJSON_GetObjectItemCaseSensitive(json, fields[i]);
+        if (!value) continue;
+        const double minimum = i == 2 ? 0.0 : -1.0;
+        const double maximum = i == 2 ? 9007199254740991.0 : 365.0;
+        valid = cJSON_IsNumber(value) && isfinite(value->valuedouble) &&
+                floor(value->valuedouble) == value->valuedouble &&
+                value->valuedouble >= minimum && value->valuedouble <= maximum;
+    }
+    if (!valid) {
+        cJSON_Delete(json);
+        http_response_set_json_error(res, 400, "Invalid retention configuration values");
         return;
     }
 

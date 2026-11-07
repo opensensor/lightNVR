@@ -585,7 +585,7 @@ static void prune_detection_snapshots(const char *dir_path) {
 
 /**
  * Save a detection event snapshot to
- * {storage_path}/snapshots/{safe_stream}/{YYYYmmdd_HHMMSS}.jpg.
+ * {storage_path}/snapshots/{captured_camera_uuid}/{YYYYmmdd_HHMMSS}.jpg.
  *
  * On success fills out_path with the absolute file path and out_url with the
  * relative URL served by the /api/snapshots endpoint.  Returns 0 on success.
@@ -682,19 +682,34 @@ int mqtt_publish_detection(const char *stream_name, const detection_result_t *re
     char snapshot_url[MAX_PATH_LENGTH] = "";
     char snapshot_topic[MAX_TOPIC_LENGTH] = "";
     {
+        /* Capture identity before fetching media. A later rename/name reuse
+         * must not transfer this stored snapshot to a different camera. */
+        stream_config_t snapshot_camera;
+        const bool snapshot_identity_valid =
+            get_stream_config_by_name(stream_name, &snapshot_camera) == 0 &&
+            lightnvr_uuid_is_valid(snapshot_camera.camera_uuid);
         unsigned char *jpeg_data = NULL;
         size_t jpeg_size = 0;
-        if (go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size) &&
+        if (snapshot_identity_valid &&
+            go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size) &&
             jpeg_data && jpeg_size > 0) {
-            save_detection_snapshot(safe_name, timestamp, jpeg_data, jpeg_size,
-                                    snapshot_path, sizeof(snapshot_path),
-                                    snapshot_url, sizeof(snapshot_url));
-
-            snprintf(snapshot_topic, sizeof(snapshot_topic), "%s/detections/%s/snapshot",
-                     mqtt_config->mqtt_topic_prefix, safe_name);
-            if (mqtt_publish_binary(snapshot_topic, jpeg_data, jpeg_size,
-                                    mqtt_config->mqtt_retain) != 0) {
-                snapshot_topic[0] = '\0';  // don't advertise a topic we failed to publish
+            /* go2rtc capture is blocking and addresses the mutable name. If
+             * that name was removed/reassigned while fetching, the returned
+             * bytes have no trustworthy association with the captured UUID.
+             * Drop them before either disk or MQTT publication. */
+            stream_config_t current_camera;
+            if (get_stream_config_by_name(stream_name, &current_camera) == 0 &&
+                strcmp(snapshot_camera.camera_uuid, current_camera.camera_uuid) == 0) {
+                save_detection_snapshot(snapshot_camera.camera_uuid, timestamp,
+                                        jpeg_data, jpeg_size,
+                                        snapshot_path, sizeof(snapshot_path),
+                                        snapshot_url, sizeof(snapshot_url));
+                snprintf(snapshot_topic, sizeof(snapshot_topic), "%s/detections/%s/snapshot",
+                         mqtt_config->mqtt_topic_prefix, safe_name);
+                if (mqtt_publish_binary(snapshot_topic, jpeg_data, jpeg_size,
+                                        mqtt_config->mqtt_retain) != 0) {
+                    snapshot_topic[0] = '\0';
+                }
             }
         }
         free(jpeg_data);

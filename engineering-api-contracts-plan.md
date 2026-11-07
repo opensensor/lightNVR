@@ -6,6 +6,12 @@
 **Source**: [ENG 01 PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md)
 **Execution**: Started 2026-11-05 at `dea6094a` (only a version bump since the planning baseline). No commits, pushes, or PRs are required by this plan.
 
+**Current follow-up (2026-11-07)**: This file preserves the original execution
+history. The active four-PR stack and family evidence are tracked in
+[engineering-hardening-four-pr-plan.md](engineering-hardening-four-pr-plan.md)
+and [the expansion roadmap](engineering-api-expansion-plan.md). Original task
+counts and proposed surfaces below describe their recorded baselines.
+
 ## Overview
 
 Deliver a canonical OpenAPI JSON contract, an authenticated projection of that

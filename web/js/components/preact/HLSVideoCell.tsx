@@ -1,3 +1,4 @@
+import { refreshStream } from '../../api/mediaLifecycle.ts';
 /**
  * HLSVideoCell Component
  * A self-contained component for displaying an HLS video stream
@@ -158,22 +159,8 @@ export function HLSVideoCell({
 
     try {
       console.log(`Refreshing go2rtc registration for stream ${stream.name}`);
-      const response = await fetch(`/api/streams/${encodeURIComponent(stream.name)}/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data: unknown = await response.json();
-        console.log(`Successfully refreshed go2rtc registration for stream ${stream.name}:`, data);
-        return true;
-      } else {
-        const errorText = await response.text();
-        console.warn(`Failed to refresh stream ${stream.name}: ${response.status} - ${errorText}`);
-        return false;
-      }
+      await refreshStream(stream.name);
+      return true;
     } catch (err) {
       console.error(`Error refreshing stream ${stream.name}:`, err);
       return false;

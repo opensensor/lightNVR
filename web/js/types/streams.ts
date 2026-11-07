@@ -62,8 +62,8 @@ export interface OnvifStreamCreatePayload {
   url: string;
   enabled: boolean;
   streaming_enabled: boolean;
-  protocol: string;
-  priority: string;
+  protocol: number;
+  priority: number;
   segment_duration: number;
   record: boolean;
   record_audio: boolean;
@@ -77,24 +77,8 @@ export interface OnvifStreamCreatePayload {
 }
 
 /** Body of POST /api/streams/test. */
-export interface StreamTestRequest {
-  url: string;
-  protocol: number;
-  onvif_username?: string;
-  onvif_password?: string;
-}
-
-/** POST /api/streams/test. `message` is only present on failure. */
-export interface StreamTestResponse {
-  success: boolean;
-  message?: string;
-  info?: {
-    width: number;
-    height: number;
-    fps: number;
-    codec: string;
-  };
-}
+export type StreamTestRequest = components['schemas']['StreamProbeRequest'];
+export type StreamTestResponse = components['schemas']['StreamProbeResponse'];
 
 /** fetchJSON rejects with HTTPError, which has `status`, or a plain Error, which does not. */
 export type StreamRequestError = Error & { status?: number };

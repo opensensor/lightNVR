@@ -1,3 +1,4 @@
+import {getStreamHealth,getStreamHealthHistory} from '../../api/system.ts';
 /**
  * HealthView - Stream Health monitoring page
  * Shows fleet summary, per-stream health cards with sparklines
@@ -172,18 +173,8 @@ export function HealthView() {
     const { t } = useI18n();
     const [expandedStream, setExpandedStream] = useState<string | null>(null);
 
-    const { data: health, isLoading, error } = useQuery<StreamHealthResponse>(
-        ['streamHealth'],
-        '/api/health',
-        { timeout: 10000, retries: 1 },
-        { refetchInterval: 10000 }
-    );
-    const { data: healthHistory } = useQuery<StreamHealthHistoryResponse>(
-        ['streamHealthHistory'],
-        '/api/health?sparklines=true&history_only=true',
-        { timeout: 15000, retries: 1 },
-        { refetchInterval: 60000, staleTime: 60000 }
-    );
+    const { data: health, isLoading, error } = useQuery<StreamHealthResponse>({queryKey:['streamHealth'],queryFn:({signal})=>getStreamHealth({signal,timeout:10000}),refetchInterval:10000});
+    const { data: healthHistory } = useQuery<StreamHealthHistoryResponse>({queryKey:['streamHealthHistory'],queryFn:({signal})=>getStreamHealthHistory({signal,timeout:15000}),refetchInterval:60000,staleTime:60000});
 
     if (isLoading && !health) {
         return (

@@ -73,6 +73,13 @@ int get_external_motion_detection_intervals_by_camera_uuid(
 int get_detections_from_db_time_range(const char *stream_name, detection_result_t *result, 
                                      uint64_t max_age, time_t start_time, time_t end_time);
 
+/** Captured UUID takes precedence; only legacy rows without UUID use the name.
+ * Caller must authorize the resolved camera before using this read-only query. */
+int get_detection_results_for_camera_readonly(const char *camera_uuid,
+    const char *legacy_stream_name, detection_result_t *result,
+    time_t *timestamps, time_t *end_timestamps, uint64_t max_age,
+    time_t start_time, time_t end_time);
+
 /* Read result data and event ranges from one private, committed snapshot.
  * Returns the number of detections, or -1 on error. */
 int get_detection_results_readonly(const char *stream_name, detection_result_t *result,

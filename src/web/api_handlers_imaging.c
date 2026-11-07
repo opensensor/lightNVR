@@ -14,6 +14,7 @@
 #include <strings.h>
 
 #include "web/api_handlers_imaging.h"
+#include "web/device_request.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
 #define LOG_COMPONENT "ImagingAPI"
@@ -380,6 +381,28 @@ static bool read_mode_level(cJSON *body, const char *name,
     return changed;
 }
 
+static bool valid_imaging_update(const cJSON *body, bool daynight) {
+    static const char *keys[] = {"brightness", "color_saturation", "saturation", "contrast", "sharpness", "noise_reduction", "backlight_compensation", "backlight", "wide_dynamic_range", "wdr", "tone_compensation", "tone", "defogging", "defog", "ir_cut_filter", "ircut", "force_persistence"};
+    static const char *daykeys[] = {"mode", "daynight", "ir_cut_filter", "ircut", "force_persistence"};
+    if (!device_keys(body, daynight ? daykeys : keys, daynight ? 5 : 17)) return false;
+    const cJSON *field;
+    cJSON_ArrayForEach(field, body) {
+        const char *key = field->string;
+        if (!strcmp(key, "force_persistence")) { if (!cJSON_IsBool(field)) return false; continue; }
+        if (daynight || !strcmp(key, "ir_cut_filter") || !strcmp(key, "ircut")) {
+            if (!device_string(field, 15, false)) return false;
+        } else if (!strcmp(key, "brightness") || !strcmp(key, "color_saturation") || !strcmp(key, "saturation") || !strcmp(key, "contrast") || !strcmp(key, "sharpness") || !strcmp(key, "noise_reduction")) {
+            if (!device_number(field)) return false;
+        } else if (!device_number(field)) {
+            static const char *nested[] = {"mode", "level"};
+            if (!device_keys(field, nested, 2) || !field->child) return false;
+            const cJSON *mode = cJSON_GetObjectItemCaseSensitive(field, "mode"), *level = cJSON_GetObjectItemCaseSensitive(field, "level");
+            if ((mode && !device_string(mode, 31, false)) || (level && !device_number(level))) return false;
+        }
+    }
+    return true;
+}
+
 static bool parse_settings_update(cJSON *body, onvif_imaging_settings_t *settings,
                                   bool *force_persistence, char *error, size_t error_size) {
     bool changed = false;
@@ -454,7 +477,7 @@ static int prepare_imaging_request(const http_request_t *req,
                                    char *imaging_url,
                                    size_t imaging_url_size,
                                    char *video_source_token,
-                                   size_t token_size) {
+                                   size_t token_size, bool discover) {
     char stream_name[MAX_STREAM_NAME];
     if (extract_imaging_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
         http_response_set_json_error(res, 400, "Invalid stream name");
@@ -478,7 +501,7 @@ static int prepare_imaging_request(const http_request_t *req,
         return -1;
     }
 
-    if (resolve_video_source_token(config, video_source_token, token_size) != 0) {
+    if (discover && resolve_video_source_token(config, video_source_token, token_size) != 0) {
         http_response_set_json_error(res, 500, "Failed to resolve ONVIF video source token");
         return -1;
     }
@@ -492,7 +515,7 @@ void handle_imaging_get_settings(const http_request_t *req, http_response_t *res
     char video_source_token[64];
 
     if (prepare_imaging_request(req, res, AUTHZ_LIVE_VIEW, &config, imaging_url, sizeof(imaging_url),
-                                video_source_token, sizeof(video_source_token)) != 0) {
+                                video_source_token, sizeof(video_source_token), true) != 0) {
         return;
     }
 
@@ -526,7 +549,7 @@ void handle_imaging_get_options(const http_request_t *req, http_response_t *res)
     char video_source_token[64];
 
     if (prepare_imaging_request(req, res, AUTHZ_LIVE_VIEW, &config, imaging_url, sizeof(imaging_url),
-                                video_source_token, sizeof(video_source_token)) != 0) {
+                                video_source_token, sizeof(video_source_token), true) != 0) {
         return;
     }
 
@@ -560,12 +583,13 @@ void handle_imaging_put_settings(const http_request_t *req, http_response_t *res
     char video_source_token[64];
 
     if (prepare_imaging_request(req, res, AUTHZ_CAMERA_CONFIGURE, &config, imaging_url, sizeof(imaging_url),
-                                video_source_token, sizeof(video_source_token)) != 0) {
+                                video_source_token, sizeof(video_source_token), false) != 0) {
         return;
     }
 
-    cJSON *body = httpd_parse_json_body(req);
-    if (!body) {
+    cJSON *body = device_json_body(req);
+    if (!valid_imaging_update(body, false)) {
+        cJSON_Delete(body);
         http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
@@ -579,6 +603,11 @@ void handle_imaging_put_settings(const http_request_t *req, http_response_t *res
         return;
     }
     cJSON_Delete(body);
+
+    if (resolve_video_source_token(&config, video_source_token, sizeof(video_source_token)) != 0) {
+        http_response_set_json_error(res, 500, "Failed to resolve ONVIF video source token");
+        return;
+    }
 
     if (onvif_imaging_set_settings(imaging_url, video_source_token,
                                    config_username(&config), config_password(&config),
@@ -603,7 +632,7 @@ void handle_daynight_get(const http_request_t *req, http_response_t *res) {
     char video_source_token[64];
 
     if (prepare_imaging_request(req, res, AUTHZ_LIVE_VIEW, &config, imaging_url, sizeof(imaging_url),
-                                video_source_token, sizeof(video_source_token)) != 0) {
+                                video_source_token, sizeof(video_source_token), true) != 0) {
         return;
     }
 
@@ -657,12 +686,13 @@ void handle_daynight_put(const http_request_t *req, http_response_t *res) {
     char video_source_token[64];
 
     if (prepare_imaging_request(req, res, AUTHZ_CAMERA_CONFIGURE, &config, imaging_url, sizeof(imaging_url),
-                                video_source_token, sizeof(video_source_token)) != 0) {
+                                video_source_token, sizeof(video_source_token), false) != 0) {
         return;
     }
 
-    cJSON *body = httpd_parse_json_body(req);
-    if (!body) {
+    cJSON *body = device_json_body(req);
+    if (!valid_imaging_update(body, true)) {
+        cJSON_Delete(body);
         http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
@@ -701,6 +731,11 @@ void handle_daynight_put(const http_request_t *req, http_response_t *res) {
     memset(&settings, 0, sizeof(settings));
     settings.has_ir_cut_filter = true;
     safe_strcpy(settings.ir_cut_filter, ir_cut_filter, sizeof(settings.ir_cut_filter), 0);
+
+    if (resolve_video_source_token(&config, video_source_token, sizeof(video_source_token)) != 0) {
+        http_response_set_json_error(res, 500, "Failed to resolve ONVIF video source token");
+        return;
+    }
 
     if (onvif_imaging_set_settings(imaging_url, video_source_token,
                                    config_username(&config), config_password(&config),

@@ -1,3 +1,5 @@
+import {storageJSON} from '../../../api/storage.ts';
+import {useStorageQuery} from '../../../api/storageQuery.ts';
 import { listFleetLocations, listFleetTags } from '../../../api/fleet.ts';
 /**
  * StorageTab — Storage path, HLS path, retention, auto-delete, thumbnails,
@@ -7,7 +9,7 @@ import { listFleetLocations, listFleetTags } from '../../../api/fleet.ts';
  */
 
 import { useCallback, useState } from 'preact/hooks';
-import { fetchJSON, useQuery } from '../../../query-client.ts';
+import { useQuery } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { archiveTargetWithoutTrigger, referencedTargetUuids, targetIsRouted } from './storageTargetRouting.ts';
 import { CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.tsx';
@@ -253,14 +255,14 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }: Sto
 }
 
 function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
-  const { data, isLoading, isError, error, refetch } = useQuery<StorageTargetsResponse>(
+  const { data, isLoading, isError, error, refetch } = useStorageQuery<StorageTargetsResponse>(
     ['storage-targets'],
     '/api/storage-targets',
     { cache: 'no-store', timeout: 15000, retries: 1 },
     { staleTime: 10000 },
   );
-  const policiesQuery = useQuery<StoragePoliciesResponse>(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const poolsQuery = useQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const policiesQuery = useStorageQuery<StoragePoliciesResponse>(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const poolsQuery = useStorageQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const [editor, setEditor] = useState<StorageTargetEditorState | null>(null);
   const [busyKey, setBusyKey] = useState('');
   const [deleteTargetCandidate, setDeleteTargetCandidate] = useState<StorageTarget | null>(null);
@@ -301,7 +303,7 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
         archival_window_end_minute: windowEnd,
       };
       if (editor!.uuid) payload.revision = editor!.revision;
-      await fetchJSON(editor!.uuid ? `/api/storage-targets/${encodeURIComponent(editor!.uuid)}` : '/api/storage-targets', {
+      await storageJSON(editor!.uuid ? `/api/storage-targets/${encodeURIComponent(editor!.uuid)}` : '/api/storage-targets', {
         method: editor!.uuid ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -321,7 +323,7 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
   const probeTarget = async (target: StorageTarget) => {
     setBusyKey(target.uuid);
     try {
-      const probed = await fetchJSON<StorageTargetProbeResponse>(`/api/storage-targets/${encodeURIComponent(target.uuid)}/probe`, { method: 'POST', timeout: 30000, retries: 0 });
+      const probed = await storageJSON<StorageTargetProbeResponse>(`/api/storage-targets/${encodeURIComponent(target.uuid)}/probe`, { method: 'POST', timeout: 30000, retries: 0 });
       await refetch();
       const status = probed?.health?.status;
       if (status && status !== 'healthy') {
@@ -341,7 +343,7 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
   const deleteTarget = async (target: StorageTarget) => {
     setBusyKey(target.uuid);
     try {
-      await fetchJSON(`/api/storage-targets/${encodeURIComponent(target.uuid)}?revision=${encodeURIComponent(target.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
+      await storageJSON(`/api/storage-targets/${encodeURIComponent(target.uuid)}?revision=${encodeURIComponent(target.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
       await refetch();
       showStatusMessage(t('settings.storageTargets.deleted'), 'success');
     } catch (requestError) {
@@ -421,8 +423,8 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
 }
 
 function StoragePoolsPanel({ canModifySettings, t }: StoragePanelProps) {
-  const poolsQuery = useQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const targetsQuery = useQuery<StorageTargetsResponse>(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
+  const poolsQuery = useStorageQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const targetsQuery = useStorageQuery<StorageTargetsResponse>(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
   const [editor, setEditor] = useState<StoragePoolEditorState | null>(null);
   const [busy, setBusy] = useState(false);
   const [deletePoolCandidate, setDeletePoolCandidate] = useState<StoragePool | null>(null);
@@ -437,7 +439,7 @@ function StoragePoolsPanel({ canModifySettings, t }: StoragePanelProps) {
     try {
       const payload: StoragePoolPayload = { name: editor!.name.trim(), strategy: editor!.strategy, enabled: editor!.enabled, members: editor!.members.map((target_uuid, position) => ({ target_uuid, position, weight: 1 })) };
       if (editor!.uuid) payload.revision = editor!.revision;
-      await fetchJSON(editor!.uuid ? `/api/storage-pools/${encodeURIComponent(editor!.uuid)}` : '/api/storage-pools', { method: editor!.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
+      await storageJSON(editor!.uuid ? `/api/storage-pools/${encodeURIComponent(editor!.uuid)}` : '/api/storage-pools', { method: editor!.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
       await poolsQuery.refetch();
       setEditor(null);
       showStatusMessage(t(editor!.uuid ? 'settings.storagePools.updated' : 'settings.storagePools.created'), 'success');
@@ -446,7 +448,7 @@ function StoragePoolsPanel({ canModifySettings, t }: StoragePanelProps) {
   const remove = async (pool: StoragePool) => {
     setBusy(true);
     try {
-      await fetchJSON(`/api/storage-pools/${encodeURIComponent(pool.uuid)}?revision=${encodeURIComponent(pool.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
+      await storageJSON(`/api/storage-pools/${encodeURIComponent(pool.uuid)}?revision=${encodeURIComponent(pool.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
       await poolsQuery.refetch();
       showStatusMessage(t('settings.storagePools.deleted'), 'success');
     } catch (requestError) { showStatusMessage((requestError as Error).message, 'error', 7000); } finally { setBusy(false); }
@@ -470,7 +472,7 @@ function StoragePoolsPanel({ canModifySettings, t }: StoragePanelProps) {
 }
 
 function StorageArchivePanel({ t }: StorageTranslateProps) {
-  const { data, isLoading, isError, error, refetch } = useQuery<StorageArchiveResponse>(
+  const { data, isLoading, isError, error, refetch } = useStorageQuery<StorageArchiveResponse>(
     ['storage-archive'], '/api/storage-archive', { cache: 'no-store', timeout: 15000, retries: 0 },
     { staleTime: 5000, refetchInterval: 15000 },
   );
@@ -478,7 +480,7 @@ function StorageArchivePanel({ t }: StorageTranslateProps) {
   const retry = async (job: StorageArchiveDeletion) => {
     setBusy(job.uuid);
     try {
-      await fetchJSON('/api/storage-archive/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deletion_uuid: job.uuid }), retries: 0 });
+      await storageJSON('/api/storage-archive/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deletion_uuid: job.uuid }), retries: 0 });
       await refetch();
     } catch (failure) { showStatusMessage((failure as Error).message, 'error'); }
     finally { setBusy(''); }
@@ -506,7 +508,7 @@ function StorageArchivePanel({ t }: StorageTranslateProps) {
 }
 
 function StorageMigrationJobsPanel({ t }: StorageTranslateProps) {
-  const { data, isLoading, isError, error, refetch } = useQuery<StorageMigrationsResponse>(
+  const { data, isLoading, isError, error, refetch } = useStorageQuery<StorageMigrationsResponse>(
     ['storage-migrations'],
     '/api/storage-migrations',
     { cache: 'no-store', timeout: 15000, retries: 1 },
@@ -517,7 +519,7 @@ function StorageMigrationJobsPanel({ t }: StorageTranslateProps) {
   const actOnJob = async (job: StorageMigrationJob, action: 'cancel' | 'retry') => {
     setBusyKey(job.uuid);
     try {
-      await fetchJSON(`/api/storage-migrations/${encodeURIComponent(job.uuid)}/${action}`, { method: 'POST', timeout: 15000, retries: 0 });
+      await storageJSON(`/api/storage-migrations/${encodeURIComponent(job.uuid)}/${action}`, { method: 'POST', timeout: 15000, retries: 0 });
       await refetch();
       showStatusMessage(t(action === 'cancel' ? 'settings.storageMigrations.cancelled' : 'settings.storageMigrations.retried'), 'success');
     } catch (requestError) {
@@ -621,9 +623,9 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
 }
 
 function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
-  const policiesQuery = useQuery<StoragePoliciesResponse>(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const targetsQuery = useQuery<StorageTargetsResponse>(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
-  const poolsQuery = useQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const policiesQuery = useStorageQuery<StoragePoliciesResponse>(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const targetsQuery = useStorageQuery<StorageTargetsResponse>(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
+  const poolsQuery = useStorageQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const locationsQuery = useQuery<FleetLocationsResponse>({queryKey: ['fleet-locations'], queryFn: ({signal}) => listFleetLocations({signal}), staleTime: 60000 });
   const tagsQuery = useQuery<FleetTagsResponse>({queryKey: ['fleet-tags'], queryFn: ({signal}) => listFleetTags({signal}), staleTime: 60000 });
   const [editor, setEditor] = useState<StoragePolicyEditorState | null>(null);
@@ -633,7 +635,7 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
   const applyExisting = async (policy: StoragePolicy, preview: boolean) => {
     setBusyKey(policy.uuid);
     try {
-      const result = await fetchJSON<StoragePolicyApplyResult>(`/api/storage-policies/${policy.uuid}/apply`, {
+      const result = await storageJSON<StoragePolicyApplyResult>(`/api/storage-policies/${policy.uuid}/apply`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: policy.revision, preview }), retries: 0,
       });
       if (preview) setApplyPreview({ policy, ...result });
@@ -681,7 +683,7 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
     setEditor((current) => current ? { ...current, preview: null, preview_key: '', preview_request_key: requestKey } : current);
     setBusyKey('preview');
     try {
-      const preview = await fetchJSON<StoragePolicyPreview>('/api/storage-policies/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
+      const preview = await storageJSON<StoragePolicyPreview>('/api/storage-policies/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
       setEditor((current) => current?.preview_request_key === requestKey ? { ...current, preview, preview_key: requestKey, preview_request_key: '' } : current);
     } catch (requestError) {
       setEditor((current) => current?.preview_request_key === requestKey ? { ...current, preview_request_key: '' } : current);
@@ -694,7 +696,7 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
     setBusyKey(editor!.uuid || 'new');
     try {
       delete payload.uuid;
-      await fetchJSON(editor!.uuid ? `/api/storage-policies/${encodeURIComponent(editor!.uuid)}` : '/api/storage-policies', { method: editor!.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
+      await storageJSON(editor!.uuid ? `/api/storage-policies/${encodeURIComponent(editor!.uuid)}` : '/api/storage-policies', { method: editor!.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
       await policiesQuery.refetch();
       setEditor(null);
       showStatusMessage(t(editor!.uuid ? 'settings.storagePolicies.updated' : 'settings.storagePolicies.created'), 'success');
@@ -706,7 +708,7 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
   const deletePolicy = async (policy: StoragePolicy) => {
     setBusyKey(policy.uuid);
     try {
-      await fetchJSON(`/api/storage-policies/${encodeURIComponent(policy.uuid)}?revision=${encodeURIComponent(policy.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
+      await storageJSON(`/api/storage-policies/${encodeURIComponent(policy.uuid)}?revision=${encodeURIComponent(policy.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
       await policiesQuery.refetch();
       showStatusMessage(t('settings.storagePolicies.deleted'), 'success');
     } catch (requestError) { showStatusMessage((requestError as Error).message, 'error', 7000); } finally { setBusyKey(''); }
@@ -735,7 +737,7 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
 }
 
 function StorageCompliancePanel({ t }: StorageTranslateProps) {
-  const { data, isLoading, isError, error, refetch } = useQuery<StorageComplianceResponse>(
+  const { data, isLoading, isError, error, refetch } = useStorageQuery<StorageComplianceResponse>(
     ['storage-compliance'], '/api/storage-compliance',
     { cache: 'no-store', timeout: 20000, retries: 1 },
     { staleTime: 30000, refetchInterval: 60000 },

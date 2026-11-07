@@ -286,3 +286,15 @@ test('generated validators contain standalone runtime helpers, no browser schema
   expect(/node_modules\/ajv\/dist\/compile\/|new\s+Ajv/.test(generated)).toBe(false);
   expect(new StreamRequestError('updateStream', 400, 'http').mayHaveApplied).toBe(false);
 });
+
+test.each([307,308] as const)('credential-bearing update refuses HTTP %s without forwarding payload',async status=>{
+  const {withRedirectFixture}=await import('./redirectHarness');
+  await withRedirectFixture(status,async fixture=>{
+    const spy=jest.spyOn(global,'fetch').mockImplementation(fixture.fetch);
+    await expect(updateStream('Owned',{isOnvif:true,onvif_username:'owned-user',onvif_password:'owned-password'},
+      {redirect:'follow',credentials:'include'})).rejects.toBeInstanceOf(Error);
+    expect(fixture.sourceBodies).toHaveLength(1);
+    expect(fixture.forwardedBodies).toEqual([]);
+    expect(spy.mock.calls[0]?.[1]).toMatchObject({redirect:'error',credentials:'same-origin'});
+  });
+});

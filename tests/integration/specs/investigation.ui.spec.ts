@@ -33,10 +33,10 @@ test.describe('Investigation player regressions @ui @investigation', () => {
       json: {
         start_time: START_TIME,
         end_time: END_TIME,
-        max_active_decoders: 4,
+        max_active_decoders: 4,camera_count:1,
         tracks: [{
           camera_uuid: CAMERA_UUID,
-          name: 'front-door',
+          name: 'front-door',stream_name:'front-door',returned_interval_count:1,aggregation_bucket_seconds:1,coverage:{identity_resolved:true,requested_start:START_TIME,requested_end:END_TIME},
           segment_count: 1,
           truncated: false,
           aggregated: false,
@@ -44,24 +44,24 @@ test.describe('Investigation player regressions @ui @investigation', () => {
             id: 568,
             start_time: START_TIME,
             end_time: END_TIME,
-            has_detection: true,
+            has_detection: true,duration:60,size_bytes:100,protected:false,media_available:true,capture_method:'continuous',
           }],
         }],
       },
     }));
     await page.route('**/api/investigations/search', route => route.fulfill({
       json: {
-        results: [],
-        page: { total: 0, has_more: false, next_cursor: null },
+        camera_count:1,selector_applied:false,summary_complete:true,results: [],
+        page: {limit:100,returned:0, total: 0, has_more: false, next_cursor: null },
         facets: {
           event_types: [], locations: [], labels: [], zones: [], sources: [],
-          capture_methods: [], recording_tags: [],
+          capture_methods: [], recording_tags: [],cameras:[],protection:[],
         },
-        histogram: { buckets: [] },
+        histogram: {bucket_seconds:1, buckets: [] },
         coverage: {
-          unresolved_legacy_rows: 0,
+          requested_start:START_TIME,requested_end:END_TIME,searched_start:START_TIME,searched_end:END_TIME,complete:true,incomplete_reasons:[],unresolved_legacy_rows: 0,
           spatial_metadata: {
-            requested: false, rows_with_boxes: 0, rows_without_boxes: 0,
+            requested: false,
           },
         },
       },

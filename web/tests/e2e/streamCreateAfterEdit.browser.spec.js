@@ -1,3 +1,14 @@
+const {validateOnvifDevice,validateOnvifProfile}=require('../../generated/api/validators.js');
+function deviceFixture(name,index){
+  const value={endpoint:'urn:uuid:owned-'+name,device_service:'http://'+name+'.invalid/onvif/device_service',media_service:'',ptz_service:'',imaging_service:'',manufacturer:'Owned',model:name,firmware_version:'',serial_number:'',hardware_id:'',ip_address:index===1?'192.0.2.10':'192.0.2.11',mac_address:'',inventory_uuid:'40000000-0000-4000-8000-'+String(index).padStart(12,'0'),last_scan_network:'owned',claim_state:'unclaimed',claimed_camera_uuid:'',discovery_time:0,first_seen_at:0,last_seen_at:0,online:true,duplicate_suspected:false,addresses:[]};
+  if(!validateOnvifDevice(value))throw new Error('Invalid ONVIF device fixture');
+  return value;
+}
+function profileFixture(name){
+  const value={name:'Profile '+name,token:name,video_source_token:'source-'+name,ptz_configuration_token:'',snapshot_uri:'',stream_uri:'rtsp://'+name+'.invalid/live',width:640,height:480,fps:15,bitrate:128,encoding:'H264',ptz_supported:false};
+  if(!validateOnvifProfile(value))throw new Error('Invalid ONVIF profile fixture');
+  return value;
+}
 /** Real StreamsView/query mutations in Chromium; unrelated child views are reduced fixtures. */
 async function openBrowser() {
   const {chromium} = require('../../../node_modules/playwright');
@@ -11,20 +22,23 @@ async function openBrowser() {
       import {StreamsView} from './js/components/preact/StreamsView.tsx';
       const full={...${JSON.stringify(baseline['admin-full'].body.stream)},name:'Existing',url:'rtsp://existing/live',enabled:true,record:true};
       const summary=${JSON.stringify(baseline['admin-summary'].body)};summary.streams[0]={...summary.streams[0],name:'Existing',enabled:true};summary.streams=[summary.streams[0]];summary.total=1;summary.total_pages=1;
-      const devices=['A','B'].map(name=>({name,ip_address:name==='A'?'192.0.2.10':'192.0.2.11',device_service:'http://'+name+'.invalid/onvif/device_service',online:true,last_seen_at:0}));
+      const devices=${JSON.stringify(['A','B'].map((name,index)=>deviceFixture(name,index+1)))};
+      window.fixtureDevices=devices;window.fixtureProfiles=${JSON.stringify({A:profileFixture('A'),B:profileFixture('B')})};
       window.calls=[];window.waiting={};window.delay={};window.fixtureFull=full;
       const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
       window.fetch=async(input,options={})=>{
         const url=String(input),method=options.method||'GET';
         window.calls.push({url,method,body:options.body?JSON.parse(options.body):null});
-        const key=url==='/api/onvif/devices'?'inventory':url.endsWith('/full')?'full':url==='/api/onvif/device/profiles'?options.headers['X-Device-URL']:url==='/api/onvif/discovery/discover'?'discovery':null;
+        const key=url==='/api/onvif/devices'?'inventory':url.endsWith('/full')?'full':url==='/api/onvif/device/profiles'?new Headers(options.headers).get('X-Device-URL'):url==='/api/onvif/discovery/discover'?'discovery':null;
         if(key&&window.delay[key]){window.delay[key]=false;return new Promise(resolve=>window.waiting[key]=value=>resolve(json(value)));}
         if(url.includes('/full'))return json({stream:full});
         if(url.startsWith('/api/streams?'))return json(summary);
         if(method==='PUT'&&url.startsWith('/api/streams/'))return json({success:true,message:'Accepted'},202);
+        if(url==='/api/streams'&&method==='POST')return json({success:true,camera_uuid:'50000000-0000-4000-8000-000000000001',location_uuid:'00000000-0000-4000-8000-000000000001'},201);
         if(url==='/api/onvif/devices'||url==='/api/onvif/discovery/discover')return json({devices});
-        if(url==='/api/onvif/device/test')return json({success:true});
-        if(url==='/api/onvif/device/profiles'){const name=options.headers['X-Device-URL'].includes('B.invalid')?'B':'A';return json({profiles:[{name:'Profile '+name,token:name,stream_uri:'rtsp://'+name+'.invalid/live',width:640,height:480,fps:15,encoding:'H264'}]});}
+        if(url==='/api/onvif/device/test')return json({success:true,message:'Successfully connected'});
+        if(url==='/api/onvif/device/claim')return json({success:true});
+        if(url==='/api/onvif/device/profiles'){const name=new Headers(options.headers).get('X-Device-URL').includes('B.invalid')?'B':'A';return json({profiles:[window.fixtureProfiles[name]]});}
         if(url==='/api/detection/models')return json({models:[]});
         return json({});
       };
@@ -101,7 +115,7 @@ it('late profile result from a closed discovery session cannot replace the new d
     await page.waitForFunction(()=>!!window.waiting['http://A.invalid/onvif/device_service']);
     await page.locator('#onvif-close-btn').click();await page.locator('#discover-onvif-btn').click();await connect(page,'B');
     await page.getByText('Profile B',{exact:true}).waitFor();
-    await page.evaluate(()=>window.waiting['http://A.invalid/onvif/device_service']({profiles:[{name:'Stale Profile A',token:'stale',stream_uri:'rtsp://stale/live'}]}));await settle(page);
+    await page.evaluate(()=>window.waiting['http://A.invalid/onvif/device_service']({profiles:[{...window.fixtureProfiles.A,name:'Stale Profile A',token:'stale',stream_uri:'rtsp://stale/live'}]}));await settle(page);
     expect(await page.getByText('Stale Profile A',{exact:true}).count()).toBe(0);expect(await page.getByText('Profile B',{exact:true}).count()).toBe(1);
   }finally{await browser.close();}
 });
@@ -125,7 +139,7 @@ it('a scan finishing after Escape cannot populate a reopened discovery session',
     await page.waitForFunction(()=>!!window.waiting.discovery);await page.keyboard.press('Escape');
     await page.locator('#onvif-modal').waitFor({state:'detached'});await page.locator('#discover-onvif-btn').click();
     await page.locator('#onvif-modal').getByText('192.0.2.11',{exact:true}).waitFor();
-    await page.evaluate(()=>window.waiting.discovery({devices:[{name:'Stale scan',ip_address:'192.0.2.99',online:true}]}));await settle(page);
+    await page.evaluate(()=>window.waiting.discovery({devices:[{...window.fixtureDevices[0],ip_address:'192.0.2.99'}]}));await settle(page);
     expect(await page.getByText('192.0.2.99',{exact:true}).count()).toBe(0);expect(await page.locator('#discover-btn').isDisabled()).toBe(false);
   }finally{await browser.close();}
 });

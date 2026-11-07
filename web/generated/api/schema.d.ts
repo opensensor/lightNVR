@@ -895,6 +895,190 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/detection/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List evidence models
+         * @description Requires global camera.configure or that permission on an existing camera. Built-in models remain present if the configured model directory is absent. File models include paths and support/build metadata only for an authorized configurator.
+         */
+        get: operations["listEvidenceModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/detection/results/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence detections
+         * @description Current camera live.view authorizes the query. Captured detection UUIDs take precedence over reused stream names; only legacy NULL/empty UUID rows fall back to name. Optional start/end are epoch-second filters; absent bounds use a recent interval of at least 30 seconds.
+         */
+        get: operations["getEvidenceDetections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List event destinations
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["listEventDestinations"];
+        put?: never;
+        /**
+         * Create event destination
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        post: operations["createEventDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-destinations/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get event destination
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["getEventDestination"];
+        /**
+         * Update event destination
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        put: operations["updateEventDestination"];
+        post?: never;
+        /**
+         * Delete event destination
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        delete: operations["deleteEventDestination"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List event routes
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["listEventRoutes"];
+        put?: never;
+        /**
+         * Create event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        post: operations["createEventRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-routes/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["getEventRoute"];
+        /**
+         * Update event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        put: operations["updateEventRoute"];
+        post?: never;
+        /**
+         * Delete event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        delete: operations["deleteEventRoute"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-routes/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        post: operations["previewEventRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get event catalog
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["getEventCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/cameras/query": {
         parameters: {
             query?: never;
@@ -982,6 +1166,232 @@ export interface paths {
          * @description Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.
          */
         delete: operations["deleteFleetView"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get stream health */
+        get: operations["getStreamHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/health/hls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get hls health */
+        get: operations["getHlsHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ice-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return configured ICE servers for a principal permitted to view at least one camera. TURN credentials are intentionally provided to that authorized browser.
+         * @description Return configured ICE servers for a principal permitted to view at least one camera. TURN credentials are intentionally provided to that authorized browser.
+         */
+        get: operations["getIceServers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigation-bookmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List evidence bookmarks
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        get: operations["listEvidenceBookmarks"];
+        put?: never;
+        /**
+         * Create evidence bookmark
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        post: operations["createEvidenceBookmark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigation-bookmarks/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence bookmark
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        get: operations["getEvidenceBookmark"];
+        /**
+         * Update evidence bookmark
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        put: operations["updateEvidenceBookmark"];
+        post?: never;
+        /**
+         * Delete evidence bookmark
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        delete: operations["deleteEvidenceBookmark"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/recordings/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview evidence recordings
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["previewEvidenceRecordings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search evidence
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["searchEvidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/segment-at": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve evidence segment
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["resolveEvidenceSegment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/thumbnail-samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sample evidence thumbnails
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["sampleEvidenceThumbnails"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/thumbnail/{recording_id}/{offset_ms}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence thumbnail
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["getEvidenceThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query evidence timeline
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["queryEvidenceTimeline"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1162,6 +1572,222 @@ export interface paths {
          * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
          */
         delete: operations["deleteFleetLocation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lpr/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export evidence lpr
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["exportEvidenceLpr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lpr/reads/{read_uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete evidence lpr
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        delete: operations["deleteEvidenceLpr"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lpr/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search evidence lpr
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["searchEvidenceLpr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get metrics */
+        get: operations["getMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/motion/trigger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger motion
+         * @description Requires camera.configure on the named stream. Start/stop/pulse report annotation, tag and recording effects independently; tags require an active recording and detection-recording schedules may suppress recording. Pulse is bounded to 600000 ms. Invalid requests may return 400 before principal evaluation.
+         */
+        post: operations["triggerMotion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/device/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** addOnvifDevice */
+        post: operations["addOnvifDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/device/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** claimOnvifDevice */
+        post: operations["claimOnvifDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/device/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getOnvifProfiles */
+        get: operations["getOnvifProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/device/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** testOnvifDevice */
+        post: operations["testOnvifDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getOnvifDevices */
+        get: operations["getOnvifDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/discovery/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** discoverOnvifDevices */
+        post: operations["discoverOnvifDevices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/discovery/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getOnvifDiscoveryStatus */
+        get: operations["getOnvifDiscoveryStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1490,6 +2116,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete evidence recording file
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        delete: operations["deleteEvidenceRecordingFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/files/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check evidence recording file
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["checkEvidenceRecordingFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recordings/play/{recording_id}": {
         parameters: {
             query?: never;
@@ -1507,6 +2173,46 @@ export interface paths {
         get: operations["playRecording"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/protected": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count evidence protected
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["countEvidenceProtected"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync evidence recordings
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["syncEvidenceRecordings"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1558,6 +2264,482 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system settings */
+        get: operations["getSystemSettings"];
+        put?: never;
+        /** Update system settings */
+        post: operations["updateSystemSettings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/go2rtc/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate go2rtc configuration */
+        post: operations["validateGo2rtcConfiguration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get setup status */
+        get: operations["getSetupStatus"];
+        put?: never;
+        /**
+         * Update setup status
+         * @description Before setup completion this bootstrap operation is public. Once complete it requires system.admin; resetting requires that authority. Malformed/absent optional fields retain the native default of completing setup.
+         */
+        post: operations["updateSetupStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{camera}/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence snapshot
+         * @description New MQTT snapshot URLs use the captured immutable camera UUID namespace. UUID URLs authorize that UUID and never fall back to a display-name directory. Existing name-only snapshot URLs remain compatible and authorize the current named camera; old files do not contain recoverable capture identity. Camera snapshot.create is required.
+         */
+        get: operations["getEvidenceSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetStorageArchive
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["getStorageArchive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-archive/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * RetryStorageArchive
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        post: operations["retryStorageArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-compliance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetStorageCompliance
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["getStorageCompliance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-migrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListStorageMigrations
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["listStorageMigrations"];
+        put?: never;
+        /**
+         * CreateStorageMigration
+         * @description Queues move (default) or copy of a complete recording. A 202 job is not completion. Poll the job state; verify checksum/publication and cleanup independently. Permission is global storage.configure, not creator ownership.
+         */
+        post: operations["createStorageMigration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-migrations/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetStorageMigration
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["getStorageMigration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-migrations/{uuid}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * CancelStorageMigration
+         * @description Global storage.configure permits acting on any job. Cancel may request cancellation of an active job; retry requeues eligible failed/cancelled work. Poll state to observe completion and cleanup; the acknowledgement is not a completed transfer.
+         */
+        post: operations["cancelStorageMigration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-migrations/{uuid}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * RetryStorageMigration
+         * @description Global storage.configure permits acting on any job. Cancel may request cancellation of an active job; retry requeues eligible failed/cancelled work. Poll state to observe completion and cleanup; the acknowledgement is not a completed transfer.
+         */
+        post: operations["retryStorageMigration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListStoragePolicies
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["listStoragePolicies"];
+        put?: never;
+        /**
+         * CreateStoragePolicy
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        post: operations["createStoragePolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-policies/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetStoragePolicy
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["getStoragePolicy"];
+        /**
+         * UpdateStoragePolicy
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        put: operations["updateStoragePolicy"];
+        post?: never;
+        /**
+         * DeleteStoragePolicy
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        delete: operations["deleteStoragePolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-policies/{uuid}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ApplyStoragePolicy
+         * @description Preview counts records whose captured policy revision differs. Apply updates those revision references transactionally and requires unfinished transfers to finish first. It does not itself delete files or complete asynchronous archive/migration work.
+         */
+        post: operations["applyStoragePolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-policies/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * PreviewStoragePolicy
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        post: operations["previewStoragePolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-pools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListStoragePools
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["listStoragePools"];
+        put?: never;
+        /**
+         * CreateStoragePool
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        post: operations["createStoragePool"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-pools/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetStoragePool
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["getStoragePool"];
+        /**
+         * UpdateStoragePool
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        put: operations["updateStoragePool"];
+        post?: never;
+        /**
+         * DeleteStoragePool
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        delete: operations["deleteStoragePool"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListStorageTargets
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["listStorageTargets"];
+        put?: never;
+        /**
+         * CreateStorageTarget
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        post: operations["createStorageTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-targets/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetStorageTarget
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["getStorageTarget"];
+        /**
+         * UpdateStorageTarget
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        put: operations["updateStorageTarget"];
+        post?: never;
+        /**
+         * DeleteStorageTarget
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        delete: operations["deleteStorageTarget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage-targets/{uuid}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ProbeStorageTarget
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        post: operations["probeStorageTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * TriggerStorageCleanup
+         * @description Signals the asynchronous cleanup controller. Success acknowledges scheduling, not deletion or reclaimed bytes. Invalid bodies are rejected before scheduling. Protected media and retention constraints still apply.
+         */
+        post: operations["triggerStorageCleanup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetStorageHealth
+         * @description Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.
+         */
+        get: operations["getStorageHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/streams": {
         parameters: {
             query?: never;
@@ -1571,7 +2753,11 @@ export interface paths {
          */
         get: operations["listStreams"];
         put?: never;
-        post?: never;
+        /**
+         * Create a camera using global camera.configure. Creation intent is distinct from editing an existing camera.
+         * @description Create a camera using global camera.configure. Creation intent is distinct from editing an existing camera.
+         */
+        post: operations["createStream"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1588,12 +2774,58 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /** getStream */
+        get: operations["getStream"];
         /**
          * Update stream configuration or privacy
          * @description Requires camera.configure on the named camera using raw DB facts; no read permission is implied. Boolean set_privacy_mode selects a privacy-only request and rejects accompanying configuration fields. Ordinary updates are partial; enable_disabled=true with enabled=false is rejected. Unknown ordinary fields are ignored, and 202 is not a durable-success guarantee. A 502 privacy response can follow a saved flag when go2rtc removal fails; retry is required and the stream may remain viewable in the meantime.
          */
         put: operations["updateStream"];
+        post?: never;
+        /**
+         * Queue camera deletion using captured identity. Acknowledgment does not prove completion. Default disables the camera; permanent=true removes its configuration.
+         * @description Queue camera deletion using captured identity. Acknowledgment does not prove completion. Default disables the camera; permanent=true removes its configuration.
+         */
+        delete: operations["deleteStream"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/daynight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getDaynight */
+        get: operations["getDaynight"];
+        /** setDaynight */
+        put: operations["setDaynight"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/detection-engines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getStreamDetectionEngines */
+        get: operations["getStreamDetectionEngines"];
+        /** setStreamDetectionEngines */
+        put: operations["setStreamDetectionEngines"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1616,6 +2848,609 @@ export interface paths {
          * @description Requires live.view on this camera using raw DB facts. camera.configure on the same camera using runtime facts determines sensitive fields. A configure-only grant does not imply read access.
          */
         get: operations["getStreamFull"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/imaging/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getImagingOptions */
+        get: operations["getImagingOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/imaging/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getImagingSettings */
+        get: operations["getImagingSettings"];
+        /** setImagingSettings */
+        put: operations["setImagingSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/absolute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** absolutePtz */
+        post: operations["absolutePtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getPtzCapabilities */
+        get: operations["getPtzCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/goto-preset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** gotoPtzPreset */
+        post: operations["gotoPtzPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** homePtz */
+        post: operations["homePtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** movePtz */
+        post: operations["movePtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/preset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** setPtzPreset */
+        put: operations["setPtzPreset"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getPtzPresets */
+        get: operations["getPtzPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/relative": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** relativePtz */
+        post: operations["relativePtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/set-home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** setPtzHome */
+        post: operations["setPtzHome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** stopPtz */
+        post: operations["stopPtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/recording": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getStreamRecording */
+        get: operations["getStreamRecording"];
+        put?: never;
+        /**
+         * Start manual recording (202 starting) or stop it (200 idle). Continuous scheduled recording cannot be manually stopped. Follow the recording state to observe completion.
+         * @description Start manual recording (202 starting) or stop it (200 idle). Continuous scheduled recording cannot be manually stopped. Follow the recording state to observe completion.
+         */
+        post: operations["controlStreamRecording"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue refresh of the captured camera identity. A response may coalesce with an existing refresh; it does not prove a successful camera connection.
+         * @description Queue refresh of the captured camera identity. A response may coalesce with an existing refresh; it does not prove a successful camera connection.
+         */
+        post: operations["refreshStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getStreamRetention */
+        get: operations["getStreamRetention"];
+        /** setStreamRetention */
+        put: operations["setStreamRetention"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getStreamZones */
+        get: operations["getStreamZones"];
+        put?: never;
+        /** saveStreamZones */
+        post: operations["saveStreamZones"];
+        /** deleteStreamZones */
+        delete: operations["deleteStreamZones"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe an administrator-supplied media URL. A failed media probe returns 200 with success=false; it does not create a camera.
+         * @description Probe an administrator-supplied media URL. A failed media probe returns 200 with success=false; it does not create a camera.
+         */
+        post: operations["probeStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system information legacy */
+        get: operations["getSystemInformationLegacy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create system backup */
+        post: operations["createSystemBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/go2rtc/effective-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get go2rtc effective configuration */
+        get: operations["getGo2rtcEffectiveConfiguration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/go2rtc/override-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get go2rtc override diagnostics */
+        get: operations["getGo2rtcOverrideDiagnostics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get host health */
+        get: operations["getHostHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/health/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get host health incidents */
+        get: operations["getHostHealthIncidents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system information */
+        get: operations["getSystemInformation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system logs */
+        get: operations["getSystemLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/logs/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Clear system logs */
+        post: operations["clearSystemLogs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart system */
+        post: operations["restartSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/shutdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Shutdown system */
+        post: operations["shutdownSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system status */
+        get: operations["getSystemStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/player": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record player telemetry
+         * @description A named stream requires live.view on that stream. Empty/malformed unnamed telemetry is ignored with 204; an acknowledgment does not imply storage of an event.
+         */
+        post: operations["recordPlayerTelemetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/timeline/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence manifest
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["getEvidenceManifest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/timeline/play": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Redirect evidence playback
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["redirectEvidencePlayback"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1657,6 +3492,24 @@ export interface paths {
          */
         get: operations["getTimelineSegmentsByIds"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get workspaces */
+        get: operations["getWorkspaces"];
+        /** Update workspaces */
+        put: operations["updateWorkspaces"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2215,6 +4068,926 @@ export interface components {
             /** @constant */
             success: true;
         };
+        DaynightRequest: {
+            daynight?: string;
+            force_persistence?: boolean;
+            ir_cut_filter?: string;
+            ircut?: string;
+            mode?: string;
+        } | {
+            mode: string;
+        } | {
+            daynight: string;
+        } | {
+            ir_cut_filter: string;
+        } | {
+            ircut: string;
+        };
+        DaynightResponse: {
+            ir_cut_filter?: string;
+            /** @enum {unknown} */
+            mode: "day" | "night" | "auto" | "unknown";
+            options_available: boolean;
+            /** @constant */
+            source: "onvif-imaging";
+            /** @constant */
+            success: true;
+            supported_modes: ("day" | "night" | "auto")[];
+            video_source_token: string;
+        };
+        DaynightUpdated: {
+            /** @enum {unknown} */
+            ir_cut_filter: "On" | "Off" | "Auto";
+            /** @enum {unknown} */
+            mode: "day" | "night" | "auto";
+            /** @constant */
+            source: "onvif-imaging";
+            /** @constant */
+            success: true;
+        };
+        DetectionZone: {
+            color: string;
+            enabled: boolean;
+            filter_classes: string;
+            id: string;
+            min_confidence: number;
+            name: string;
+            polygon: ({
+                x: number;
+                y: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            stream_name: string;
+        } & {
+            [key: string]: unknown;
+        };
+        DetectionZoneWrite: {
+            color?: string;
+            enabled?: boolean;
+            filter_classes?: string;
+            id: string;
+            min_confidence?: number;
+            name: string;
+            polygon: ({
+                x: number;
+                y: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+        } & {
+            [key: string]: unknown;
+        };
+        DeviceCommandResult: {
+            message: string;
+            /** @constant */
+            success: true;
+        };
+        DeviceEmptyRequest: Record<string, never>;
+        DeviceFloatRange: {
+            max: number;
+            min: number;
+        };
+        DeviceSuccess: {
+            /** @constant */
+            success: true;
+        };
+        EventCameraScope: {
+            /** @constant */
+            type: "all";
+        } | {
+            selector: components["schemas"]["FleetSelector"];
+            /** @constant */
+            type: "selector";
+        };
+        EventCatalog: {
+            count: number;
+            event_types: {
+                default_expiry_seconds: number;
+                description: string;
+                dynamic_severity: boolean;
+                /** @enum {string} */
+                expected_rate: "low" | "medium" | "high";
+                family: string;
+                /** @enum {string} */
+                maximum_severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                media_policy: string;
+                /** @enum {string} */
+                minimum_severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                sensitivity: string;
+                /** @enum {string} */
+                severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                /** @enum {string} */
+                subject_kind: "camera" | "storage" | "system";
+                type: string;
+            }[];
+            /** @constant */
+            schema_version: 1;
+        };
+        EventDestination: {
+            authentication: {
+                password_configured: boolean;
+                username: string;
+            };
+            broker: {
+                client_id: string;
+                host: string;
+                keepalive_seconds: number;
+                port: number;
+                qos: number;
+                status_topic_template: string;
+                topic_template: string;
+            };
+            created_at: number;
+            description: string;
+            enabled: boolean;
+            key: string;
+            /** @constant */
+            managed: true;
+            name: string;
+            revision: number;
+            tls: {
+                ca_file: string;
+                cert_file: string;
+                key_file: string;
+                /** @enum {string} */
+                mode: "disabled" | "system" | "custom_ca" | "mutual";
+            };
+            /** @constant */
+            type: "mqtt";
+            updated_at: number;
+            /** Format: uuid */
+            uuid: string;
+        };
+        EventDestinationCreate: {
+            authentication?: {
+                password?: string | null;
+                username?: string;
+            };
+            broker: {
+                client_id?: string;
+                host: string;
+                keepalive_seconds?: number;
+                port?: number;
+                qos?: number;
+                status_topic_template?: string;
+                topic_template?: string;
+            };
+            description?: string;
+            enabled?: boolean;
+            name: string;
+            tls?: {
+                ca_file?: string;
+                cert_file?: string;
+                key_file?: string;
+                /** @enum {string} */
+                mode?: "disabled" | "system" | "custom_ca" | "mutual";
+            };
+            /** @constant */
+            type?: "mqtt";
+        };
+        EventDestinations: {
+            count: number;
+            default_destination: {
+                /** @constant */
+                configuration_source: "settings";
+                /** @constant */
+                key: "mqtt:default";
+                /** @constant */
+                managed: false;
+                name: string;
+            };
+            destinations: components["schemas"]["EventDestination"][];
+        };
+        EventDestinationUpdate: {
+            authentication?: {
+                password?: string | null;
+                username?: string;
+            };
+            broker?: {
+                client_id?: string;
+                host?: string;
+                keepalive_seconds?: number;
+                port?: number;
+                qos?: number;
+                status_topic_template?: string;
+                topic_template?: string;
+            };
+            description?: string;
+            enabled?: boolean;
+            name?: string;
+            revision: number;
+            tls?: {
+                ca_file?: string;
+                cert_file?: string;
+                key_file?: string;
+                /** @enum {string} */
+                mode?: "disabled" | "system" | "custom_ca" | "mutual";
+            };
+            /** @constant */
+            type?: "mqtt";
+        };
+        EventMutationAck: {
+            /** @constant */
+            success: true;
+        };
+        EventPredicate: {
+            detection?: {
+                labels_any?: string[];
+                min_confidence?: number;
+                zone_ids_any?: string[];
+            };
+            health?: {
+                condition_codes_any?: string[];
+                severities_any?: ("warning" | "error" | "critical")[];
+            };
+            /** @constant */
+            version: 1;
+        };
+        EventRoute: {
+            camera_scope: components["schemas"]["EventCameraScope"];
+            created_at: number;
+            description: string;
+            destination: string;
+            enabled: boolean;
+            event_types: string[];
+            name: string;
+            predicate: components["schemas"]["EventPredicate"];
+            revision: number;
+            schedule: components["schemas"]["EventSchedule"];
+            suppression: {
+                cooldown_seconds: number;
+                debounce_seconds: number;
+                grouping_window_seconds: number;
+                max_events_per_minute: number;
+            };
+            updated_at: number;
+            /** Format: uuid */
+            uuid: string;
+        };
+        EventRouteCreate: {
+            camera_scope?: components["schemas"]["EventCameraScope"];
+            description?: string;
+            destination?: string;
+            enabled?: boolean;
+            event_types: string[];
+            name: string;
+            predicate?: components["schemas"]["EventPredicate"];
+            schedule?: components["schemas"]["EventSchedule"];
+            suppression?: {
+                cooldown_seconds?: number;
+                debounce_seconds?: number;
+                grouping_window_seconds?: number;
+                max_events_per_minute?: number;
+            };
+        };
+        EventRoutePreview: {
+            camera_sample: {
+                /** Format: uuid */
+                camera_uuid: string;
+                location_path: string;
+                name: string;
+            }[];
+            event_types: {
+                dynamic_severity: boolean;
+                /** @enum {string} */
+                expected_rate: "low" | "medium" | "high";
+                /** @enum {string} */
+                maximum_severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                /** @enum {string} */
+                minimum_severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                /** @enum {string} */
+                severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                /** @enum {string} */
+                subject_kind: "camera" | "storage" | "system";
+                type: string;
+            }[];
+            matched_camera_count: number;
+            /** @constant */
+            sample_limit: 20;
+            /** @constant */
+            would_publish: false;
+        };
+        EventRoutePreviewRequest: {
+            camera_scope?: components["schemas"]["EventCameraScope"];
+            description?: string;
+            destination?: string;
+            enabled?: boolean;
+            event_types: string[];
+            name: string;
+            predicate?: components["schemas"]["EventPredicate"];
+            schedule?: components["schemas"]["EventSchedule"];
+            suppression?: {
+                cooldown_seconds?: number;
+                debounce_seconds?: number;
+                grouping_window_seconds?: number;
+                max_events_per_minute?: number;
+            };
+        };
+        EventRoutes: {
+            count: number;
+            routes: components["schemas"]["EventRoute"][];
+        };
+        EventRouteUpdate: {
+            camera_scope?: components["schemas"]["EventCameraScope"];
+            description?: string;
+            destination?: string;
+            enabled?: boolean;
+            event_types?: string[];
+            name?: string;
+            predicate?: components["schemas"]["EventPredicate"];
+            revision: number;
+            schedule?: components["schemas"]["EventSchedule"];
+            suppression?: {
+                cooldown_seconds?: number;
+                debounce_seconds?: number;
+                grouping_window_seconds?: number;
+                max_events_per_minute?: number;
+            };
+        };
+        EventSchedule: {
+            timezone: string;
+            /** @constant */
+            version: 1;
+            windows: {
+                days: number[];
+                end: string;
+                start: string;
+            }[];
+        };
+        EvidenceBookmark: {
+            camera_uuids: string[];
+            created_at: number;
+            cursor_time: number;
+            end_time: number;
+            filters: components["schemas"]["EvidenceBookmarkFilters"];
+            /** @constant */
+            holds_recordings: false;
+            note: string;
+            primary_camera_uuid: string;
+            representative_result: components["schemas"]["EvidenceBookmarkResult"];
+            revision: number;
+            start_time: number;
+            title: string;
+            updated_at: number;
+            uuid: string;
+        };
+        /** @description Camera list, primary camera, region and saved result must agree. Cursor must lie inside the interval. The bookmark is owned by the current user (also for scoped tokens), never grants access, and does not protect media from retention. */
+        EvidenceBookmarkCreate: {
+            camera_uuids: string[];
+            cursor_time: number;
+            end_time: number;
+            filters: components["schemas"]["EvidenceBookmarkFilters"];
+            note?: string;
+            primary_camera_uuid: string;
+            representative_result?: components["schemas"]["EvidenceBookmarkResult"];
+            start_time: number;
+            title: string;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceBookmarkDelete: {
+            revision: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceBookmarkDeleted: {
+            /** @constant */
+            success: true;
+        };
+        EvidenceBookmarkFilters: {
+            capture_method?: string;
+            event_type?: string;
+            label?: string;
+            location?: string;
+            min_confidence?: number;
+            protection?: string;
+            recording_tag?: string;
+            region?: {
+                camera_uuid: string;
+                height: number;
+                /** @enum {string} */
+                match?: "center" | "intersects" | "minimum_intersection";
+                min_intersection?: number;
+                width: number;
+                x: number;
+                y: number;
+            };
+            source?: string;
+            zone?: string;
+        };
+        EvidenceBookmarkResult: {
+            camera_uuid?: string;
+            detection_id?: string | number;
+            end_time?: string | number;
+            event_type?: string | number;
+            label?: string | number;
+            recording_id?: string | number;
+            result_id?: string | number;
+            start_time?: string | number;
+        } | null;
+        EvidenceBookmarks: {
+            bookmarks: components["schemas"]["EvidenceBookmark"][];
+            count: number;
+        };
+        EvidenceBookmarkUpdate: {
+            note?: string;
+            revision: number;
+            title: string;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceDetection: {
+            confidence: number;
+            end_timestamp: number;
+            height: number;
+            label: string;
+            timestamp: number;
+            width: number;
+            x: number;
+            y: number;
+        };
+        EvidenceDetections: {
+            detections: components["schemas"]["EvidenceDetection"][];
+            stream_status: components["schemas"]["StreamStatus"];
+            timestamp: string;
+        };
+        EvidenceFileCheck: {
+            /** @constant */
+            exists: false;
+        } | {
+            /** @constant */
+            exists: true;
+            mtime: number;
+            size: number;
+        };
+        EvidenceFileDeleted: {
+            existed: boolean;
+            /** @enum {string} */
+            status: "deleted" | "deletion_pending";
+            /** @constant */
+            success: true;
+        };
+        EvidenceLprDeleted: {
+            /** @constant */
+            deleted: true;
+        };
+        EvidenceLprExportRequest: {
+            camera_uuid: string;
+            end_at: number;
+            limit?: number;
+            /** @enum {string} */
+            match?: "exact" | "partial";
+            plate?: string;
+            start_at: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceLprRead: {
+            attributes: {
+                bounding_box: {
+                    bottom: number;
+                    left: number;
+                    right: number;
+                    top: number;
+                } | null;
+                correlation_id: string | null;
+                country: string | null;
+                direction: string | null;
+                lane: string | null;
+                object_id: string | null;
+                plate_type: string | null;
+                region: string | null;
+                vehicle_color: string | null;
+                vehicle_type: string | null;
+                vendor_topic: string;
+            };
+            camera_uuid: string;
+            confidence: number | null;
+            id: string;
+            observed_at: number;
+            plate: string;
+            received_at: number;
+            recording_id: number | null;
+            source: string;
+            stream_name: string;
+            /** @constant */
+            type: "license_plate";
+        };
+        EvidenceLprReads: {
+            count: number;
+            reads: components["schemas"]["EvidenceLprRead"][];
+        };
+        /** @description Epoch milliseconds, end at/after start within 366 days; match requires a canonicalizable plate (partial at least 3 canonical characters). Search returns at most 100 rows. */
+        EvidenceLprSearchRequest: {
+            camera_uuid: string;
+            end_at: number;
+            limit?: number;
+            /** @enum {string} */
+            match?: "exact" | "partial";
+            plate?: string;
+            start_at: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceModel: {
+            description?: string;
+            id: string;
+            name: string;
+            path: string;
+            size?: number;
+            supported: boolean;
+            type: string;
+            unsupported_reason?: string;
+        };
+        EvidenceModels: {
+            count: number;
+            litert_available: boolean;
+            message?: string;
+            models: components["schemas"]["EvidenceModel"][];
+            sod_available: boolean;
+        };
+        EvidencePreview: {
+            camera_count: number;
+            end_time: number;
+            permissions: {
+                export: {
+                    all_allowed: boolean;
+                    allowed_count: number;
+                    denied_count: number;
+                };
+                protect: {
+                    actionable_count: number;
+                    allowed_count: number;
+                    denied_count: number;
+                };
+            };
+            protected_count: number;
+            recording_count: number;
+            recordings: components["schemas"]["EvidencePreviewRecording"][];
+            start_time: number;
+            total_bytes: number;
+            unprotected_count: number;
+        };
+        EvidencePreviewRecording: {
+            camera_name: string;
+            camera_uuid: string;
+            can_export: boolean;
+            can_protect: boolean;
+            end_time: number;
+            id: number;
+            protected: boolean;
+            size_bytes: number;
+            start_time: number;
+            stream_name: string;
+        };
+        EvidenceProtectedCount: {
+            protected_count: number;
+            stream_name?: string;
+        };
+        /** @description End must exceed start by no more than 31 days. All explicit cameras must exist and permit recordings.replay; mixed unauthorized input is rejected. */
+        EvidenceRangeRequest: {
+            camera_uuids: string[];
+            end_time: number;
+            start_time: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceSearch: {
+            camera_count: number;
+            coverage: {
+                complete: boolean;
+                incomplete_reasons: string[];
+                requested_end: number;
+                requested_start: number;
+                searched_end: number;
+                searched_start: number;
+                spatial_metadata: {
+                    /** @constant */
+                    requested: false;
+                } | {
+                    camera_uuid: string;
+                    complete: boolean;
+                    /** @enum {string} */
+                    match: "center" | "intersects" | "minimum_intersection";
+                    min_intersection?: number;
+                    rectangle: {
+                        height: number;
+                        width: number;
+                        x: number;
+                        y: number;
+                    };
+                    /** @constant */
+                    requested: true;
+                    rows_with_boxes: number;
+                    rows_without_boxes: number;
+                    /** @constant */
+                    search_type: "metadata_search";
+                };
+                unresolved_legacy_rows: number;
+            };
+            facets: {
+                cameras: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                capture_methods: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                event_types: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                labels: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                locations: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                protection: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                recording_tags: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                sources: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                zones: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+            };
+            histogram: {
+                bucket_seconds: number;
+                buckets: {
+                    count: number;
+                    end_time: number;
+                    event_time: number;
+                    start_time: number;
+                }[];
+            };
+            page: {
+                has_more: boolean;
+                limit: number;
+                next_cursor: string | null;
+                returned: number;
+                total: number;
+            };
+            results: components["schemas"]["EvidenceSearchResult"][];
+            selector_applied: boolean;
+            summary_complete: boolean;
+        };
+        EvidenceSearchRequest: ({
+            camera_uuids: string[];
+            cursor?: string | null;
+            end_time: number;
+            filters?: {
+                capture_methods?: string[];
+                event_types?: string[];
+                labels?: string[];
+                locations?: string[];
+                max_confidence?: number;
+                min_confidence?: number;
+                protected?: boolean;
+                recording_tags?: string[];
+                sources?: string[];
+                zones?: string[];
+            } & {
+                [key: string]: unknown;
+            };
+            include_summary?: boolean;
+            limit?: number;
+            region?: {
+                camera_uuid: string;
+                height: number;
+                /** @enum {string} */
+                match?: "center" | "intersects" | "minimum_intersection";
+                min_intersection?: number;
+                width: number;
+                x: number;
+                y: number;
+            } & {
+                [key: string]: unknown;
+            };
+            selector?: never;
+            start_time: number;
+            summary_only?: boolean;
+        } & {
+            [key: string]: unknown;
+        }) | ({
+            camera_uuids?: never;
+            cursor?: string | null;
+            end_time: number;
+            filters?: {
+                capture_methods?: string[];
+                event_types?: string[];
+                labels?: string[];
+                locations?: string[];
+                max_confidence?: number;
+                min_confidence?: number;
+                protected?: boolean;
+                recording_tags?: string[];
+                sources?: string[];
+                zones?: string[];
+            } & {
+                [key: string]: unknown;
+            };
+            include_summary?: boolean;
+            limit?: number;
+            region?: {
+                camera_uuid: string;
+                height: number;
+                /** @enum {string} */
+                match?: "center" | "intersects" | "minimum_intersection";
+                min_intersection?: number;
+                width: number;
+                x: number;
+                y: number;
+            } & {
+                [key: string]: unknown;
+            };
+            selector: components["schemas"]["FleetSelector"];
+            start_time: number;
+            summary_only?: boolean;
+        } & {
+            [key: string]: unknown;
+        });
+        EvidenceSearchResult: {
+            camera: {
+                location_name: string | null;
+                location_path: string | null;
+                location_uuid: string | null;
+                name: string;
+            };
+            camera_uuid: string;
+            detection: {
+                bounding_box: {
+                    height: number;
+                    /** @constant */
+                    normalized: true;
+                    width: number;
+                    x: number;
+                    y: number;
+                } | null;
+                confidence: number;
+                id: number;
+                label: string;
+                source: string;
+                track_id: number | null;
+                zone_uuid: string | null;
+            };
+            end_time: number;
+            /** @enum {string} */
+            event_type: "motion" | "detection";
+            known_gap: boolean;
+            media_available: boolean;
+            recording: {
+                capture_method: string | null;
+                protected: boolean | null;
+            };
+            recording_id: number | null;
+            result_id: string;
+            start_time: number;
+            thumbnail: {
+                /** @constant */
+                status: "available";
+                url: string;
+            } | {
+                /** @enum {string} */
+                status: "unavailable" | "disabled";
+            };
+        };
+        EvidenceSegment: {
+            capture_method: string;
+            duration: number;
+            end_time: number;
+            has_detection: boolean;
+            id: number;
+            /** @constant */
+            media_available: true;
+            protected: boolean;
+            size_bytes: number;
+            start_time: number;
+        } | {
+            /** @constant */
+            coverage_only: true;
+            duration: number;
+            end_time: number;
+            has_detection: boolean;
+            id: number;
+            /** @constant */
+            media_available: true;
+            protected: boolean;
+            size_bytes: number;
+            source_segment_count: number;
+            start_time: number;
+        };
+        EvidenceSegmentAt: {
+            segment: components["schemas"]["EvidenceSegment"] | null;
+        };
+        EvidenceSegmentAtRequest: {
+            camera_uuids: string[];
+            timestamp: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceSyncComplete: {
+            message: string;
+            /** @constant */
+            success: true;
+            updated: number;
+        };
+        EvidenceThumbnailRequest: {
+            camera_uuids: string[];
+            end_time: number;
+            sample_count?: number;
+            start_time: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceThumbnails: {
+            camera: {
+                camera_uuid: string;
+                name: string;
+            };
+            coverage: {
+                available_samples: number;
+                gap_samples: number;
+                /** @constant */
+                segments_truncated: false;
+            };
+            end_time: number;
+            sample_count: number;
+            samples: components["schemas"]["EvidenceThumbnailSample"][];
+            start_time: number;
+        };
+        EvidenceThumbnailSample: {
+            /** @constant */
+            media_status: "gap";
+            thumbnail: {
+                /** @constant */
+                status: "unavailable";
+            };
+            timestamp: number;
+        } | {
+            /** @constant */
+            media_status: "available";
+            offset_ms: number;
+            recording_end_time: number;
+            recording_id: number;
+            recording_start_time: number;
+            thumbnail: {
+                /** @constant */
+                status: "available";
+                url: string;
+            } | {
+                /** @enum {string} */
+                status: "unavailable" | "disabled";
+            };
+            timestamp: number;
+        };
+        EvidenceTimeline: {
+            camera_count: number;
+            end_time: number;
+            /** @constant */
+            max_active_decoders: 4;
+            start_time: number;
+            tracks: components["schemas"]["EvidenceTimelineTrack"][];
+        };
+        EvidenceTimelineTrack: {
+            aggregated: boolean;
+            aggregation_bucket_seconds: number;
+            camera_uuid: string;
+            coverage: {
+                /** @constant */
+                identity_resolved: true;
+                requested_end: number;
+                requested_start: number;
+            };
+            name: string;
+            returned_interval_count: number;
+            segment_count: number;
+            segments: components["schemas"]["EvidenceSegment"][];
+            stream_name: string;
+            /** @constant */
+            truncated: false;
+        };
         FleetCamera: {
             address: string;
             /** @enum {unknown} */
@@ -2593,6 +5366,383 @@ export interface components {
             /** @constant */
             type: "wall";
         };
+        Go2rtcConfigurationInput: {
+            override?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        Go2rtcConfigurationValidation: {
+            error?: null | ({
+                column?: number;
+                line?: number;
+                message?: string;
+            } & {
+                [key: string]: unknown;
+            });
+            libyaml_available: boolean;
+            skip_reason?: {
+                message: string;
+            } & {
+                [key: string]: unknown;
+            };
+            skipped: boolean;
+            valid: boolean;
+            warnings: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        Go2rtcEffectiveConfiguration: {
+            base: string;
+            go2rtc_initialized: boolean;
+            managed_listener_policy: string;
+            merged_source_order: string[];
+            override: string;
+            override_in_use: boolean;
+            redaction_available: boolean;
+            warnings: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        Go2rtcOverrideDiagnostics: {
+            content_matches: boolean;
+            db_bytes: number;
+            expected_file_path: string;
+            file_bytes: number;
+            file_present: boolean;
+            file_read_error?: string;
+            process_pid: number;
+            process_running: boolean;
+            process_state_known: boolean;
+            quarantine_active: boolean;
+            quarantine_reason?: string;
+            quarantined_copy_bytes: number;
+            validated_version: string;
+        } & {
+            [key: string]: unknown;
+        };
+        HealthResponse: components["schemas"]["StreamHealth"] | components["schemas"]["ProcessLiveness"] | components["schemas"]["StreamHealthHistory"];
+        HlsHealth: {
+            healthy: boolean;
+            status: string;
+            timestamp: string;
+            watchdogRestartCount: number;
+        } & {
+            [key: string]: unknown;
+        };
+        HostHealth: {
+            active_incidents: ({
+                condition: string;
+                first_observed_at_ms: number;
+                incident_id: string;
+                last_observed_at_ms: number;
+                observation: {
+                    capability: string;
+                    freshness: string;
+                    metric: string;
+                    observed_at_ms?: number;
+                    resource: string;
+                    sampled_monotonic_ms?: number;
+                    scope: string;
+                    unit: string;
+                    value: null | number;
+                } & {
+                    [key: string]: unknown;
+                };
+                persistence_pending: boolean;
+                scope: string;
+                severity: string;
+                state: string;
+                subject: string;
+                thresholds?: {
+                    condition: string;
+                    critical_for_seconds: number;
+                    critical_threshold: number;
+                    direction: string;
+                    enabled: boolean;
+                    overridden: boolean;
+                    recovery_for_seconds: number;
+                    recovery_threshold: number;
+                    unit: string;
+                    warning_for_seconds: number;
+                    warning_threshold: number;
+                } & {
+                    [key: string]: unknown;
+                };
+            } & {
+                [key: string]: unknown;
+            })[];
+            coverage: {
+                abandoned_helpers: number;
+                collection_errors: number;
+                collection_timeouts: number;
+                complete: boolean;
+                coverage_overflows: number;
+                incomplete_count: number;
+                observations_dropped: number;
+                unavailable_observations: number;
+            } & {
+                [key: string]: unknown;
+            };
+            evaluator?: {
+                active_incidents: number;
+                pending_persistence: number;
+                tracked_conditions: number;
+            } & {
+                [key: string]: unknown;
+            };
+            monitoring: {
+                configured_enabled: boolean;
+                enabled: boolean;
+                initialized: boolean;
+                restart_required: boolean;
+                worker_threads: number;
+            } & {
+                [key: string]: unknown;
+            };
+            observations: ({
+                capability: string;
+                freshness: string;
+                metric: string;
+                observed_at_ms?: number;
+                resource: string;
+                sampled_monotonic_ms?: number;
+                scope: string;
+                unit: string;
+                value: null | number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            overall_state: string;
+            recent_samples: ({
+                completed_at_ms: number;
+                observation_count: number;
+                observations_dropped: number;
+                sequence: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            schema_version: number;
+            self_observability: {
+                collectors: ({
+                    attempts: number;
+                    busy: boolean;
+                    collector: string;
+                    completions: number;
+                    failures: number;
+                    last_duration_ms: number;
+                    maximum_duration_ms: number;
+                    overlap_skips: number;
+                    scope: string;
+                    stale: boolean;
+                    tier: number;
+                    timeouts: number;
+                } & {
+                    [key: string]: unknown;
+                })[];
+                coverage_overflows: number;
+                event_delivery: {
+                    all_destinations_unavailable?: boolean;
+                    circular_report_path?: boolean;
+                    degraded?: boolean;
+                    outbox?: {
+                        available?: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                    outbox_full?: boolean;
+                } & {
+                    [key: string]: unknown;
+                };
+                incident_persistence: {
+                    failures?: number;
+                    pending?: number;
+                    retries?: number;
+                } & {
+                    [key: string]: unknown;
+                };
+            } & {
+                [key: string]: unknown;
+            };
+            snapshot: {
+                age_ms: null | number;
+                available: boolean;
+                completed_at_ms: null | number;
+                freshness: string;
+                sequence: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            thresholds: ({
+                condition: string;
+                critical_for_seconds: number;
+                critical_threshold: number;
+                direction: string;
+                enabled: boolean;
+                overridden: boolean;
+                recovery_for_seconds: number;
+                recovery_threshold: number;
+                unit: string;
+                warning_for_seconds: number;
+                warning_threshold: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            visibility: {
+                coverage_boundary: string;
+                effective_scope: string;
+                host_hardware_visible: boolean;
+            } & {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        HostHealthIncidents: {
+            count: number;
+            incidents: ({
+                closed_at_ms: null | number;
+                condition: string;
+                first_observed_at_ms: number;
+                incident_id: string;
+                last_observed_at_ms: number;
+                observation: {
+                    capability: string;
+                    freshness: string;
+                    metric: string;
+                    observed_at_ms?: number;
+                    resource: string;
+                    sampled_monotonic_ms?: number;
+                    scope: string;
+                    unit: string;
+                    value: null | number;
+                } & {
+                    [key: string]: unknown;
+                };
+                reconciliation: string;
+                revision: number;
+                scope: string;
+                severity: string;
+                state: string;
+                subject: string;
+            } & {
+                [key: string]: unknown;
+            })[];
+            next_cursor: null | string;
+            schema_version: number;
+        } & {
+            [key: string]: unknown;
+        };
+        IceServersResponse: {
+            ice_servers: ({
+                credential?: string;
+                urls: string[];
+                username?: string;
+            } & {
+                [key: string]: unknown;
+            })[];
+        } & {
+            [key: string]: unknown;
+        };
+        ImagingModeLevel: {
+            level?: number;
+            mode?: string;
+        };
+        ImagingModeLevelUpdate: number | {
+            level?: number;
+            mode?: string;
+        };
+        ImagingModeOptions: {
+            level?: components["schemas"]["DeviceFloatRange"];
+            modes: string[];
+        };
+        ImagingOptions: {
+            backlight_compensation?: components["schemas"]["ImagingModeOptions"];
+            brightness?: components["schemas"]["DeviceFloatRange"];
+            color_saturation?: components["schemas"]["DeviceFloatRange"];
+            contrast?: components["schemas"]["DeviceFloatRange"];
+            defogging?: components["schemas"]["ImagingModeOptions"];
+            ir_cut_filter_modes: string[];
+            noise_reduction?: components["schemas"]["DeviceFloatRange"];
+            sharpness?: components["schemas"]["DeviceFloatRange"];
+            tone_compensation?: components["schemas"]["ImagingModeOptions"];
+            video_source_token: string;
+            wide_dynamic_range?: components["schemas"]["ImagingModeOptions"];
+        };
+        ImagingOptionsResponse: {
+            options: components["schemas"]["ImagingOptions"];
+            /** @constant */
+            success: true;
+        };
+        ImagingSettings: {
+            backlight_compensation?: components["schemas"]["ImagingModeLevel"];
+            brightness?: number;
+            color_saturation?: number;
+            contrast?: number;
+            defogging?: components["schemas"]["ImagingModeLevel"];
+            ir_cut_filter?: string;
+            noise_reduction?: number;
+            sharpness?: number;
+            tone_compensation?: components["schemas"]["ImagingModeLevel"];
+            video_source_token: string;
+            wide_dynamic_range?: components["schemas"]["ImagingModeLevel"];
+        };
+        /** @description Known aliases remain accepted; force_persistence alone is rejected. Numeric limits come from the device options rather than an invented global range. */
+        ImagingSettingsRequest: {
+            backlight?: components["schemas"]["ImagingModeLevelUpdate"];
+            backlight_compensation?: components["schemas"]["ImagingModeLevelUpdate"];
+            brightness?: number;
+            color_saturation?: number;
+            contrast?: number;
+            defog?: components["schemas"]["ImagingModeLevelUpdate"];
+            defogging?: components["schemas"]["ImagingModeLevelUpdate"];
+            force_persistence?: boolean;
+            ir_cut_filter?: string;
+            ircut?: string;
+            noise_reduction?: number;
+            saturation?: number;
+            sharpness?: number;
+            tone?: components["schemas"]["ImagingModeLevelUpdate"];
+            tone_compensation?: components["schemas"]["ImagingModeLevelUpdate"];
+            wdr?: components["schemas"]["ImagingModeLevelUpdate"];
+            wide_dynamic_range?: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            brightness: number;
+        } | {
+            color_saturation: number;
+        } | {
+            contrast: number;
+        } | {
+            sharpness: number;
+        } | {
+            noise_reduction: number;
+        } | {
+            saturation: number;
+        } | {
+            backlight_compensation: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            wide_dynamic_range: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            tone_compensation: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            defogging: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            backlight: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            wdr: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            tone: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            defog: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            ir_cut_filter: string;
+        } | {
+            ircut: string;
+        };
+        ImagingSettingsResponse: {
+            settings: components["schemas"]["ImagingSettings"];
+            /** @constant */
+            success: true;
+        };
         LegacyApiKeyCreated: {
             api_key: string;
             /** @constant */
@@ -2787,6 +5937,107 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        MotionTrigger: {
+            /** @enum {string} */
+            action: "start" | "stop" | "pulse";
+            confidence?: number;
+            duration_ms?: number;
+            label?: string;
+            objects?: (string | {
+                confidence?: number;
+                label: string;
+            })[];
+            stream: string;
+            tags?: string[];
+        };
+        MotionTriggered: {
+            /** @enum {string} */
+            action: "start" | "stop" | "pulse";
+            detections_stored: number;
+            duration_ms?: number;
+            recording_triggered: boolean;
+            stream: string;
+            /** @constant */
+            success: true;
+            tags_applied: number;
+            warning?: string;
+        };
+        OnvifAddRequest: {
+            device_url: string;
+            password?: string;
+            profile_token: string;
+            stream_name: string;
+            username?: string;
+        };
+        OnvifAddResult: {
+            message: string;
+            stream_name: string;
+            /** @constant */
+            success: true;
+        };
+        OnvifClaimRequest: {
+            /** Format: uuid */
+            inventory_uuid: string;
+            stream_name: string;
+        };
+        OnvifDevice: {
+            addresses: string[];
+            claim_state: string;
+            claimed_camera_uuid: string;
+            device_service: string;
+            discovery_time: number;
+            duplicate_suspected: boolean;
+            endpoint: string;
+            firmware_version: string;
+            first_seen_at: number;
+            hardware_id: string;
+            imaging_service: string;
+            inventory_uuid: string;
+            ip_address: string;
+            last_scan_network: string;
+            last_seen_at: number;
+            mac_address: string;
+            manufacturer: string;
+            media_service: string;
+            model: string;
+            online: boolean;
+            ptz_service: string;
+            serial_number: string;
+        };
+        OnvifDevicesResponse: {
+            devices: components["schemas"]["OnvifDevice"][];
+        };
+        OnvifDiscoveryRequest: {
+            network?: string;
+        };
+        OnvifDiscoveryStatus: {
+            enabled: boolean;
+            interval: number;
+            network: string;
+        };
+        OnvifProfile: {
+            bitrate: number;
+            encoding: string;
+            fps: number;
+            height: number;
+            name: string;
+            ptz_configuration_token: string;
+            ptz_supported: boolean;
+            snapshot_uri: string;
+            stream_uri: string;
+            token: string;
+            video_source_token: string;
+            width: number;
+        };
+        OnvifProfilesResponse: {
+            profiles: components["schemas"]["OnvifProfile"][];
+        };
+        OnvifTestRequest: {
+            insecure?: boolean;
+            password?: string;
+            url: string;
+            username?: string;
+        };
         /** @description Describes the canonical pilot coverage, not user or camera identities. Omission of an unspecified API is not a denial of access. */
         OpenApiCoverage: {
             canonical_revision: string;
@@ -2840,6 +6091,74 @@ export interface components {
         };
         /** @enum {string} */
         PlaybackTransport: "auto" | "webrtc_only" | "mse_only" | "hls_only" | "webrtc_then_mse" | "mse_then_hls";
+        PlayerTelemetry: {
+            rebuffer_count?: number;
+            rebuffer_duration_ms?: number;
+            resolution_switches?: number;
+            session_id?: string;
+            stream_name: string;
+            transport?: string;
+            ttff_ms?: number;
+            webrtc_rtt_ms?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        ProcessLiveness: {
+            failedRequests: number;
+            healthy: boolean;
+            /** @constant */
+            liveness: true;
+            timestamp: string;
+            totalRequests: number;
+            uptime: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Finite float-representable coordinates in the camera default space. Camera-advertised ranges vary; the server does not assume normalized position units. Omitted axes retain existing native zero/axis-presence semantics. */
+        PtzAxesRequest: {
+            pan?: number;
+            tilt?: number;
+            zoom?: number;
+        };
+        PtzCapabilities: {
+            has_absolute_move: boolean;
+            has_continuous_move: boolean;
+            has_home: boolean;
+            has_home_position: boolean;
+            has_pan_tilt: boolean;
+            has_presets: boolean;
+            has_relative_move: boolean;
+            has_zoom: boolean;
+            max_presets: number;
+            max_x: number;
+            max_y: number;
+            max_z: number;
+            onvif_queried: boolean;
+            pan_range: components["schemas"]["DeviceFloatRange"];
+            ptz_enabled: boolean;
+            ptz_service_url: string;
+            tilt_range: components["schemas"]["DeviceFloatRange"];
+            zoom_range: components["schemas"]["DeviceFloatRange"];
+        };
+        PtzGotoPresetRequest: {
+            token: string;
+        };
+        PtzPresetRequest: {
+            name?: string;
+        };
+        PtzPresetResult: {
+            message: string;
+            /** @constant */
+            success: true;
+            token: string;
+        };
+        PtzPresets: {
+            count: number;
+            presets: {
+                name: string;
+                token: string;
+            }[];
+        };
         /** @description Empty arrays are accepted. Invalid or missing IDs count as failures; an existing forbidden member rejects the entire request before writes. */
         RecordingBatchProtectionRequest: {
             ids: unknown[];
@@ -3158,6 +6477,466 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        SetupStatus: {
+            complete: boolean;
+            setup_completed_at: number;
+        } & {
+            [key: string]: unknown;
+        };
+        SetupUpdate: {
+            complete?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        SetupUpdated: {
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        StorageArchiveDeletion: {
+            attempts: number;
+            created_at: number;
+            last_error: string;
+            next_attempt_at: number;
+            recording_id: number;
+            remaining_objects: number;
+            uuid: components["schemas"]["CameraUuid"];
+        };
+        StorageArchiveResponse: {
+            archive_bytes: number;
+            pending_deletion_count: number;
+            pending_deletions: components["schemas"]["StorageArchiveDeletion"][];
+            recovery_read_only: boolean;
+            retrieval_cache_bytes: number;
+            retrieval_jobs: number;
+            s3_enabled: boolean;
+            transfer_backlog_bytes: number;
+        };
+        StorageArchiveRetryRequest: {
+            deletion_uuid: components["schemas"]["CameraUuid"];
+        };
+        StorageArchiveRetryResponse: {
+            /** @constant */
+            status: "retry_queued";
+        };
+        StorageCleanupRequest: {
+            aggressive?: boolean;
+        };
+        StorageCleanupResponse: {
+            aggressive: boolean;
+            /** @constant */
+            message: "Cleanup triggered successfully";
+            /** @constant */
+            success: true;
+        };
+        StorageCompliancePolicy: {
+            achieved_retention_days: number;
+            active_violation_count: number;
+            /** @enum {string} */
+            confidence: "low" | "medium" | "high";
+            copy_deficit_recordings: number;
+            desired_retention_days: number;
+            expected_retention_days: number | null;
+            maximum_retention_days: number;
+            minimum_forecast_met: boolean;
+            minimum_retention_days: number;
+            observed_daily_bytes: number;
+            policy_name: string;
+            policy_uuid: components["schemas"]["CameraUuid"];
+            recording_bytes: number;
+            recording_count: number;
+            required_copy_count: number;
+            sample_window_days: number;
+        };
+        StorageComplianceResponse: {
+            active_violations: components["schemas"]["StorageComplianceViolation"][];
+            forecast_note: string;
+            forecast_window_days: number;
+            policies: components["schemas"]["StorageCompliancePolicy"][];
+            targets: components["schemas"]["StorageComplianceTarget"][];
+        };
+        StorageComplianceTarget: {
+            /** @enum {string} */
+            confidence: "low" | "medium" | "high";
+            days_to_high_watermark: number | null;
+            expected_retention_days: number | null;
+            observed_bytes: number;
+            observed_daily_bytes: number;
+            sample_count: number;
+            sample_window_days: number;
+            target_name: string;
+            target_uuid: components["schemas"]["CameraUuid"];
+        };
+        StorageComplianceViolation: {
+            details: string;
+            first_seen_at: number;
+            last_seen_at: number;
+            policy_name: string;
+            policy_uuid: components["schemas"]["CameraUuid"];
+            recording_id: number | null;
+            type: string;
+            uuid: components["schemas"]["CameraUuid"];
+        };
+        StorageHealthResponse: {
+            capacity_target_free_pct: number;
+            fill_rate_bytes_per_day: number;
+            free_space_bytes: number;
+            free_space_pct: number;
+            last_check_time: number;
+            last_cleanup_deleted: number;
+            last_cleanup_freed: number;
+            last_cleanup_time: number;
+            last_deep_time: number;
+            pressure_level: string;
+            pressure_level_num: number;
+            projected_seconds_to_target: number;
+            total_space_bytes: number;
+            used_space_bytes: number;
+        };
+        StorageMigration: {
+            attempt_count: number;
+            bandwidth_limit_bps: number;
+            bytes_copied: number;
+            bytes_total: number;
+            cancel_requested: boolean;
+            checksum: string | null;
+            /** @constant */
+            checksum_mode: "sha256";
+            completed_at: number | null;
+            created_at: number;
+            destination_object_key: string;
+            destination_target_uuid: components["schemas"]["CameraUuid"];
+            last_error: string;
+            max_attempts: number;
+            next_attempt_at: number | null;
+            /** @enum {string} */
+            operation: "move" | "copy";
+            progress: number;
+            recording_id: number;
+            revision: number;
+            source_object_key: string;
+            source_target_uuid: components["schemas"]["CameraUuid"];
+            started_at: number | null;
+            /** @enum {string} */
+            state: "queued" | "copying" | "verifying" | "committing" | "retry_wait" | "cleanup_pending" | "completed" | "failed" | "cancelled";
+            updated_at: number;
+            uuid: components["schemas"]["CameraUuid"];
+            window_end_minute: number;
+            window_start_minute: number;
+        };
+        StorageMigrationCreate: {
+            destination_target_uuid: components["schemas"]["CameraUuid"];
+            /** @enum {string} */
+            operation?: "move" | "copy";
+            recording_id: number;
+        };
+        StorageMigrationsResponse: {
+            count: number;
+            jobs: components["schemas"]["StorageMigration"][];
+            /** @constant */
+            worker_concurrency: 1;
+        };
+        StoragePoliciesResponse: {
+            count: number;
+            policies: components["schemas"]["StoragePolicy"][];
+        };
+        StoragePolicy: {
+            archive_after_seconds: number;
+            archive_on_pressure: boolean;
+            archive_protected: boolean;
+            created_at: number;
+            desired_retention_days: number;
+            enabled: boolean;
+            /** @enum {string} */
+            fallback_mode: "default" | "target" | "pause" | "fail";
+            fallback_target_uuid: components["schemas"]["CameraUuid"] | null;
+            hot_residency_seconds: number;
+            maximum_retention_days: number;
+            migration_after_days: number;
+            migration_target_uuid: components["schemas"]["CameraUuid"] | null;
+            minimum_retention_days: number;
+            name: string;
+            pressure_priority: number;
+            primary_pool_uuid: components["schemas"]["CameraUuid"] | null;
+            primary_target_uuid: components["schemas"]["CameraUuid"];
+            priority: number;
+            replication_pool_uuid: components["schemas"]["CameraUuid"] | null;
+            required_copy_count: number;
+            revision: number;
+            selector: components["schemas"]["FleetSelector"];
+            updated_at: number;
+            uuid: components["schemas"]["CameraUuid"];
+        };
+        StoragePolicyApplyRequest: {
+            preview: boolean;
+            revision: number;
+        };
+        StoragePolicyApplyResponse: {
+            bytes: number;
+            past_new_retention_limit: number;
+            preview: boolean;
+            recordings: number;
+            revision: number;
+            unfinished_transfers: number;
+        };
+        StoragePolicyConflict: {
+            draft_precedes: boolean;
+            overlap_camera_count: number;
+            policy_name: string;
+            policy_uuid: components["schemas"]["CameraUuid"];
+            priority: number;
+        };
+        StoragePolicyCreate: {
+            archive_after_seconds?: number;
+            archive_on_pressure?: boolean;
+            archive_protected?: boolean;
+            desired_retention_days?: number;
+            enabled?: boolean;
+            /** @enum {string} */
+            fallback_mode?: "default" | "target" | "pause" | "fail";
+            fallback_target_uuid?: components["schemas"]["CameraUuid"] | null;
+            hot_residency_seconds?: number;
+            maximum_retention_days?: number;
+            migration_after_days?: number;
+            migration_target_uuid?: components["schemas"]["CameraUuid"] | null;
+            minimum_retention_days?: number;
+            name: string;
+            pressure_priority?: number;
+            primary_pool_uuid?: components["schemas"]["CameraUuid"] | null;
+            primary_target_uuid?: components["schemas"]["CameraUuid"];
+            priority?: number;
+            replication_pool_uuid?: components["schemas"]["CameraUuid"] | null;
+            required_copy_count?: number;
+            selector: components["schemas"]["FleetSelector"];
+        } | {
+            primary_target_uuid: components["schemas"]["CameraUuid"];
+        } | {
+            primary_pool_uuid: components["schemas"]["CameraUuid"] | null;
+        };
+        StoragePolicyPreview: {
+            conflict_camera_count: number;
+            conflict_policy_count: number;
+            conflicts: components["schemas"]["StoragePolicyConflict"][];
+            draft_enabled: boolean;
+            effective_camera_count: number;
+            matched_camera_count: number;
+            sample: components["schemas"]["StoragePolicyPreviewSample"][];
+            sample_truncated: boolean;
+            shadowed_camera_count: number;
+        };
+        StoragePolicyPreviewRequest: {
+            archive_after_seconds?: number;
+            archive_on_pressure?: boolean;
+            archive_protected?: boolean;
+            desired_retention_days?: number;
+            enabled?: boolean;
+            /** @enum {string} */
+            fallback_mode?: "default" | "target" | "pause" | "fail";
+            fallback_target_uuid?: components["schemas"]["CameraUuid"] | null;
+            hot_residency_seconds?: number;
+            maximum_retention_days?: number;
+            migration_after_days?: number;
+            migration_target_uuid?: components["schemas"]["CameraUuid"] | null;
+            minimum_retention_days?: number;
+            name?: string;
+            pressure_priority?: number;
+            primary_pool_uuid?: components["schemas"]["CameraUuid"] | null;
+            primary_target_uuid?: components["schemas"]["CameraUuid"];
+            priority?: number;
+            replication_pool_uuid?: components["schemas"]["CameraUuid"] | null;
+            required_copy_count?: number;
+            revision?: number;
+            selector?: components["schemas"]["FleetSelector"];
+            uuid?: components["schemas"]["CameraUuid"];
+        } | {
+            revision: number;
+            uuid: components["schemas"]["CameraUuid"];
+        } | {
+            name: string;
+            primary_target_uuid: components["schemas"]["CameraUuid"];
+            selector: components["schemas"]["FleetSelector"];
+        } | {
+            name: string;
+            primary_pool_uuid: components["schemas"]["CameraUuid"] | null;
+            selector: components["schemas"]["FleetSelector"];
+        };
+        StoragePolicyPreviewSample: {
+            camera_name: string;
+            camera_uuid: components["schemas"]["CameraUuid"];
+            effective_policy: components["schemas"]["StoragePolicyWinner"] | null;
+            overlapping_policy_count: number;
+        };
+        StoragePolicyUpdate: {
+            archive_after_seconds?: number;
+            archive_on_pressure?: boolean;
+            archive_protected?: boolean;
+            desired_retention_days?: number;
+            enabled?: boolean;
+            /** @enum {string} */
+            fallback_mode?: "default" | "target" | "pause" | "fail";
+            fallback_target_uuid?: components["schemas"]["CameraUuid"] | null;
+            hot_residency_seconds?: number;
+            maximum_retention_days?: number;
+            migration_after_days?: number;
+            migration_target_uuid?: components["schemas"]["CameraUuid"] | null;
+            minimum_retention_days?: number;
+            name?: string;
+            pressure_priority?: number;
+            primary_pool_uuid?: components["schemas"]["CameraUuid"] | null;
+            primary_target_uuid?: components["schemas"]["CameraUuid"];
+            priority?: number;
+            replication_pool_uuid?: components["schemas"]["CameraUuid"] | null;
+            required_copy_count?: number;
+            revision: number;
+            selector?: components["schemas"]["FleetSelector"];
+        };
+        StoragePolicyWinner: {
+            draft: boolean;
+            /** @enum {string} */
+            fallback_mode: "default" | "target" | "pause" | "fail";
+            fallback_target_uuid: components["schemas"]["CameraUuid"] | null;
+            policy_name: string;
+            policy_uuid: components["schemas"]["CameraUuid"] | null;
+            primary_pool_uuid: components["schemas"]["CameraUuid"] | null;
+            primary_target_uuid: components["schemas"]["CameraUuid"];
+            priority: number;
+        };
+        StoragePool: {
+            created_at: number;
+            enabled: boolean;
+            members: components["schemas"]["StoragePoolMember"][];
+            name: string;
+            revision: number;
+            /** @enum {string} */
+            strategy: "most_free" | "round_robin" | "priority";
+            updated_at: number;
+            uuid: components["schemas"]["CameraUuid"];
+        };
+        StoragePoolCreate: {
+            enabled?: boolean;
+            members: components["schemas"]["StoragePoolMemberRequest"][];
+            name: string;
+            /** @enum {string} */
+            strategy?: "most_free" | "round_robin" | "priority";
+        };
+        StoragePoolMember: {
+            position: number;
+            target_uuid: components["schemas"]["CameraUuid"];
+            weight: number;
+        };
+        StoragePoolMemberRequest: {
+            position?: number;
+            target_uuid: components["schemas"]["CameraUuid"];
+            weight?: number;
+        };
+        StoragePoolsResponse: {
+            count: number;
+            pools: components["schemas"]["StoragePool"][];
+        };
+        StoragePoolUpdate: {
+            enabled?: boolean;
+            members?: components["schemas"]["StoragePoolMemberRequest"][];
+            name?: string;
+            revision: number;
+            /** @enum {string} */
+            strategy?: "most_free" | "round_robin" | "priority";
+        };
+        StorageTarget: {
+            archival_window_end_minute: number;
+            archival_window_start_minute: number;
+            archive_budget_bytes: number;
+            archive_only: boolean;
+            bucket: string;
+            created_at: number;
+            credential_ref: string;
+            enabled: boolean;
+            endpoint: string;
+            health: components["schemas"]["StorageTargetHealth"];
+            high_watermark_pct: number;
+            is_default: boolean;
+            low_watermark_pct: number;
+            migration_bandwidth_bps: number;
+            mount_guard_path: string | null;
+            mount_required: boolean;
+            name: string;
+            recording_bytes: number;
+            recording_count: number;
+            region: string;
+            replica_bytes: number;
+            replica_count: number;
+            reserve_bytes: number;
+            revision: number;
+            root_path: string;
+            /** @enum {string} */
+            storage_class: "hot" | "warm" | "cold";
+            /** @enum {string} */
+            target_type: "filesystem" | "s3";
+            updated_at: number;
+            uuid: components["schemas"]["CameraUuid"];
+        };
+        StorageTargetCreate: {
+            archival_window_end_minute?: number;
+            archival_window_start_minute?: number;
+            archive_budget_bytes?: number;
+            bucket?: string;
+            credential_ref?: string;
+            enabled?: boolean;
+            endpoint?: string;
+            high_watermark_pct?: number;
+            low_watermark_pct?: number;
+            migration_bandwidth_bps?: number;
+            mount_required?: boolean;
+            name: string;
+            region?: string;
+            reserve_bytes?: number;
+            root_path: string;
+            /** @enum {string} */
+            storage_class?: "hot" | "warm" | "cold";
+            /** @enum {string} */
+            target_type?: "filesystem" | "s3";
+        };
+        StorageTargetHealth: {
+            available_bytes: number;
+            capacity_bytes: number;
+            capacity_known: boolean;
+            cleanup_target_bytes: number;
+            duplicate_filesystem: boolean;
+            filesystem_device: number;
+            last_error: string;
+            last_probe_at: number | null;
+            last_success_at: number | null;
+            pressure: string;
+            status: string;
+            used_bytes: number;
+            used_pct: number;
+        };
+        StorageTargetsResponse: {
+            count: number;
+            targets: components["schemas"]["StorageTarget"][];
+        };
+        StorageTargetUpdate: {
+            archival_window_end_minute?: number;
+            archival_window_start_minute?: number;
+            archive_budget_bytes?: number;
+            bucket?: string;
+            credential_ref?: string;
+            enabled?: boolean;
+            endpoint?: string;
+            high_watermark_pct?: number;
+            low_watermark_pct?: number;
+            migration_bandwidth_bps?: number;
+            mount_required?: boolean;
+            name?: string;
+            region?: string;
+            reserve_bytes?: number;
+            revision: number;
+            root_path?: string;
+            /** @enum {string} */
+            storage_class?: "hot" | "warm" | "cold";
+            /** @enum {string} */
+            target_type?: "filesystem" | "s3";
+        };
         /** @description Default GET /api/streams response. An empty array is valid. Each row is filtered and redacted using runtime plus go2rtc health observations. */
         StreamCompatibilityList: (components["schemas"]["StreamRedacted"] | components["schemas"]["StreamPrivileged"])[];
         /** @description Partial ordinary update. All fields are optional and omission preserves existing state. Unknown fields (including detected width/height/fps) are currently ignored. This typed contract describes intended values; existing handlers can ignore wrong types instead of returning 400. It does not promise every malformed value is rejected by C. */
@@ -3268,6 +7047,131 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        StreamCreated: {
+            camera_uuid: string;
+            location_uuid: string;
+            onvif_message?: string;
+            /** @enum {string} */
+            onvif_status?: "success" | "error";
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamCreateRequest: {
+            /** @description Null or empty string clears this override; omission preserves the current value. */
+            admin_url?: string | null;
+            /** @description Omission or null preserves the current value. */
+            audio_voice_enhancement?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            backchannel_enabled?: boolean | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. */
+            codec?: string | null;
+            /** @description Omission or null preserves the current value. */
+            detection_based_recording?: boolean | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            detection_interval?: number | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. */
+            detection_model?: string | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. */
+            detection_object_filter?: string | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. */
+            detection_object_filter_list?: string | null;
+            /** @description Omission or null preserves the current value. */
+            detection_record_on_schedule?: boolean | null;
+            /** @description Omission/null preserves; use exactly 168 booleans. The current handler ignores wrong-length arrays and treats each non-true element as false, rather than rejecting all malformed schedule input. */
+            detection_recording_schedule?: components["schemas"]["WeeklySchedule"] | null;
+            /** @description Numeric input is truncated toward zero and must yield -1..365: -1 inherits global, 0 unlimited, positive days. Null/omission preserves. For predictable clients, send an integer. */
+            detection_retention_days?: number | null;
+            /** @description Percentage confidence, including zero; divided by 100 for storage. Omission/null preserves the current value. The handler does not clamp this numeric field. */
+            detection_threshold?: number | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. Nonempty values must start with http://, https://, rtsp:// or rtsps:// (case-insensitive), at most 511 UTF-8 bytes. */
+            detection_url?: string | null;
+            /** @description Omission or null preserves the current value. */
+            enable_disabled?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            enabled?: boolean | null;
+            /** @description Empty string disables; otherwise at most 1023 UTF-8 bytes containing version=1, projection=equidistant, mount=ceiling and bounded centerX/centerY [0,1], radius [.05,1], fov [160,360], rotation/defaultYaw [-360,360], defaultTilt [-90,30], defaultViewFov [20,120]. Null is rejected. Unknown document fields are tolerated. */
+            eptz_config?: string;
+            /** @description Null or empty string clears this override; omission preserves the current value. Whitespace-only also clears. Maximum 8191 UTF-8 bytes. Nonblank multiline values are YAML-validated when YAML support is enabled; malformed YAML can return a structured error. Single-line values are not YAML-checked. */
+            go2rtc_source_override?: string | null;
+            /** @description Omission or null preserves the current value. */
+            isOnvif?: boolean | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            max_storage_mb?: number | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. */
+            motion_trigger_source?: string | null;
+            name: string;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. Processed only when the resulting isOnvif value is true; empty string clears this field. ONVIF probing may precede the 202 response. */
+            onvif_password?: string | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            onvif_port?: number | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. Processed only when the resulting isOnvif value is true; empty string clears this field. ONVIF probing may precede the 202 response. */
+            onvif_profile?: string | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. Processed only when the resulting isOnvif value is true; empty string clears this field. ONVIF probing may precede the 202 response. */
+            onvif_username?: string | null;
+            playback_transport?: components["schemas"]["PlaybackTransport"];
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            post_detection_buffer?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            pre_detection_buffer?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            priority?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            protocol?: number | null;
+            /** @description Omission or null preserves the current value. */
+            ptz_enabled?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            ptz_has_home?: boolean | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            ptz_max_x?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            ptz_max_y?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            ptz_max_z?: number | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. Nonempty values are a supported RTMP/RTMPS destination list, at most 511 UTF-8 bytes; each destination must pass the publish URL validator. */
+            publish_url?: string | null;
+            /** @description Omission or null preserves the current value. */
+            record?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            record_audio?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            record_on_schedule?: boolean | null;
+            /** @description Omission/null preserves; use exactly 168 booleans. The current handler ignores wrong-length arrays and treats each non-true element as false, rather than rejecting all malformed schedule input. */
+            recording_schedule?: components["schemas"]["WeeklySchedule"] | null;
+            /** @description Numeric input is truncated toward zero and must yield -1..365: -1 inherits global, 0 unlimited, positive days. Null/omission preserves. For predictable clients, send an integer. */
+            retention_days?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            segment_duration?: number | null;
+            /** @description A boolean selects the separate privacy-only form; null is ignored in the ordinary-update form. */
+            set_privacy_mode?: null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            storage_priority?: number | null;
+            /** @description Omission or null preserves the current value. */
+            streaming_enabled?: boolean | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. */
+            sub_stream_url?: string | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. */
+            tags?: string | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            tier_critical_multiplier?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            tier_ephemeral_multiplier?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            tier_important_multiplier?: number | null;
+            url: string;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamDeleteAccepted: {
+            permanent: boolean;
+            /** @constant */
+            status: "accepted";
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description Fields shared by compatibility-list rows and full detail. Strings use empty values rather than null; additional fields are preserved for additive compatibility. */
         StreamDetailsBase: {
             audio_voice_enhancement: boolean;
@@ -3344,6 +7248,54 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        StreamDetectionEngine: {
+            /** @description Engine-specific configuration; current engine plugins own its keys. Serialized JSON must fit the native configuration buffer. */
+            config: {
+                [key: string]: unknown;
+            };
+            enabled: boolean;
+            interval_seconds: number;
+            key: string;
+            managed_by_legacy_stream_fields: boolean;
+            model_path: string;
+            sort_order: number;
+            threshold: number;
+            /** @enum {string} */
+            type: "object" | "motion" | "onvif" | "api" | "external";
+        } & {
+            [key: string]: unknown;
+        };
+        StreamDetectionEngines: {
+            count: number;
+            engines: components["schemas"]["StreamDetectionEngine"][];
+            restart_required: boolean;
+            stream_name: string;
+            /** @constant */
+            trigger_policy: "any_of";
+        } & {
+            [key: string]: unknown;
+        };
+        StreamDetectionEnginesRequest: {
+            engines: components["schemas"]["StreamDetectionEngineWrite"][];
+        } & {
+            [key: string]: unknown;
+        };
+        StreamDetectionEngineWrite: {
+            /** @description Engine-specific configuration; current engine plugins own its keys. Serialized JSON must fit the native configuration buffer. */
+            config?: {
+                [key: string]: unknown;
+            };
+            enabled?: boolean;
+            interval_seconds: number;
+            key: string;
+            model_path?: string;
+            sort_order?: number;
+            threshold: number;
+            /** @enum {string} */
+            type: "object" | "motion" | "onvif" | "api" | "external";
+        } & {
+            [key: string]: unknown;
+        };
         StreamFullPrivilegedResponse: {
             stream: components["schemas"]["StreamPrivileged"];
         } & {
@@ -3356,6 +7308,75 @@ export interface components {
         };
         /** @description Full details are wrapped in stream. Read authorization uses raw camera facts; privileged fields additionally use runtime-enriched facts on the same camera. */
         StreamFullResponse: components["schemas"]["StreamFullRedactedResponse"] | components["schemas"]["StreamFullPrivilegedResponse"];
+        StreamHealth: {
+            failedRequests: number;
+            healthy: boolean;
+            status: string;
+            storage: {
+                available_bytes: number;
+                used_bytes: number;
+            } & {
+                [key: string]: unknown;
+            };
+            streams: {
+                degraded: number;
+                down: number;
+                total: number;
+                up: number;
+            } & {
+                [key: string]: unknown;
+            };
+            streams_detail: ({
+                bitrate_bps: number;
+                configured_fps: number;
+                connection_latency_ms: number;
+                current_fps: number;
+                detector_operating: boolean;
+                expected_fps: number;
+                fps: number;
+                frames_dropped: number;
+                frames_total: number;
+                last_completed_segment_ts: number;
+                last_frame_ts: number;
+                last_packet_ts: number;
+                name: string;
+                observed_fps: number;
+                reconnects: number;
+                recorder_session_active: boolean;
+                recorder_writing: boolean;
+                recording_active: boolean;
+                recording_gaps: number;
+                source_connected: boolean;
+                sparkline_bitrate?: number[];
+                sparkline_fps?: number[];
+                status: string;
+                uptime_seconds: number;
+                video_advancing: boolean;
+            } & {
+                [key: string]: unknown;
+            })[];
+            timestamp: string;
+            totalRequests: number;
+            uptime: number;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamHealthHistory: {
+            failedRequests: number;
+            healthy: boolean;
+            streams_detail: ({
+                name: string;
+                sparkline_bitrate?: number[];
+                sparkline_fps?: number[];
+            } & {
+                [key: string]: unknown;
+            })[];
+            timestamp: string;
+            totalRequests: number;
+            uptime: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description Select the response with the request query. Consumers validating an admin or live summary must use its specific page schema: the identity-only LPR variant is deliberately minimal. */
         StreamListResponse: components["schemas"]["StreamCompatibilityList"] | components["schemas"]["StreamSummaryPage"] | components["schemas"]["LiveStreamSummaryPage"] | components["schemas"]["LprStreamSummaryPage"];
         /** @description Synchronous lightweight privacy toggle. No other update fields may accompany it; unknown fields are rejected in this form. */
@@ -3389,6 +7410,64 @@ export interface components {
         } & {
             [key: string]: unknown;
         });
+        StreamProbeRequest: {
+            onvif_password?: string;
+            onvif_username?: string;
+            protocol: number;
+            url: string;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamProbeResponse: ({
+            info: {
+                codec: string;
+                fps: number;
+                height: number;
+                width: number;
+            } & {
+                [key: string]: unknown;
+            };
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        }) | ({
+            message: string;
+            /** @constant */
+            success: false;
+        } & {
+            [key: string]: unknown;
+        });
+        StreamRecordingChanged: {
+            /** @enum {string} */
+            action: "start" | "stop";
+            /** @enum {string} */
+            state: "starting" | "idle";
+            stream: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamRecordingRequest: {
+            /** @enum {string} */
+            action: "start" | "stop";
+        } & {
+            [key: string]: unknown;
+        };
+        StreamRecordingState: {
+            capture_method: string | null;
+            manual_control_allowed: boolean;
+            /** @enum {string|null} */
+            manual_control_reason: "read_only" | "continuous_recording" | null;
+            recording_active: boolean;
+            recording_id: number | null;
+            /** @enum {string} */
+            state: "starting" | "recording" | "idle";
+            stream: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description This camera is readable but not configurable. Sensitive fields remain present as empty strings; has_sub_stream can still be true. */
         StreamRedacted: components["schemas"]["StreamDetailsBase"] & ({
             /** @constant */
@@ -3410,6 +7489,34 @@ export interface components {
         } & {
             [key: string]: unknown;
         });
+        StreamRefreshAccepted: {
+            coalesced?: boolean;
+            message: string;
+            retry_after_seconds?: number;
+            stream: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamRetention: {
+            detection_retention_days: number;
+            max_storage_mb: number;
+            message?: string;
+            retention_days: number;
+            stream_name: string;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamRetentionRequest: {
+            detection_retention_days?: number;
+            max_storage_mb?: number;
+            retention_days?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Single legacy stream object. URL and credential fields are redacted unless this same camera is configurable. */
+        StreamSingleResponse: components["schemas"]["StreamRedacted"] | components["schemas"]["StreamPrivileged"];
         /** @enum {string} */
         StreamStatus: "Stopped" | "Starting" | "Running" | "Stopping" | "Error" | "Reconnecting" | "Degraded" | "Unknown";
         /** @description Administrative and live summary fields. Unlike detail, summary rows contain no input URL, credentials or error_message. */
@@ -3485,6 +7592,31 @@ export interface components {
             [key: string]: unknown;
         };
         StreamUpdateRequest: components["schemas"]["StreamConfigurationUpdate"] | components["schemas"]["StreamPrivacyUpdate"];
+        StreamZones: {
+            zones: components["schemas"]["DetectionZone"][];
+        } & {
+            [key: string]: unknown;
+        };
+        StreamZonesDeleted: {
+            message: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamZonesRequest: {
+            zones: components["schemas"]["DetectionZoneWrite"][];
+        } & {
+            [key: string]: unknown;
+        };
+        StreamZonesSaved: {
+            count: number;
+            message: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
         SuccessResponse: {
             api_key?: never;
             password?: never;
@@ -3495,6 +7627,447 @@ export interface components {
             token_hash?: never;
             totp_secret?: never;
             totp_token?: never;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemActionAccepted: {
+            message: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemBackupCreated: {
+            backupUrl: string;
+            filename: string;
+            message: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemInformation: {
+            cpu: {
+                cores?: number;
+                model?: string;
+                usage?: null | number;
+                usageCapability?: string;
+            } & {
+                [key: string]: unknown;
+            };
+            detectorMemory?: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            disk: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            git_commit: string;
+            global_retention_days: number;
+            go2rtcMemory?: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            memory: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            network: {
+                interfaces?: ({
+                    address?: null | string;
+                    capability?: string;
+                    ipv6?: string;
+                    mac?: string;
+                    name: string;
+                    up?: boolean;
+                } & {
+                    [key: string]: unknown;
+                })[];
+            } & {
+                [key: string]: unknown;
+            };
+            recordings: {
+                count: number;
+                size: number;
+            } & {
+                [key: string]: unknown;
+            };
+            streams: {
+                active: number;
+                total: number;
+            } & {
+                [key: string]: unknown;
+            };
+            streamStorage: ({
+                count: number;
+                detection_retention_days: number;
+                max_storage_mb: number;
+                name: string;
+                retention_days: number;
+                size: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            systemDisk: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            systemMemory?: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            threads: null | number;
+            uptime: number;
+            uptimeCapability?: string;
+            version: string;
+            versions: {
+                items: ({
+                    category: string;
+                    details?: string;
+                    name: string;
+                    version: string;
+                } & {
+                    [key: string]: unknown;
+                })[];
+            } & {
+                [key: string]: unknown;
+            };
+            webThreadPoolSize: number;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemLogs: {
+            file: string;
+            level: string;
+            logs: ({
+                level?: string;
+                message?: string;
+                timestamp?: string;
+            } & {
+                [key: string]: unknown;
+            })[];
+        } & {
+            [key: string]: unknown;
+        };
+        SystemSettings: {
+            api_detection_backend: string;
+            api_detection_detector_name: string;
+            api_detection_format: string;
+            api_detection_url: string;
+            audio_disabled: boolean;
+            auth_absolute_timeout_hours: number;
+            auth_timeout_hours: number;
+            auto_delete_oldest: boolean;
+            auto_disabled: boolean;
+            buffer_size: number;
+            db_backup_interval_minutes: number;
+            db_backup_retention_count: number;
+            db_backup_verify: string;
+            db_path: string;
+            db_post_backup_script: string;
+            default_detection_threshold: number;
+            default_playback_transport: string;
+            demo_mode: boolean;
+            detection_engine_delegate: string;
+            detection_engine_enabled: boolean;
+            detection_engine_threads: number;
+            detection_grace_period: number;
+            force_mfa_on_login: boolean;
+            generate_thumbnails: boolean;
+            go2rtc_api_port: number;
+            go2rtc_base_path: string;
+            go2rtc_binary_path: string;
+            go2rtc_config_dir: string;
+            go2rtc_config_override: string;
+            go2rtc_config_override_disabled_reason: string;
+            go2rtc_config_override_quarantined: string;
+            go2rtc_enabled: boolean;
+            go2rtc_external_ip: string;
+            go2rtc_force_native_hls: boolean;
+            go2rtc_ice_servers: string;
+            go2rtc_rtsp_port: number;
+            go2rtc_stun_enabled: boolean;
+            go2rtc_stun_server: string;
+            go2rtc_webrtc_enabled: boolean;
+            go2rtc_webrtc_listen_port: number;
+            health_condition_overrides: null | ({
+                conditions?: ({
+                    code: string;
+                    critical?: number;
+                    critical_for_seconds?: number;
+                    profile?: string;
+                    recovery?: number;
+                    recovery_for_seconds?: number;
+                    unit?: string;
+                    warning?: number;
+                    warning_for_seconds?: number;
+                } & {
+                    [key: string]: unknown;
+                })[];
+                version?: number;
+            } & {
+                [key: string]: unknown;
+            });
+            health_device_interval_seconds: number;
+            health_effective_policy?: {
+                conditions?: ({
+                    code: string;
+                    critical?: number;
+                    critical_for_seconds?: number;
+                    recovery?: number;
+                    recovery_for_seconds?: number;
+                    unit?: string;
+                    warning?: number;
+                    warning_for_seconds?: number;
+                } & {
+                    [key: string]: unknown;
+                })[];
+            } & {
+                [key: string]: unknown;
+            };
+            health_enabled: boolean;
+            health_fast_interval_seconds: number;
+            health_hardware_provider: string;
+            health_incident_retention_days: number;
+            health_normal_interval_seconds: number;
+            health_presence_interval_seconds: number;
+            health_profile: string;
+            health_slow_interval_seconds: number;
+            health_write_probe_enabled: boolean;
+            hls_disabled: boolean;
+            log_file: string;
+            log_level: number;
+            login_rate_limit_enabled: boolean;
+            login_rate_limit_max_attempts: number;
+            login_rate_limit_window_seconds: number;
+            lpr_retention_days: number;
+            max_storage_size: number;
+            max_streams: number;
+            max_streams_ceiling: number;
+            models_path: string;
+            mp4_directory_format: string;
+            mp4_faststart: boolean;
+            mqtt_broker_host: string;
+            mqtt_broker_port: number;
+            mqtt_client_id: string;
+            mqtt_enabled: boolean;
+            mqtt_ha_discovery: boolean;
+            mqtt_ha_discovery_prefix: string;
+            mqtt_ha_snapshot_interval: number;
+            mqtt_keepalive: number;
+            /** @enum {string} */
+            mqtt_password: "" | "********";
+            mqtt_qos: number;
+            mqtt_retain: boolean;
+            mqtt_tls_enabled: boolean;
+            mqtt_topic_prefix: string;
+            mqtt_username: string;
+            mse_disabled: boolean;
+            onvif_discovery_enabled: boolean;
+            onvif_discovery_interval: number;
+            onvif_discovery_network: string;
+            pid_file: string;
+            post_detection_buffer: number;
+            pre_detection_buffer: number;
+            retention_days: number;
+            storage_min_free_pct: number;
+            storage_path: string;
+            storage_path_hls: string;
+            storage_pressure_critical_pct: number;
+            storage_pressure_emergency_pct: number;
+            storage_pressure_warning_pct: number;
+            swap_size: number;
+            syslog_enabled: boolean;
+            syslog_facility: string;
+            syslog_ident: string;
+            thumbnails_per_recording: number;
+            trusted_device_days: number;
+            trusted_proxy_cidrs: string;
+            turn_enabled: boolean;
+            /** @enum {string} */
+            turn_password: "" | "********";
+            turn_server_url: string;
+            turn_username: string;
+            use_swap: boolean;
+            web_auth_enabled: boolean;
+            web_bind_ip: string;
+            web_port: number;
+            web_root: string;
+            web_thread_pool_size: number;
+            webrtc_connection_timeout_ms: number;
+            webrtc_disabled: boolean;
+            webrtc_ice_recovery_timeout_ms: number;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemSettingsSaved: {
+            restart_required: boolean;
+            restart_required_message?: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Partial settings update; absent fields are retained. Secret mask values preserve the stored password. */
+        SystemSettingsUpdate: {
+            api_detection_backend?: string;
+            api_detection_detector_name?: string;
+            /** @enum {string} */
+            api_detection_format?: "light-object-detect" | "doods2";
+            api_detection_url?: string;
+            audio_disabled?: boolean;
+            auth_absolute_timeout_hours?: number;
+            auth_timeout_hours?: number;
+            auto_delete_oldest?: boolean;
+            auto_disabled?: boolean;
+            buffer_size?: number;
+            db_backup_interval_minutes?: number;
+            db_backup_retention_count?: number;
+            db_backup_verify?: string;
+            db_path?: string;
+            db_post_backup_script?: string;
+            default_detection_threshold?: number;
+            default_playback_transport?: string;
+            demo_mode?: boolean;
+            detection_engine_delegate?: string;
+            detection_engine_enabled?: boolean;
+            detection_engine_threads?: number;
+            detection_grace_period?: number;
+            force_mfa_on_login?: boolean;
+            generate_thumbnails?: boolean;
+            go2rtc_api_port?: number;
+            go2rtc_binary_path?: string;
+            go2rtc_config_dir?: string;
+            go2rtc_config_override?: string;
+            go2rtc_enabled?: boolean;
+            go2rtc_external_ip?: string;
+            go2rtc_force_native_hls?: boolean;
+            go2rtc_ice_servers?: string;
+            go2rtc_rtsp_port?: number;
+            go2rtc_stun_enabled?: boolean;
+            go2rtc_stun_server?: string;
+            go2rtc_webrtc_enabled?: boolean;
+            go2rtc_webrtc_listen_port?: number;
+            health_condition_overrides?: null | ({
+                conditions?: ({
+                    code: string;
+                    critical?: number;
+                    critical_for_seconds?: number;
+                    profile?: string;
+                    recovery?: number;
+                    recovery_for_seconds?: number;
+                    unit?: string;
+                    warning?: number;
+                    warning_for_seconds?: number;
+                } & {
+                    [key: string]: unknown;
+                })[];
+                version?: number;
+            } & {
+                [key: string]: unknown;
+            });
+            health_device_interval_seconds?: number;
+            health_enabled?: boolean;
+            health_fast_interval_seconds?: number;
+            health_hardware_provider?: string;
+            health_incident_retention_days?: number;
+            health_normal_interval_seconds?: number;
+            health_presence_interval_seconds?: number;
+            health_profile?: string;
+            health_slow_interval_seconds?: number;
+            health_write_probe_enabled?: boolean;
+            hls_disabled?: boolean;
+            log_file?: string;
+            log_level?: number;
+            login_rate_limit_enabled?: boolean;
+            login_rate_limit_max_attempts?: number;
+            login_rate_limit_window_seconds?: number;
+            lpr_retention_days?: number;
+            max_storage_size?: number;
+            max_streams?: number;
+            models_path?: string;
+            mp4_directory_format?: string;
+            mp4_faststart?: boolean;
+            mqtt_broker_host?: string;
+            mqtt_broker_port?: number;
+            mqtt_client_id?: string;
+            mqtt_enabled?: boolean;
+            mqtt_ha_discovery?: boolean;
+            mqtt_ha_discovery_prefix?: string;
+            mqtt_ha_snapshot_interval?: number;
+            mqtt_keepalive?: number;
+            mqtt_password?: string;
+            mqtt_qos?: number;
+            mqtt_retain?: boolean;
+            mqtt_tls_enabled?: boolean;
+            mqtt_topic_prefix?: string;
+            mqtt_username?: string;
+            mse_disabled?: boolean;
+            onvif_discovery_enabled?: boolean;
+            onvif_discovery_interval?: number;
+            onvif_discovery_network?: string;
+            pid_file?: string;
+            post_detection_buffer?: number;
+            pre_detection_buffer?: number;
+            retention_days?: number;
+            storage_min_free_pct?: number;
+            storage_path?: string;
+            storage_path_hls?: string;
+            storage_pressure_critical_pct?: number;
+            storage_pressure_emergency_pct?: number;
+            storage_pressure_warning_pct?: number;
+            swap_size?: number;
+            syslog_enabled?: boolean;
+            syslog_facility?: string;
+            syslog_ident?: string;
+            thumbnails_per_recording?: number;
+            trusted_device_days?: number;
+            trusted_proxy_cidrs?: string;
+            turn_enabled?: boolean;
+            turn_password?: string;
+            turn_server_url?: string;
+            turn_username?: string;
+            use_swap?: boolean;
+            web_auth_enabled?: boolean;
+            web_bind_ip?: string;
+            web_port?: number;
+            web_root?: string;
+            web_thread_pool_size?: number;
+            webrtc_connection_timeout_ms?: number;
+            webrtc_disabled?: boolean;
+            webrtc_ice_recovery_timeout_ms?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemStatus: {
+            message: string;
+            /** @constant */
+            status: "ok";
         } & {
             [key: string]: unknown;
         };
@@ -3617,6 +8190,33 @@ export interface components {
         };
         /** @description Seven days × 24 hours, indexed day*24+hour. true permits recording in that slot; interpreted using the configured recorder schedule timezone. */
         WeeklySchedule: boolean[];
+        WorkspacesResponse: {
+            configurable: boolean;
+            /** @enum {string} */
+            scope: "user" | "installation";
+            workspaces: ({
+                /** @constant */
+                authorization_unchanged: true;
+                configurable: boolean;
+                description: string;
+                /** @enum {string} */
+                key: "live.navigator" | "investigation";
+                label: string;
+                visible: boolean;
+            } & {
+                [key: string]: unknown;
+            })[];
+        } & {
+            [key: string]: unknown;
+        };
+        WorkspacesUpdate: {
+            workspaces: {
+                investigation?: boolean;
+                "live.navigator"?: boolean;
+            };
+        } & {
+            [key: string]: unknown;
+        };
     };
     responses: never;
     parameters: never;
@@ -7880,6 +12480,1120 @@ export interface operations {
             };
         };
     };
+    listEvidenceModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceModels"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceDetections: {
+        parameters: {
+            query?: {
+                end?: number;
+                start?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceDetections"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listEventDestinations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDestinations"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createEventDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventDestinationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDestination"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEventDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDestination"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateEventDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventDestinationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDestination"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteEventDestination: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMutationAck"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listEventRoutes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoutes"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createEventRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRouteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoute"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEventRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoute"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateEventRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRouteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoute"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteEventRoute: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMutationAck"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    previewEventRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRoutePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoutePreview"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEventCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventCatalog"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     queryFleetCameras: {
         parameters: {
             query?: never;
@@ -8379,6 +14093,1310 @@ export interface operations {
             };
             /** @description Operation failed. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStreamHealth: {
+        parameters: {
+            query?: {
+                /** @description Return authorized stream histories. */
+                history_only?: boolean;
+                /** @description Return only process liveness. */
+                liveness?: boolean;
+                /** @description Include stream history arrays. */
+                sparklines?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getHlsHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HlsHealth"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getIceServers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IceServersResponse"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listEvidenceBookmarks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmarks"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createEvidenceBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceBookmarkCreate"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmark"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmark"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateEvidenceBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceBookmarkUpdate"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmark"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteEvidenceBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceBookmarkDelete"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmarkDeleted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    previewEvidenceRecordings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceRangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidencePreview"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    searchEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceSearch"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    resolveEvidenceSegment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceSegmentAtRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceSegmentAt"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sampleEvidenceThumbnails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceThumbnailRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceThumbnails"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                offset_ms: string;
+                /** @description Concrete resource identifier; authorized independently. */
+                recording_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized media bytes; not JSON. Thumbnail offsets are milliseconds and snap to the cache grid. Generation may be disabled. Manifest references recording IDs whose playback rechecks captured identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description A supported byte range of authorized media. */
+            206: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unsatisfiable range. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    queryEvidenceTimeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceRangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceTimeline"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9706,6 +16724,1038 @@ export interface operations {
             };
         };
     };
+    exportEvidenceLpr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceLprExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: "attachment; filename=\"lightnvr-lpr-export.json\"";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceLprReads"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteEvidenceLpr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                read_uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceLprDeleted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    searchEvidenceLpr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceLprSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceLprReads"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    triggerMotion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MotionTrigger"];
+            };
+        };
+        responses: {
+            /** @description Accepted motion effects are enumerated separately. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionTriggered"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    addOnvifDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnvifAddRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifAddResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    claimOnvifDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnvifClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSuccess"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getOnvifProfiles: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Device-URL": string;
+                "X-Password"?: string;
+                "X-Username"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifProfilesResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    testOnvifDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnvifTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getOnvifDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifDevicesResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    discoverOnvifDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnvifDiscoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifDevicesResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getOnvifDiscoveryStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifDiscoveryStatus"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getOpenApi: {
         parameters: {
             query?: never;
@@ -10987,6 +19037,205 @@ export interface operations {
             };
         };
     };
+    deleteEvidenceRecordingFile: {
+        parameters: {
+            query: {
+                /** @description Exact registered recording file path. Unknown paths return404; this is not an arbitrary filesystem operation. Captured recording UUID controls authority. */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceFileDeleted"];
+                };
+            };
+            /** @description Deletion scheduled; not proof of file removal. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceFileDeleted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    checkEvidenceRecordingFile: {
+        parameters: {
+            query: {
+                /** @description Exact registered recording file path. Unknown paths return404; this is not an arbitrary filesystem operation. Captured recording UUID controls authority. */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceFileCheck"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     playRecording: {
         parameters: {
             query?: {
@@ -11133,6 +19382,193 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"] | components["schemas"]["RecordingPlaybackPreparing"];
+                };
+            };
+        };
+    };
+    countEvidenceProtected: {
+        parameters: {
+            query?: {
+                /** @description Optional current camera name; otherwise count only recordings visible by replay scope. */
+                stream?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceProtectedCount"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    syncEvidenceRecordings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceSyncComplete"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -11286,6 +19722,3111 @@ export interface operations {
             };
         };
     };
+    getSystemSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemSettings"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateSystemSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemSettingsSaved"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    validateGo2rtcConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Go2rtcConfigurationInput"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Go2rtcConfigurationValidation"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SetupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupUpdated"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                camera: string;
+                /** @description Concrete resource identifier; authorized independently. */
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized media bytes; not JSON. Thumbnail offsets are milliseconds and snap to the cache grid. Generation may be disabled. Manifest references recording IDs whose playback rechecks captured identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description A supported byte range of authorized media. */
+            206: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unsatisfiable range. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStorageArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageArchiveResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    retryStorageArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorageArchiveRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageArchiveRetryResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStorageCompliance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageComplianceResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listStorageMigrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageMigrationsResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createStorageMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorageMigrationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageMigration"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStorageMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageMigration"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    cancelStorageMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageMigration"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    retryStorageMigration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageMigration"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listStoragePolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePoliciesResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createStoragePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoragePolicyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePolicy"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStoragePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePolicy"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateStoragePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoragePolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePolicy"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteStoragePolicy: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    applyStoragePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoragePolicyApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePolicyApplyResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    previewStoragePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoragePolicyPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePolicyPreview"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listStoragePools: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePoolsResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createStoragePool: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoragePoolCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePool"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStoragePool: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePool"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateStoragePool: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoragePoolUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoragePool"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteStoragePool: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listStorageTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageTargetsResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createStorageTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorageTargetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageTarget"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStorageTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageTarget"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateStorageTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorageTargetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageTarget"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteStorageTarget: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    probeStorageTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageTarget"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    triggerStorageCleanup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StorageCleanupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageCleanupResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStorageHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageHealthResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Global storage.configure denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage target unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Storage operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Catalog or storage service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listStreams: {
         parameters: {
             query?: {
@@ -11343,6 +22884,197 @@ export interface operations {
             };
             /** @description Internal, database, policy evaluation, serialization or update scheduling failure. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamCreated"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamSingleResponse"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11451,6 +23183,472 @@ export interface operations {
             };
         };
     };
+    deleteStream: {
+        parameters: {
+            query?: {
+                /** @description Exactly true requests permanent deletion; absence or another value disables. */
+                permanent?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDeleteAccepted"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getDaynight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DaynightResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setDaynight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DaynightRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DaynightUpdated"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStreamDetectionEngines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDetectionEngines"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setStreamDetectionEngines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamDetectionEnginesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDetectionEngines"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getStreamFull: {
         parameters: {
             query?: never;
@@ -11510,6 +23708,3090 @@ export interface operations {
             };
             /** @description Internal, database, policy evaluation, serialization or update scheduling failure. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getImagingOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagingOptionsResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getImagingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagingSettingsResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setImagingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImagingSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    absolutePtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzAxesRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getPtzCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PtzCapabilities"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    gotoPtzPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzGotoPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    homePtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeviceEmptyRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    movePtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzAxesRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setPtzPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PtzPresetResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getPtzPresets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PtzPresets"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    relativePtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzAxesRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setPtzHome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeviceEmptyRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    stopPtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeviceEmptyRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStreamRecording: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRecordingState"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    controlStreamRecording: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamRecordingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRecordingChanged"];
+                };
+            };
+            /** @description Recording start accepted; not a durable recording guarantee. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRecordingChanged"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    refreshStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRefreshAccepted"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStreamRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRetention"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setStreamRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamRetentionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRetention"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStreamZones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamZones"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    saveStreamZones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamZonesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamZonesSaved"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteStreamZones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamZonesDeleted"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    probeStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamProbeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamProbeResponse"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSystemInformationLegacy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInformation"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createSystemBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemBackupCreated"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getGo2rtcEffectiveConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Go2rtcEffectiveConfiguration"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getGo2rtcOverrideDiagnostics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Go2rtcOverrideDiagnostics"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getHostHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostHealth"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getHostHealthIncidents: {
+        parameters: {
+            query?: {
+                /** @description Opaque versioned cursor from the preceding page; malformed cursors return 400. */
+                cursor?: string;
+                include_closed?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostHealthIncidents"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSystemInformation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInformation"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSystemLogs: {
+        parameters: {
+            query?: {
+                count?: number;
+                last_ts?: string;
+                level?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemLogs"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    clearSystemLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemActionAccepted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    restartSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemActionAccepted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    shutdownSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemActionAccepted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSystemStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemStatus"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    recordPlayerTelemetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PlayerTelemetry"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceManifest: {
+        parameters: {
+            query: {
+                /** @description ISO8601 or date-only; defaults to recent24hours. */
+                end?: string;
+                /** @description ISO8601 or date-only; defaults to recent24hours. */
+                start?: string;
+                stream: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized media bytes; not JSON. Thumbnail offsets are milliseconds and snap to the cache grid. Generation may be disabled. Manifest references recording IDs whose playback rechecks captured identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apple.mpegurl": string;
+                };
+            };
+            /** @description A supported byte range of authorized media. */
+            206: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apple.mpegurl": string;
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unsatisfiable range. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    redirectEvidencePlayback: {
+        parameters: {
+            query: {
+                /** @description Positive epoch seconds or ISO8601; defaults to now. */
+                start?: string;
+                stream: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Empty redirect to the chosen recording playback endpoint; playback independently reauthorizes the recording. */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11634,6 +26916,140 @@ export interface operations {
             };
             /** @description Database, policy, media preparation or serialization failure. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacesResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspacesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacesResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

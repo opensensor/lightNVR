@@ -17,6 +17,8 @@ void authorization_snapshot_free(authorization_snapshot_t *snapshot);
  * of camera grants. No identity or credential values leave the snapshot. */
 bool authorization_snapshot_allows_non_scoped_identity(
     const authorization_snapshot_t *snapshot);
+/* Setup state from the same SQLite snapshot: 1 complete, 0 open, -1 failure. */
+int authorization_snapshot_setup_complete(const authorization_snapshot_t *snapshot);
 int authorization_snapshot_camera_count(const authorization_snapshot_t *snapshot);
 /* camera_index -1 selects a global action. resource is raw/runtime/live.
  * The same index always refers to the same camera across resource variants. */

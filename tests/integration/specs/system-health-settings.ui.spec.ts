@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
+import { contractFixture } from '../fixtures/fleet-contracts';
+import { validateSystemSettings } from '../../../web/generated/api/validators.js';
 import { USERS, login } from '../fixtures/test-fixtures';
 
 const memoryCondition = {
@@ -34,6 +36,12 @@ const healthSettings = {
   },
 };
 
+async function settingsFixture(page: Page) {
+  const response = await page.request.get('/api/settings');
+  expect(response.ok()).toBe(true);
+  return contractFixture(validateSystemSettings, { ...await response.json(), ...healthSettings });
+}
+
 async function mockSettingsAuxiliaryApis(page: Page) {
   await page.route('**/api/auth/sessions', (route) => route.fulfill({
     json: { sessions: [] },
@@ -47,7 +55,8 @@ test.describe('System health settings @ui @settings', () => {
   test('renders bounded administrator controls from the server registry', async ({ page }) => {
     await login(page, USERS.admin);
     await mockSettingsAuxiliaryApis(page);
-    await page.route('**/api/settings', (route) => route.fulfill({ json: healthSettings }));
+    const settings = await settingsFixture(page);
+    await page.route('**/api/settings', (route) => route.fulfill({ json: settings }));
     await page.goto('/settings.html#health', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByTestId('health-settings-tab')).toBeVisible();
@@ -61,13 +70,14 @@ test.describe('System health settings @ui @settings', () => {
   test('keeps dirty edits after an atomic server validation error', async ({ page }) => {
     await login(page, USERS.admin);
     await mockSettingsAuxiliaryApis(page);
+    const settings = await settingsFixture(page);
     let posted: Record<string, unknown> | null = null;
     await page.route('**/api/settings', async (route) => {
       if (route.request().method() === 'POST') {
         posted = route.request().postDataJSON();
         return route.fulfill({ status: 400, json: { error: 'Policy generation changed; reload and retry.' } });
       }
-      return route.fulfill({ json: healthSettings });
+      return route.fulfill({ json: settings });
     });
     await page.goto('/settings.html#health', { waitUntil: 'domcontentloaded' });
     await page.getByLabel('Presence interval').fill('75');
@@ -76,7 +86,8 @@ test.describe('System health settings @ui @settings', () => {
     await save.click();
 
     await expect(page.getByTestId('health-settings-tab').getByRole('alert').first())
-      .toContainText('Policy generation changed');
+      .toContainText('updateSystemSettings failed (HTTP 400)');
+    await expect(page.getByLabel('Presence interval')).toHaveValue('75');
     await expect(save).toBeEnabled();
     expect(posted).toMatchObject({
       health_hardware_provider: 'auto',

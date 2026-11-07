@@ -1,3 +1,4 @@
+import {ContractValidationError} from '../js/api/contractErrors.ts';
 import { recordingsAPI } from '../js/components/preact/recordings/recordingsAPI.tsx';
 
 jest.mock('../js/components/preact/ToastContainer.tsx', () => ({
@@ -25,10 +26,14 @@ jest.mock('../js/query-client.ts', () => ({
 
 const { fetchJSON, enhancedFetch } = require('../js/fetch-utils.ts');
 const { showStatusMessage } = require('../js/components/preact/ToastContainer.tsx');
+const detection = (label) => ({label,confidence:0.9,x:0,y:0,width:1,height:1,timestamp:1771390800,end_timestamp:1771390800});
+const detectionResponse = (detections) => new Response(JSON.stringify({detections,timestamp:'2026-02-18 05:00:00',stream_status:'Running'}),{status:200,headers:{'Content-Type':'application/json'}});
 
 describe('recordingsAPI', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    fetchJSON.mockReset();
+    enhancedFetch.mockReset();
   });
 
   afterEach(() => {
@@ -59,10 +64,10 @@ describe('recordingsAPI', () => {
     const start = recordingsAPI.parseRecordingTimestamp(recording.start_time);
     const end = recordingsAPI.parseRecordingTimestamp(recording.end_time);
 
-    fetchJSON.mockResolvedValue({ detections: [{ label: 'person' }] });
+    enhancedFetch.mockImplementation(async()=>detectionResponse([detection('person')]));
 
     await expect(recordingsAPI.checkRecordingHasDetections(recording)).resolves.toBe(true);
-    expect(fetchJSON).toHaveBeenCalledWith(
+    expect(enhancedFetch).toHaveBeenCalledWith(
       `/api/detection/results/front-yard?start=${start}&end=${end}`,
       expect.objectContaining({ timeout: 10000, retries: 1, retryDelay: 500 })
     );
@@ -76,7 +81,7 @@ describe('recordingsAPI', () => {
       end_time: '2026-02-18T06:01:00Z'
     };
 
-    fetchJSON.mockResolvedValue({ detections: [] });
+    enhancedFetch.mockImplementation(async()=>detectionResponse([]));
 
     await expect(recordingsAPI.checkRecordingHasDetections(recording)).resolves.toBe(false);
   });
@@ -113,7 +118,7 @@ describe('recordingsAPI', () => {
     parseSpy.mockRestore();
   });
 
-  test('checkRecordingHasDetections returns false when fetchJSON throws an error', async () => {
+  test('checkRecordingHasDetections returns false when enhancedFetch throws an error', async () => {
     const recording = {
       id: 45,
       stream: 'front-yard',
@@ -121,7 +126,7 @@ describe('recordingsAPI', () => {
       end_time: '2026-02-18T08:01:00Z'
     };
 
-    fetchJSON.mockRejectedValue(new Error('network error'));
+    enhancedFetch.mockRejectedValue(new Error('network error'));
 
     await expect(recordingsAPI.checkRecordingHasDetections(recording)).resolves.toBe(false);
   });
@@ -135,12 +140,12 @@ describe('recordingsAPI', () => {
     };
     const start = recordingsAPI.parseRecordingTimestamp(recording.start_time);
     const end = recordingsAPI.parseRecordingTimestamp(recording.end_time);
-    const detections = [{ label: 'car' }];
+    const detections = [detection('car')];
 
-    fetchJSON.mockResolvedValue({ detections });
+    enhancedFetch.mockImplementation(async()=>detectionResponse(detections));
 
     await expect(recordingsAPI.getRecordingDetections(recording)).resolves.toEqual(detections);
-    expect(fetchJSON).toHaveBeenCalledWith(
+    expect(enhancedFetch).toHaveBeenCalledWith(
       `/api/detection/results/driveway?start=${start}&end=${end}`,
       expect.objectContaining({ timeout: 15000, retries: 1, retryDelay: 1000 })
     );
@@ -157,7 +162,7 @@ describe('recordingsAPI', () => {
     const result = await recordingsAPI.getRecordingDetections(recording);
 
     expect(result).toEqual([]);
-    expect(fetchJSON).not.toHaveBeenCalled();
+    expect(enhancedFetch).not.toHaveBeenCalled();
   });
 
   test('getRecordingDetections returns empty array when timestamp parsing fails', async () => {
@@ -177,12 +182,12 @@ describe('recordingsAPI', () => {
     const result = await recordingsAPI.getRecordingDetections(recording);
 
     expect(result).toEqual([]);
-    expect(fetchJSON).not.toHaveBeenCalled();
+    expect(enhancedFetch).not.toHaveBeenCalled();
 
     parseSpy.mockRestore();
   });
 
-  test('getRecordingDetections returns empty array when fetchJSON rejects', async () => {
+  test('getRecordingDetections returns empty array when enhancedFetch rejects', async () => {
     const recording = {
       id: 90,
       stream: 'side-yard',
@@ -190,14 +195,14 @@ describe('recordingsAPI', () => {
       end_time: '2026-02-18T05:21:00Z'
     };
 
-    fetchJSON.mockRejectedValue(new Error('network error'));
+    enhancedFetch.mockRejectedValue(new Error('network error'));
 
     const result = await recordingsAPI.getRecordingDetections(recording);
 
     expect(result).toEqual([]);
   });
 
-  test('getRecordingDetections returns empty array when response is missing detections property', async () => {
+  test('getRecordingDetections reports a contract error before its tolerant empty fallback', async () => {
     const recording = {
       id: 91,
       stream: 'garage',
@@ -205,11 +210,14 @@ describe('recordingsAPI', () => {
       end_time: '2026-02-18T05:31:00Z'
     };
 
-    fetchJSON.mockResolvedValue({});
+    const errorLog=jest.spyOn(console,'error').mockImplementation(()=>{});
+    enhancedFetch.mockImplementation(async()=>new Response('{}',{status:200,headers:{'Content-Type':'application/json'}}));
 
     const result = await recordingsAPI.getRecordingDetections(recording);
 
     expect(result).toEqual([]);
+    expect(errorLog).toHaveBeenCalledWith('Error getting detections:',expect.any(ContractValidationError));
+    expect(errorLog.mock.calls[0][1]).toMatchObject({phase:'response'});
   });
 
   test('filter option loaders retain their tolerant default behavior', async () => {

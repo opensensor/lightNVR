@@ -8,6 +8,7 @@
 #define _XOPEN_SOURCE
 #define _GNU_SOURCE
 
+#include "web/device_request.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +58,30 @@ static void add_inventory_metadata(cJSON *json,
 /**
  * @brief Backend-agnostic handler for GET /api/onvif/discovery/status
  */
+static bool valid_onvif_body(const cJSON *body, const char *operation) {
+    static const char *discovery[] = {"network"};
+    static const char *test[] = {"url", "username", "password", "insecure"};
+    static const char *add[] = {"device_url", "profile_token", "stream_name", "username", "password"};
+    static const char *claim[] = {"inventory_uuid", "stream_name"};
+    const char *const *keys = discovery;
+    size_t count = 1;
+    if (!strcmp(operation, "test")) { keys = test; count = 4; }
+    if (!strcmp(operation, "add")) { keys = add; count = 5; }
+    if (!strcmp(operation, "claim")) { keys = claim; count = 2; }
+    if (!device_keys(body, keys, count)) return false;
+    const cJSON *field;
+    cJSON_ArrayForEach(field, body) {
+        if (!strcmp(field->string, "insecure")) { if (!cJSON_IsBool(field)) return false; continue; }
+        size_t maximum = 63;
+        if (!strcmp(field->string, "url") || !strcmp(field->string, "device_url")) maximum = MAX_URL_LENGTH - 1;
+        if (!strcmp(field->string, "stream_name")) maximum = MAX_STREAM_NAME - 1;
+        if (!strcmp(field->string, "network")) maximum = 255;
+        bool empty = !strcmp(field->string, "network") || !strcmp(field->string, "username") || !strcmp(field->string, "password");
+        if (!device_string(field, maximum, empty)) return false;
+    }
+    return true;
+}
+
 void handle_get_onvif_discovery_status(const http_request_t *req, http_response_t *res) {
     if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     log_info("Handling GET /api/onvif/discovery/status request");
@@ -182,8 +207,9 @@ void handle_post_discover_onvif_devices(const http_request_t *req, http_response
     log_info("Handling POST /api/onvif/discovery/discover request");
 
     // Parse JSON request
-    cJSON *root = httpd_parse_json_body(req);
-    if (!root) {
+    cJSON *root = device_json_body(req);
+    if (!valid_onvif_body(root, "discovery")) {
+        cJSON_Delete(root);
         log_error("Invalid JSON request");
         http_response_set_json_error(res, 400, "Invalid JSON request");
         return;
@@ -296,7 +322,8 @@ void handle_get_onvif_device_profiles(const http_request_t *req, http_response_t
     const char *username_param = http_request_get_header(req, "X-Username");
     const char *password_param = http_request_get_header(req, "X-Password");
 
-    if (!device_url_param) {
+    if (!device_url_param || !*device_url_param || strlen(device_url_param) >= MAX_URL_LENGTH ||
+        (username_param && strlen(username_param) >= 64) || (password_param && strlen(password_param) >= 64)) {
         log_error("Missing device_url parameter");
         http_response_set_json_error(res, 400, "Missing device_url parameter");
         return;
@@ -411,8 +438,9 @@ void handle_post_add_onvif_device_as_stream(const http_request_t *req, http_resp
     log_info("Handling POST /api/onvif/device/add request");
 
     // Parse JSON request
-    cJSON *root = httpd_parse_json_body(req);
-    if (!root) {
+    cJSON *root = device_json_body(req);
+    if (!valid_onvif_body(root, "add")) {
+        cJSON_Delete(root);
         log_error("Invalid JSON request");
         http_response_set_json_error(res, 400, "Invalid JSON request");
         return;
@@ -436,7 +464,8 @@ void handle_post_add_onvif_device_as_stream(const http_request_t *req, http_resp
 
     const char *device_url = device_url_json->valuestring;
     const char *profile_token = profile_token_json->valuestring;
-    const char *stream_name = stream_name_json->valuestring;
+    char stream_name[MAX_STREAM_NAME];
+    safe_strcpy(stream_name, stream_name_json->valuestring, sizeof(stream_name), 0);
     const char *username = username_json && cJSON_IsString(username_json) ? username_json->valuestring : NULL;
     const char *password = password_json && cJSON_IsString(password_json) ? password_json->valuestring : NULL;
 
@@ -524,8 +553,9 @@ void handle_post_add_onvif_device_as_stream(const http_request_t *req, http_resp
 void handle_post_claim_onvif_device(const http_request_t *req,
                                     http_response_t *res) {
     if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
-    cJSON *root = httpd_parse_json_body(req);
-    if (!root) {
+    cJSON *root = device_json_body(req);
+    if (!valid_onvif_body(root, "claim")) {
+        cJSON_Delete(root);
         http_response_set_json_error(res, 400, "Invalid JSON request");
         return;
     }
@@ -566,8 +596,9 @@ void handle_post_test_onvif_connection(const http_request_t *req, http_response_
     log_info("Handling POST /api/onvif/device/test request");
 
     // Parse JSON request
-    cJSON *root = httpd_parse_json_body(req);
-    if (!root) {
+    cJSON *root = device_json_body(req);
+    if (!valid_onvif_body(root, "test")) {
+        cJSON_Delete(root);
         log_error("Invalid JSON request");
         http_response_set_json_error(res, 400, "Invalid JSON request");
         return;

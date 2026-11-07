@@ -1,3 +1,4 @@
+import { getStreamZones } from '../../api/mediaLifecycle.ts';
 /**
  * Stream Configuration Modal Component
  * Expanded, responsive modal with accordion sections for stream configuration
@@ -17,7 +18,6 @@ import type {
   ExpandedSections,
   StreamFormState,
   StreamInputHandler,
-  ZonesResponse,
 } from '../../types/streams.ts';
 import { inlineSideOfArrow } from '../../utils/a11y.ts';
 
@@ -409,27 +409,9 @@ export function StreamConfigModal({
       }
 
       try {
-        const response = await fetch(`/api/streams/${encodeURIComponent(currentStream.name)}/zones`);
-        if (response.ok) {
-          const data: ZonesResponse = await response.json();
-          if (data.zones && Array.isArray(data.zones)) {
-            setDetectionZones(data.zones);
-            // Use ref so we always call the latest callback without making it
-            // a dependency of this effect.
-            onInputChangeRef.current({ target: { name: 'detectionZones', value: data.zones } });
-          }
-        } else {
-          console.error('Failed to load zones:', response.status, response.statusText);
-          const statusCode = response.status;
-          const statusText = response.statusText || '';
-          showStatusMessage(
-            t('streamsConfig.zonesLoadFailed', {
-              statusCode,
-              statusText: statusText ? `: ${statusText}` : '',
-            }),
-            'error'
-          );
-        }
+        const data = await getStreamZones(currentStream.name);
+        setDetectionZones(data.zones);
+        onInputChangeRef.current({ target: { name: 'detectionZones', value: data.zones } });
       } catch (error) {
         console.error('Error loading zones:', error);
         const errorMessage = ((error as Error) && (error as Error).message) ? (error as Error).message : String(error || '');

@@ -21,6 +21,7 @@
 #include "unity.h"
 #include "utils/strings.h"
 #include "web/api_handlers_storage_targets.h"
+#include "web/api_handlers.h"
 #include "web/api_handlers_storage_migrations.h"
 #include "web/request_response.h"
 
@@ -29,6 +30,13 @@
 static char default_root[] = "/tmp/lightnvr-api-target-default-XXXXXX";
 static char second_root[] = "/tmp/lightnvr-api-target-second-XXXXXX";
 static char default_uuid[LIGHTNVR_UUID_STRING_SIZE];
+static int cleanup_calls;
+static bool cleanup_aggressive;
+void __wrap_trigger_storage_cleanup(bool aggressive) {
+    cleanup_calls++;
+    cleanup_aggressive = aggressive;
+}
+
 
 static const char *method_name(http_method_t method) {
     switch (method) {
@@ -301,6 +309,27 @@ void test_migration_api_creates_and_lists_durable_job(void) {
     unlink(recording_path);
 }
 
+static void test_cleanup_rejects_invalid_body_without_scheduling(void) {
+    cleanup_calls = 0;
+    const char *invalid[] = {"[]", "false", "{", "{\"aggressive\":true}junk", "{\"aggressive\":\"yes\"}"};
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(*invalid); ++i) {
+        cJSON *json = call(handle_post_storage_cleanup, HTTP_METHOD_POST,
+            "/api/storage/cleanup", NULL, invalid[i], NULL, 400);
+        cJSON_Delete(json);
+        TEST_ASSERT_EQUAL_INT(0, cleanup_calls);
+    }
+    cJSON *json = call(handle_post_storage_cleanup, HTTP_METHOD_POST,
+        "/api/storage/cleanup", NULL, "{\"aggressive\":true}", NULL, 200);
+    cJSON_Delete(json);
+    TEST_ASSERT_EQUAL_INT(1, cleanup_calls);
+    TEST_ASSERT_TRUE(cleanup_aggressive);
+    json = call(handle_post_storage_cleanup, HTTP_METHOD_POST,
+        "/api/storage/cleanup", NULL, NULL, NULL, 200);
+    cJSON_Delete(json);
+    TEST_ASSERT_EQUAL_INT(2, cleanup_calls);
+    TEST_ASSERT_FALSE(cleanup_aggressive);
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(default_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(second_root));
@@ -310,6 +339,7 @@ int main(void) {
         return 1;
     }
     UNITY_BEGIN();
+    RUN_TEST(test_cleanup_rejects_invalid_body_without_scheduling);
     RUN_TEST(test_storage_target_api_creates_lists_probes_and_deletes);
     RUN_TEST(test_unavailable_target_must_be_staged_disabled);
     RUN_TEST(test_viewer_cannot_read_storage_target_configuration);

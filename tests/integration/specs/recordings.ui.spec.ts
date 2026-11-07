@@ -8,6 +8,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { RecordingsPage } from '../pages/RecordingsPage';
 import { USERS, login, sleep } from '../fixtures/test-fixtures';
+import { contractFixture } from '../fixtures/fleet-contracts';
+import { validateEvidenceDetections, validateRecordingDetail } from '../../../web/generated/api/validators.js';
 import { serveRecordingMedia } from '../fixtures/recording-media';
 
 type MockRecording = {
@@ -327,18 +329,22 @@ test.describe('Recordings Page @ui @recordings', () => {
         }
         return serveRecordingMedia(route);
       });
-      await page.route('**/api/recordings/601', route => route.fulfill({ json: {
-        id: 601,
+      await page.route('**/api/recordings/601', route => route.fulfill({ json: contractFixture(validateRecordingDetail, {
+        id: 601, camera_uuid: null, file_path: '/fixture/601.mp4',
+        start_time_unix: 1741442400, end_time_unix: 1741442460,
+        in_progress: false, playback_issue: '', duration: 60, size: '1 MB',
+        capture_method: 'scheduled', schedule_restricted: false,
         stream: 'cam1',
         start_time: '2026-03-08T14:00:00Z',
         end_time: '2026-03-08T14:01:00Z',
         protected: false,
         has_detection: true,
         detection_labels: [{ label: 'person', count: 1 }]
-      } }));
-      await page.route('**/api/detection/results/cam1?**', route => route.fulfill({ json: {
+      }) }));
+      await page.route('**/api/detection/results/cam1?**', route => route.fulfill({ json: contractFixture(validateEvidenceDetections, {
+        timestamp: '2026-03-08T14:00:00Z', stream_status: 'Running',
         detections: [{
-          timestamp: 1741442401,
+          timestamp: 1741442401, end_timestamp: 1741442402,
           x: 0.1,
           y: 0.1,
           width: 0.25,
@@ -346,7 +352,7 @@ test.describe('Recordings Page @ui @recordings', () => {
           label: 'person',
           confidence: 0.95
         }]
-      } }));
+      }) }));
 
       await recordingsPage.goto();
 
