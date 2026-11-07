@@ -500,6 +500,12 @@ void handle_put_camera_tag_assignments(const http_request_t *req,
                     sizeof(tag_storage[i]), 0);
         tag_uuids[i] = tag_storage[i];
     }
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_LIVE_VIEW, camera_uuid, NULL, &(user_t){0},
+            &(fleet_camera_t){0}, &(authorization_evaluation_t){0})) {
+        cJSON_Delete(body);
+        return;
+    }
     cJSON_Delete(body);
     db_camera_tag_result_t result =
         db_camera_tag_set_for_camera(camera_uuid, tag_uuids, count);
