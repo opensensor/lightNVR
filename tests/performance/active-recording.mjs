@@ -69,7 +69,13 @@ try {
   await save();await new Promise(resolve=>setTimeout(resolve,1000));
  }
  for(let i=0;i<count;i++)await server.json(`/api/streams/Load${i}/recording`,{method:'POST',body:{action:'stop'}});
- const rows=(await server.json('/api/recordings?limit=1000')).recordings;
+ const rows=[];
+ const pageLimit=1000;
+ for(let offset=0;;offset+=pageLimit){
+  const page=(await server.json(`/api/recordings?limit=${pageLimit}&offset=${offset}`)).recordings || [];
+  rows.push(...page);
+  if(page.length<pageLimit)break;
+ }
  for(const row of rows){
   const detail=await server.json(`/api/recordings/${row.id}`);
   const filename=detail.file_path||detail.recording?.file_path;
