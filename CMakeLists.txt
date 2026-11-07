@@ -229,7 +229,7 @@ endmacro()
 # linked unconditionally below, so ENABLE_SSL only compiles the TLS code in.
 # The former OpenSSL/WolfSSL selections linked libraries nothing used.
 foreach(_removed_ssl_option USE_MBEDTLS USE_WOLFSSL)
-    if(${_removed_ssl_option})
+    if(DEFINED ${_removed_ssl_option} AND ${_removed_ssl_option})
         message(WARNING "${_removed_ssl_option} is no longer used: HTTPS always uses mbedTLS")
     endif()
     unset(${_removed_ssl_option} CACHE)
@@ -638,17 +638,17 @@ endif()
 include_directories(${LIGHTNVR_INCLUDE_DIRS})
 
 # Define source files, excluding SOD sources which are built separately
-file(GLOB CORE_SOURCES "src/core/*.c")
+file(GLOB CORE_SOURCES CONFIGURE_DEPENDS "src/core/*.c")
 # Exclude main.c from CORE_SOURCES so it is not compiled into lightnvr_lib.
 # Test executables link against lightnvr_lib and provide their own main(); having
 # main.c.o inside the library would produce a duplicate-symbol link error.
 # main.c is compiled directly into the lightnvr executable via add_executable().
 list(FILTER CORE_SOURCES EXCLUDE REGEX ".*core/main\\.c$")
 message(STATUS "Excluding main.c from CORE_SOURCES (library build)")
-file(GLOB DATABASE_SOURCES "src/database/*.c")
-file(GLOB STORAGE_SOURCES "src/storage/*.c")
-file(GLOB UTILS_SOURCES "src/utils/*.c")
-file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
+file(GLOB DATABASE_SOURCES CONFIGURE_DEPENDS "src/database/*.c")
+file(GLOB STORAGE_SOURCES CONFIGURE_DEPENDS "src/storage/*.c")
+file(GLOB UTILS_SOURCES CONFIGURE_DEPENDS "src/utils/*.c")
+file(GLOB_RECURSE WEB_SOURCES CONFIGURE_DEPENDS "src/web/*.c")
 
 # Filter web sources - exclude libuv sources (they're added separately via LIBUV_SERVER_SOURCES)
 list(FILTER WEB_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
@@ -681,7 +681,7 @@ list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*hls_writer_thread\\.c$")
 
 # Add HLS sources
-file(GLOB HLS_SOURCES "src/video/hls/*.c")
+file(GLOB HLS_SOURCES CONFIGURE_DEPENDS "src/video/hls/*.c")
 # hls_unified_thread.c is added explicitly via HLS_UNIFIED_THREAD_SOURCES below.
 # Exclude it here to avoid duplicate source listing.
 list(FILTER HLS_SOURCES EXCLUDE REGEX ".*hls_unified_thread\\.c$")
