@@ -818,8 +818,8 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     int camera_scope_count = 0;
     if (ids_array && cJSON_IsArray(ids_array)) {
         // Delete by IDs
-        total_count = cJSON_GetArraySize(ids_array);
-        if (total_count == 0) {
+        int requested_count = cJSON_GetArraySize(ids_array);
+        if (requested_count == 0) {
             log_warn("Empty 'ids' array in batch delete request");
             cJSON_Delete(json);
             http_response_set_json_error(res, 400, "Empty 'ids' array");
@@ -830,6 +830,11 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
             cJSON_Delete(json);
             return;
         }
+        cJSON *authorized_ids_array = cJSON_GetObjectItem(json, "ids");
+        int authorized_count = (authorized_ids_array && cJSON_IsArray(authorized_ids_array))
+                                   ? cJSON_GetArraySize(authorized_ids_array)
+                                   : 0;
+        total_count = authorized_count + preflight_error_count;
     } else if (filter && cJSON_IsObject(filter)) {
         // Delete by filter - total count will be determined by worker thread
         total_count = 0;
