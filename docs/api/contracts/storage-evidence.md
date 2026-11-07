@@ -151,3 +151,12 @@ and regenerate all four artifacts. Add `StorageOperation` and its mutation
 uncertainty cases to the shared contract error union alongside other slices.
 CMake changes add only the scheduling wrapper and sanitizer label to the existing
 storage-target handler test. Root owns event routing and later integration.
+
+## Redirect transport follow-up
+
+The storage adapter now pins `redirect: 'error'` and `credentials: 'same-origin'`
+after caller options. Two owned-origin HTTP regressions reproduce 307 and 308
+forwarding of a target configuration and credential reference before the fix;
+after the fix the source sees exactly one request and the redirect destination
+receives no body. Caller transport overrides and retry settings cannot bypass
+this boundary (`storageRedirect.spec.ts`, shared `redirectHarness.ts`).
