@@ -167,11 +167,12 @@ int http_request_get_query_param(const http_request_t *req, const char *name,
             }
 
             // URL decode the value
-            char encoded[1024] = {0};
-            if (val_len < sizeof(encoded)) {
+            char *encoded = malloc(val_len + 1);
+            if (encoded) {
                 memcpy(encoded, val_start, val_len);
                 encoded[val_len] = '\0';
                 url_decode(encoded, value, value_len);
+                free(encoded);
             } else {
                 memcpy(value, val_start, val_len);
                 value[val_len] = '\0';
