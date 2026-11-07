@@ -807,6 +807,8 @@ void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
         start_time = parse_iso8601_time(start_time_str);
         if (start_time == 0) {
             log_error("Failed to parse start time: %s", start_time_str);
+            http_response_set_json_error(res, 400, "Invalid start time format");
+            return;
         }
     } else {
         // Default to 24 hours ago
@@ -817,6 +819,8 @@ void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
         end_time = parse_iso8601_time(end_time_str);
         if (end_time == 0) {
             log_error("Failed to parse end time: %s", end_time_str);
+            http_response_set_json_error(res, 400, "Invalid end time format");
+            return;
         }
         // For date-only format, set to end of day
         if (strlen(end_time_str) == 10) {  // YYYY-MM-DD format
@@ -1110,40 +1114,65 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
     time_t overall_start = 0, overall_end = 0;
     int seg_count = 0;
 
+    recording_metadata_t *records = calloc((size_t)id_count, sizeof(*records));
+    recording_detection_summary_t *summaries = calloc((size_t)id_count, sizeof(*summaries));
+    if (!records || !summaries) {
+        free(records);
+        free(summaries);
+        cJSON_Delete(response);
+        http_response_set_json_error(res, 500, "Failed to allocate recording metadata");
+        return;
+    }
+
+    // Keep the existing metadata lookup and authorization semantics, then
+    // enrich only authorized recordings in one bounded detection batch.
+    int record_count = 0;
+    const time_t now = time(NULL);
     for (int i = 0; i < id_count; i++) {
-        recording_metadata_t rec;
-        memset(&rec, 0, sizeof(rec));
+        recording_metadata_t rec = {0};
         if (get_recording_metadata_by_id(ids[i], &rec) != 0) {
             log_warn("Recording ID %llu not found, skipping", (unsigned long long)ids[i]);
             continue;
         }
-        // Authorize against capture identity, not a historical name that may
-        // have been renamed or reassigned to a different camera.
         authorization_evaluation_t replay_evaluation;
         int evaluation_result = httpd_evaluate_camera_identity_action(&user,
             AUTHZ_RECORDINGS_REPLAY, rec.camera_uuid, rec.stream_name, &replay_evaluation);
         if (evaluation_result > 0) continue;
         if (evaluation_result < 0) {
+            free(summaries);
+            free(records);
             cJSON_Delete(response);
             http_response_set_json_error(res, 500, "Authorization policy evaluation failed");
             return;
         }
         if (replay_evaluation.decision != AUTHZ_DECISION_ALLOW) continue;
 
-        /* A segment that is still recording has no committed end_time; use
-         * "now" as its effective end for display and detection checks (#482). */
-        const bool in_progress = !rec.is_complete;
-        const time_t effective_end =
-            (in_progress && rec.end_time <= 0) ? time(NULL) : rec.end_time;
+        // Use the same effective end for detection queries and display (#482).
+        if (!rec.is_complete && rec.end_time <= 0) rec.end_time = now;
+        records[record_count++] = rec;
+    }
 
-        recording_metadata_t observed = rec;
-        observed.end_time = effective_end;
-        recording_detection_summary_t summary;
-        if (get_recording_detection_summaries_for_cameras(&observed, 1, &summary) != 0) {
-            cJSON_Delete(response);
-            http_response_set_json_error(res, 500, "Failed to get recording detections");
-            return;
+    if (record_count > 0 &&
+        get_recording_detection_summaries_for_cameras(records, record_count, summaries) != 0) {
+        free(summaries);
+        free(records);
+        cJSON_Delete(response);
+        http_response_set_json_error(res, 500, "Failed to get recording detections");
+        return;
+    }
+
+    for (int i = 0; i < record_count; i++) {
+        const recording_metadata_t rec = records[i];
+        const bool in_progress = !rec.is_complete;
+        const time_t effective_end = rec.end_time;
+
+        // The batch API returns a summary for the first occurrence of an ID.
+        // Preserve repeated-ID response entries and their detection flags.
+        int summary_index = i;
+        for (int j = 0; j < i; j++) {
+            if (records[j].id == rec.id) { summary_index = j; break; }
         }
+        const recording_detection_summary_t summary = summaries[summary_index];
         bool has_det = strcmp(rec.trigger_type, "detection") == 0 || summary.has_detection;
 
         /* Track overall time range */
@@ -1203,6 +1232,9 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         cJSON_AddItemToArray(segments_array, segment);
         seg_count++;
     }
+
+    free(summaries);
+    free(records);
 
     /* Add metadata */
     cJSON_AddStringToObject(response, "stream", "(selected)");

@@ -316,6 +316,7 @@ add_layer2_test(test_db_auth CI_UNIT CI_SANITIZER)
 target_link_options(test_db_auth PRIVATE "-Wl,--wrap=time")
 add_layer2_test(test_totp CI_UNIT CI_SANITIZER)
 add_layer2_test(test_authorization CI_UNIT)
+target_link_options(test_authorization PRIVATE "-Wl,--wrap=get_recording_detection_summaries_for_cameras")
 add_layer2_test(test_openapi_projection CI_UNIT CI_SANITIZER)
 target_link_options(test_openapi_projection PRIVATE
     "-Wl,--wrap=authorization_snapshot_setup_complete"
