@@ -116,7 +116,12 @@ def validate(doc, projected=False):
             ids.add(operation['operationId'])
             if not projected and 'x-lightnvr-authorization' not in operation:
                 raise ValueError('Every canonical operation needs authorization metadata')
-    schemas = doc.get('components', {}).get('schemas', {})
+    components = doc.get('components', {})
+    if not isinstance(components, dict):
+        raise ValueError('Contract components must be an object')
+    schemas = components.get('schemas', {})
+    if not isinstance(schemas, dict):
+        raise ValueError('Contract components.schemas must be an object')
     selected = doc.get('x-lightnvr-validators', list(schemas))
     if not isinstance(selected, list):
         raise ValueError('x-lightnvr-validators must be a unique schema name array')
