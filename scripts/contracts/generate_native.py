@@ -80,7 +80,10 @@ def validate(doc, projected=False):
                         raise ValueError('Only local operationRef pointers are supported')
                     resolve_pointer(child)
                 if key == 'discriminator' and isinstance(child, dict):
-                    for reference in child.get('mapping', {}).values():
+                    mapping = child.get('mapping', {})
+                    if not isinstance(mapping, dict):
+                        raise ValueError('Discriminator mapping must be an object')
+                    for reference in mapping.values():
                         if not isinstance(reference, str):
                             raise ValueError('Unsupported discriminator mapping reference')
                         if reference.startswith('#/'):
