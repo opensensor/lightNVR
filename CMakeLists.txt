@@ -229,7 +229,7 @@ endmacro()
 # linked unconditionally below, so ENABLE_SSL only compiles the TLS code in.
 # The former OpenSSL/WolfSSL selections linked libraries nothing used.
 foreach(_removed_ssl_option USE_MBEDTLS USE_WOLFSSL)
-    if(${_removed_ssl_option})
+    if(DEFINED ${_removed_ssl_option} AND ${_removed_ssl_option})
         message(WARNING "${_removed_ssl_option} is no longer used: HTTPS always uses mbedTLS")
     endif()
     unset(${_removed_ssl_option} CACHE)
