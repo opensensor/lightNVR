@@ -4606,6 +4606,264 @@ validate142.evaluated = {
   dynamicItems: !1
 };
 
+var __contract_CameraCollectionCreate = validate184, schema200 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      minLength: 1,
+      maxLength: 127
+    },
+    description: {
+      type: "string",
+      maxLength: 511
+    },
+    type: {
+      type: "string",
+      enum: [ "static", "smart" ]
+    },
+    shared: {
+      type: "boolean"
+    },
+    selector: {
+      $ref: "#/$defs/FleetSelector"
+    }
+  },
+  required: [ "name", "type" ],
+  additionalProperties: !1
+};
+
+function validate184(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate184.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate184.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate184.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.type) return validate184.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "type"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("name" !== key0 && "description" !== key0 && "type" !== key0 && "shared" !== key0 && "selector" !== key0) return validate184.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate184.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate184.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate184.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.description) {
+            let data1 = data.description, _errs4 = errors;
+            if (errors === _errs4) {
+              if ("string" != typeof data1) return validate184.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data1) > 511) return validate184.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 511
+                }
+              } ], !1;
+            }
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.type) {
+              let data2 = data.type, _errs6 = errors;
+              if ("string" != typeof data2) return validate184.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if ("static" !== data2 && "smart" !== data2) return validate184.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/enum",
+                keyword: "enum",
+                params: {
+                  allowedValues: schema200.properties.type.enum
+                }
+              } ], !1;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.shared) {
+                let _errs8 = errors;
+                if ("boolean" != typeof data.shared) return validate184.errors = [ {
+                  instancePath: instancePath + "/shared",
+                  schemaPath: "#/properties/shared/type",
+                  keyword: "type",
+                  params: {
+                    type: "boolean"
+                  }
+                } ], !1;
+                var valid3 = _errs8 === errors;
+              } else valid3 = !0;
+              valid3 && void 0 !== data.selector && (validate142(data.selector, {
+                instancePath: instancePath + "/selector",
+                parentData: data,
+                parentDataProperty: "selector",
+                rootData: rootData,
+                dynamicAnchors: dynamicAnchors
+              }) || (vErrors = vErrors.concat(validate142.errors), errors = vErrors.length));
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate184.errors = vErrors, 0 === errors;
+}
+
+validate184.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_CameraCollectionMembersRequest = validate188;
+
+function validate188(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate188.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate188.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.camera_uuids) return validate188.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "camera_uuids"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("camera_uuids" !== key0) return validate188.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.camera_uuids) {
+      let data0 = data.camera_uuids;
+      if (!Array.isArray(data0)) return validate188.errors = [ {
+        instancePath: instancePath + "/camera_uuids",
+        schemaPath: "#/properties/camera_uuids/type",
+        keyword: "type",
+        params: {
+          type: "array"
+        }
+      } ], !1;
+      if (data0.length > 4096) return validate188.errors = [ {
+        instancePath: instancePath + "/camera_uuids",
+        schemaPath: "#/properties/camera_uuids/maxItems",
+        keyword: "maxItems",
+        params: {
+          limit: 4096
+        }
+      } ], !1;
+      {
+        let len0 = data0.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          let data1 = data0[i0], _errs4 = 0;
+          if ("string" != typeof data1) return validate188.errors = [ {
+            instancePath: instancePath + "/camera_uuids/" + i0,
+            schemaPath: "#/$defs/CameraUuid/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (!pattern4.test(data1)) return validate188.errors = [ {
+            instancePath: instancePath + "/camera_uuids/" + i0,
+            schemaPath: "#/$defs/CameraUuid/pattern",
+            keyword: "pattern",
+            params: {
+              pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          } ], !1;
+          if (0 !== _errs4) break;
+        }
+      }
+    }
+  }
+  return validate188.errors = [], !0;
+}
+
+validate188.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
 var __contract_CameraCollectionMembersResponse = validate172;
 
 function validate172(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
@@ -4969,6 +5227,165 @@ validate173.evaluated = {
   dynamicItems: !1
 };
 
+var __contract_CameraCollectionUpdate = validate186, schema201 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      minLength: 1,
+      maxLength: 127
+    },
+    description: {
+      type: "string",
+      maxLength: 511
+    },
+    type: {
+      type: "string",
+      enum: [ "static", "smart" ]
+    },
+    shared: {
+      type: "boolean"
+    },
+    selector: {
+      $ref: "#/$defs/FleetSelector"
+    }
+  },
+  required: [],
+  additionalProperties: !1
+};
+
+function validate186(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate186.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate186.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("name" !== key0 && "description" !== key0 && "type" !== key0 && "shared" !== key0 && "selector" !== key0) return validate186.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate186.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate186.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate186.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.description) {
+            let data1 = data.description, _errs4 = errors;
+            if (errors === _errs4) {
+              if ("string" != typeof data1) return validate186.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data1) > 511) return validate186.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 511
+                }
+              } ], !1;
+            }
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.type) {
+              let data2 = data.type, _errs6 = errors;
+              if ("string" != typeof data2) return validate186.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if ("static" !== data2 && "smart" !== data2) return validate186.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/enum",
+                keyword: "enum",
+                params: {
+                  allowedValues: schema201.properties.type.enum
+                }
+              } ], !1;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.shared) {
+                let _errs8 = errors;
+                if ("boolean" != typeof data.shared) return validate186.errors = [ {
+                  instancePath: instancePath + "/shared",
+                  schemaPath: "#/properties/shared/type",
+                  keyword: "type",
+                  params: {
+                    type: "boolean"
+                  }
+                } ], !1;
+                var valid3 = _errs8 === errors;
+              } else valid3 = !0;
+              valid3 && void 0 !== data.selector && (validate142(data.selector, {
+                instancePath: instancePath + "/selector",
+                parentData: data,
+                parentDataProperty: "selector",
+                rootData: rootData,
+                dynamicAnchors: dynamicAnchors
+              }) || (vErrors = vErrors.concat(validate142.errors), errors = vErrors.length));
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate186.errors = vErrors, 0 === errors;
+}
+
+validate186.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
 var __contract_CameraCollectionsResponse = validate170;
 
 function validate170(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
@@ -5064,6 +5481,527 @@ function validate170(data, {instancePath: instancePath = "", parentData: parentD
 }
 
 validate170.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_CameraFavorite = validate203;
+
+function validate203(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate203.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate203.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.camera_uuid) return validate203.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "camera_uuid"
+    }
+  } ], !1;
+  if (void 0 === data.created_at) return validate203.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "created_at"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("camera_uuid" !== key0 && "created_at" !== key0) return validate203.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.camera_uuid) {
+        let data0 = data.camera_uuid, _errs2 = 0;
+        if ("string" != typeof data0) return validate203.errors = [ {
+          instancePath: instancePath + "/camera_uuid",
+          schemaPath: "#/$defs/CameraUuid/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+        if (!pattern4.test(data0)) return validate203.errors = [ {
+          instancePath: instancePath + "/camera_uuid",
+          schemaPath: "#/$defs/CameraUuid/pattern",
+          keyword: "pattern",
+          params: {
+            pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0 && void 0 !== data.created_at) {
+        let data1 = data.created_at, _errs5 = 0;
+        if ("number" != typeof data1 || data1 % 1 || isNaN(data1) || !isFinite(data1)) return validate203.errors = [ {
+          instancePath: instancePath + "/created_at",
+          schemaPath: "#/properties/created_at/type",
+          keyword: "type",
+          params: {
+            type: "integer"
+          }
+        } ], !1;
+        if (0 === _errs5 && "number" == typeof data1 && isFinite(data1) && (data1 < 0 || isNaN(data1))) return validate203.errors = [ {
+          instancePath: instancePath + "/created_at",
+          schemaPath: "#/properties/created_at/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: 0
+          }
+        } ], !1;
+      }
+    }
+  }
+  return validate203.errors = [], !0;
+}
+
+validate203.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_CameraFavoriteRemoval = validate206;
+
+function validate206(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate206.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate206.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate206.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  if (void 0 === data.removed) return validate206.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "removed"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0 && "removed" !== key0) return validate206.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.success) {
+        let data0 = data.success, _errs2 = 0;
+        if ("boolean" != typeof data0) return validate206.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/type",
+          keyword: "type",
+          params: {
+            type: "boolean"
+          }
+        } ], !1;
+        if (!0 !== data0) return validate206.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/const",
+          keyword: "const",
+          params: {
+            allowedValue: !0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0 && void 0 !== data.removed && "boolean" != typeof data.removed) return validate206.errors = [ {
+        instancePath: instancePath + "/removed",
+        schemaPath: "#/properties/removed/type",
+        keyword: "type",
+        params: {
+          type: "boolean"
+        }
+      } ], !1;
+    }
+  }
+  return validate206.errors = [], !0;
+}
+
+validate206.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_CameraFavoritesResponse = validate204;
+
+function validate204(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate204.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate204.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.favorites) return validate204.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "favorites"
+      }
+    } ], !1;
+    if (void 0 === data.can_modify) return validate204.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "can_modify"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("favorites" !== key0 && "can_modify" !== key0) return validate204.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.favorites) {
+          let data0 = data.favorites, _errs2 = errors;
+          if (errors === _errs2) {
+            if (!Array.isArray(data0)) return validate204.errors = [ {
+              instancePath: instancePath + "/favorites",
+              schemaPath: "#/properties/favorites/type",
+              keyword: "type",
+              params: {
+                type: "array"
+              }
+            } ], !1;
+            {
+              let len0 = data0.length;
+              for (let i0 = 0; i0 < len0; i0++) {
+                let _errs4 = errors;
+                if (validate203(data0[i0], {
+                  instancePath: instancePath + "/favorites/" + i0,
+                  parentData: data0,
+                  parentDataProperty: i0,
+                  rootData: rootData,
+                  dynamicAnchors: dynamicAnchors
+                }) || (vErrors = vErrors.concat(validate203.errors), errors = vErrors.length), _errs4 !== errors) break;
+              }
+            }
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0 && void 0 !== data.can_modify && "boolean" != typeof data.can_modify) return validate204.errors = [ {
+          instancePath: instancePath + "/can_modify",
+          schemaPath: "#/properties/can_modify/type",
+          keyword: "type",
+          params: {
+            type: "boolean"
+          }
+        } ], !1;
+      }
+    }
+  }
+  return validate204.errors = vErrors, 0 === errors;
+}
+
+validate204.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_CameraLocationAssignment = validate178;
+
+function validate178(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate178.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate178.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate178.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  if (void 0 === data.camera_uuid) return validate178.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "camera_uuid"
+    }
+  } ], !1;
+  if (void 0 === data.location_uuid) return validate178.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "location_uuid"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0 && "camera_uuid" !== key0 && "location_uuid" !== key0) return validate178.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.success) {
+        let data0 = data.success, _errs2 = 0;
+        if ("boolean" != typeof data0) return validate178.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/type",
+          keyword: "type",
+          params: {
+            type: "boolean"
+          }
+        } ], !1;
+        if (!0 !== data0) return validate178.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/const",
+          keyword: "const",
+          params: {
+            allowedValue: !0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.camera_uuid) {
+          let data1 = data.camera_uuid, _errs4 = 0;
+          if ("string" != typeof data1) return validate178.errors = [ {
+            instancePath: instancePath + "/camera_uuid",
+            schemaPath: "#/$defs/CameraUuid/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (!pattern4.test(data1)) return validate178.errors = [ {
+            instancePath: instancePath + "/camera_uuid",
+            schemaPath: "#/$defs/CameraUuid/pattern",
+            keyword: "pattern",
+            params: {
+              pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.location_uuid) {
+          let data2 = data.location_uuid;
+          if ("string" != typeof data2) return validate178.errors = [ {
+            instancePath: instancePath + "/location_uuid",
+            schemaPath: "#/$defs/CameraUuid/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (!pattern4.test(data2)) return validate178.errors = [ {
+            instancePath: instancePath + "/location_uuid",
+            schemaPath: "#/$defs/CameraUuid/pattern",
+            keyword: "pattern",
+            params: {
+              pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          } ], !1;
+        }
+      }
+    }
+  }
+  return validate178.errors = [], !0;
+}
+
+validate178.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_CameraLocationAssignmentRequest = validate177;
+
+function validate177(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate177.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate177.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.location_uuid) return validate177.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "location_uuid"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("location_uuid" !== key0) return validate177.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.location_uuid) {
+      let data0 = data.location_uuid;
+      if ("string" != typeof data0) return validate177.errors = [ {
+        instancePath: instancePath + "/location_uuid",
+        schemaPath: "#/$defs/CameraUuid/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      } ], !1;
+      if (!pattern4.test(data0)) return validate177.errors = [ {
+        instancePath: instancePath + "/location_uuid",
+        schemaPath: "#/$defs/CameraUuid/pattern",
+        keyword: "pattern",
+        params: {
+          pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        }
+      } ], !1;
+    }
+  }
+  return validate177.errors = [], !0;
+}
+
+validate177.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_CameraTagAssignmentsRequest = validate183;
+
+function validate183(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate183.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.tag_uuids) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "tag_uuids"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("tag_uuids" !== key0) return validate183.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.tag_uuids) {
+      let data0 = data.tag_uuids;
+      if (!Array.isArray(data0)) return validate183.errors = [ {
+        instancePath: instancePath + "/tag_uuids",
+        schemaPath: "#/properties/tag_uuids/type",
+        keyword: "type",
+        params: {
+          type: "array"
+        }
+      } ], !1;
+      if (data0.length > 64) return validate183.errors = [ {
+        instancePath: instancePath + "/tag_uuids",
+        schemaPath: "#/properties/tag_uuids/maxItems",
+        keyword: "maxItems",
+        params: {
+          limit: 64
+        }
+      } ], !1;
+      {
+        let len0 = data0.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          let data1 = data0[i0], _errs4 = 0;
+          if ("string" != typeof data1) return validate183.errors = [ {
+            instancePath: instancePath + "/tag_uuids/" + i0,
+            schemaPath: "#/$defs/CameraUuid/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (!pattern4.test(data1)) return validate183.errors = [ {
+            instancePath: instancePath + "/tag_uuids/" + i0,
+            schemaPath: "#/$defs/CameraUuid/pattern",
+            keyword: "pattern",
+            params: {
+              pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          } ], !1;
+          if (0 !== _errs4) break;
+        }
+      }
+    }
+  }
+  return validate183.errors = [], !0;
+}
+
+validate183.evaluated = {
   props: !0,
   dynamicProps: !1,
   dynamicItems: !1
@@ -5396,6 +6334,33 @@ function validate167(data, {instancePath: instancePath = "", parentData: parentD
 
 validate167.evaluated = {
   props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_CameraUuid = validate226;
+
+function validate226(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate226.evaluated;
+  return evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  "string" != typeof data ? (validate226.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "string"
+    }
+  } ], !1) : pattern4.test(data) ? (validate226.errors = [], !0) : (validate226.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/pattern",
+    keyword: "pattern",
+    params: {
+      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    }
+  } ], !1);
+}
+
+validate226.evaluated = {
   dynamicProps: !1,
   dynamicItems: !1
 };
@@ -6394,6 +7359,368 @@ validate163.evaluated = {
   dynamicItems: !1
 };
 
+var __contract_FleetLocationCreate = validate175;
+
+function validate175(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate175.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate175.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate175.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("name" !== key0 && "type" !== key0 && "parent_uuid" !== key0 && "sort_order" !== key0 && "metadata" !== key0) return validate175.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate175.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate175.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate175.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.type) {
+            let data1 = data.type, _errs4 = errors;
+            if (errors === _errs4) {
+              if ("string" != typeof data1) return validate175.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data1) > 63) return validate175.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 63
+                }
+              } ], !1;
+              if (func1(data1) < 1) return validate175.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              } ], !1;
+            }
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.parent_uuid) {
+              let data2 = data.parent_uuid, _errs6 = errors, _errs7 = errors, valid3 = !1, _errs8 = errors;
+              if (errors == errors) if ("string" == typeof data2) {
+                if (!pattern4.test(data2)) {
+                  let err0 = {
+                    instancePath: instancePath + "/parent_uuid",
+                    schemaPath: "#/$defs/CameraUuid/pattern",
+                    keyword: "pattern",
+                    params: {
+                      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    }
+                  };
+                  vErrors.push(err0), errors++;
+                }
+              } else {
+                let err1 = {
+                  instancePath: instancePath + "/parent_uuid",
+                  schemaPath: "#/$defs/CameraUuid/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                };
+                vErrors.push(err1), errors++;
+              }
+              var _valid0 = _errs8 === errors;
+              valid3 = valid3 || _valid0;
+              let _errs11 = errors;
+              if (null !== data2) {
+                let err2 = {
+                  instancePath: instancePath + "/parent_uuid",
+                  schemaPath: "#/properties/parent_uuid/anyOf/1/type",
+                  keyword: "type",
+                  params: {
+                    type: "null"
+                  }
+                };
+                vErrors.push(err2), errors++;
+              }
+              if (_valid0 = _errs11 === errors, valid3 = valid3 || _valid0, !valid3) {
+                let err3 = {
+                  instancePath: instancePath + "/parent_uuid",
+                  schemaPath: "#/properties/parent_uuid/anyOf",
+                  keyword: "anyOf",
+                  params: {}
+                };
+                return vErrors.push(err3), errors++, validate175.errors = vErrors, !1;
+              }
+              errors = _errs7, vErrors.length = _errs7;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.sort_order) {
+                let data3 = data.sort_order, _errs13 = errors;
+                if ("number" != typeof data3 || !isFinite(data3)) return validate175.errors = [ {
+                  instancePath: instancePath + "/sort_order",
+                  schemaPath: "#/properties/sort_order/type",
+                  keyword: "type",
+                  params: {
+                    type: "number"
+                  }
+                } ], !1;
+                var valid5 = _errs13 === errors;
+              } else valid5 = !0;
+              if (valid5 && void 0 !== data.metadata) {
+                let data4 = data.metadata;
+                if (errors == errors && (!data4 || "object" != typeof data4 || Array.isArray(data4))) return validate175.errors = [ {
+                  instancePath: instancePath + "/metadata",
+                  schemaPath: "#/properties/metadata/type",
+                  keyword: "type",
+                  params: {
+                    type: "object"
+                  }
+                } ], !1;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate175.errors = vErrors, 0 === errors;
+}
+
+validate175.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FleetLocationUpdate = validate176;
+
+function validate176(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate176.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate176.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("name" !== key0 && "type" !== key0 && "parent_uuid" !== key0 && "sort_order" !== key0 && "metadata" !== key0) return validate176.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate176.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate176.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate176.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.type) {
+            let data1 = data.type, _errs4 = errors;
+            if (errors === _errs4) {
+              if ("string" != typeof data1) return validate176.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data1) > 63) return validate176.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 63
+                }
+              } ], !1;
+              if (func1(data1) < 1) return validate176.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              } ], !1;
+            }
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.parent_uuid) {
+              let data2 = data.parent_uuid, _errs6 = errors, _errs7 = errors, valid3 = !1, _errs8 = errors;
+              if (errors == errors) if ("string" == typeof data2) {
+                if (!pattern4.test(data2)) {
+                  let err0 = {
+                    instancePath: instancePath + "/parent_uuid",
+                    schemaPath: "#/$defs/CameraUuid/pattern",
+                    keyword: "pattern",
+                    params: {
+                      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    }
+                  };
+                  vErrors.push(err0), errors++;
+                }
+              } else {
+                let err1 = {
+                  instancePath: instancePath + "/parent_uuid",
+                  schemaPath: "#/$defs/CameraUuid/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                };
+                vErrors.push(err1), errors++;
+              }
+              var _valid0 = _errs8 === errors;
+              valid3 = valid3 || _valid0;
+              let _errs11 = errors;
+              if (null !== data2) {
+                let err2 = {
+                  instancePath: instancePath + "/parent_uuid",
+                  schemaPath: "#/properties/parent_uuid/anyOf/1/type",
+                  keyword: "type",
+                  params: {
+                    type: "null"
+                  }
+                };
+                vErrors.push(err2), errors++;
+              }
+              if (_valid0 = _errs11 === errors, valid3 = valid3 || _valid0, !valid3) {
+                let err3 = {
+                  instancePath: instancePath + "/parent_uuid",
+                  schemaPath: "#/properties/parent_uuid/anyOf",
+                  keyword: "anyOf",
+                  params: {}
+                };
+                return vErrors.push(err3), errors++, validate176.errors = vErrors, !1;
+              }
+              errors = _errs7, vErrors.length = _errs7;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.sort_order) {
+                let data3 = data.sort_order, _errs13 = errors;
+                if ("number" != typeof data3 || !isFinite(data3)) return validate176.errors = [ {
+                  instancePath: instancePath + "/sort_order",
+                  schemaPath: "#/properties/sort_order/type",
+                  keyword: "type",
+                  params: {
+                    type: "number"
+                  }
+                } ], !1;
+                var valid5 = _errs13 === errors;
+              } else valid5 = !0;
+              if (valid5 && void 0 !== data.metadata) {
+                let data4 = data.metadata;
+                if (errors == errors && (!data4 || "object" != typeof data4 || Array.isArray(data4))) return validate176.errors = [ {
+                  instancePath: instancePath + "/metadata",
+                  schemaPath: "#/properties/metadata/type",
+                  keyword: "type",
+                  params: {
+                    type: "object"
+                  }
+                } ], !1;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate176.errors = vErrors, 0 === errors;
+}
+
+validate176.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
 var __contract_FleetLocationsResponse = validate164;
 
 function validate164(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
@@ -6852,6 +8179,66 @@ function validate164(data, {instancePath: instancePath = "", parentData: parentD
 }
 
 validate164.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FleetMutationAck = validate174;
+
+function validate174(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate174.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate174.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate174.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0) return validate174.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.success) {
+      let data0 = data.success;
+      if ("boolean" != typeof data0) return validate174.errors = [ {
+        instancePath: instancePath + "/success",
+        schemaPath: "#/properties/success/type",
+        keyword: "type",
+        params: {
+          type: "boolean"
+        }
+      } ], !1;
+      if (!0 !== data0) return validate174.errors = [ {
+        instancePath: instancePath + "/success",
+        schemaPath: "#/properties/success/const",
+        keyword: "const",
+        params: {
+          allowedValue: !0
+        }
+      } ], !1;
+    }
+  }
+  return validate174.errors = [], !0;
+}
+
+validate174.evaluated = {
   props: !0,
   dynamicProps: !1,
   dynamicItems: !1
@@ -10791,6 +12178,67 @@ validate153.evaluated = {
   dynamicItems: !1
 };
 
+var __contract_FleetRevisionRequest = validate193;
+
+function validate193(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate193.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate193.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.revision) return validate193.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "revision"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("revision" !== key0) return validate193.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.revision) {
+      let data0 = data.revision, _errs2 = 0;
+      if ("number" != typeof data0 || data0 % 1 || isNaN(data0) || !isFinite(data0)) return validate193.errors = [ {
+        instancePath: instancePath + "/revision",
+        schemaPath: "#/properties/revision/type",
+        keyword: "type",
+        params: {
+          type: "integer"
+        }
+      } ], !1;
+      if (0 === _errs2 && "number" == typeof data0 && isFinite(data0) && (data0 < 1 || isNaN(data0))) return validate193.errors = [ {
+        instancePath: instancePath + "/revision",
+        schemaPath: "#/properties/revision/minimum",
+        keyword: "minimum",
+        params: {
+          comparison: ">=",
+          limit: 1
+        }
+      } ], !1;
+    }
+  }
+  return validate193.errors = [], !0;
+}
+
+validate193.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
 var __contract_FleetSavedView = validate159, schema167 = {
   type: "object",
   properties: {
@@ -11606,6 +13054,410 @@ validate165.evaluated = {
   dynamicItems: !1
 };
 
+var __contract_FleetTagCreate = validate179, pattern57 = new RegExp("^(|#[0-9a-fA-F]{6})$", "u");
+
+function validate179(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate179.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate179.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.label) return validate179.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "label"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("label" !== key0 && "color" !== key0 && "description" !== key0) return validate179.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.label) {
+        let data0 = data.label, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate179.errors = [ {
+            instancePath: instancePath + "/label",
+            schemaPath: "#/properties/label/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 255) return validate179.errors = [ {
+            instancePath: instancePath + "/label",
+            schemaPath: "#/properties/label/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 255
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate179.errors = [ {
+            instancePath: instancePath + "/label",
+            schemaPath: "#/properties/label/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.color) {
+          let data1 = data.color, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("string" != typeof data1) return validate179.errors = [ {
+              instancePath: instancePath + "/color",
+              schemaPath: "#/properties/color/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (!pattern57.test(data1)) return validate179.errors = [ {
+              instancePath: instancePath + "/color",
+              schemaPath: "#/properties/color/pattern",
+              keyword: "pattern",
+              params: {
+                pattern: "^(|#[0-9a-fA-F]{6})$"
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.description) {
+          let data2 = data.description;
+          if ("string" != typeof data2) return validate179.errors = [ {
+            instancePath: instancePath + "/description",
+            schemaPath: "#/properties/description/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data2) > 511) return validate179.errors = [ {
+            instancePath: instancePath + "/description",
+            schemaPath: "#/properties/description/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 511
+            }
+          } ], !1;
+        }
+      }
+    }
+  }
+  return validate179.errors = [], !0;
+}
+
+validate179.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FleetTagMergeRequest = validate181;
+
+function validate181(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate181.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate181.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.target_uuid) return validate181.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "target_uuid"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("target_uuid" !== key0) return validate181.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.target_uuid) {
+      let data0 = data.target_uuid;
+      if ("string" != typeof data0) return validate181.errors = [ {
+        instancePath: instancePath + "/target_uuid",
+        schemaPath: "#/$defs/CameraUuid/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      } ], !1;
+      if (!pattern4.test(data0)) return validate181.errors = [ {
+        instancePath: instancePath + "/target_uuid",
+        schemaPath: "#/$defs/CameraUuid/pattern",
+        keyword: "pattern",
+        params: {
+          pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        }
+      } ], !1;
+    }
+  }
+  return validate181.errors = [], !0;
+}
+
+validate181.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FleetTagMergeResult = validate182;
+
+function validate182(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate182.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate182.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate182.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  if (void 0 === data.source_uuid) return validate182.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "source_uuid"
+    }
+  } ], !1;
+  if (void 0 === data.target_uuid) return validate182.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "target_uuid"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0 && "source_uuid" !== key0 && "target_uuid" !== key0) return validate182.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.success) {
+        let data0 = data.success, _errs2 = 0;
+        if ("boolean" != typeof data0) return validate182.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/type",
+          keyword: "type",
+          params: {
+            type: "boolean"
+          }
+        } ], !1;
+        if (!0 !== data0) return validate182.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/const",
+          keyword: "const",
+          params: {
+            allowedValue: !0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.source_uuid) {
+          let data1 = data.source_uuid, _errs4 = 0;
+          if ("string" != typeof data1) return validate182.errors = [ {
+            instancePath: instancePath + "/source_uuid",
+            schemaPath: "#/$defs/CameraUuid/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (!pattern4.test(data1)) return validate182.errors = [ {
+            instancePath: instancePath + "/source_uuid",
+            schemaPath: "#/$defs/CameraUuid/pattern",
+            keyword: "pattern",
+            params: {
+              pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.target_uuid) {
+          let data2 = data.target_uuid;
+          if ("string" != typeof data2) return validate182.errors = [ {
+            instancePath: instancePath + "/target_uuid",
+            schemaPath: "#/$defs/CameraUuid/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (!pattern4.test(data2)) return validate182.errors = [ {
+            instancePath: instancePath + "/target_uuid",
+            schemaPath: "#/$defs/CameraUuid/pattern",
+            keyword: "pattern",
+            params: {
+              pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          } ], !1;
+        }
+      }
+    }
+  }
+  return validate182.errors = [], !0;
+}
+
+validate182.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FleetTagUpdate = validate180;
+
+function validate180(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate180.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate180.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("label" !== key0 && "color" !== key0 && "description" !== key0) return validate180.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.label) {
+        let data0 = data.label, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate180.errors = [ {
+            instancePath: instancePath + "/label",
+            schemaPath: "#/properties/label/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 255) return validate180.errors = [ {
+            instancePath: instancePath + "/label",
+            schemaPath: "#/properties/label/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 255
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate180.errors = [ {
+            instancePath: instancePath + "/label",
+            schemaPath: "#/properties/label/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.color) {
+          let data1 = data.color, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("string" != typeof data1) return validate180.errors = [ {
+              instancePath: instancePath + "/color",
+              schemaPath: "#/properties/color/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (!pattern57.test(data1)) return validate180.errors = [ {
+              instancePath: instancePath + "/color",
+              schemaPath: "#/properties/color/pattern",
+              keyword: "pattern",
+              params: {
+                pattern: "^(|#[0-9a-fA-F]{6})$"
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.description) {
+          let data2 = data.description;
+          if ("string" != typeof data2) return validate180.errors = [ {
+            instancePath: instancePath + "/description",
+            schemaPath: "#/properties/description/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data2) > 511) return validate180.errors = [ {
+            instancePath: instancePath + "/description",
+            schemaPath: "#/properties/description/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 511
+            }
+          } ], !1;
+        }
+      }
+    }
+  }
+  return validate180.errors = [], !0;
+}
+
+validate180.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
 var __contract_FleetTagsResponse = validate166;
 
 function validate166(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
@@ -11900,6 +13752,6678 @@ function validate166(data, {instancePath: instancePath = "", parentData: parentD
 }
 
 validate166.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FleetViewCreate = validate189, schema204 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      minLength: 1
+    },
+    selector: {
+      $ref: "#/$defs/FleetSelector"
+    },
+    search: {
+      type: "string"
+    },
+    columns: {
+      type: "array",
+      items: {
+        type: "string"
+      }
+    },
+    sort_by: {
+      enum: [ "name", "camera_uuid", "location", "health", "enabled", "recording_mode", "address" ]
+    },
+    sort_order: {
+      enum: [ "asc", "desc" ]
+    },
+    is_shared: {
+      type: "boolean"
+    },
+    collection_uuid: {
+      type: "string"
+    }
+  },
+  required: [ "name", "selector" ],
+  additionalProperties: !1
+};
+
+function validate189(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate189.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate189.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate189.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.selector) return validate189.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "selector"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("name" !== key0 && "selector" !== key0 && "search" !== key0 && "columns" !== key0 && "sort_by" !== key0 && "sort_order" !== key0 && "is_shared" !== key0 && "collection_uuid" !== key0) return validate189.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate189.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate189.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.selector) {
+            let _errs4 = errors;
+            validate142(data.selector, {
+              instancePath: instancePath + "/selector",
+              parentData: data,
+              parentDataProperty: "selector",
+              rootData: rootData,
+              dynamicAnchors: dynamicAnchors
+            }) || (vErrors = vErrors.concat(validate142.errors), errors = vErrors.length);
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.search) {
+              let _errs5 = errors;
+              if ("string" != typeof data.search) return validate189.errors = [ {
+                instancePath: instancePath + "/search",
+                schemaPath: "#/properties/search/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              var valid2 = _errs5 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.columns) {
+                let data3 = data.columns, _errs7 = errors;
+                if (errors === _errs7) {
+                  if (!Array.isArray(data3)) return validate189.errors = [ {
+                    instancePath: instancePath + "/columns",
+                    schemaPath: "#/properties/columns/type",
+                    keyword: "type",
+                    params: {
+                      type: "array"
+                    }
+                  } ], !1;
+                  {
+                    let len0 = data3.length;
+                    for (let i0 = 0; i0 < len0; i0++) {
+                      let _errs9 = errors;
+                      if ("string" != typeof data3[i0]) return validate189.errors = [ {
+                        instancePath: instancePath + "/columns/" + i0,
+                        schemaPath: "#/properties/columns/items/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      if (_errs9 !== errors) break;
+                    }
+                  }
+                }
+                var valid3 = _errs7 === errors;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data.sort_by) {
+                  let data5 = data.sort_by, _errs11 = errors;
+                  if ("name" !== data5 && "camera_uuid" !== data5 && "location" !== data5 && "health" !== data5 && "enabled" !== data5 && "recording_mode" !== data5 && "address" !== data5) return validate189.errors = [ {
+                    instancePath: instancePath + "/sort_by",
+                    schemaPath: "#/properties/sort_by/enum",
+                    keyword: "enum",
+                    params: {
+                      allowedValues: schema204.properties.sort_by.enum
+                    }
+                  } ], !1;
+                  var valid5 = _errs11 === errors;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.sort_order) {
+                    let data6 = data.sort_order, _errs12 = errors;
+                    if ("asc" !== data6 && "desc" !== data6) return validate189.errors = [ {
+                      instancePath: instancePath + "/sort_order",
+                      schemaPath: "#/properties/sort_order/enum",
+                      keyword: "enum",
+                      params: {
+                        allowedValues: schema204.properties.sort_order.enum
+                      }
+                    } ], !1;
+                    var valid6 = _errs12 === errors;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data.is_shared) {
+                      let _errs13 = errors;
+                      if ("boolean" != typeof data.is_shared) return validate189.errors = [ {
+                        instancePath: instancePath + "/is_shared",
+                        schemaPath: "#/properties/is_shared/type",
+                        keyword: "type",
+                        params: {
+                          type: "boolean"
+                        }
+                      } ], !1;
+                      var valid7 = _errs13 === errors;
+                    } else valid7 = !0;
+                    if (valid7 && void 0 !== data.collection_uuid && "string" != typeof data.collection_uuid) return validate189.errors = [ {
+                      instancePath: instancePath + "/collection_uuid",
+                      schemaPath: "#/properties/collection_uuid/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate189.errors = vErrors, 0 === errors;
+}
+
+validate189.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FleetViewUpdate = validate191, schema205 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      minLength: 1
+    },
+    selector: {
+      $ref: "#/$defs/FleetSelector"
+    },
+    search: {
+      type: "string"
+    },
+    columns: {
+      type: "array",
+      items: {
+        type: "string"
+      }
+    },
+    sort_by: {
+      enum: [ "name", "camera_uuid", "location", "health", "enabled", "recording_mode", "address" ]
+    },
+    sort_order: {
+      enum: [ "asc", "desc" ]
+    },
+    is_shared: {
+      type: "boolean"
+    },
+    collection_uuid: {
+      type: "string"
+    },
+    revision: {
+      type: "integer",
+      minimum: 1
+    }
+  },
+  required: [ "name", "selector", "revision" ],
+  additionalProperties: !1
+};
+
+function validate191(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate191.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate191.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate191.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.selector) return validate191.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "selector"
+      }
+    } ], !1;
+    if (void 0 === data.revision) return validate191.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "revision"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if (!func5.call(schema205.properties, key0)) return validate191.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate191.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate191.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.selector) {
+            let _errs4 = errors;
+            validate142(data.selector, {
+              instancePath: instancePath + "/selector",
+              parentData: data,
+              parentDataProperty: "selector",
+              rootData: rootData,
+              dynamicAnchors: dynamicAnchors
+            }) || (vErrors = vErrors.concat(validate142.errors), errors = vErrors.length);
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.search) {
+              let _errs5 = errors;
+              if ("string" != typeof data.search) return validate191.errors = [ {
+                instancePath: instancePath + "/search",
+                schemaPath: "#/properties/search/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              var valid2 = _errs5 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.columns) {
+                let data3 = data.columns, _errs7 = errors;
+                if (errors === _errs7) {
+                  if (!Array.isArray(data3)) return validate191.errors = [ {
+                    instancePath: instancePath + "/columns",
+                    schemaPath: "#/properties/columns/type",
+                    keyword: "type",
+                    params: {
+                      type: "array"
+                    }
+                  } ], !1;
+                  {
+                    let len0 = data3.length;
+                    for (let i0 = 0; i0 < len0; i0++) {
+                      let _errs9 = errors;
+                      if ("string" != typeof data3[i0]) return validate191.errors = [ {
+                        instancePath: instancePath + "/columns/" + i0,
+                        schemaPath: "#/properties/columns/items/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      if (_errs9 !== errors) break;
+                    }
+                  }
+                }
+                var valid3 = _errs7 === errors;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data.sort_by) {
+                  let data5 = data.sort_by, _errs11 = errors;
+                  if ("name" !== data5 && "camera_uuid" !== data5 && "location" !== data5 && "health" !== data5 && "enabled" !== data5 && "recording_mode" !== data5 && "address" !== data5) return validate191.errors = [ {
+                    instancePath: instancePath + "/sort_by",
+                    schemaPath: "#/properties/sort_by/enum",
+                    keyword: "enum",
+                    params: {
+                      allowedValues: schema205.properties.sort_by.enum
+                    }
+                  } ], !1;
+                  var valid5 = _errs11 === errors;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.sort_order) {
+                    let data6 = data.sort_order, _errs12 = errors;
+                    if ("asc" !== data6 && "desc" !== data6) return validate191.errors = [ {
+                      instancePath: instancePath + "/sort_order",
+                      schemaPath: "#/properties/sort_order/enum",
+                      keyword: "enum",
+                      params: {
+                        allowedValues: schema205.properties.sort_order.enum
+                      }
+                    } ], !1;
+                    var valid6 = _errs12 === errors;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data.is_shared) {
+                      let _errs13 = errors;
+                      if ("boolean" != typeof data.is_shared) return validate191.errors = [ {
+                        instancePath: instancePath + "/is_shared",
+                        schemaPath: "#/properties/is_shared/type",
+                        keyword: "type",
+                        params: {
+                          type: "boolean"
+                        }
+                      } ], !1;
+                      var valid7 = _errs13 === errors;
+                    } else valid7 = !0;
+                    if (valid7) {
+                      if (void 0 !== data.collection_uuid) {
+                        let _errs15 = errors;
+                        if ("string" != typeof data.collection_uuid) return validate191.errors = [ {
+                          instancePath: instancePath + "/collection_uuid",
+                          schemaPath: "#/properties/collection_uuid/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        var valid8 = _errs15 === errors;
+                      } else valid8 = !0;
+                      if (valid8 && void 0 !== data.revision) {
+                        let data9 = data.revision, _errs17 = errors;
+                        if ("number" != typeof data9 || data9 % 1 || isNaN(data9) || !isFinite(data9)) return validate191.errors = [ {
+                          instancePath: instancePath + "/revision",
+                          schemaPath: "#/properties/revision/type",
+                          keyword: "type",
+                          params: {
+                            type: "integer"
+                          }
+                        } ], !1;
+                        if (errors === _errs17 && "number" == typeof data9 && isFinite(data9) && (data9 < 1 || isNaN(data9))) return validate191.errors = [ {
+                          instancePath: instancePath + "/revision",
+                          schemaPath: "#/properties/revision/minimum",
+                          keyword: "minimum",
+                          params: {
+                            comparison: ">=",
+                            limit: 1
+                          }
+                        } ], !1;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate191.errors = vErrors, 0 === errors;
+}
+
+validate191.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorPlan = validate220, schema240 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      minLength: 1,
+      maxLength: 127
+    },
+    location_uuid: {
+      anyOf: [ {
+        $ref: "#/$defs/CameraUuid"
+      }, {
+        type: "null"
+      } ]
+    },
+    parent_plan_uuid: {
+      anyOf: [ {
+        $ref: "#/$defs/CameraUuid"
+      }, {
+        type: "null"
+      } ]
+    },
+    canvas_width: {
+      type: "integer",
+      minimum: 400,
+      maximum: 4e3
+    },
+    canvas_height: {
+      type: "integer",
+      minimum: 300,
+      maximum: 4e3
+    },
+    sketch: {
+      anyOf: [ {
+        $ref: "#/$defs/FloorSketch"
+      }, {
+        type: "null"
+      } ]
+    },
+    cameras: {
+      type: "array",
+      items: {
+        $ref: "#/$defs/FloorPlanCamera"
+      },
+      maxItems: 1e3
+    },
+    uuid: {
+      $ref: "#/$defs/CameraUuid"
+    },
+    background_mime: {
+      type: [ "string", "null" ],
+      enum: [ "image/png", "image/jpeg", null ]
+    },
+    partially_authorized: {
+      type: "boolean"
+    },
+    revision: {
+      type: "integer",
+      minimum: 1
+    },
+    created_at: {
+      type: "integer",
+      minimum: 0
+    },
+    updated_at: {
+      type: "integer",
+      minimum: 0
+    },
+    can_modify: {
+      type: "boolean"
+    }
+  },
+  required: [ "name", "location_uuid", "parent_plan_uuid", "canvas_width", "canvas_height", "sketch", "cameras", "uuid", "background_mime", "partially_authorized", "revision", "created_at", "updated_at" ],
+  additionalProperties: !1
+}, schema221 = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      minLength: 1,
+      maxLength: 31
+    },
+    tone: {
+      type: "string",
+      enum: [ "slate", "blue", "green", "amber", "red", "violet" ]
+    },
+    type: {
+      type: "string",
+      const: "rect"
+    },
+    x: {
+      type: "number",
+      minimum: 0,
+      maximum: 1
+    },
+    y: {
+      type: "number",
+      minimum: 0,
+      maximum: 1
+    },
+    w: {
+      type: "number",
+      minimum: 0,
+      maximum: 1
+    },
+    h: {
+      type: "number",
+      minimum: 0,
+      maximum: 1
+    },
+    filled: {
+      type: "boolean"
+    },
+    label: {
+      type: "string",
+      maxLength: 95
+    }
+  },
+  required: [ "id", "type", "x", "y", "w", "h" ],
+  additionalProperties: !1
+}, schema222 = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      minLength: 1,
+      maxLength: 31
+    },
+    tone: {
+      type: "string",
+      enum: [ "slate", "blue", "green", "amber", "red", "violet" ]
+    },
+    type: {
+      type: "string",
+      const: "wall"
+    },
+    points: {
+      type: "array",
+      items: {
+        type: "array",
+        prefixItems: [ {
+          type: "number",
+          minimum: 0,
+          maximum: 1
+        }, {
+          type: "number",
+          minimum: 0,
+          maximum: 1
+        } ],
+        items: !1,
+        minItems: 2,
+        maxItems: 2
+      },
+      minItems: 2,
+      maxItems: 64
+    },
+    label: {
+      type: "string",
+      maxLength: 95
+    }
+  },
+  required: [ "id", "type", "points" ],
+  additionalProperties: !1
+}, schema223 = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      minLength: 1,
+      maxLength: 31
+    },
+    tone: {
+      type: "string",
+      enum: [ "slate", "blue", "green", "amber", "red", "violet" ]
+    },
+    type: {
+      type: "string",
+      const: "area"
+    },
+    points: {
+      type: "array",
+      items: {
+        type: "array",
+        prefixItems: [ {
+          type: "number",
+          minimum: 0,
+          maximum: 1
+        }, {
+          type: "number",
+          minimum: 0,
+          maximum: 1
+        } ],
+        items: !1,
+        minItems: 2,
+        maxItems: 2
+      },
+      minItems: 3,
+      maxItems: 64
+    },
+    label: {
+      type: "string",
+      maxLength: 95
+    }
+  },
+  required: [ "id", "type", "points" ],
+  additionalProperties: !1
+}, schema224 = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      minLength: 1,
+      maxLength: 31
+    },
+    tone: {
+      type: "string",
+      enum: [ "slate", "blue", "green", "amber", "red", "violet" ]
+    },
+    type: {
+      type: "string",
+      const: "label"
+    },
+    x: {
+      type: "number",
+      minimum: 0,
+      maximum: 1
+    },
+    y: {
+      type: "number",
+      minimum: 0,
+      maximum: 1
+    },
+    text: {
+      type: "string",
+      minLength: 1,
+      maxLength: 95
+    },
+    size: {
+      type: "string",
+      enum: [ "sm", "md", "lg" ]
+    }
+  },
+  required: [ "id", "type", "x", "y", "text" ],
+  additionalProperties: !1
+};
+
+function validate211(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate211.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate211.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.version) return validate211.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "version"
+      }
+    } ], !1;
+    if (void 0 === data.shapes) return validate211.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "shapes"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("version" !== key0 && "shapes" !== key0) return validate211.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.version) {
+          let data0 = data.version, _errs2 = errors;
+          if ("number" != typeof data0 || data0 % 1 || isNaN(data0) || !isFinite(data0)) return validate211.errors = [ {
+            instancePath: instancePath + "/version",
+            schemaPath: "#/properties/version/type",
+            keyword: "type",
+            params: {
+              type: "integer"
+            }
+          } ], !1;
+          if (1 !== data0) return validate211.errors = [ {
+            instancePath: instancePath + "/version",
+            schemaPath: "#/properties/version/const",
+            keyword: "const",
+            params: {
+              allowedValue: 1
+            }
+          } ], !1;
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0 && void 0 !== data.shapes) {
+          let data1 = data.shapes;
+          if (errors == errors) {
+            if (!Array.isArray(data1)) return validate211.errors = [ {
+              instancePath: instancePath + "/shapes",
+              schemaPath: "#/properties/shapes/type",
+              keyword: "type",
+              params: {
+                type: "array"
+              }
+            } ], !1;
+            if (data1.length > 400) return validate211.errors = [ {
+              instancePath: instancePath + "/shapes",
+              schemaPath: "#/properties/shapes/maxItems",
+              keyword: "maxItems",
+              params: {
+                limit: 400
+              }
+            } ], !1;
+            {
+              let len0 = data1.length;
+              for (let i0 = 0; i0 < len0; i0++) {
+                let data2 = data1[i0], _errs6 = errors, _errs7 = errors, valid3 = !1, passing0 = null, _errs8 = errors;
+                if (errors == errors) if (data2 && "object" == typeof data2 && !Array.isArray(data2)) if (void 0 === data2.id) {
+                  let err0 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchRect/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "id"
+                    }
+                  };
+                  vErrors.push(err0), errors++;
+                } else if (void 0 === data2.type) {
+                  let err1 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchRect/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "type"
+                    }
+                  };
+                  vErrors.push(err1), errors++;
+                } else if (void 0 === data2.x) {
+                  let err2 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchRect/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "x"
+                    }
+                  };
+                  vErrors.push(err2), errors++;
+                } else if (void 0 === data2.y) {
+                  let err3 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchRect/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "y"
+                    }
+                  };
+                  vErrors.push(err3), errors++;
+                } else if (void 0 === data2.w) {
+                  let err4 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchRect/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "w"
+                    }
+                  };
+                  vErrors.push(err4), errors++;
+                } else if (void 0 === data2.h) {
+                  let err5 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchRect/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "h"
+                    }
+                  };
+                  vErrors.push(err5), errors++;
+                } else {
+                  let _errs11 = errors;
+                  for (let key1 in data2) if (!func5.call(schema221.properties, key1)) {
+                    let err6 = {
+                      instancePath: instancePath + "/shapes/" + i0,
+                      schemaPath: "#/$defs/FloorSketchRect/additionalProperties",
+                      keyword: "additionalProperties",
+                      params: {
+                        additionalProperty: key1
+                      }
+                    };
+                    vErrors.push(err6), errors++;
+                    break;
+                  }
+                  if (_errs11 === errors) {
+                    if (void 0 !== data2.id) {
+                      let data3 = data2.id, _errs12 = errors;
+                      if (errors === _errs12) if ("string" == typeof data3) {
+                        if (func1(data3) > 31) {
+                          let err7 = {
+                            instancePath: instancePath + "/shapes/" + i0 + "/id",
+                            schemaPath: "#/$defs/FloorSketchRect/properties/id/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 31
+                            }
+                          };
+                          vErrors.push(err7), errors++;
+                        } else if (func1(data3) < 1) {
+                          let err8 = {
+                            instancePath: instancePath + "/shapes/" + i0 + "/id",
+                            schemaPath: "#/$defs/FloorSketchRect/properties/id/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          };
+                          vErrors.push(err8), errors++;
+                        }
+                      } else {
+                        let err9 = {
+                          instancePath: instancePath + "/shapes/" + i0 + "/id",
+                          schemaPath: "#/$defs/FloorSketchRect/properties/id/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        };
+                        vErrors.push(err9), errors++;
+                      }
+                      var valid5 = _errs12 === errors;
+                    } else valid5 = !0;
+                    if (valid5) {
+                      if (void 0 !== data2.tone) {
+                        let data4 = data2.tone, _errs14 = errors;
+                        if ("string" != typeof data4) {
+                          let err10 = {
+                            instancePath: instancePath + "/shapes/" + i0 + "/tone",
+                            schemaPath: "#/$defs/FloorSketchRect/properties/tone/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          };
+                          vErrors.push(err10), errors++;
+                        }
+                        if ("slate" !== data4 && "blue" !== data4 && "green" !== data4 && "amber" !== data4 && "red" !== data4 && "violet" !== data4) {
+                          let err11 = {
+                            instancePath: instancePath + "/shapes/" + i0 + "/tone",
+                            schemaPath: "#/$defs/FloorSketchRect/properties/tone/enum",
+                            keyword: "enum",
+                            params: {
+                              allowedValues: schema221.properties.tone.enum
+                            }
+                          };
+                          vErrors.push(err11), errors++;
+                        }
+                        var valid6 = _errs14 === errors;
+                      } else valid6 = !0;
+                      if (valid6) {
+                        if (void 0 !== data2.type) {
+                          let data5 = data2.type, _errs16 = errors;
+                          if ("string" != typeof data5) {
+                            let err12 = {
+                              instancePath: instancePath + "/shapes/" + i0 + "/type",
+                              schemaPath: "#/$defs/FloorSketchRect/properties/type/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            };
+                            vErrors.push(err12), errors++;
+                          }
+                          if ("rect" !== data5) {
+                            let err13 = {
+                              instancePath: instancePath + "/shapes/" + i0 + "/type",
+                              schemaPath: "#/$defs/FloorSketchRect/properties/type/const",
+                              keyword: "const",
+                              params: {
+                                allowedValue: "rect"
+                              }
+                            };
+                            vErrors.push(err13), errors++;
+                          }
+                          var valid7 = _errs16 === errors;
+                        } else valid7 = !0;
+                        if (valid7) {
+                          if (void 0 !== data2.x) {
+                            let data6 = data2.x, _errs18 = errors;
+                            if (errors === _errs18) if ("number" == typeof data6 && isFinite(data6)) {
+                              if (data6 > 1 || isNaN(data6)) {
+                                let err14 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/x",
+                                  schemaPath: "#/$defs/FloorSketchRect/properties/x/maximum",
+                                  keyword: "maximum",
+                                  params: {
+                                    comparison: "<=",
+                                    limit: 1
+                                  }
+                                };
+                                vErrors.push(err14), errors++;
+                              } else if (data6 < 0 || isNaN(data6)) {
+                                let err15 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/x",
+                                  schemaPath: "#/$defs/FloorSketchRect/properties/x/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: 0
+                                  }
+                                };
+                                vErrors.push(err15), errors++;
+                              }
+                            } else {
+                              let err16 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/x",
+                                schemaPath: "#/$defs/FloorSketchRect/properties/x/type",
+                                keyword: "type",
+                                params: {
+                                  type: "number"
+                                }
+                              };
+                              vErrors.push(err16), errors++;
+                            }
+                            var valid8 = _errs18 === errors;
+                          } else valid8 = !0;
+                          if (valid8) {
+                            if (void 0 !== data2.y) {
+                              let data7 = data2.y, _errs20 = errors;
+                              if (errors === _errs20) if ("number" == typeof data7 && isFinite(data7)) {
+                                if (data7 > 1 || isNaN(data7)) {
+                                  let err17 = {
+                                    instancePath: instancePath + "/shapes/" + i0 + "/y",
+                                    schemaPath: "#/$defs/FloorSketchRect/properties/y/maximum",
+                                    keyword: "maximum",
+                                    params: {
+                                      comparison: "<=",
+                                      limit: 1
+                                    }
+                                  };
+                                  vErrors.push(err17), errors++;
+                                } else if (data7 < 0 || isNaN(data7)) {
+                                  let err18 = {
+                                    instancePath: instancePath + "/shapes/" + i0 + "/y",
+                                    schemaPath: "#/$defs/FloorSketchRect/properties/y/minimum",
+                                    keyword: "minimum",
+                                    params: {
+                                      comparison: ">=",
+                                      limit: 0
+                                    }
+                                  };
+                                  vErrors.push(err18), errors++;
+                                }
+                              } else {
+                                let err19 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/y",
+                                  schemaPath: "#/$defs/FloorSketchRect/properties/y/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "number"
+                                  }
+                                };
+                                vErrors.push(err19), errors++;
+                              }
+                              var valid9 = _errs20 === errors;
+                            } else valid9 = !0;
+                            if (valid9) {
+                              if (void 0 !== data2.w) {
+                                let data8 = data2.w, _errs22 = errors;
+                                if (errors === _errs22) if ("number" == typeof data8 && isFinite(data8)) {
+                                  if (data8 > 1 || isNaN(data8)) {
+                                    let err20 = {
+                                      instancePath: instancePath + "/shapes/" + i0 + "/w",
+                                      schemaPath: "#/$defs/FloorSketchRect/properties/w/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 1
+                                      }
+                                    };
+                                    vErrors.push(err20), errors++;
+                                  } else if (data8 < 0 || isNaN(data8)) {
+                                    let err21 = {
+                                      instancePath: instancePath + "/shapes/" + i0 + "/w",
+                                      schemaPath: "#/$defs/FloorSketchRect/properties/w/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 0
+                                      }
+                                    };
+                                    vErrors.push(err21), errors++;
+                                  }
+                                } else {
+                                  let err22 = {
+                                    instancePath: instancePath + "/shapes/" + i0 + "/w",
+                                    schemaPath: "#/$defs/FloorSketchRect/properties/w/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "number"
+                                    }
+                                  };
+                                  vErrors.push(err22), errors++;
+                                }
+                                var valid10 = _errs22 === errors;
+                              } else valid10 = !0;
+                              if (valid10) {
+                                if (void 0 !== data2.h) {
+                                  let data9 = data2.h, _errs24 = errors;
+                                  if (errors === _errs24) if ("number" == typeof data9 && isFinite(data9)) {
+                                    if (data9 > 1 || isNaN(data9)) {
+                                      let err23 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/h",
+                                        schemaPath: "#/$defs/FloorSketchRect/properties/h/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 1
+                                        }
+                                      };
+                                      vErrors.push(err23), errors++;
+                                    } else if (data9 < 0 || isNaN(data9)) {
+                                      let err24 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/h",
+                                        schemaPath: "#/$defs/FloorSketchRect/properties/h/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: 0
+                                        }
+                                      };
+                                      vErrors.push(err24), errors++;
+                                    }
+                                  } else {
+                                    let err25 = {
+                                      instancePath: instancePath + "/shapes/" + i0 + "/h",
+                                      schemaPath: "#/$defs/FloorSketchRect/properties/h/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "number"
+                                      }
+                                    };
+                                    vErrors.push(err25), errors++;
+                                  }
+                                  var valid11 = _errs24 === errors;
+                                } else valid11 = !0;
+                                if (valid11) {
+                                  if (void 0 !== data2.filled) {
+                                    let _errs26 = errors;
+                                    if ("boolean" != typeof data2.filled) {
+                                      let err26 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/filled",
+                                        schemaPath: "#/$defs/FloorSketchRect/properties/filled/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "boolean"
+                                        }
+                                      };
+                                      vErrors.push(err26), errors++;
+                                    }
+                                    var valid12 = _errs26 === errors;
+                                  } else valid12 = !0;
+                                  if (valid12 && void 0 !== data2.label) {
+                                    let data11 = data2.label;
+                                    if (errors == errors) if ("string" == typeof data11) {
+                                      if (func1(data11) > 95) {
+                                        let err27 = {
+                                          instancePath: instancePath + "/shapes/" + i0 + "/label",
+                                          schemaPath: "#/$defs/FloorSketchRect/properties/label/maxLength",
+                                          keyword: "maxLength",
+                                          params: {
+                                            limit: 95
+                                          }
+                                        };
+                                        vErrors.push(err27), errors++;
+                                      }
+                                    } else {
+                                      let err28 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/label",
+                                        schemaPath: "#/$defs/FloorSketchRect/properties/label/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      };
+                                      vErrors.push(err28), errors++;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  let err29 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchRect/type",
+                    keyword: "type",
+                    params: {
+                      type: "object"
+                    }
+                  };
+                  vErrors.push(err29), errors++;
+                }
+                if (_valid0 = _errs8 === errors) {
+                  valid3 = !0, passing0 = 0;
+                  var props0 = !0;
+                }
+                let _errs30 = errors;
+                if (errors == errors) if (data2 && "object" == typeof data2 && !Array.isArray(data2)) if (void 0 === data2.id) {
+                  let err30 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchWall/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "id"
+                    }
+                  };
+                  vErrors.push(err30), errors++;
+                } else if (void 0 === data2.type) {
+                  let err31 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchWall/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "type"
+                    }
+                  };
+                  vErrors.push(err31), errors++;
+                } else if (void 0 === data2.points) {
+                  let err32 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchWall/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "points"
+                    }
+                  };
+                  vErrors.push(err32), errors++;
+                } else {
+                  let _errs33 = errors;
+                  for (let key2 in data2) if ("id" !== key2 && "tone" !== key2 && "type" !== key2 && "points" !== key2 && "label" !== key2) {
+                    let err33 = {
+                      instancePath: instancePath + "/shapes/" + i0,
+                      schemaPath: "#/$defs/FloorSketchWall/additionalProperties",
+                      keyword: "additionalProperties",
+                      params: {
+                        additionalProperty: key2
+                      }
+                    };
+                    vErrors.push(err33), errors++;
+                    break;
+                  }
+                  if (_errs33 === errors) {
+                    if (void 0 !== data2.id) {
+                      let data12 = data2.id, _errs34 = errors;
+                      if (errors === _errs34) if ("string" == typeof data12) {
+                        if (func1(data12) > 31) {
+                          let err34 = {
+                            instancePath: instancePath + "/shapes/" + i0 + "/id",
+                            schemaPath: "#/$defs/FloorSketchWall/properties/id/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 31
+                            }
+                          };
+                          vErrors.push(err34), errors++;
+                        } else if (func1(data12) < 1) {
+                          let err35 = {
+                            instancePath: instancePath + "/shapes/" + i0 + "/id",
+                            schemaPath: "#/$defs/FloorSketchWall/properties/id/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          };
+                          vErrors.push(err35), errors++;
+                        }
+                      } else {
+                        let err36 = {
+                          instancePath: instancePath + "/shapes/" + i0 + "/id",
+                          schemaPath: "#/$defs/FloorSketchWall/properties/id/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        };
+                        vErrors.push(err36), errors++;
+                      }
+                      var valid15 = _errs34 === errors;
+                    } else valid15 = !0;
+                    if (valid15) {
+                      if (void 0 !== data2.tone) {
+                        let data13 = data2.tone, _errs36 = errors;
+                        if ("string" != typeof data13) {
+                          let err37 = {
+                            instancePath: instancePath + "/shapes/" + i0 + "/tone",
+                            schemaPath: "#/$defs/FloorSketchWall/properties/tone/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          };
+                          vErrors.push(err37), errors++;
+                        }
+                        if ("slate" !== data13 && "blue" !== data13 && "green" !== data13 && "amber" !== data13 && "red" !== data13 && "violet" !== data13) {
+                          let err38 = {
+                            instancePath: instancePath + "/shapes/" + i0 + "/tone",
+                            schemaPath: "#/$defs/FloorSketchWall/properties/tone/enum",
+                            keyword: "enum",
+                            params: {
+                              allowedValues: schema222.properties.tone.enum
+                            }
+                          };
+                          vErrors.push(err38), errors++;
+                        }
+                        var valid16 = _errs36 === errors;
+                      } else valid16 = !0;
+                      if (valid16) {
+                        if (void 0 !== data2.type) {
+                          let data14 = data2.type, _errs38 = errors;
+                          if ("string" != typeof data14) {
+                            let err39 = {
+                              instancePath: instancePath + "/shapes/" + i0 + "/type",
+                              schemaPath: "#/$defs/FloorSketchWall/properties/type/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            };
+                            vErrors.push(err39), errors++;
+                          }
+                          if ("wall" !== data14) {
+                            let err40 = {
+                              instancePath: instancePath + "/shapes/" + i0 + "/type",
+                              schemaPath: "#/$defs/FloorSketchWall/properties/type/const",
+                              keyword: "const",
+                              params: {
+                                allowedValue: "wall"
+                              }
+                            };
+                            vErrors.push(err40), errors++;
+                          }
+                          var valid17 = _errs38 === errors;
+                        } else valid17 = !0;
+                        if (valid17) {
+                          if (void 0 !== data2.points) {
+                            let data15 = data2.points, _errs40 = errors;
+                            if (errors === _errs40) if (Array.isArray(data15)) if (data15.length > 64) {
+                              let err41 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/points",
+                                schemaPath: "#/$defs/FloorSketchWall/properties/points/maxItems",
+                                keyword: "maxItems",
+                                params: {
+                                  limit: 64
+                                }
+                              };
+                              vErrors.push(err41), errors++;
+                            } else if (data15.length < 2) {
+                              let err42 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/points",
+                                schemaPath: "#/$defs/FloorSketchWall/properties/points/minItems",
+                                keyword: "minItems",
+                                params: {
+                                  limit: 2
+                                }
+                              };
+                              vErrors.push(err42), errors++;
+                            } else {
+                              let len1 = data15.length;
+                              for (let i1 = 0; i1 < len1; i1++) {
+                                let data16 = data15[i1], _errs42 = errors;
+                                if (errors === _errs42) if (Array.isArray(data16)) if (data16.length > 2) {
+                                  let err43 = {
+                                    instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1,
+                                    schemaPath: "#/$defs/FloorSketchWall/properties/points/items/maxItems",
+                                    keyword: "maxItems",
+                                    params: {
+                                      limit: 2
+                                    }
+                                  };
+                                  vErrors.push(err43), errors++;
+                                } else if (data16.length < 2) {
+                                  let err44 = {
+                                    instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1,
+                                    schemaPath: "#/$defs/FloorSketchWall/properties/points/items/minItems",
+                                    keyword: "minItems",
+                                    params: {
+                                      limit: 2
+                                    }
+                                  };
+                                  vErrors.push(err44), errors++;
+                                } else {
+                                  let len2 = data16.length;
+                                  if (len2 > 0) {
+                                    let data17 = data16[0], _errs44 = errors;
+                                    if (errors === _errs44) if ("number" == typeof data17 && isFinite(data17)) {
+                                      if (data17 > 1 || isNaN(data17)) {
+                                        let err45 = {
+                                          instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1 + "/0",
+                                          schemaPath: "#/$defs/FloorSketchWall/properties/points/items/prefixItems/0/maximum",
+                                          keyword: "maximum",
+                                          params: {
+                                            comparison: "<=",
+                                            limit: 1
+                                          }
+                                        };
+                                        vErrors.push(err45), errors++;
+                                      } else if (data17 < 0 || isNaN(data17)) {
+                                        let err46 = {
+                                          instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1 + "/0",
+                                          schemaPath: "#/$defs/FloorSketchWall/properties/points/items/prefixItems/0/minimum",
+                                          keyword: "minimum",
+                                          params: {
+                                            comparison: ">=",
+                                            limit: 0
+                                          }
+                                        };
+                                        vErrors.push(err46), errors++;
+                                      }
+                                    } else {
+                                      let err47 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1 + "/0",
+                                        schemaPath: "#/$defs/FloorSketchWall/properties/points/items/prefixItems/0/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "number"
+                                        }
+                                      };
+                                      vErrors.push(err47), errors++;
+                                    }
+                                    var valid20 = _errs44 === errors;
+                                  }
+                                  if (valid20) {
+                                    if (len2 > 1) {
+                                      let data18 = data16[1], _errs46 = errors;
+                                      if (errors === _errs46) if ("number" == typeof data18 && isFinite(data18)) {
+                                        if (data18 > 1 || isNaN(data18)) {
+                                          let err48 = {
+                                            instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1 + "/1",
+                                            schemaPath: "#/$defs/FloorSketchWall/properties/points/items/prefixItems/1/maximum",
+                                            keyword: "maximum",
+                                            params: {
+                                              comparison: "<=",
+                                              limit: 1
+                                            }
+                                          };
+                                          vErrors.push(err48), errors++;
+                                        } else if (data18 < 0 || isNaN(data18)) {
+                                          let err49 = {
+                                            instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1 + "/1",
+                                            schemaPath: "#/$defs/FloorSketchWall/properties/points/items/prefixItems/1/minimum",
+                                            keyword: "minimum",
+                                            params: {
+                                              comparison: ">=",
+                                              limit: 0
+                                            }
+                                          };
+                                          vErrors.push(err49), errors++;
+                                        }
+                                      } else {
+                                        let err50 = {
+                                          instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1 + "/1",
+                                          schemaPath: "#/$defs/FloorSketchWall/properties/points/items/prefixItems/1/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "number"
+                                          }
+                                        };
+                                        vErrors.push(err50), errors++;
+                                      }
+                                      valid20 = _errs46 === errors;
+                                    }
+                                    if (valid20 && !(data16.length <= 2)) {
+                                      let err51 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1,
+                                        schemaPath: "#/$defs/FloorSketchWall/properties/points/items/items",
+                                        keyword: "items",
+                                        params: {
+                                          limit: 2
+                                        }
+                                      };
+                                      vErrors.push(err51), errors++;
+                                    }
+                                  }
+                                } else {
+                                  let err52 = {
+                                    instancePath: instancePath + "/shapes/" + i0 + "/points/" + i1,
+                                    schemaPath: "#/$defs/FloorSketchWall/properties/points/items/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "array"
+                                    }
+                                  };
+                                  vErrors.push(err52), errors++;
+                                }
+                                if (_errs42 !== errors) break;
+                              }
+                            } else {
+                              let err53 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/points",
+                                schemaPath: "#/$defs/FloorSketchWall/properties/points/type",
+                                keyword: "type",
+                                params: {
+                                  type: "array"
+                                }
+                              };
+                              vErrors.push(err53), errors++;
+                            }
+                            var valid18 = _errs40 === errors;
+                          } else valid18 = !0;
+                          if (valid18 && void 0 !== data2.label) {
+                            let data19 = data2.label;
+                            if (errors == errors) if ("string" == typeof data19) {
+                              if (func1(data19) > 95) {
+                                let err54 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/label",
+                                  schemaPath: "#/$defs/FloorSketchWall/properties/label/maxLength",
+                                  keyword: "maxLength",
+                                  params: {
+                                    limit: 95
+                                  }
+                                };
+                                vErrors.push(err54), errors++;
+                              }
+                            } else {
+                              let err55 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/label",
+                                schemaPath: "#/$defs/FloorSketchWall/properties/label/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              };
+                              vErrors.push(err55), errors++;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  let err56 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/$defs/FloorSketchWall/type",
+                    keyword: "type",
+                    params: {
+                      type: "object"
+                    }
+                  };
+                  vErrors.push(err56), errors++;
+                }
+                if ((_valid0 = _errs30 === errors) && valid3) valid3 = !1, passing0 = [ passing0, 1 ]; else {
+                  _valid0 && (valid3 = !0, passing0 = 1, !0 !== props0 && (props0 = !0));
+                  let _errs50 = errors;
+                  if (errors == errors) if (data2 && "object" == typeof data2 && !Array.isArray(data2)) if (void 0 === data2.id) {
+                    let err57 = {
+                      instancePath: instancePath + "/shapes/" + i0,
+                      schemaPath: "#/$defs/FloorSketchArea/required",
+                      keyword: "required",
+                      params: {
+                        missingProperty: "id"
+                      }
+                    };
+                    vErrors.push(err57), errors++;
+                  } else if (void 0 === data2.type) {
+                    let err58 = {
+                      instancePath: instancePath + "/shapes/" + i0,
+                      schemaPath: "#/$defs/FloorSketchArea/required",
+                      keyword: "required",
+                      params: {
+                        missingProperty: "type"
+                      }
+                    };
+                    vErrors.push(err58), errors++;
+                  } else if (void 0 === data2.points) {
+                    let err59 = {
+                      instancePath: instancePath + "/shapes/" + i0,
+                      schemaPath: "#/$defs/FloorSketchArea/required",
+                      keyword: "required",
+                      params: {
+                        missingProperty: "points"
+                      }
+                    };
+                    vErrors.push(err59), errors++;
+                  } else {
+                    let _errs53 = errors;
+                    for (let key3 in data2) if ("id" !== key3 && "tone" !== key3 && "type" !== key3 && "points" !== key3 && "label" !== key3) {
+                      let err60 = {
+                        instancePath: instancePath + "/shapes/" + i0,
+                        schemaPath: "#/$defs/FloorSketchArea/additionalProperties",
+                        keyword: "additionalProperties",
+                        params: {
+                          additionalProperty: key3
+                        }
+                      };
+                      vErrors.push(err60), errors++;
+                      break;
+                    }
+                    if (_errs53 === errors) {
+                      if (void 0 !== data2.id) {
+                        let data20 = data2.id, _errs54 = errors;
+                        if (errors === _errs54) if ("string" == typeof data20) {
+                          if (func1(data20) > 31) {
+                            let err61 = {
+                              instancePath: instancePath + "/shapes/" + i0 + "/id",
+                              schemaPath: "#/$defs/FloorSketchArea/properties/id/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 31
+                              }
+                            };
+                            vErrors.push(err61), errors++;
+                          } else if (func1(data20) < 1) {
+                            let err62 = {
+                              instancePath: instancePath + "/shapes/" + i0 + "/id",
+                              schemaPath: "#/$defs/FloorSketchArea/properties/id/minLength",
+                              keyword: "minLength",
+                              params: {
+                                limit: 1
+                              }
+                            };
+                            vErrors.push(err62), errors++;
+                          }
+                        } else {
+                          let err63 = {
+                            instancePath: instancePath + "/shapes/" + i0 + "/id",
+                            schemaPath: "#/$defs/FloorSketchArea/properties/id/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          };
+                          vErrors.push(err63), errors++;
+                        }
+                        var valid23 = _errs54 === errors;
+                      } else valid23 = !0;
+                      if (valid23) {
+                        if (void 0 !== data2.tone) {
+                          let data21 = data2.tone, _errs56 = errors;
+                          if ("string" != typeof data21) {
+                            let err64 = {
+                              instancePath: instancePath + "/shapes/" + i0 + "/tone",
+                              schemaPath: "#/$defs/FloorSketchArea/properties/tone/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            };
+                            vErrors.push(err64), errors++;
+                          }
+                          if ("slate" !== data21 && "blue" !== data21 && "green" !== data21 && "amber" !== data21 && "red" !== data21 && "violet" !== data21) {
+                            let err65 = {
+                              instancePath: instancePath + "/shapes/" + i0 + "/tone",
+                              schemaPath: "#/$defs/FloorSketchArea/properties/tone/enum",
+                              keyword: "enum",
+                              params: {
+                                allowedValues: schema223.properties.tone.enum
+                              }
+                            };
+                            vErrors.push(err65), errors++;
+                          }
+                          var valid24 = _errs56 === errors;
+                        } else valid24 = !0;
+                        if (valid24) {
+                          if (void 0 !== data2.type) {
+                            let data22 = data2.type, _errs58 = errors;
+                            if ("string" != typeof data22) {
+                              let err66 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/type",
+                                schemaPath: "#/$defs/FloorSketchArea/properties/type/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              };
+                              vErrors.push(err66), errors++;
+                            }
+                            if ("area" !== data22) {
+                              let err67 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/type",
+                                schemaPath: "#/$defs/FloorSketchArea/properties/type/const",
+                                keyword: "const",
+                                params: {
+                                  allowedValue: "area"
+                                }
+                              };
+                              vErrors.push(err67), errors++;
+                            }
+                            var valid25 = _errs58 === errors;
+                          } else valid25 = !0;
+                          if (valid25) {
+                            if (void 0 !== data2.points) {
+                              let data23 = data2.points, _errs60 = errors;
+                              if (errors === _errs60) if (Array.isArray(data23)) if (data23.length > 64) {
+                                let err68 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/points",
+                                  schemaPath: "#/$defs/FloorSketchArea/properties/points/maxItems",
+                                  keyword: "maxItems",
+                                  params: {
+                                    limit: 64
+                                  }
+                                };
+                                vErrors.push(err68), errors++;
+                              } else if (data23.length < 3) {
+                                let err69 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/points",
+                                  schemaPath: "#/$defs/FloorSketchArea/properties/points/minItems",
+                                  keyword: "minItems",
+                                  params: {
+                                    limit: 3
+                                  }
+                                };
+                                vErrors.push(err69), errors++;
+                              } else {
+                                let len4 = data23.length;
+                                for (let i2 = 0; i2 < len4; i2++) {
+                                  let data24 = data23[i2], _errs62 = errors;
+                                  if (errors === _errs62) if (Array.isArray(data24)) if (data24.length > 2) {
+                                    let err70 = {
+                                      instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2,
+                                      schemaPath: "#/$defs/FloorSketchArea/properties/points/items/maxItems",
+                                      keyword: "maxItems",
+                                      params: {
+                                        limit: 2
+                                      }
+                                    };
+                                    vErrors.push(err70), errors++;
+                                  } else if (data24.length < 2) {
+                                    let err71 = {
+                                      instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2,
+                                      schemaPath: "#/$defs/FloorSketchArea/properties/points/items/minItems",
+                                      keyword: "minItems",
+                                      params: {
+                                        limit: 2
+                                      }
+                                    };
+                                    vErrors.push(err71), errors++;
+                                  } else {
+                                    let len5 = data24.length;
+                                    if (len5 > 0) {
+                                      let data25 = data24[0], _errs64 = errors;
+                                      if (errors === _errs64) if ("number" == typeof data25 && isFinite(data25)) {
+                                        if (data25 > 1 || isNaN(data25)) {
+                                          let err72 = {
+                                            instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2 + "/0",
+                                            schemaPath: "#/$defs/FloorSketchArea/properties/points/items/prefixItems/0/maximum",
+                                            keyword: "maximum",
+                                            params: {
+                                              comparison: "<=",
+                                              limit: 1
+                                            }
+                                          };
+                                          vErrors.push(err72), errors++;
+                                        } else if (data25 < 0 || isNaN(data25)) {
+                                          let err73 = {
+                                            instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2 + "/0",
+                                            schemaPath: "#/$defs/FloorSketchArea/properties/points/items/prefixItems/0/minimum",
+                                            keyword: "minimum",
+                                            params: {
+                                              comparison: ">=",
+                                              limit: 0
+                                            }
+                                          };
+                                          vErrors.push(err73), errors++;
+                                        }
+                                      } else {
+                                        let err74 = {
+                                          instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2 + "/0",
+                                          schemaPath: "#/$defs/FloorSketchArea/properties/points/items/prefixItems/0/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "number"
+                                          }
+                                        };
+                                        vErrors.push(err74), errors++;
+                                      }
+                                      var valid28 = _errs64 === errors;
+                                    }
+                                    if (valid28) {
+                                      if (len5 > 1) {
+                                        let data26 = data24[1], _errs66 = errors;
+                                        if (errors === _errs66) if ("number" == typeof data26 && isFinite(data26)) {
+                                          if (data26 > 1 || isNaN(data26)) {
+                                            let err75 = {
+                                              instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2 + "/1",
+                                              schemaPath: "#/$defs/FloorSketchArea/properties/points/items/prefixItems/1/maximum",
+                                              keyword: "maximum",
+                                              params: {
+                                                comparison: "<=",
+                                                limit: 1
+                                              }
+                                            };
+                                            vErrors.push(err75), errors++;
+                                          } else if (data26 < 0 || isNaN(data26)) {
+                                            let err76 = {
+                                              instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2 + "/1",
+                                              schemaPath: "#/$defs/FloorSketchArea/properties/points/items/prefixItems/1/minimum",
+                                              keyword: "minimum",
+                                              params: {
+                                                comparison: ">=",
+                                                limit: 0
+                                              }
+                                            };
+                                            vErrors.push(err76), errors++;
+                                          }
+                                        } else {
+                                          let err77 = {
+                                            instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2 + "/1",
+                                            schemaPath: "#/$defs/FloorSketchArea/properties/points/items/prefixItems/1/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "number"
+                                            }
+                                          };
+                                          vErrors.push(err77), errors++;
+                                        }
+                                        valid28 = _errs66 === errors;
+                                      }
+                                      if (valid28 && !(data24.length <= 2)) {
+                                        let err78 = {
+                                          instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2,
+                                          schemaPath: "#/$defs/FloorSketchArea/properties/points/items/items",
+                                          keyword: "items",
+                                          params: {
+                                            limit: 2
+                                          }
+                                        };
+                                        vErrors.push(err78), errors++;
+                                      }
+                                    }
+                                  } else {
+                                    let err79 = {
+                                      instancePath: instancePath + "/shapes/" + i0 + "/points/" + i2,
+                                      schemaPath: "#/$defs/FloorSketchArea/properties/points/items/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "array"
+                                      }
+                                    };
+                                    vErrors.push(err79), errors++;
+                                  }
+                                  if (_errs62 !== errors) break;
+                                }
+                              } else {
+                                let err80 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/points",
+                                  schemaPath: "#/$defs/FloorSketchArea/properties/points/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "array"
+                                  }
+                                };
+                                vErrors.push(err80), errors++;
+                              }
+                              var valid26 = _errs60 === errors;
+                            } else valid26 = !0;
+                            if (valid26 && void 0 !== data2.label) {
+                              let data27 = data2.label;
+                              if (errors == errors) if ("string" == typeof data27) {
+                                if (func1(data27) > 95) {
+                                  let err81 = {
+                                    instancePath: instancePath + "/shapes/" + i0 + "/label",
+                                    schemaPath: "#/$defs/FloorSketchArea/properties/label/maxLength",
+                                    keyword: "maxLength",
+                                    params: {
+                                      limit: 95
+                                    }
+                                  };
+                                  vErrors.push(err81), errors++;
+                                }
+                              } else {
+                                let err82 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/label",
+                                  schemaPath: "#/$defs/FloorSketchArea/properties/label/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                };
+                                vErrors.push(err82), errors++;
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  } else {
+                    let err83 = {
+                      instancePath: instancePath + "/shapes/" + i0,
+                      schemaPath: "#/$defs/FloorSketchArea/type",
+                      keyword: "type",
+                      params: {
+                        type: "object"
+                      }
+                    };
+                    vErrors.push(err83), errors++;
+                  }
+                  if ((_valid0 = _errs50 === errors) && valid3) valid3 = !1, passing0 = [ passing0, 2 ]; else {
+                    _valid0 && (valid3 = !0, passing0 = 2, !0 !== props0 && (props0 = !0));
+                    let _errs70 = errors;
+                    if (errors == errors) if (data2 && "object" == typeof data2 && !Array.isArray(data2)) if (void 0 === data2.id) {
+                      let err84 = {
+                        instancePath: instancePath + "/shapes/" + i0,
+                        schemaPath: "#/$defs/FloorSketchLabel/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "id"
+                        }
+                      };
+                      vErrors.push(err84), errors++;
+                    } else if (void 0 === data2.type) {
+                      let err85 = {
+                        instancePath: instancePath + "/shapes/" + i0,
+                        schemaPath: "#/$defs/FloorSketchLabel/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "type"
+                        }
+                      };
+                      vErrors.push(err85), errors++;
+                    } else if (void 0 === data2.x) {
+                      let err86 = {
+                        instancePath: instancePath + "/shapes/" + i0,
+                        schemaPath: "#/$defs/FloorSketchLabel/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "x"
+                        }
+                      };
+                      vErrors.push(err86), errors++;
+                    } else if (void 0 === data2.y) {
+                      let err87 = {
+                        instancePath: instancePath + "/shapes/" + i0,
+                        schemaPath: "#/$defs/FloorSketchLabel/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "y"
+                        }
+                      };
+                      vErrors.push(err87), errors++;
+                    } else if (void 0 === data2.text) {
+                      let err88 = {
+                        instancePath: instancePath + "/shapes/" + i0,
+                        schemaPath: "#/$defs/FloorSketchLabel/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "text"
+                        }
+                      };
+                      vErrors.push(err88), errors++;
+                    } else {
+                      let _errs73 = errors;
+                      for (let key4 in data2) if ("id" !== key4 && "tone" !== key4 && "type" !== key4 && "x" !== key4 && "y" !== key4 && "text" !== key4 && "size" !== key4) {
+                        let err89 = {
+                          instancePath: instancePath + "/shapes/" + i0,
+                          schemaPath: "#/$defs/FloorSketchLabel/additionalProperties",
+                          keyword: "additionalProperties",
+                          params: {
+                            additionalProperty: key4
+                          }
+                        };
+                        vErrors.push(err89), errors++;
+                        break;
+                      }
+                      if (_errs73 === errors) {
+                        if (void 0 !== data2.id) {
+                          let data28 = data2.id, _errs74 = errors;
+                          if (errors === _errs74) if ("string" == typeof data28) {
+                            if (func1(data28) > 31) {
+                              let err90 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/id",
+                                schemaPath: "#/$defs/FloorSketchLabel/properties/id/maxLength",
+                                keyword: "maxLength",
+                                params: {
+                                  limit: 31
+                                }
+                              };
+                              vErrors.push(err90), errors++;
+                            } else if (func1(data28) < 1) {
+                              let err91 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/id",
+                                schemaPath: "#/$defs/FloorSketchLabel/properties/id/minLength",
+                                keyword: "minLength",
+                                params: {
+                                  limit: 1
+                                }
+                              };
+                              vErrors.push(err91), errors++;
+                            }
+                          } else {
+                            let err92 = {
+                              instancePath: instancePath + "/shapes/" + i0 + "/id",
+                              schemaPath: "#/$defs/FloorSketchLabel/properties/id/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            };
+                            vErrors.push(err92), errors++;
+                          }
+                          var valid31 = _errs74 === errors;
+                        } else valid31 = !0;
+                        if (valid31) {
+                          if (void 0 !== data2.tone) {
+                            let data29 = data2.tone, _errs76 = errors;
+                            if ("string" != typeof data29) {
+                              let err93 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/tone",
+                                schemaPath: "#/$defs/FloorSketchLabel/properties/tone/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              };
+                              vErrors.push(err93), errors++;
+                            }
+                            if ("slate" !== data29 && "blue" !== data29 && "green" !== data29 && "amber" !== data29 && "red" !== data29 && "violet" !== data29) {
+                              let err94 = {
+                                instancePath: instancePath + "/shapes/" + i0 + "/tone",
+                                schemaPath: "#/$defs/FloorSketchLabel/properties/tone/enum",
+                                keyword: "enum",
+                                params: {
+                                  allowedValues: schema224.properties.tone.enum
+                                }
+                              };
+                              vErrors.push(err94), errors++;
+                            }
+                            var valid32 = _errs76 === errors;
+                          } else valid32 = !0;
+                          if (valid32) {
+                            if (void 0 !== data2.type) {
+                              let data30 = data2.type, _errs78 = errors;
+                              if ("string" != typeof data30) {
+                                let err95 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/type",
+                                  schemaPath: "#/$defs/FloorSketchLabel/properties/type/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                };
+                                vErrors.push(err95), errors++;
+                              }
+                              if ("label" !== data30) {
+                                let err96 = {
+                                  instancePath: instancePath + "/shapes/" + i0 + "/type",
+                                  schemaPath: "#/$defs/FloorSketchLabel/properties/type/const",
+                                  keyword: "const",
+                                  params: {
+                                    allowedValue: "label"
+                                  }
+                                };
+                                vErrors.push(err96), errors++;
+                              }
+                              var valid33 = _errs78 === errors;
+                            } else valid33 = !0;
+                            if (valid33) {
+                              if (void 0 !== data2.x) {
+                                let data31 = data2.x, _errs80 = errors;
+                                if (errors === _errs80) if ("number" == typeof data31 && isFinite(data31)) {
+                                  if (data31 > 1 || isNaN(data31)) {
+                                    let err97 = {
+                                      instancePath: instancePath + "/shapes/" + i0 + "/x",
+                                      schemaPath: "#/$defs/FloorSketchLabel/properties/x/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 1
+                                      }
+                                    };
+                                    vErrors.push(err97), errors++;
+                                  } else if (data31 < 0 || isNaN(data31)) {
+                                    let err98 = {
+                                      instancePath: instancePath + "/shapes/" + i0 + "/x",
+                                      schemaPath: "#/$defs/FloorSketchLabel/properties/x/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 0
+                                      }
+                                    };
+                                    vErrors.push(err98), errors++;
+                                  }
+                                } else {
+                                  let err99 = {
+                                    instancePath: instancePath + "/shapes/" + i0 + "/x",
+                                    schemaPath: "#/$defs/FloorSketchLabel/properties/x/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "number"
+                                    }
+                                  };
+                                  vErrors.push(err99), errors++;
+                                }
+                                var valid34 = _errs80 === errors;
+                              } else valid34 = !0;
+                              if (valid34) {
+                                if (void 0 !== data2.y) {
+                                  let data32 = data2.y, _errs82 = errors;
+                                  if (errors === _errs82) if ("number" == typeof data32 && isFinite(data32)) {
+                                    if (data32 > 1 || isNaN(data32)) {
+                                      let err100 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/y",
+                                        schemaPath: "#/$defs/FloorSketchLabel/properties/y/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 1
+                                        }
+                                      };
+                                      vErrors.push(err100), errors++;
+                                    } else if (data32 < 0 || isNaN(data32)) {
+                                      let err101 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/y",
+                                        schemaPath: "#/$defs/FloorSketchLabel/properties/y/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: 0
+                                        }
+                                      };
+                                      vErrors.push(err101), errors++;
+                                    }
+                                  } else {
+                                    let err102 = {
+                                      instancePath: instancePath + "/shapes/" + i0 + "/y",
+                                      schemaPath: "#/$defs/FloorSketchLabel/properties/y/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "number"
+                                      }
+                                    };
+                                    vErrors.push(err102), errors++;
+                                  }
+                                  var valid35 = _errs82 === errors;
+                                } else valid35 = !0;
+                                if (valid35) {
+                                  if (void 0 !== data2.text) {
+                                    let data33 = data2.text, _errs84 = errors;
+                                    if (errors === _errs84) if ("string" == typeof data33) {
+                                      if (func1(data33) > 95) {
+                                        let err103 = {
+                                          instancePath: instancePath + "/shapes/" + i0 + "/text",
+                                          schemaPath: "#/$defs/FloorSketchLabel/properties/text/maxLength",
+                                          keyword: "maxLength",
+                                          params: {
+                                            limit: 95
+                                          }
+                                        };
+                                        vErrors.push(err103), errors++;
+                                      } else if (func1(data33) < 1) {
+                                        let err104 = {
+                                          instancePath: instancePath + "/shapes/" + i0 + "/text",
+                                          schemaPath: "#/$defs/FloorSketchLabel/properties/text/minLength",
+                                          keyword: "minLength",
+                                          params: {
+                                            limit: 1
+                                          }
+                                        };
+                                        vErrors.push(err104), errors++;
+                                      }
+                                    } else {
+                                      let err105 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/text",
+                                        schemaPath: "#/$defs/FloorSketchLabel/properties/text/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      };
+                                      vErrors.push(err105), errors++;
+                                    }
+                                    var valid36 = _errs84 === errors;
+                                  } else valid36 = !0;
+                                  if (valid36 && void 0 !== data2.size) {
+                                    let data34 = data2.size;
+                                    if ("string" != typeof data34) {
+                                      let err106 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/size",
+                                        schemaPath: "#/$defs/FloorSketchLabel/properties/size/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      };
+                                      vErrors.push(err106), errors++;
+                                    }
+                                    if ("sm" !== data34 && "md" !== data34 && "lg" !== data34) {
+                                      let err107 = {
+                                        instancePath: instancePath + "/shapes/" + i0 + "/size",
+                                        schemaPath: "#/$defs/FloorSketchLabel/properties/size/enum",
+                                        keyword: "enum",
+                                        params: {
+                                          allowedValues: schema224.properties.size.enum
+                                        }
+                                      };
+                                      vErrors.push(err107), errors++;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    } else {
+                      let err108 = {
+                        instancePath: instancePath + "/shapes/" + i0,
+                        schemaPath: "#/$defs/FloorSketchLabel/type",
+                        keyword: "type",
+                        params: {
+                          type: "object"
+                        }
+                      };
+                      vErrors.push(err108), errors++;
+                    }
+                    var _valid0;
+                    (_valid0 = _errs70 === errors) && valid3 ? (valid3 = !1, passing0 = [ passing0, 3 ]) : _valid0 && (valid3 = !0,
+                    passing0 = 3, !0 !== props0 && (props0 = !0));
+                  }
+                }
+                if (!valid3) {
+                  let err109 = {
+                    instancePath: instancePath + "/shapes/" + i0,
+                    schemaPath: "#/properties/shapes/items/oneOf",
+                    keyword: "oneOf",
+                    params: {
+                      passingSchemas: passing0
+                    }
+                  };
+                  return vErrors.push(err109), errors++, validate211.errors = vErrors, !1;
+                }
+                if (errors = _errs7, vErrors.length = _errs7, _errs6 !== errors) break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate211.errors = vErrors, 0 === errors;
+}
+
+function validate212(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate212.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate212.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.camera_uuid) return validate212.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "camera_uuid"
+    }
+  } ], !1;
+  if (void 0 === data.x) return validate212.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "x"
+    }
+  } ], !1;
+  if (void 0 === data.y) return validate212.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "y"
+    }
+  } ], !1;
+  if (void 0 === data.rotation) return validate212.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "rotation"
+    }
+  } ], !1;
+  if (void 0 === data.fov) return validate212.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "fov"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("camera_uuid" !== key0 && "x" !== key0 && "y" !== key0 && "rotation" !== key0 && "fov" !== key0) return validate212.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.camera_uuid) {
+        let data0 = data.camera_uuid, _errs2 = 0;
+        if ("string" != typeof data0) return validate212.errors = [ {
+          instancePath: instancePath + "/camera_uuid",
+          schemaPath: "#/$defs/CameraUuid/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+        if (!pattern4.test(data0)) return validate212.errors = [ {
+          instancePath: instancePath + "/camera_uuid",
+          schemaPath: "#/$defs/CameraUuid/pattern",
+          keyword: "pattern",
+          params: {
+            pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.x) {
+          let data1 = data.x, _errs5 = 0;
+          if (0 === _errs5) {
+            if ("number" != typeof data1 || !isFinite(data1)) return validate212.errors = [ {
+              instancePath: instancePath + "/x",
+              schemaPath: "#/properties/x/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            } ], !1;
+            if (data1 > 1 || isNaN(data1)) return validate212.errors = [ {
+              instancePath: instancePath + "/x",
+              schemaPath: "#/properties/x/maximum",
+              keyword: "maximum",
+              params: {
+                comparison: "<=",
+                limit: 1
+              }
+            } ], !1;
+            if (data1 < 0 || isNaN(data1)) return validate212.errors = [ {
+              instancePath: instancePath + "/x",
+              schemaPath: "#/properties/x/minimum",
+              keyword: "minimum",
+              params: {
+                comparison: ">=",
+                limit: 0
+              }
+            } ], !1;
+          }
+          var valid2 = 0 === _errs5;
+        } else valid2 = !0;
+        if (valid2) {
+          if (void 0 !== data.y) {
+            let data2 = data.y, _errs7 = 0;
+            if (0 === _errs7) {
+              if ("number" != typeof data2 || !isFinite(data2)) return validate212.errors = [ {
+                instancePath: instancePath + "/y",
+                schemaPath: "#/properties/y/type",
+                keyword: "type",
+                params: {
+                  type: "number"
+                }
+              } ], !1;
+              if (data2 > 1 || isNaN(data2)) return validate212.errors = [ {
+                instancePath: instancePath + "/y",
+                schemaPath: "#/properties/y/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 1
+                }
+              } ], !1;
+              if (data2 < 0 || isNaN(data2)) return validate212.errors = [ {
+                instancePath: instancePath + "/y",
+                schemaPath: "#/properties/y/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: 0
+                }
+              } ], !1;
+            }
+            var valid3 = 0 === _errs7;
+          } else valid3 = !0;
+          if (valid3) {
+            if (void 0 !== data.rotation) {
+              let data3 = data.rotation, _errs9 = 0;
+              if (0 === _errs9) {
+                if ("number" != typeof data3 || !isFinite(data3)) return validate212.errors = [ {
+                  instancePath: instancePath + "/rotation",
+                  schemaPath: "#/properties/rotation/type",
+                  keyword: "type",
+                  params: {
+                    type: "number"
+                  }
+                } ], !1;
+                if (data3 > 180 || isNaN(data3)) return validate212.errors = [ {
+                  instancePath: instancePath + "/rotation",
+                  schemaPath: "#/properties/rotation/maximum",
+                  keyword: "maximum",
+                  params: {
+                    comparison: "<=",
+                    limit: 180
+                  }
+                } ], !1;
+                if (data3 < -180 || isNaN(data3)) return validate212.errors = [ {
+                  instancePath: instancePath + "/rotation",
+                  schemaPath: "#/properties/rotation/minimum",
+                  keyword: "minimum",
+                  params: {
+                    comparison: ">=",
+                    limit: -180
+                  }
+                } ], !1;
+              }
+              var valid4 = 0 === _errs9;
+            } else valid4 = !0;
+            if (valid4 && void 0 !== data.fov) {
+              let data4 = data.fov;
+              if ("number" != typeof data4 || !isFinite(data4)) return validate212.errors = [ {
+                instancePath: instancePath + "/fov",
+                schemaPath: "#/properties/fov/type",
+                keyword: "type",
+                params: {
+                  type: "number"
+                }
+              } ], !1;
+              if (data4 > 180 || isNaN(data4)) return validate212.errors = [ {
+                instancePath: instancePath + "/fov",
+                schemaPath: "#/properties/fov/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 180
+                }
+              } ], !1;
+              if (data4 < 1 || isNaN(data4)) return validate212.errors = [ {
+                instancePath: instancePath + "/fov",
+                schemaPath: "#/properties/fov/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: 1
+                }
+              } ], !1;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate212.errors = [], !0;
+}
+
+function validate220(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate220.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.location_uuid) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "location_uuid"
+      }
+    } ], !1;
+    if (void 0 === data.parent_plan_uuid) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "parent_plan_uuid"
+      }
+    } ], !1;
+    if (void 0 === data.canvas_width) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "canvas_width"
+      }
+    } ], !1;
+    if (void 0 === data.canvas_height) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "canvas_height"
+      }
+    } ], !1;
+    if (void 0 === data.sketch) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "sketch"
+      }
+    } ], !1;
+    if (void 0 === data.cameras) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "cameras"
+      }
+    } ], !1;
+    if (void 0 === data.uuid) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "uuid"
+      }
+    } ], !1;
+    if (void 0 === data.background_mime) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "background_mime"
+      }
+    } ], !1;
+    if (void 0 === data.partially_authorized) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "partially_authorized"
+      }
+    } ], !1;
+    if (void 0 === data.revision) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "revision"
+      }
+    } ], !1;
+    if (void 0 === data.created_at) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "created_at"
+      }
+    } ], !1;
+    if (void 0 === data.updated_at) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "updated_at"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if (!func5.call(schema240.properties, key0)) return validate220.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate220.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate220.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate220.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.location_uuid) {
+            let data1 = data.location_uuid, _errs4 = errors, _errs5 = errors, valid2 = !1, _errs6 = errors;
+            if (errors == errors) if ("string" == typeof data1) {
+              if (!pattern4.test(data1)) {
+                let err0 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/$defs/CameraUuid/pattern",
+                  keyword: "pattern",
+                  params: {
+                    pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                  }
+                };
+                vErrors.push(err0), errors++;
+              }
+            } else {
+              let err1 = {
+                instancePath: instancePath + "/location_uuid",
+                schemaPath: "#/$defs/CameraUuid/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              };
+              vErrors.push(err1), errors++;
+            }
+            var _valid0 = _errs6 === errors;
+            valid2 = valid2 || _valid0;
+            let _errs9 = errors;
+            if (null !== data1) {
+              let err2 = {
+                instancePath: instancePath + "/location_uuid",
+                schemaPath: "#/properties/location_uuid/anyOf/1/type",
+                keyword: "type",
+                params: {
+                  type: "null"
+                }
+              };
+              vErrors.push(err2), errors++;
+            }
+            if (_valid0 = _errs9 === errors, valid2 = valid2 || _valid0, !valid2) {
+              let err3 = {
+                instancePath: instancePath + "/location_uuid",
+                schemaPath: "#/properties/location_uuid/anyOf",
+                keyword: "anyOf",
+                params: {}
+              };
+              return vErrors.push(err3), errors++, validate220.errors = vErrors, !1;
+            }
+            errors = _errs5, vErrors.length = _errs5;
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.parent_plan_uuid) {
+              let data2 = data.parent_plan_uuid, _errs11 = errors, _errs12 = errors, valid5 = !1, _errs13 = errors;
+              if (errors == errors) if ("string" == typeof data2) {
+                if (!pattern4.test(data2)) {
+                  let err4 = {
+                    instancePath: instancePath + "/parent_plan_uuid",
+                    schemaPath: "#/$defs/CameraUuid/pattern",
+                    keyword: "pattern",
+                    params: {
+                      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    }
+                  };
+                  vErrors.push(err4), errors++;
+                }
+              } else {
+                let err5 = {
+                  instancePath: instancePath + "/parent_plan_uuid",
+                  schemaPath: "#/$defs/CameraUuid/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                };
+                vErrors.push(err5), errors++;
+              }
+              var _valid1 = _errs13 === errors;
+              valid5 = valid5 || _valid1;
+              let _errs16 = errors;
+              if (null !== data2) {
+                let err6 = {
+                  instancePath: instancePath + "/parent_plan_uuid",
+                  schemaPath: "#/properties/parent_plan_uuid/anyOf/1/type",
+                  keyword: "type",
+                  params: {
+                    type: "null"
+                  }
+                };
+                vErrors.push(err6), errors++;
+              }
+              if (_valid1 = _errs16 === errors, valid5 = valid5 || _valid1, !valid5) {
+                let err7 = {
+                  instancePath: instancePath + "/parent_plan_uuid",
+                  schemaPath: "#/properties/parent_plan_uuid/anyOf",
+                  keyword: "anyOf",
+                  params: {}
+                };
+                return vErrors.push(err7), errors++, validate220.errors = vErrors, !1;
+              }
+              errors = _errs12, vErrors.length = _errs12;
+              var valid4 = _errs11 === errors;
+            } else valid4 = !0;
+            if (valid4) {
+              if (void 0 !== data.canvas_width) {
+                let data3 = data.canvas_width, _errs18 = errors;
+                if ("number" != typeof data3 || data3 % 1 || isNaN(data3) || !isFinite(data3)) return validate220.errors = [ {
+                  instancePath: instancePath + "/canvas_width",
+                  schemaPath: "#/properties/canvas_width/type",
+                  keyword: "type",
+                  params: {
+                    type: "integer"
+                  }
+                } ], !1;
+                if (errors === _errs18 && "number" == typeof data3 && isFinite(data3)) {
+                  if (data3 > 4e3 || isNaN(data3)) return validate220.errors = [ {
+                    instancePath: instancePath + "/canvas_width",
+                    schemaPath: "#/properties/canvas_width/maximum",
+                    keyword: "maximum",
+                    params: {
+                      comparison: "<=",
+                      limit: 4e3
+                    }
+                  } ], !1;
+                  if (data3 < 400 || isNaN(data3)) return validate220.errors = [ {
+                    instancePath: instancePath + "/canvas_width",
+                    schemaPath: "#/properties/canvas_width/minimum",
+                    keyword: "minimum",
+                    params: {
+                      comparison: ">=",
+                      limit: 400
+                    }
+                  } ], !1;
+                }
+                var valid7 = _errs18 === errors;
+              } else valid7 = !0;
+              if (valid7) {
+                if (void 0 !== data.canvas_height) {
+                  let data4 = data.canvas_height, _errs20 = errors;
+                  if ("number" != typeof data4 || data4 % 1 || isNaN(data4) || !isFinite(data4)) return validate220.errors = [ {
+                    instancePath: instancePath + "/canvas_height",
+                    schemaPath: "#/properties/canvas_height/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  } ], !1;
+                  if (errors === _errs20 && "number" == typeof data4 && isFinite(data4)) {
+                    if (data4 > 4e3 || isNaN(data4)) return validate220.errors = [ {
+                      instancePath: instancePath + "/canvas_height",
+                      schemaPath: "#/properties/canvas_height/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 4e3
+                      }
+                    } ], !1;
+                    if (data4 < 300 || isNaN(data4)) return validate220.errors = [ {
+                      instancePath: instancePath + "/canvas_height",
+                      schemaPath: "#/properties/canvas_height/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 300
+                      }
+                    } ], !1;
+                  }
+                  var valid8 = _errs20 === errors;
+                } else valid8 = !0;
+                if (valid8) {
+                  if (void 0 !== data.sketch) {
+                    let data5 = data.sketch, _errs22 = errors, _errs23 = errors, valid10 = !1, _errs24 = errors;
+                    validate211(data5, {
+                      instancePath: instancePath + "/sketch",
+                      parentData: data,
+                      parentDataProperty: "sketch",
+                      rootData: rootData,
+                      dynamicAnchors: dynamicAnchors
+                    }) || (vErrors = vErrors.concat(validate211.errors), errors = vErrors.length);
+                    var _valid2 = _errs24 === errors;
+                    valid10 = valid10 || _valid2;
+                    let _errs25 = errors;
+                    if (null !== data5) {
+                      let err8 = {
+                        instancePath: instancePath + "/sketch",
+                        schemaPath: "#/properties/sketch/anyOf/1/type",
+                        keyword: "type",
+                        params: {
+                          type: "null"
+                        }
+                      };
+                      vErrors.push(err8), errors++;
+                    }
+                    if (_valid2 = _errs25 === errors, valid10 = valid10 || _valid2, !valid10) {
+                      let err9 = {
+                        instancePath: instancePath + "/sketch",
+                        schemaPath: "#/properties/sketch/anyOf",
+                        keyword: "anyOf",
+                        params: {}
+                      };
+                      return vErrors.push(err9), errors++, validate220.errors = vErrors, !1;
+                    }
+                    errors = _errs23, vErrors.length = _errs23;
+                    var valid9 = _errs22 === errors;
+                  } else valid9 = !0;
+                  if (valid9) {
+                    if (void 0 !== data.cameras) {
+                      let data6 = data.cameras, _errs27 = errors;
+                      if (errors === _errs27) {
+                        if (!Array.isArray(data6)) return validate220.errors = [ {
+                          instancePath: instancePath + "/cameras",
+                          schemaPath: "#/properties/cameras/type",
+                          keyword: "type",
+                          params: {
+                            type: "array"
+                          }
+                        } ], !1;
+                        if (data6.length > 1e3) return validate220.errors = [ {
+                          instancePath: instancePath + "/cameras",
+                          schemaPath: "#/properties/cameras/maxItems",
+                          keyword: "maxItems",
+                          params: {
+                            limit: 1e3
+                          }
+                        } ], !1;
+                        {
+                          let len0 = data6.length;
+                          for (let i0 = 0; i0 < len0; i0++) {
+                            let _errs29 = errors;
+                            if (validate212(data6[i0], {
+                              instancePath: instancePath + "/cameras/" + i0,
+                              parentData: data6,
+                              parentDataProperty: i0,
+                              rootData: rootData,
+                              dynamicAnchors: dynamicAnchors
+                            }) || (vErrors = vErrors.concat(validate212.errors), errors = vErrors.length), _errs29 !== errors) break;
+                          }
+                        }
+                      }
+                      var valid11 = _errs27 === errors;
+                    } else valid11 = !0;
+                    if (valid11) {
+                      if (void 0 !== data.uuid) {
+                        let data8 = data.uuid, _errs30 = errors;
+                        if (errors == errors) {
+                          if ("string" != typeof data8) return validate220.errors = [ {
+                            instancePath: instancePath + "/uuid",
+                            schemaPath: "#/$defs/CameraUuid/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (!pattern4.test(data8)) return validate220.errors = [ {
+                            instancePath: instancePath + "/uuid",
+                            schemaPath: "#/$defs/CameraUuid/pattern",
+                            keyword: "pattern",
+                            params: {
+                              pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          } ], !1;
+                        }
+                        var valid13 = _errs30 === errors;
+                      } else valid13 = !0;
+                      if (valid13) {
+                        if (void 0 !== data.background_mime) {
+                          let data9 = data.background_mime, _errs33 = errors;
+                          if ("string" != typeof data9 && null !== data9) return validate220.errors = [ {
+                            instancePath: instancePath + "/background_mime",
+                            schemaPath: "#/properties/background_mime/type",
+                            keyword: "type",
+                            params: {
+                              type: schema240.properties.background_mime.type
+                            }
+                          } ], !1;
+                          if ("image/png" !== data9 && "image/jpeg" !== data9 && null !== data9) return validate220.errors = [ {
+                            instancePath: instancePath + "/background_mime",
+                            schemaPath: "#/properties/background_mime/enum",
+                            keyword: "enum",
+                            params: {
+                              allowedValues: schema240.properties.background_mime.enum
+                            }
+                          } ], !1;
+                          var valid15 = _errs33 === errors;
+                        } else valid15 = !0;
+                        if (valid15) {
+                          if (void 0 !== data.partially_authorized) {
+                            let _errs35 = errors;
+                            if ("boolean" != typeof data.partially_authorized) return validate220.errors = [ {
+                              instancePath: instancePath + "/partially_authorized",
+                              schemaPath: "#/properties/partially_authorized/type",
+                              keyword: "type",
+                              params: {
+                                type: "boolean"
+                              }
+                            } ], !1;
+                            var valid16 = _errs35 === errors;
+                          } else valid16 = !0;
+                          if (valid16) {
+                            if (void 0 !== data.revision) {
+                              let data11 = data.revision, _errs37 = errors;
+                              if ("number" != typeof data11 || data11 % 1 || isNaN(data11) || !isFinite(data11)) return validate220.errors = [ {
+                                instancePath: instancePath + "/revision",
+                                schemaPath: "#/properties/revision/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              if (errors === _errs37 && "number" == typeof data11 && isFinite(data11) && (data11 < 1 || isNaN(data11))) return validate220.errors = [ {
+                                instancePath: instancePath + "/revision",
+                                schemaPath: "#/properties/revision/minimum",
+                                keyword: "minimum",
+                                params: {
+                                  comparison: ">=",
+                                  limit: 1
+                                }
+                              } ], !1;
+                              var valid17 = _errs37 === errors;
+                            } else valid17 = !0;
+                            if (valid17) {
+                              if (void 0 !== data.created_at) {
+                                let data12 = data.created_at, _errs39 = errors;
+                                if ("number" != typeof data12 || data12 % 1 || isNaN(data12) || !isFinite(data12)) return validate220.errors = [ {
+                                  instancePath: instancePath + "/created_at",
+                                  schemaPath: "#/properties/created_at/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (errors === _errs39 && "number" == typeof data12 && isFinite(data12) && (data12 < 0 || isNaN(data12))) return validate220.errors = [ {
+                                  instancePath: instancePath + "/created_at",
+                                  schemaPath: "#/properties/created_at/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: 0
+                                  }
+                                } ], !1;
+                                var valid18 = _errs39 === errors;
+                              } else valid18 = !0;
+                              if (valid18) {
+                                if (void 0 !== data.updated_at) {
+                                  let data13 = data.updated_at, _errs41 = errors;
+                                  if ("number" != typeof data13 || data13 % 1 || isNaN(data13) || !isFinite(data13)) return validate220.errors = [ {
+                                    instancePath: instancePath + "/updated_at",
+                                    schemaPath: "#/properties/updated_at/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  if (errors === _errs41 && "number" == typeof data13 && isFinite(data13) && (data13 < 0 || isNaN(data13))) return validate220.errors = [ {
+                                    instancePath: instancePath + "/updated_at",
+                                    schemaPath: "#/properties/updated_at/minimum",
+                                    keyword: "minimum",
+                                    params: {
+                                      comparison: ">=",
+                                      limit: 0
+                                    }
+                                  } ], !1;
+                                  var valid19 = _errs41 === errors;
+                                } else valid19 = !0;
+                                if (valid19 && void 0 !== data.can_modify && "boolean" != typeof data.can_modify) return validate220.errors = [ {
+                                  instancePath: instancePath + "/can_modify",
+                                  schemaPath: "#/properties/can_modify/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "boolean"
+                                  }
+                                } ], !1;
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate220.errors = vErrors, 0 === errors;
+}
+
+validate211.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+}, validate212.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+}, validate220.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorPlanCamera = validate212, __contract_FloorPlanCameraRequest = validate213;
+
+function validate213(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate213.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate213.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.camera_uuid) return validate213.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "camera_uuid"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("camera_uuid" !== key0 && "x" !== key0 && "y" !== key0 && "rotation" !== key0 && "fov" !== key0) return validate213.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.camera_uuid) {
+        let data0 = data.camera_uuid, _errs2 = 0;
+        if ("string" != typeof data0) return validate213.errors = [ {
+          instancePath: instancePath + "/camera_uuid",
+          schemaPath: "#/$defs/CameraUuid/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+        if (!pattern4.test(data0)) return validate213.errors = [ {
+          instancePath: instancePath + "/camera_uuid",
+          schemaPath: "#/$defs/CameraUuid/pattern",
+          keyword: "pattern",
+          params: {
+            pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.x) {
+          let data1 = data.x, _errs5 = 0;
+          if (0 === _errs5) {
+            if ("number" != typeof data1 || !isFinite(data1)) return validate213.errors = [ {
+              instancePath: instancePath + "/x",
+              schemaPath: "#/properties/x/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            } ], !1;
+            if (data1 > 1 || isNaN(data1)) return validate213.errors = [ {
+              instancePath: instancePath + "/x",
+              schemaPath: "#/properties/x/maximum",
+              keyword: "maximum",
+              params: {
+                comparison: "<=",
+                limit: 1
+              }
+            } ], !1;
+            if (data1 < 0 || isNaN(data1)) return validate213.errors = [ {
+              instancePath: instancePath + "/x",
+              schemaPath: "#/properties/x/minimum",
+              keyword: "minimum",
+              params: {
+                comparison: ">=",
+                limit: 0
+              }
+            } ], !1;
+          }
+          var valid2 = 0 === _errs5;
+        } else valid2 = !0;
+        if (valid2) {
+          if (void 0 !== data.y) {
+            let data2 = data.y, _errs7 = 0;
+            if (0 === _errs7) {
+              if ("number" != typeof data2 || !isFinite(data2)) return validate213.errors = [ {
+                instancePath: instancePath + "/y",
+                schemaPath: "#/properties/y/type",
+                keyword: "type",
+                params: {
+                  type: "number"
+                }
+              } ], !1;
+              if (data2 > 1 || isNaN(data2)) return validate213.errors = [ {
+                instancePath: instancePath + "/y",
+                schemaPath: "#/properties/y/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 1
+                }
+              } ], !1;
+              if (data2 < 0 || isNaN(data2)) return validate213.errors = [ {
+                instancePath: instancePath + "/y",
+                schemaPath: "#/properties/y/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: 0
+                }
+              } ], !1;
+            }
+            var valid3 = 0 === _errs7;
+          } else valid3 = !0;
+          if (valid3) {
+            if (void 0 !== data.rotation) {
+              let data3 = data.rotation, _errs9 = 0;
+              if (0 === _errs9) {
+                if ("number" != typeof data3 || !isFinite(data3)) return validate213.errors = [ {
+                  instancePath: instancePath + "/rotation",
+                  schemaPath: "#/properties/rotation/type",
+                  keyword: "type",
+                  params: {
+                    type: "number"
+                  }
+                } ], !1;
+                if (data3 > 180 || isNaN(data3)) return validate213.errors = [ {
+                  instancePath: instancePath + "/rotation",
+                  schemaPath: "#/properties/rotation/maximum",
+                  keyword: "maximum",
+                  params: {
+                    comparison: "<=",
+                    limit: 180
+                  }
+                } ], !1;
+                if (data3 < -180 || isNaN(data3)) return validate213.errors = [ {
+                  instancePath: instancePath + "/rotation",
+                  schemaPath: "#/properties/rotation/minimum",
+                  keyword: "minimum",
+                  params: {
+                    comparison: ">=",
+                    limit: -180
+                  }
+                } ], !1;
+              }
+              var valid4 = 0 === _errs9;
+            } else valid4 = !0;
+            if (valid4 && void 0 !== data.fov) {
+              let data4 = data.fov;
+              if ("number" != typeof data4 || !isFinite(data4)) return validate213.errors = [ {
+                instancePath: instancePath + "/fov",
+                schemaPath: "#/properties/fov/type",
+                keyword: "type",
+                params: {
+                  type: "number"
+                }
+              } ], !1;
+              if (data4 > 180 || isNaN(data4)) return validate213.errors = [ {
+                instancePath: instancePath + "/fov",
+                schemaPath: "#/properties/fov/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 180
+                }
+              } ], !1;
+              if (data4 < 1 || isNaN(data4)) return validate213.errors = [ {
+                instancePath: instancePath + "/fov",
+                schemaPath: "#/properties/fov/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: 1
+                }
+              } ], !1;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate213.errors = [], !0;
+}
+
+validate213.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorPlanCreate = validate214;
+
+function validate214(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate214.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate214.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate214.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("name" !== key0 && "location_uuid" !== key0 && "parent_plan_uuid" !== key0 && "canvas_width" !== key0 && "canvas_height" !== key0 && "sketch" !== key0 && "cameras" !== key0) return validate214.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate214.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate214.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate214.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.location_uuid) {
+            let data1 = data.location_uuid, _errs4 = errors, _errs5 = errors, valid2 = !1, _errs6 = errors;
+            if (errors == errors) if ("string" == typeof data1) {
+              if (!pattern4.test(data1)) {
+                let err0 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/$defs/CameraUuid/pattern",
+                  keyword: "pattern",
+                  params: {
+                    pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                  }
+                };
+                vErrors.push(err0), errors++;
+              }
+            } else {
+              let err1 = {
+                instancePath: instancePath + "/location_uuid",
+                schemaPath: "#/$defs/CameraUuid/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              };
+              vErrors.push(err1), errors++;
+            }
+            var _valid0 = _errs6 === errors;
+            valid2 = valid2 || _valid0;
+            let _errs9 = errors;
+            if (null !== data1) {
+              let err2 = {
+                instancePath: instancePath + "/location_uuid",
+                schemaPath: "#/properties/location_uuid/anyOf/1/type",
+                keyword: "type",
+                params: {
+                  type: "null"
+                }
+              };
+              vErrors.push(err2), errors++;
+            }
+            if (_valid0 = _errs9 === errors, valid2 = valid2 || _valid0, !valid2) {
+              let err3 = {
+                instancePath: instancePath + "/location_uuid",
+                schemaPath: "#/properties/location_uuid/anyOf",
+                keyword: "anyOf",
+                params: {}
+              };
+              return vErrors.push(err3), errors++, validate214.errors = vErrors, !1;
+            }
+            errors = _errs5, vErrors.length = _errs5;
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.parent_plan_uuid) {
+              let data2 = data.parent_plan_uuid, _errs11 = errors, _errs12 = errors, valid5 = !1, _errs13 = errors;
+              if (errors == errors) if ("string" == typeof data2) {
+                if (!pattern4.test(data2)) {
+                  let err4 = {
+                    instancePath: instancePath + "/parent_plan_uuid",
+                    schemaPath: "#/$defs/CameraUuid/pattern",
+                    keyword: "pattern",
+                    params: {
+                      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    }
+                  };
+                  vErrors.push(err4), errors++;
+                }
+              } else {
+                let err5 = {
+                  instancePath: instancePath + "/parent_plan_uuid",
+                  schemaPath: "#/$defs/CameraUuid/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                };
+                vErrors.push(err5), errors++;
+              }
+              var _valid1 = _errs13 === errors;
+              valid5 = valid5 || _valid1;
+              let _errs16 = errors;
+              if (null !== data2) {
+                let err6 = {
+                  instancePath: instancePath + "/parent_plan_uuid",
+                  schemaPath: "#/properties/parent_plan_uuid/anyOf/1/type",
+                  keyword: "type",
+                  params: {
+                    type: "null"
+                  }
+                };
+                vErrors.push(err6), errors++;
+              }
+              if (_valid1 = _errs16 === errors, valid5 = valid5 || _valid1, !valid5) {
+                let err7 = {
+                  instancePath: instancePath + "/parent_plan_uuid",
+                  schemaPath: "#/properties/parent_plan_uuid/anyOf",
+                  keyword: "anyOf",
+                  params: {}
+                };
+                return vErrors.push(err7), errors++, validate214.errors = vErrors, !1;
+              }
+              errors = _errs12, vErrors.length = _errs12;
+              var valid4 = _errs11 === errors;
+            } else valid4 = !0;
+            if (valid4) {
+              if (void 0 !== data.canvas_width) {
+                let data3 = data.canvas_width, _errs18 = errors;
+                if ("number" != typeof data3 || data3 % 1 || isNaN(data3) || !isFinite(data3)) return validate214.errors = [ {
+                  instancePath: instancePath + "/canvas_width",
+                  schemaPath: "#/properties/canvas_width/type",
+                  keyword: "type",
+                  params: {
+                    type: "integer"
+                  }
+                } ], !1;
+                if (errors === _errs18 && "number" == typeof data3 && isFinite(data3)) {
+                  if (data3 > 4e3 || isNaN(data3)) return validate214.errors = [ {
+                    instancePath: instancePath + "/canvas_width",
+                    schemaPath: "#/properties/canvas_width/maximum",
+                    keyword: "maximum",
+                    params: {
+                      comparison: "<=",
+                      limit: 4e3
+                    }
+                  } ], !1;
+                  if (data3 < 400 || isNaN(data3)) return validate214.errors = [ {
+                    instancePath: instancePath + "/canvas_width",
+                    schemaPath: "#/properties/canvas_width/minimum",
+                    keyword: "minimum",
+                    params: {
+                      comparison: ">=",
+                      limit: 400
+                    }
+                  } ], !1;
+                }
+                var valid7 = _errs18 === errors;
+              } else valid7 = !0;
+              if (valid7) {
+                if (void 0 !== data.canvas_height) {
+                  let data4 = data.canvas_height, _errs20 = errors;
+                  if ("number" != typeof data4 || data4 % 1 || isNaN(data4) || !isFinite(data4)) return validate214.errors = [ {
+                    instancePath: instancePath + "/canvas_height",
+                    schemaPath: "#/properties/canvas_height/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  } ], !1;
+                  if (errors === _errs20 && "number" == typeof data4 && isFinite(data4)) {
+                    if (data4 > 4e3 || isNaN(data4)) return validate214.errors = [ {
+                      instancePath: instancePath + "/canvas_height",
+                      schemaPath: "#/properties/canvas_height/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 4e3
+                      }
+                    } ], !1;
+                    if (data4 < 300 || isNaN(data4)) return validate214.errors = [ {
+                      instancePath: instancePath + "/canvas_height",
+                      schemaPath: "#/properties/canvas_height/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 300
+                      }
+                    } ], !1;
+                  }
+                  var valid8 = _errs20 === errors;
+                } else valid8 = !0;
+                if (valid8) {
+                  if (void 0 !== data.sketch) {
+                    let data5 = data.sketch, _errs22 = errors, _errs23 = errors, valid10 = !1, _errs24 = errors;
+                    validate211(data5, {
+                      instancePath: instancePath + "/sketch",
+                      parentData: data,
+                      parentDataProperty: "sketch",
+                      rootData: rootData,
+                      dynamicAnchors: dynamicAnchors
+                    }) || (vErrors = vErrors.concat(validate211.errors), errors = vErrors.length);
+                    var _valid2 = _errs24 === errors;
+                    valid10 = valid10 || _valid2;
+                    let _errs25 = errors;
+                    if (null !== data5) {
+                      let err8 = {
+                        instancePath: instancePath + "/sketch",
+                        schemaPath: "#/properties/sketch/anyOf/1/type",
+                        keyword: "type",
+                        params: {
+                          type: "null"
+                        }
+                      };
+                      vErrors.push(err8), errors++;
+                    }
+                    if (_valid2 = _errs25 === errors, valid10 = valid10 || _valid2, !valid10) {
+                      let err9 = {
+                        instancePath: instancePath + "/sketch",
+                        schemaPath: "#/properties/sketch/anyOf",
+                        keyword: "anyOf",
+                        params: {}
+                      };
+                      return vErrors.push(err9), errors++, validate214.errors = vErrors, !1;
+                    }
+                    errors = _errs23, vErrors.length = _errs23;
+                    var valid9 = _errs22 === errors;
+                  } else valid9 = !0;
+                  if (valid9 && void 0 !== data.cameras) {
+                    let data6 = data.cameras;
+                    if (errors == errors) {
+                      if (!Array.isArray(data6)) return validate214.errors = [ {
+                        instancePath: instancePath + "/cameras",
+                        schemaPath: "#/properties/cameras/type",
+                        keyword: "type",
+                        params: {
+                          type: "array"
+                        }
+                      } ], !1;
+                      if (data6.length > 1e3) return validate214.errors = [ {
+                        instancePath: instancePath + "/cameras",
+                        schemaPath: "#/properties/cameras/maxItems",
+                        keyword: "maxItems",
+                        params: {
+                          limit: 1e3
+                        }
+                      } ], !1;
+                      {
+                        let len0 = data6.length;
+                        for (let i0 = 0; i0 < len0; i0++) {
+                          let _errs29 = errors;
+                          if (validate213(data6[i0], {
+                            instancePath: instancePath + "/cameras/" + i0,
+                            parentData: data6,
+                            parentDataProperty: i0,
+                            rootData: rootData,
+                            dynamicAnchors: dynamicAnchors
+                          }) || (vErrors = vErrors.concat(validate213.errors), errors = vErrors.length), _errs29 !== errors) break;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate214.errors = vErrors, 0 === errors;
+}
+
+validate214.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorPlanDeletion = validate225;
+
+function validate225(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate225.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate225.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.deleted) return validate225.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "deleted"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("deleted" !== key0) return validate225.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.deleted) {
+      let data0 = data.deleted;
+      if ("boolean" != typeof data0) return validate225.errors = [ {
+        instancePath: instancePath + "/deleted",
+        schemaPath: "#/properties/deleted/type",
+        keyword: "type",
+        params: {
+          type: "boolean"
+        }
+      } ], !1;
+      if (!0 !== data0) return validate225.errors = [ {
+        instancePath: instancePath + "/deleted",
+        schemaPath: "#/properties/deleted/const",
+        keyword: "const",
+        params: {
+          allowedValue: !0
+        }
+      } ], !1;
+    }
+  }
+  return validate225.errors = [], !0;
+}
+
+validate225.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorPlanUpdate = validate217;
+
+function validate217(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate217.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate217.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate217.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.cameras) return validate217.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "cameras"
+      }
+    } ], !1;
+    if (void 0 === data.revision) return validate217.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "revision"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("name" !== key0 && "location_uuid" !== key0 && "parent_plan_uuid" !== key0 && "canvas_width" !== key0 && "canvas_height" !== key0 && "sketch" !== key0 && "cameras" !== key0 && "revision" !== key0) return validate217.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate217.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate217.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate217.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.location_uuid) {
+            let data1 = data.location_uuid, _errs4 = errors, _errs5 = errors, valid2 = !1, _errs6 = errors;
+            if (errors == errors) if ("string" == typeof data1) {
+              if (!pattern4.test(data1)) {
+                let err0 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/$defs/CameraUuid/pattern",
+                  keyword: "pattern",
+                  params: {
+                    pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                  }
+                };
+                vErrors.push(err0), errors++;
+              }
+            } else {
+              let err1 = {
+                instancePath: instancePath + "/location_uuid",
+                schemaPath: "#/$defs/CameraUuid/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              };
+              vErrors.push(err1), errors++;
+            }
+            var _valid0 = _errs6 === errors;
+            valid2 = valid2 || _valid0;
+            let _errs9 = errors;
+            if (null !== data1) {
+              let err2 = {
+                instancePath: instancePath + "/location_uuid",
+                schemaPath: "#/properties/location_uuid/anyOf/1/type",
+                keyword: "type",
+                params: {
+                  type: "null"
+                }
+              };
+              vErrors.push(err2), errors++;
+            }
+            if (_valid0 = _errs9 === errors, valid2 = valid2 || _valid0, !valid2) {
+              let err3 = {
+                instancePath: instancePath + "/location_uuid",
+                schemaPath: "#/properties/location_uuid/anyOf",
+                keyword: "anyOf",
+                params: {}
+              };
+              return vErrors.push(err3), errors++, validate217.errors = vErrors, !1;
+            }
+            errors = _errs5, vErrors.length = _errs5;
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.parent_plan_uuid) {
+              let data2 = data.parent_plan_uuid, _errs11 = errors, _errs12 = errors, valid5 = !1, _errs13 = errors;
+              if (errors == errors) if ("string" == typeof data2) {
+                if (!pattern4.test(data2)) {
+                  let err4 = {
+                    instancePath: instancePath + "/parent_plan_uuid",
+                    schemaPath: "#/$defs/CameraUuid/pattern",
+                    keyword: "pattern",
+                    params: {
+                      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    }
+                  };
+                  vErrors.push(err4), errors++;
+                }
+              } else {
+                let err5 = {
+                  instancePath: instancePath + "/parent_plan_uuid",
+                  schemaPath: "#/$defs/CameraUuid/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                };
+                vErrors.push(err5), errors++;
+              }
+              var _valid1 = _errs13 === errors;
+              valid5 = valid5 || _valid1;
+              let _errs16 = errors;
+              if (null !== data2) {
+                let err6 = {
+                  instancePath: instancePath + "/parent_plan_uuid",
+                  schemaPath: "#/properties/parent_plan_uuid/anyOf/1/type",
+                  keyword: "type",
+                  params: {
+                    type: "null"
+                  }
+                };
+                vErrors.push(err6), errors++;
+              }
+              if (_valid1 = _errs16 === errors, valid5 = valid5 || _valid1, !valid5) {
+                let err7 = {
+                  instancePath: instancePath + "/parent_plan_uuid",
+                  schemaPath: "#/properties/parent_plan_uuid/anyOf",
+                  keyword: "anyOf",
+                  params: {}
+                };
+                return vErrors.push(err7), errors++, validate217.errors = vErrors, !1;
+              }
+              errors = _errs12, vErrors.length = _errs12;
+              var valid4 = _errs11 === errors;
+            } else valid4 = !0;
+            if (valid4) {
+              if (void 0 !== data.canvas_width) {
+                let data3 = data.canvas_width, _errs18 = errors;
+                if ("number" != typeof data3 || data3 % 1 || isNaN(data3) || !isFinite(data3)) return validate217.errors = [ {
+                  instancePath: instancePath + "/canvas_width",
+                  schemaPath: "#/properties/canvas_width/type",
+                  keyword: "type",
+                  params: {
+                    type: "integer"
+                  }
+                } ], !1;
+                if (errors === _errs18 && "number" == typeof data3 && isFinite(data3)) {
+                  if (data3 > 4e3 || isNaN(data3)) return validate217.errors = [ {
+                    instancePath: instancePath + "/canvas_width",
+                    schemaPath: "#/properties/canvas_width/maximum",
+                    keyword: "maximum",
+                    params: {
+                      comparison: "<=",
+                      limit: 4e3
+                    }
+                  } ], !1;
+                  if (data3 < 400 || isNaN(data3)) return validate217.errors = [ {
+                    instancePath: instancePath + "/canvas_width",
+                    schemaPath: "#/properties/canvas_width/minimum",
+                    keyword: "minimum",
+                    params: {
+                      comparison: ">=",
+                      limit: 400
+                    }
+                  } ], !1;
+                }
+                var valid7 = _errs18 === errors;
+              } else valid7 = !0;
+              if (valid7) {
+                if (void 0 !== data.canvas_height) {
+                  let data4 = data.canvas_height, _errs20 = errors;
+                  if ("number" != typeof data4 || data4 % 1 || isNaN(data4) || !isFinite(data4)) return validate217.errors = [ {
+                    instancePath: instancePath + "/canvas_height",
+                    schemaPath: "#/properties/canvas_height/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  } ], !1;
+                  if (errors === _errs20 && "number" == typeof data4 && isFinite(data4)) {
+                    if (data4 > 4e3 || isNaN(data4)) return validate217.errors = [ {
+                      instancePath: instancePath + "/canvas_height",
+                      schemaPath: "#/properties/canvas_height/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 4e3
+                      }
+                    } ], !1;
+                    if (data4 < 300 || isNaN(data4)) return validate217.errors = [ {
+                      instancePath: instancePath + "/canvas_height",
+                      schemaPath: "#/properties/canvas_height/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 300
+                      }
+                    } ], !1;
+                  }
+                  var valid8 = _errs20 === errors;
+                } else valid8 = !0;
+                if (valid8) {
+                  if (void 0 !== data.sketch) {
+                    let data5 = data.sketch, _errs22 = errors, _errs23 = errors, valid10 = !1, _errs24 = errors;
+                    validate211(data5, {
+                      instancePath: instancePath + "/sketch",
+                      parentData: data,
+                      parentDataProperty: "sketch",
+                      rootData: rootData,
+                      dynamicAnchors: dynamicAnchors
+                    }) || (vErrors = vErrors.concat(validate211.errors), errors = vErrors.length);
+                    var _valid2 = _errs24 === errors;
+                    valid10 = valid10 || _valid2;
+                    let _errs25 = errors;
+                    if (null !== data5) {
+                      let err8 = {
+                        instancePath: instancePath + "/sketch",
+                        schemaPath: "#/properties/sketch/anyOf/1/type",
+                        keyword: "type",
+                        params: {
+                          type: "null"
+                        }
+                      };
+                      vErrors.push(err8), errors++;
+                    }
+                    if (_valid2 = _errs25 === errors, valid10 = valid10 || _valid2, !valid10) {
+                      let err9 = {
+                        instancePath: instancePath + "/sketch",
+                        schemaPath: "#/properties/sketch/anyOf",
+                        keyword: "anyOf",
+                        params: {}
+                      };
+                      return vErrors.push(err9), errors++, validate217.errors = vErrors, !1;
+                    }
+                    errors = _errs23, vErrors.length = _errs23;
+                    var valid9 = _errs22 === errors;
+                  } else valid9 = !0;
+                  if (valid9) {
+                    if (void 0 !== data.cameras) {
+                      let data6 = data.cameras, _errs27 = errors;
+                      if (errors === _errs27) {
+                        if (!Array.isArray(data6)) return validate217.errors = [ {
+                          instancePath: instancePath + "/cameras",
+                          schemaPath: "#/properties/cameras/type",
+                          keyword: "type",
+                          params: {
+                            type: "array"
+                          }
+                        } ], !1;
+                        if (data6.length > 1e3) return validate217.errors = [ {
+                          instancePath: instancePath + "/cameras",
+                          schemaPath: "#/properties/cameras/maxItems",
+                          keyword: "maxItems",
+                          params: {
+                            limit: 1e3
+                          }
+                        } ], !1;
+                        {
+                          let len0 = data6.length;
+                          for (let i0 = 0; i0 < len0; i0++) {
+                            let _errs29 = errors;
+                            if (validate213(data6[i0], {
+                              instancePath: instancePath + "/cameras/" + i0,
+                              parentData: data6,
+                              parentDataProperty: i0,
+                              rootData: rootData,
+                              dynamicAnchors: dynamicAnchors
+                            }) || (vErrors = vErrors.concat(validate213.errors), errors = vErrors.length), _errs29 !== errors) break;
+                          }
+                        }
+                      }
+                      var valid11 = _errs27 === errors;
+                    } else valid11 = !0;
+                    if (valid11 && void 0 !== data.revision) {
+                      let data8 = data.revision, _errs30 = errors;
+                      if ("number" != typeof data8 || data8 % 1 || isNaN(data8) || !isFinite(data8)) return validate217.errors = [ {
+                        instancePath: instancePath + "/revision",
+                        schemaPath: "#/properties/revision/type",
+                        keyword: "type",
+                        params: {
+                          type: "integer"
+                        }
+                      } ], !1;
+                      if (errors === _errs30 && "number" == typeof data8 && isFinite(data8) && (data8 < 1 || isNaN(data8))) return validate217.errors = [ {
+                        instancePath: instancePath + "/revision",
+                        schemaPath: "#/properties/revision/minimum",
+                        keyword: "minimum",
+                        params: {
+                          comparison: ">=",
+                          limit: 1
+                        }
+                      } ], !1;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate217.errors = vErrors, 0 === errors;
+}
+
+validate217.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorPlansResponse = validate223;
+
+function validate223(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate223.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate223.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.plans) return validate223.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "plans"
+      }
+    } ], !1;
+    if (void 0 === data.can_modify) return validate223.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "can_modify"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("plans" !== key0 && "can_modify" !== key0) return validate223.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.plans) {
+          let data0 = data.plans, _errs2 = errors;
+          if (errors === _errs2) {
+            if (!Array.isArray(data0)) return validate223.errors = [ {
+              instancePath: instancePath + "/plans",
+              schemaPath: "#/properties/plans/type",
+              keyword: "type",
+              params: {
+                type: "array"
+              }
+            } ], !1;
+            {
+              let len0 = data0.length;
+              for (let i0 = 0; i0 < len0; i0++) {
+                let _errs4 = errors;
+                if (validate220(data0[i0], {
+                  instancePath: instancePath + "/plans/" + i0,
+                  parentData: data0,
+                  parentDataProperty: i0,
+                  rootData: rootData,
+                  dynamicAnchors: dynamicAnchors
+                }) || (vErrors = vErrors.concat(validate220.errors), errors = vErrors.length), _errs4 !== errors) break;
+              }
+            }
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0 && void 0 !== data.can_modify && "boolean" != typeof data.can_modify) return validate223.errors = [ {
+          instancePath: instancePath + "/can_modify",
+          schemaPath: "#/properties/can_modify/type",
+          keyword: "type",
+          params: {
+            type: "boolean"
+          }
+        } ], !1;
+      }
+    }
+  }
+  return validate223.errors = vErrors, 0 === errors;
+}
+
+validate223.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorSketch = validate211, __contract_FloorSketchArea = validate209;
+
+function validate209(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate209.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate209.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.id) return validate209.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "id"
+    }
+  } ], !1;
+  if (void 0 === data.type) return validate209.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "type"
+    }
+  } ], !1;
+  if (void 0 === data.points) return validate209.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "points"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("id" !== key0 && "tone" !== key0 && "type" !== key0 && "points" !== key0 && "label" !== key0) return validate209.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.id) {
+        let data0 = data.id, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate209.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 31) return validate209.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 31
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate209.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.tone) {
+          let data1 = data.tone, _errs4 = 0;
+          if ("string" != typeof data1) return validate209.errors = [ {
+            instancePath: instancePath + "/tone",
+            schemaPath: "#/properties/tone/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if ("slate" !== data1 && "blue" !== data1 && "green" !== data1 && "amber" !== data1 && "red" !== data1 && "violet" !== data1) return validate209.errors = [ {
+            instancePath: instancePath + "/tone",
+            schemaPath: "#/properties/tone/enum",
+            keyword: "enum",
+            params: {
+              allowedValues: schema223.properties.tone.enum
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.type) {
+            let data2 = data.type, _errs6 = 0;
+            if ("string" != typeof data2) return validate209.errors = [ {
+              instancePath: instancePath + "/type",
+              schemaPath: "#/properties/type/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if ("area" !== data2) return validate209.errors = [ {
+              instancePath: instancePath + "/type",
+              schemaPath: "#/properties/type/const",
+              keyword: "const",
+              params: {
+                allowedValue: "area"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.points) {
+              let data3 = data.points, _errs8 = 0;
+              if (0 === _errs8) {
+                if (!Array.isArray(data3)) return validate209.errors = [ {
+                  instancePath: instancePath + "/points",
+                  schemaPath: "#/properties/points/type",
+                  keyword: "type",
+                  params: {
+                    type: "array"
+                  }
+                } ], !1;
+                if (data3.length > 64) return validate209.errors = [ {
+                  instancePath: instancePath + "/points",
+                  schemaPath: "#/properties/points/maxItems",
+                  keyword: "maxItems",
+                  params: {
+                    limit: 64
+                  }
+                } ], !1;
+                if (data3.length < 3) return validate209.errors = [ {
+                  instancePath: instancePath + "/points",
+                  schemaPath: "#/properties/points/minItems",
+                  keyword: "minItems",
+                  params: {
+                    limit: 3
+                  }
+                } ], !1;
+                {
+                  let len0 = data3.length;
+                  for (let i0 = 0; i0 < len0; i0++) {
+                    let data4 = data3[i0], _errs10 = 0;
+                    if (0 === _errs10) {
+                      if (!Array.isArray(data4)) return validate209.errors = [ {
+                        instancePath: instancePath + "/points/" + i0,
+                        schemaPath: "#/properties/points/items/type",
+                        keyword: "type",
+                        params: {
+                          type: "array"
+                        }
+                      } ], !1;
+                      if (data4.length > 2) return validate209.errors = [ {
+                        instancePath: instancePath + "/points/" + i0,
+                        schemaPath: "#/properties/points/items/maxItems",
+                        keyword: "maxItems",
+                        params: {
+                          limit: 2
+                        }
+                      } ], !1;
+                      if (data4.length < 2) return validate209.errors = [ {
+                        instancePath: instancePath + "/points/" + i0,
+                        schemaPath: "#/properties/points/items/minItems",
+                        keyword: "minItems",
+                        params: {
+                          limit: 2
+                        }
+                      } ], !1;
+                      {
+                        let len1 = data4.length;
+                        if (len1 > 0) {
+                          let data5 = data4[0], _errs12 = 0;
+                          if (0 === _errs12) {
+                            if ("number" != typeof data5 || !isFinite(data5)) return validate209.errors = [ {
+                              instancePath: instancePath + "/points/" + i0 + "/0",
+                              schemaPath: "#/properties/points/items/prefixItems/0/type",
+                              keyword: "type",
+                              params: {
+                                type: "number"
+                              }
+                            } ], !1;
+                            if (data5 > 1 || isNaN(data5)) return validate209.errors = [ {
+                              instancePath: instancePath + "/points/" + i0 + "/0",
+                              schemaPath: "#/properties/points/items/prefixItems/0/maximum",
+                              keyword: "maximum",
+                              params: {
+                                comparison: "<=",
+                                limit: 1
+                              }
+                            } ], !1;
+                            if (data5 < 0 || isNaN(data5)) return validate209.errors = [ {
+                              instancePath: instancePath + "/points/" + i0 + "/0",
+                              schemaPath: "#/properties/points/items/prefixItems/0/minimum",
+                              keyword: "minimum",
+                              params: {
+                                comparison: ">=",
+                                limit: 0
+                              }
+                            } ], !1;
+                          }
+                          var valid5 = 0 === _errs12;
+                        }
+                        if (valid5) {
+                          if (len1 > 1) {
+                            let data6 = data4[1], _errs14 = 0;
+                            if (0 === _errs14) {
+                              if ("number" != typeof data6 || !isFinite(data6)) return validate209.errors = [ {
+                                instancePath: instancePath + "/points/" + i0 + "/1",
+                                schemaPath: "#/properties/points/items/prefixItems/1/type",
+                                keyword: "type",
+                                params: {
+                                  type: "number"
+                                }
+                              } ], !1;
+                              if (data6 > 1 || isNaN(data6)) return validate209.errors = [ {
+                                instancePath: instancePath + "/points/" + i0 + "/1",
+                                schemaPath: "#/properties/points/items/prefixItems/1/maximum",
+                                keyword: "maximum",
+                                params: {
+                                  comparison: "<=",
+                                  limit: 1
+                                }
+                              } ], !1;
+                              if (data6 < 0 || isNaN(data6)) return validate209.errors = [ {
+                                instancePath: instancePath + "/points/" + i0 + "/1",
+                                schemaPath: "#/properties/points/items/prefixItems/1/minimum",
+                                keyword: "minimum",
+                                params: {
+                                  comparison: ">=",
+                                  limit: 0
+                                }
+                              } ], !1;
+                            }
+                            valid5 = 0 === _errs14;
+                          }
+                          if (valid5 && !(data4.length <= 2)) return validate209.errors = [ {
+                            instancePath: instancePath + "/points/" + i0,
+                            schemaPath: "#/properties/points/items/items",
+                            keyword: "items",
+                            params: {
+                              limit: 2
+                            }
+                          } ], !1;
+                        }
+                      }
+                    }
+                    if (0 !== _errs10) break;
+                  }
+                }
+              }
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3 && void 0 !== data.label) {
+              let data7 = data.label;
+              if ("string" != typeof data7) return validate209.errors = [ {
+                instancePath: instancePath + "/label",
+                schemaPath: "#/properties/label/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data7) > 95) return validate209.errors = [ {
+                instancePath: instancePath + "/label",
+                schemaPath: "#/properties/label/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 95
+                }
+              } ], !1;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate209.errors = [], !0;
+}
+
+validate209.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorSketchLabel = validate210;
+
+function validate210(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate210.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate210.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.id) return validate210.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "id"
+    }
+  } ], !1;
+  if (void 0 === data.type) return validate210.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "type"
+    }
+  } ], !1;
+  if (void 0 === data.x) return validate210.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "x"
+    }
+  } ], !1;
+  if (void 0 === data.y) return validate210.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "y"
+    }
+  } ], !1;
+  if (void 0 === data.text) return validate210.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "text"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("id" !== key0 && "tone" !== key0 && "type" !== key0 && "x" !== key0 && "y" !== key0 && "text" !== key0 && "size" !== key0) return validate210.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.id) {
+        let data0 = data.id, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate210.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 31) return validate210.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 31
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate210.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.tone) {
+          let data1 = data.tone, _errs4 = 0;
+          if ("string" != typeof data1) return validate210.errors = [ {
+            instancePath: instancePath + "/tone",
+            schemaPath: "#/properties/tone/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if ("slate" !== data1 && "blue" !== data1 && "green" !== data1 && "amber" !== data1 && "red" !== data1 && "violet" !== data1) return validate210.errors = [ {
+            instancePath: instancePath + "/tone",
+            schemaPath: "#/properties/tone/enum",
+            keyword: "enum",
+            params: {
+              allowedValues: schema224.properties.tone.enum
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.type) {
+            let data2 = data.type, _errs6 = 0;
+            if ("string" != typeof data2) return validate210.errors = [ {
+              instancePath: instancePath + "/type",
+              schemaPath: "#/properties/type/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if ("label" !== data2) return validate210.errors = [ {
+              instancePath: instancePath + "/type",
+              schemaPath: "#/properties/type/const",
+              keyword: "const",
+              params: {
+                allowedValue: "label"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.x) {
+              let data3 = data.x, _errs8 = 0;
+              if (0 === _errs8) {
+                if ("number" != typeof data3 || !isFinite(data3)) return validate210.errors = [ {
+                  instancePath: instancePath + "/x",
+                  schemaPath: "#/properties/x/type",
+                  keyword: "type",
+                  params: {
+                    type: "number"
+                  }
+                } ], !1;
+                if (data3 > 1 || isNaN(data3)) return validate210.errors = [ {
+                  instancePath: instancePath + "/x",
+                  schemaPath: "#/properties/x/maximum",
+                  keyword: "maximum",
+                  params: {
+                    comparison: "<=",
+                    limit: 1
+                  }
+                } ], !1;
+                if (data3 < 0 || isNaN(data3)) return validate210.errors = [ {
+                  instancePath: instancePath + "/x",
+                  schemaPath: "#/properties/x/minimum",
+                  keyword: "minimum",
+                  params: {
+                    comparison: ">=",
+                    limit: 0
+                  }
+                } ], !1;
+              }
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.y) {
+                let data4 = data.y, _errs10 = 0;
+                if (0 === _errs10) {
+                  if ("number" != typeof data4 || !isFinite(data4)) return validate210.errors = [ {
+                    instancePath: instancePath + "/y",
+                    schemaPath: "#/properties/y/type",
+                    keyword: "type",
+                    params: {
+                      type: "number"
+                    }
+                  } ], !1;
+                  if (data4 > 1 || isNaN(data4)) return validate210.errors = [ {
+                    instancePath: instancePath + "/y",
+                    schemaPath: "#/properties/y/maximum",
+                    keyword: "maximum",
+                    params: {
+                      comparison: "<=",
+                      limit: 1
+                    }
+                  } ], !1;
+                  if (data4 < 0 || isNaN(data4)) return validate210.errors = [ {
+                    instancePath: instancePath + "/y",
+                    schemaPath: "#/properties/y/minimum",
+                    keyword: "minimum",
+                    params: {
+                      comparison: ">=",
+                      limit: 0
+                    }
+                  } ], !1;
+                }
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.text) {
+                  let data5 = data.text, _errs12 = 0;
+                  if (0 === _errs12) {
+                    if ("string" != typeof data5) return validate210.errors = [ {
+                      instancePath: instancePath + "/text",
+                      schemaPath: "#/properties/text/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                    if (func1(data5) > 95) return validate210.errors = [ {
+                      instancePath: instancePath + "/text",
+                      schemaPath: "#/properties/text/maxLength",
+                      keyword: "maxLength",
+                      params: {
+                        limit: 95
+                      }
+                    } ], !1;
+                    if (func1(data5) < 1) return validate210.errors = [ {
+                      instancePath: instancePath + "/text",
+                      schemaPath: "#/properties/text/minLength",
+                      keyword: "minLength",
+                      params: {
+                        limit: 1
+                      }
+                    } ], !1;
+                  }
+                  var valid5 = 0 === _errs12;
+                } else valid5 = !0;
+                if (valid5 && void 0 !== data.size) {
+                  let data6 = data.size;
+                  if ("string" != typeof data6) return validate210.errors = [ {
+                    instancePath: instancePath + "/size",
+                    schemaPath: "#/properties/size/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  if ("sm" !== data6 && "md" !== data6 && "lg" !== data6) return validate210.errors = [ {
+                    instancePath: instancePath + "/size",
+                    schemaPath: "#/properties/size/enum",
+                    keyword: "enum",
+                    params: {
+                      allowedValues: schema224.properties.size.enum
+                    }
+                  } ], !1;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate210.errors = [], !0;
+}
+
+validate210.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorSketchRect = validate207;
+
+function validate207(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate207.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate207.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.id) return validate207.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "id"
+    }
+  } ], !1;
+  if (void 0 === data.type) return validate207.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "type"
+    }
+  } ], !1;
+  if (void 0 === data.x) return validate207.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "x"
+    }
+  } ], !1;
+  if (void 0 === data.y) return validate207.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "y"
+    }
+  } ], !1;
+  if (void 0 === data.w) return validate207.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "w"
+    }
+  } ], !1;
+  if (void 0 === data.h) return validate207.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "h"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if (!func5.call(schema221.properties, key0)) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.id) {
+        let data0 = data.id, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate207.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 31) return validate207.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 31
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate207.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.tone) {
+          let data1 = data.tone, _errs4 = 0;
+          if ("string" != typeof data1) return validate207.errors = [ {
+            instancePath: instancePath + "/tone",
+            schemaPath: "#/properties/tone/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if ("slate" !== data1 && "blue" !== data1 && "green" !== data1 && "amber" !== data1 && "red" !== data1 && "violet" !== data1) return validate207.errors = [ {
+            instancePath: instancePath + "/tone",
+            schemaPath: "#/properties/tone/enum",
+            keyword: "enum",
+            params: {
+              allowedValues: schema221.properties.tone.enum
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.type) {
+            let data2 = data.type, _errs6 = 0;
+            if ("string" != typeof data2) return validate207.errors = [ {
+              instancePath: instancePath + "/type",
+              schemaPath: "#/properties/type/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if ("rect" !== data2) return validate207.errors = [ {
+              instancePath: instancePath + "/type",
+              schemaPath: "#/properties/type/const",
+              keyword: "const",
+              params: {
+                allowedValue: "rect"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.x) {
+              let data3 = data.x, _errs8 = 0;
+              if (0 === _errs8) {
+                if ("number" != typeof data3 || !isFinite(data3)) return validate207.errors = [ {
+                  instancePath: instancePath + "/x",
+                  schemaPath: "#/properties/x/type",
+                  keyword: "type",
+                  params: {
+                    type: "number"
+                  }
+                } ], !1;
+                if (data3 > 1 || isNaN(data3)) return validate207.errors = [ {
+                  instancePath: instancePath + "/x",
+                  schemaPath: "#/properties/x/maximum",
+                  keyword: "maximum",
+                  params: {
+                    comparison: "<=",
+                    limit: 1
+                  }
+                } ], !1;
+                if (data3 < 0 || isNaN(data3)) return validate207.errors = [ {
+                  instancePath: instancePath + "/x",
+                  schemaPath: "#/properties/x/minimum",
+                  keyword: "minimum",
+                  params: {
+                    comparison: ">=",
+                    limit: 0
+                  }
+                } ], !1;
+              }
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.y) {
+                let data4 = data.y, _errs10 = 0;
+                if (0 === _errs10) {
+                  if ("number" != typeof data4 || !isFinite(data4)) return validate207.errors = [ {
+                    instancePath: instancePath + "/y",
+                    schemaPath: "#/properties/y/type",
+                    keyword: "type",
+                    params: {
+                      type: "number"
+                    }
+                  } ], !1;
+                  if (data4 > 1 || isNaN(data4)) return validate207.errors = [ {
+                    instancePath: instancePath + "/y",
+                    schemaPath: "#/properties/y/maximum",
+                    keyword: "maximum",
+                    params: {
+                      comparison: "<=",
+                      limit: 1
+                    }
+                  } ], !1;
+                  if (data4 < 0 || isNaN(data4)) return validate207.errors = [ {
+                    instancePath: instancePath + "/y",
+                    schemaPath: "#/properties/y/minimum",
+                    keyword: "minimum",
+                    params: {
+                      comparison: ">=",
+                      limit: 0
+                    }
+                  } ], !1;
+                }
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.w) {
+                  let data5 = data.w, _errs12 = 0;
+                  if (0 === _errs12) {
+                    if ("number" != typeof data5 || !isFinite(data5)) return validate207.errors = [ {
+                      instancePath: instancePath + "/w",
+                      schemaPath: "#/properties/w/type",
+                      keyword: "type",
+                      params: {
+                        type: "number"
+                      }
+                    } ], !1;
+                    if (data5 > 1 || isNaN(data5)) return validate207.errors = [ {
+                      instancePath: instancePath + "/w",
+                      schemaPath: "#/properties/w/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 1
+                      }
+                    } ], !1;
+                    if (data5 < 0 || isNaN(data5)) return validate207.errors = [ {
+                      instancePath: instancePath + "/w",
+                      schemaPath: "#/properties/w/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 0
+                      }
+                    } ], !1;
+                  }
+                  var valid5 = 0 === _errs12;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.h) {
+                    let data6 = data.h, _errs14 = 0;
+                    if (0 === _errs14) {
+                      if ("number" != typeof data6 || !isFinite(data6)) return validate207.errors = [ {
+                        instancePath: instancePath + "/h",
+                        schemaPath: "#/properties/h/type",
+                        keyword: "type",
+                        params: {
+                          type: "number"
+                        }
+                      } ], !1;
+                      if (data6 > 1 || isNaN(data6)) return validate207.errors = [ {
+                        instancePath: instancePath + "/h",
+                        schemaPath: "#/properties/h/maximum",
+                        keyword: "maximum",
+                        params: {
+                          comparison: "<=",
+                          limit: 1
+                        }
+                      } ], !1;
+                      if (data6 < 0 || isNaN(data6)) return validate207.errors = [ {
+                        instancePath: instancePath + "/h",
+                        schemaPath: "#/properties/h/minimum",
+                        keyword: "minimum",
+                        params: {
+                          comparison: ">=",
+                          limit: 0
+                        }
+                      } ], !1;
+                    }
+                    var valid6 = 0 === _errs14;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data.filled) {
+                      let _errs16 = 0;
+                      if ("boolean" != typeof data.filled) return validate207.errors = [ {
+                        instancePath: instancePath + "/filled",
+                        schemaPath: "#/properties/filled/type",
+                        keyword: "type",
+                        params: {
+                          type: "boolean"
+                        }
+                      } ], !1;
+                      var valid7 = 0 === _errs16;
+                    } else valid7 = !0;
+                    if (valid7 && void 0 !== data.label) {
+                      let data8 = data.label;
+                      if ("string" != typeof data8) return validate207.errors = [ {
+                        instancePath: instancePath + "/label",
+                        schemaPath: "#/properties/label/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      if (func1(data8) > 95) return validate207.errors = [ {
+                        instancePath: instancePath + "/label",
+                        schemaPath: "#/properties/label/maxLength",
+                        keyword: "maxLength",
+                        params: {
+                          limit: 95
+                        }
+                      } ], !1;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate207.errors = [], !0;
+}
+
+validate207.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_FloorSketchWall = validate208;
+
+function validate208(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate208.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate208.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.id) return validate208.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "id"
+    }
+  } ], !1;
+  if (void 0 === data.type) return validate208.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "type"
+    }
+  } ], !1;
+  if (void 0 === data.points) return validate208.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "points"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("id" !== key0 && "tone" !== key0 && "type" !== key0 && "points" !== key0 && "label" !== key0) return validate208.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.id) {
+        let data0 = data.id, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate208.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 31) return validate208.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 31
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate208.errors = [ {
+            instancePath: instancePath + "/id",
+            schemaPath: "#/properties/id/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.tone) {
+          let data1 = data.tone, _errs4 = 0;
+          if ("string" != typeof data1) return validate208.errors = [ {
+            instancePath: instancePath + "/tone",
+            schemaPath: "#/properties/tone/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if ("slate" !== data1 && "blue" !== data1 && "green" !== data1 && "amber" !== data1 && "red" !== data1 && "violet" !== data1) return validate208.errors = [ {
+            instancePath: instancePath + "/tone",
+            schemaPath: "#/properties/tone/enum",
+            keyword: "enum",
+            params: {
+              allowedValues: schema222.properties.tone.enum
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.type) {
+            let data2 = data.type, _errs6 = 0;
+            if ("string" != typeof data2) return validate208.errors = [ {
+              instancePath: instancePath + "/type",
+              schemaPath: "#/properties/type/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if ("wall" !== data2) return validate208.errors = [ {
+              instancePath: instancePath + "/type",
+              schemaPath: "#/properties/type/const",
+              keyword: "const",
+              params: {
+                allowedValue: "wall"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.points) {
+              let data3 = data.points, _errs8 = 0;
+              if (0 === _errs8) {
+                if (!Array.isArray(data3)) return validate208.errors = [ {
+                  instancePath: instancePath + "/points",
+                  schemaPath: "#/properties/points/type",
+                  keyword: "type",
+                  params: {
+                    type: "array"
+                  }
+                } ], !1;
+                if (data3.length > 64) return validate208.errors = [ {
+                  instancePath: instancePath + "/points",
+                  schemaPath: "#/properties/points/maxItems",
+                  keyword: "maxItems",
+                  params: {
+                    limit: 64
+                  }
+                } ], !1;
+                if (data3.length < 2) return validate208.errors = [ {
+                  instancePath: instancePath + "/points",
+                  schemaPath: "#/properties/points/minItems",
+                  keyword: "minItems",
+                  params: {
+                    limit: 2
+                  }
+                } ], !1;
+                {
+                  let len0 = data3.length;
+                  for (let i0 = 0; i0 < len0; i0++) {
+                    let data4 = data3[i0], _errs10 = 0;
+                    if (0 === _errs10) {
+                      if (!Array.isArray(data4)) return validate208.errors = [ {
+                        instancePath: instancePath + "/points/" + i0,
+                        schemaPath: "#/properties/points/items/type",
+                        keyword: "type",
+                        params: {
+                          type: "array"
+                        }
+                      } ], !1;
+                      if (data4.length > 2) return validate208.errors = [ {
+                        instancePath: instancePath + "/points/" + i0,
+                        schemaPath: "#/properties/points/items/maxItems",
+                        keyword: "maxItems",
+                        params: {
+                          limit: 2
+                        }
+                      } ], !1;
+                      if (data4.length < 2) return validate208.errors = [ {
+                        instancePath: instancePath + "/points/" + i0,
+                        schemaPath: "#/properties/points/items/minItems",
+                        keyword: "minItems",
+                        params: {
+                          limit: 2
+                        }
+                      } ], !1;
+                      {
+                        let len1 = data4.length;
+                        if (len1 > 0) {
+                          let data5 = data4[0], _errs12 = 0;
+                          if (0 === _errs12) {
+                            if ("number" != typeof data5 || !isFinite(data5)) return validate208.errors = [ {
+                              instancePath: instancePath + "/points/" + i0 + "/0",
+                              schemaPath: "#/properties/points/items/prefixItems/0/type",
+                              keyword: "type",
+                              params: {
+                                type: "number"
+                              }
+                            } ], !1;
+                            if (data5 > 1 || isNaN(data5)) return validate208.errors = [ {
+                              instancePath: instancePath + "/points/" + i0 + "/0",
+                              schemaPath: "#/properties/points/items/prefixItems/0/maximum",
+                              keyword: "maximum",
+                              params: {
+                                comparison: "<=",
+                                limit: 1
+                              }
+                            } ], !1;
+                            if (data5 < 0 || isNaN(data5)) return validate208.errors = [ {
+                              instancePath: instancePath + "/points/" + i0 + "/0",
+                              schemaPath: "#/properties/points/items/prefixItems/0/minimum",
+                              keyword: "minimum",
+                              params: {
+                                comparison: ">=",
+                                limit: 0
+                              }
+                            } ], !1;
+                          }
+                          var valid5 = 0 === _errs12;
+                        }
+                        if (valid5) {
+                          if (len1 > 1) {
+                            let data6 = data4[1], _errs14 = 0;
+                            if (0 === _errs14) {
+                              if ("number" != typeof data6 || !isFinite(data6)) return validate208.errors = [ {
+                                instancePath: instancePath + "/points/" + i0 + "/1",
+                                schemaPath: "#/properties/points/items/prefixItems/1/type",
+                                keyword: "type",
+                                params: {
+                                  type: "number"
+                                }
+                              } ], !1;
+                              if (data6 > 1 || isNaN(data6)) return validate208.errors = [ {
+                                instancePath: instancePath + "/points/" + i0 + "/1",
+                                schemaPath: "#/properties/points/items/prefixItems/1/maximum",
+                                keyword: "maximum",
+                                params: {
+                                  comparison: "<=",
+                                  limit: 1
+                                }
+                              } ], !1;
+                              if (data6 < 0 || isNaN(data6)) return validate208.errors = [ {
+                                instancePath: instancePath + "/points/" + i0 + "/1",
+                                schemaPath: "#/properties/points/items/prefixItems/1/minimum",
+                                keyword: "minimum",
+                                params: {
+                                  comparison: ">=",
+                                  limit: 0
+                                }
+                              } ], !1;
+                            }
+                            valid5 = 0 === _errs14;
+                          }
+                          if (valid5 && !(data4.length <= 2)) return validate208.errors = [ {
+                            instancePath: instancePath + "/points/" + i0,
+                            schemaPath: "#/properties/points/items/items",
+                            keyword: "items",
+                            params: {
+                              limit: 2
+                            }
+                          } ], !1;
+                        }
+                      }
+                    }
+                    if (0 !== _errs10) break;
+                  }
+                }
+              }
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3 && void 0 !== data.label) {
+              let data7 = data.label;
+              if ("string" != typeof data7) return validate208.errors = [ {
+                instancePath: instancePath + "/label",
+                schemaPath: "#/properties/label/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data7) > 95) return validate208.errors = [ {
+                instancePath: instancePath + "/label",
+                schemaPath: "#/properties/label/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 95
+                }
+              } ], !1;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate208.errors = [], !0;
+}
+
+validate208.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_LiveCameraSlot = validate194;
+
+function validate194(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate194.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate194.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.camera_uuid) return validate194.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "camera_uuid"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("camera_uuid" !== key0) return validate194.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.camera_uuid) {
+      let data0 = data.camera_uuid;
+      if ("string" != typeof data0) return validate194.errors = [ {
+        instancePath: instancePath + "/camera_uuid",
+        schemaPath: "#/$defs/CameraUuid/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      } ], !1;
+      if (!pattern4.test(data0)) return validate194.errors = [ {
+        instancePath: instancePath + "/camera_uuid",
+        schemaPath: "#/$defs/CameraUuid/pattern",
+        keyword: "pattern",
+        params: {
+          pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        }
+      } ], !1;
+    }
+  }
+  return validate194.errors = [], !0;
+}
+
+validate194.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_LiveLayout = validate199, schema213 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      minLength: 1,
+      maxLength: 127
+    },
+    is_shared: {
+      type: "boolean"
+    },
+    location_uuid: {
+      anyOf: [ {
+        $ref: "#/$defs/CameraUuid"
+      }, {
+        type: "null"
+      } ]
+    },
+    availability: {
+      type: "string",
+      enum: [ "all", "live", "offline", "never_connected", "disabled" ]
+    },
+    columns: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9
+    },
+    rows: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9
+    },
+    camera_slots: {
+      type: "array",
+      items: {
+        $ref: "#/$defs/LiveCameraSlot"
+      },
+      maxItems: 36
+    },
+    uuid: {
+      $ref: "#/$defs/CameraUuid"
+    },
+    owned: {
+      type: "boolean"
+    },
+    partially_authorized: {
+      type: "boolean"
+    },
+    revision: {
+      type: "integer",
+      minimum: 1
+    },
+    created_at: {
+      type: "integer",
+      minimum: 0
+    },
+    updated_at: {
+      type: "integer",
+      minimum: 0
+    }
+  },
+  required: [ "name", "is_shared", "location_uuid", "availability", "columns", "rows", "camera_slots", "uuid", "owned", "partially_authorized", "revision", "created_at", "updated_at" ],
+  additionalProperties: !1
+};
+
+function validate199(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate199.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.is_shared) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "is_shared"
+      }
+    } ], !1;
+    if (void 0 === data.location_uuid) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "location_uuid"
+      }
+    } ], !1;
+    if (void 0 === data.availability) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "availability"
+      }
+    } ], !1;
+    if (void 0 === data.columns) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "columns"
+      }
+    } ], !1;
+    if (void 0 === data.rows) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "rows"
+      }
+    } ], !1;
+    if (void 0 === data.camera_slots) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "camera_slots"
+      }
+    } ], !1;
+    if (void 0 === data.uuid) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "uuid"
+      }
+    } ], !1;
+    if (void 0 === data.owned) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "owned"
+      }
+    } ], !1;
+    if (void 0 === data.partially_authorized) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "partially_authorized"
+      }
+    } ], !1;
+    if (void 0 === data.revision) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "revision"
+      }
+    } ], !1;
+    if (void 0 === data.created_at) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "created_at"
+      }
+    } ], !1;
+    if (void 0 === data.updated_at) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "updated_at"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if (!func5.call(schema213.properties, key0)) return validate199.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate199.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate199.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate199.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.is_shared) {
+            let _errs4 = errors;
+            if ("boolean" != typeof data.is_shared) return validate199.errors = [ {
+              instancePath: instancePath + "/is_shared",
+              schemaPath: "#/properties/is_shared/type",
+              keyword: "type",
+              params: {
+                type: "boolean"
+              }
+            } ], !1;
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.location_uuid) {
+              let data2 = data.location_uuid, _errs6 = errors, _errs7 = errors, valid3 = !1, _errs8 = errors;
+              if (errors == errors) if ("string" == typeof data2) {
+                if (!pattern4.test(data2)) {
+                  let err0 = {
+                    instancePath: instancePath + "/location_uuid",
+                    schemaPath: "#/$defs/CameraUuid/pattern",
+                    keyword: "pattern",
+                    params: {
+                      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    }
+                  };
+                  vErrors.push(err0), errors++;
+                }
+              } else {
+                let err1 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/$defs/CameraUuid/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                };
+                vErrors.push(err1), errors++;
+              }
+              var _valid0 = _errs8 === errors;
+              valid3 = valid3 || _valid0;
+              let _errs11 = errors;
+              if (null !== data2) {
+                let err2 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/properties/location_uuid/anyOf/1/type",
+                  keyword: "type",
+                  params: {
+                    type: "null"
+                  }
+                };
+                vErrors.push(err2), errors++;
+              }
+              if (_valid0 = _errs11 === errors, valid3 = valid3 || _valid0, !valid3) {
+                let err3 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/properties/location_uuid/anyOf",
+                  keyword: "anyOf",
+                  params: {}
+                };
+                return vErrors.push(err3), errors++, validate199.errors = vErrors, !1;
+              }
+              errors = _errs7, vErrors.length = _errs7;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.availability) {
+                let data3 = data.availability, _errs13 = errors;
+                if ("string" != typeof data3) return validate199.errors = [ {
+                  instancePath: instancePath + "/availability",
+                  schemaPath: "#/properties/availability/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                if ("all" !== data3 && "live" !== data3 && "offline" !== data3 && "never_connected" !== data3 && "disabled" !== data3) return validate199.errors = [ {
+                  instancePath: instancePath + "/availability",
+                  schemaPath: "#/properties/availability/enum",
+                  keyword: "enum",
+                  params: {
+                    allowedValues: schema213.properties.availability.enum
+                  }
+                } ], !1;
+                var valid5 = _errs13 === errors;
+              } else valid5 = !0;
+              if (valid5) {
+                if (void 0 !== data.columns) {
+                  let data4 = data.columns, _errs15 = errors;
+                  if ("number" != typeof data4 || data4 % 1 || isNaN(data4) || !isFinite(data4)) return validate199.errors = [ {
+                    instancePath: instancePath + "/columns",
+                    schemaPath: "#/properties/columns/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  } ], !1;
+                  if (errors === _errs15 && "number" == typeof data4 && isFinite(data4)) {
+                    if (data4 > 9 || isNaN(data4)) return validate199.errors = [ {
+                      instancePath: instancePath + "/columns",
+                      schemaPath: "#/properties/columns/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 9
+                      }
+                    } ], !1;
+                    if (data4 < 1 || isNaN(data4)) return validate199.errors = [ {
+                      instancePath: instancePath + "/columns",
+                      schemaPath: "#/properties/columns/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 1
+                      }
+                    } ], !1;
+                  }
+                  var valid6 = _errs15 === errors;
+                } else valid6 = !0;
+                if (valid6) {
+                  if (void 0 !== data.rows) {
+                    let data5 = data.rows, _errs17 = errors;
+                    if ("number" != typeof data5 || data5 % 1 || isNaN(data5) || !isFinite(data5)) return validate199.errors = [ {
+                      instancePath: instancePath + "/rows",
+                      schemaPath: "#/properties/rows/type",
+                      keyword: "type",
+                      params: {
+                        type: "integer"
+                      }
+                    } ], !1;
+                    if (errors === _errs17 && "number" == typeof data5 && isFinite(data5)) {
+                      if (data5 > 9 || isNaN(data5)) return validate199.errors = [ {
+                        instancePath: instancePath + "/rows",
+                        schemaPath: "#/properties/rows/maximum",
+                        keyword: "maximum",
+                        params: {
+                          comparison: "<=",
+                          limit: 9
+                        }
+                      } ], !1;
+                      if (data5 < 1 || isNaN(data5)) return validate199.errors = [ {
+                        instancePath: instancePath + "/rows",
+                        schemaPath: "#/properties/rows/minimum",
+                        keyword: "minimum",
+                        params: {
+                          comparison: ">=",
+                          limit: 1
+                        }
+                      } ], !1;
+                    }
+                    var valid7 = _errs17 === errors;
+                  } else valid7 = !0;
+                  if (valid7) {
+                    if (void 0 !== data.camera_slots) {
+                      let data6 = data.camera_slots, _errs19 = errors;
+                      if (errors === _errs19) {
+                        if (!Array.isArray(data6)) return validate199.errors = [ {
+                          instancePath: instancePath + "/camera_slots",
+                          schemaPath: "#/properties/camera_slots/type",
+                          keyword: "type",
+                          params: {
+                            type: "array"
+                          }
+                        } ], !1;
+                        if (data6.length > 36) return validate199.errors = [ {
+                          instancePath: instancePath + "/camera_slots",
+                          schemaPath: "#/properties/camera_slots/maxItems",
+                          keyword: "maxItems",
+                          params: {
+                            limit: 36
+                          }
+                        } ], !1;
+                        {
+                          let len0 = data6.length;
+                          for (let i0 = 0; i0 < len0; i0++) {
+                            let _errs21 = errors;
+                            if (validate194(data6[i0], {
+                              instancePath: instancePath + "/camera_slots/" + i0,
+                              parentData: data6,
+                              parentDataProperty: i0,
+                              rootData: rootData,
+                              dynamicAnchors: dynamicAnchors
+                            }) || (vErrors = vErrors.concat(validate194.errors), errors = vErrors.length), _errs21 !== errors) break;
+                          }
+                        }
+                      }
+                      var valid8 = _errs19 === errors;
+                    } else valid8 = !0;
+                    if (valid8) {
+                      if (void 0 !== data.uuid) {
+                        let data8 = data.uuid, _errs22 = errors;
+                        if (errors == errors) {
+                          if ("string" != typeof data8) return validate199.errors = [ {
+                            instancePath: instancePath + "/uuid",
+                            schemaPath: "#/$defs/CameraUuid/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (!pattern4.test(data8)) return validate199.errors = [ {
+                            instancePath: instancePath + "/uuid",
+                            schemaPath: "#/$defs/CameraUuid/pattern",
+                            keyword: "pattern",
+                            params: {
+                              pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          } ], !1;
+                        }
+                        var valid10 = _errs22 === errors;
+                      } else valid10 = !0;
+                      if (valid10) {
+                        if (void 0 !== data.owned) {
+                          let _errs25 = errors;
+                          if ("boolean" != typeof data.owned) return validate199.errors = [ {
+                            instancePath: instancePath + "/owned",
+                            schemaPath: "#/properties/owned/type",
+                            keyword: "type",
+                            params: {
+                              type: "boolean"
+                            }
+                          } ], !1;
+                          var valid12 = _errs25 === errors;
+                        } else valid12 = !0;
+                        if (valid12) {
+                          if (void 0 !== data.partially_authorized) {
+                            let _errs27 = errors;
+                            if ("boolean" != typeof data.partially_authorized) return validate199.errors = [ {
+                              instancePath: instancePath + "/partially_authorized",
+                              schemaPath: "#/properties/partially_authorized/type",
+                              keyword: "type",
+                              params: {
+                                type: "boolean"
+                              }
+                            } ], !1;
+                            var valid13 = _errs27 === errors;
+                          } else valid13 = !0;
+                          if (valid13) {
+                            if (void 0 !== data.revision) {
+                              let data11 = data.revision, _errs29 = errors;
+                              if ("number" != typeof data11 || data11 % 1 || isNaN(data11) || !isFinite(data11)) return validate199.errors = [ {
+                                instancePath: instancePath + "/revision",
+                                schemaPath: "#/properties/revision/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              if (errors === _errs29 && "number" == typeof data11 && isFinite(data11) && (data11 < 1 || isNaN(data11))) return validate199.errors = [ {
+                                instancePath: instancePath + "/revision",
+                                schemaPath: "#/properties/revision/minimum",
+                                keyword: "minimum",
+                                params: {
+                                  comparison: ">=",
+                                  limit: 1
+                                }
+                              } ], !1;
+                              var valid14 = _errs29 === errors;
+                            } else valid14 = !0;
+                            if (valid14) {
+                              if (void 0 !== data.created_at) {
+                                let data12 = data.created_at, _errs31 = errors;
+                                if ("number" != typeof data12 || data12 % 1 || isNaN(data12) || !isFinite(data12)) return validate199.errors = [ {
+                                  instancePath: instancePath + "/created_at",
+                                  schemaPath: "#/properties/created_at/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (errors === _errs31 && "number" == typeof data12 && isFinite(data12) && (data12 < 0 || isNaN(data12))) return validate199.errors = [ {
+                                  instancePath: instancePath + "/created_at",
+                                  schemaPath: "#/properties/created_at/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: 0
+                                  }
+                                } ], !1;
+                                var valid15 = _errs31 === errors;
+                              } else valid15 = !0;
+                              if (valid15 && void 0 !== data.updated_at) {
+                                let data13 = data.updated_at, _errs33 = errors;
+                                if ("number" != typeof data13 || data13 % 1 || isNaN(data13) || !isFinite(data13)) return validate199.errors = [ {
+                                  instancePath: instancePath + "/updated_at",
+                                  schemaPath: "#/properties/updated_at/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (errors === _errs33 && "number" == typeof data13 && isFinite(data13) && (data13 < 0 || isNaN(data13))) return validate199.errors = [ {
+                                  instancePath: instancePath + "/updated_at",
+                                  schemaPath: "#/properties/updated_at/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: 0
+                                  }
+                                } ], !1;
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate199.errors = vErrors, 0 === errors;
+}
+
+validate199.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_LiveLayoutCreate = validate195, schema209 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      minLength: 1,
+      maxLength: 127
+    },
+    is_shared: {
+      type: "boolean"
+    },
+    location_uuid: {
+      anyOf: [ {
+        $ref: "#/$defs/CameraUuid"
+      }, {
+        type: "null"
+      } ]
+    },
+    availability: {
+      type: "string",
+      enum: [ "all", "live", "offline", "never_connected", "disabled" ]
+    },
+    columns: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9
+    },
+    rows: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9
+    },
+    camera_slots: {
+      type: "array",
+      items: {
+        $ref: "#/$defs/LiveCameraSlot"
+      },
+      maxItems: 36
+    }
+  },
+  required: [ "name", "availability", "columns", "rows", "camera_slots" ],
+  additionalProperties: !1
+};
+
+function validate195(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate195.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate195.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate195.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.availability) return validate195.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "availability"
+      }
+    } ], !1;
+    if (void 0 === data.columns) return validate195.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "columns"
+      }
+    } ], !1;
+    if (void 0 === data.rows) return validate195.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "rows"
+      }
+    } ], !1;
+    if (void 0 === data.camera_slots) return validate195.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "camera_slots"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("name" !== key0 && "is_shared" !== key0 && "location_uuid" !== key0 && "availability" !== key0 && "columns" !== key0 && "rows" !== key0 && "camera_slots" !== key0) return validate195.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate195.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate195.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate195.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.is_shared) {
+            let _errs4 = errors;
+            if ("boolean" != typeof data.is_shared) return validate195.errors = [ {
+              instancePath: instancePath + "/is_shared",
+              schemaPath: "#/properties/is_shared/type",
+              keyword: "type",
+              params: {
+                type: "boolean"
+              }
+            } ], !1;
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.location_uuid) {
+              let data2 = data.location_uuid, _errs6 = errors, _errs7 = errors, valid3 = !1, _errs8 = errors;
+              if (errors == errors) if ("string" == typeof data2) {
+                if (!pattern4.test(data2)) {
+                  let err0 = {
+                    instancePath: instancePath + "/location_uuid",
+                    schemaPath: "#/$defs/CameraUuid/pattern",
+                    keyword: "pattern",
+                    params: {
+                      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    }
+                  };
+                  vErrors.push(err0), errors++;
+                }
+              } else {
+                let err1 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/$defs/CameraUuid/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                };
+                vErrors.push(err1), errors++;
+              }
+              var _valid0 = _errs8 === errors;
+              valid3 = valid3 || _valid0;
+              let _errs11 = errors;
+              if (null !== data2) {
+                let err2 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/properties/location_uuid/anyOf/1/type",
+                  keyword: "type",
+                  params: {
+                    type: "null"
+                  }
+                };
+                vErrors.push(err2), errors++;
+              }
+              if (_valid0 = _errs11 === errors, valid3 = valid3 || _valid0, !valid3) {
+                let err3 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/properties/location_uuid/anyOf",
+                  keyword: "anyOf",
+                  params: {}
+                };
+                return vErrors.push(err3), errors++, validate195.errors = vErrors, !1;
+              }
+              errors = _errs7, vErrors.length = _errs7;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.availability) {
+                let data3 = data.availability, _errs13 = errors;
+                if ("string" != typeof data3) return validate195.errors = [ {
+                  instancePath: instancePath + "/availability",
+                  schemaPath: "#/properties/availability/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                if ("all" !== data3 && "live" !== data3 && "offline" !== data3 && "never_connected" !== data3 && "disabled" !== data3) return validate195.errors = [ {
+                  instancePath: instancePath + "/availability",
+                  schemaPath: "#/properties/availability/enum",
+                  keyword: "enum",
+                  params: {
+                    allowedValues: schema209.properties.availability.enum
+                  }
+                } ], !1;
+                var valid5 = _errs13 === errors;
+              } else valid5 = !0;
+              if (valid5) {
+                if (void 0 !== data.columns) {
+                  let data4 = data.columns, _errs15 = errors;
+                  if ("number" != typeof data4 || data4 % 1 || isNaN(data4) || !isFinite(data4)) return validate195.errors = [ {
+                    instancePath: instancePath + "/columns",
+                    schemaPath: "#/properties/columns/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  } ], !1;
+                  if (errors === _errs15 && "number" == typeof data4 && isFinite(data4)) {
+                    if (data4 > 9 || isNaN(data4)) return validate195.errors = [ {
+                      instancePath: instancePath + "/columns",
+                      schemaPath: "#/properties/columns/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 9
+                      }
+                    } ], !1;
+                    if (data4 < 1 || isNaN(data4)) return validate195.errors = [ {
+                      instancePath: instancePath + "/columns",
+                      schemaPath: "#/properties/columns/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 1
+                      }
+                    } ], !1;
+                  }
+                  var valid6 = _errs15 === errors;
+                } else valid6 = !0;
+                if (valid6) {
+                  if (void 0 !== data.rows) {
+                    let data5 = data.rows, _errs17 = errors;
+                    if ("number" != typeof data5 || data5 % 1 || isNaN(data5) || !isFinite(data5)) return validate195.errors = [ {
+                      instancePath: instancePath + "/rows",
+                      schemaPath: "#/properties/rows/type",
+                      keyword: "type",
+                      params: {
+                        type: "integer"
+                      }
+                    } ], !1;
+                    if (errors === _errs17 && "number" == typeof data5 && isFinite(data5)) {
+                      if (data5 > 9 || isNaN(data5)) return validate195.errors = [ {
+                        instancePath: instancePath + "/rows",
+                        schemaPath: "#/properties/rows/maximum",
+                        keyword: "maximum",
+                        params: {
+                          comparison: "<=",
+                          limit: 9
+                        }
+                      } ], !1;
+                      if (data5 < 1 || isNaN(data5)) return validate195.errors = [ {
+                        instancePath: instancePath + "/rows",
+                        schemaPath: "#/properties/rows/minimum",
+                        keyword: "minimum",
+                        params: {
+                          comparison: ">=",
+                          limit: 1
+                        }
+                      } ], !1;
+                    }
+                    var valid7 = _errs17 === errors;
+                  } else valid7 = !0;
+                  if (valid7 && void 0 !== data.camera_slots) {
+                    let data6 = data.camera_slots;
+                    if (errors == errors) {
+                      if (!Array.isArray(data6)) return validate195.errors = [ {
+                        instancePath: instancePath + "/camera_slots",
+                        schemaPath: "#/properties/camera_slots/type",
+                        keyword: "type",
+                        params: {
+                          type: "array"
+                        }
+                      } ], !1;
+                      if (data6.length > 36) return validate195.errors = [ {
+                        instancePath: instancePath + "/camera_slots",
+                        schemaPath: "#/properties/camera_slots/maxItems",
+                        keyword: "maxItems",
+                        params: {
+                          limit: 36
+                        }
+                      } ], !1;
+                      {
+                        let len0 = data6.length;
+                        for (let i0 = 0; i0 < len0; i0++) {
+                          let _errs21 = errors;
+                          if (validate194(data6[i0], {
+                            instancePath: instancePath + "/camera_slots/" + i0,
+                            parentData: data6,
+                            parentDataProperty: i0,
+                            rootData: rootData,
+                            dynamicAnchors: dynamicAnchors
+                          }) || (vErrors = vErrors.concat(validate194.errors), errors = vErrors.length), _errs21 !== errors) break;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate195.errors = vErrors, 0 === errors;
+}
+
+validate195.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_LiveLayoutUpdate = validate197, schema211 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      minLength: 1,
+      maxLength: 127
+    },
+    is_shared: {
+      type: "boolean"
+    },
+    location_uuid: {
+      anyOf: [ {
+        $ref: "#/$defs/CameraUuid"
+      }, {
+        type: "null"
+      } ]
+    },
+    availability: {
+      type: "string",
+      enum: [ "all", "live", "offline", "never_connected", "disabled" ]
+    },
+    columns: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9
+    },
+    rows: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9
+    },
+    camera_slots: {
+      type: "array",
+      items: {
+        $ref: "#/$defs/LiveCameraSlot"
+      },
+      maxItems: 36
+    },
+    revision: {
+      type: "integer",
+      minimum: 1
+    }
+  },
+  required: [ "name", "availability", "columns", "rows", "camera_slots", "revision" ],
+  additionalProperties: !1
+};
+
+function validate197(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate197.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate197.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate197.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.availability) return validate197.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "availability"
+      }
+    } ], !1;
+    if (void 0 === data.columns) return validate197.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "columns"
+      }
+    } ], !1;
+    if (void 0 === data.rows) return validate197.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "rows"
+      }
+    } ], !1;
+    if (void 0 === data.camera_slots) return validate197.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "camera_slots"
+      }
+    } ], !1;
+    if (void 0 === data.revision) return validate197.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "revision"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("name" !== key0 && "is_shared" !== key0 && "location_uuid" !== key0 && "availability" !== key0 && "columns" !== key0 && "rows" !== key0 && "camera_slots" !== key0 && "revision" !== key0) return validate197.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate197.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate197.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate197.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.is_shared) {
+            let _errs4 = errors;
+            if ("boolean" != typeof data.is_shared) return validate197.errors = [ {
+              instancePath: instancePath + "/is_shared",
+              schemaPath: "#/properties/is_shared/type",
+              keyword: "type",
+              params: {
+                type: "boolean"
+              }
+            } ], !1;
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.location_uuid) {
+              let data2 = data.location_uuid, _errs6 = errors, _errs7 = errors, valid3 = !1, _errs8 = errors;
+              if (errors == errors) if ("string" == typeof data2) {
+                if (!pattern4.test(data2)) {
+                  let err0 = {
+                    instancePath: instancePath + "/location_uuid",
+                    schemaPath: "#/$defs/CameraUuid/pattern",
+                    keyword: "pattern",
+                    params: {
+                      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    }
+                  };
+                  vErrors.push(err0), errors++;
+                }
+              } else {
+                let err1 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/$defs/CameraUuid/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                };
+                vErrors.push(err1), errors++;
+              }
+              var _valid0 = _errs8 === errors;
+              valid3 = valid3 || _valid0;
+              let _errs11 = errors;
+              if (null !== data2) {
+                let err2 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/properties/location_uuid/anyOf/1/type",
+                  keyword: "type",
+                  params: {
+                    type: "null"
+                  }
+                };
+                vErrors.push(err2), errors++;
+              }
+              if (_valid0 = _errs11 === errors, valid3 = valid3 || _valid0, !valid3) {
+                let err3 = {
+                  instancePath: instancePath + "/location_uuid",
+                  schemaPath: "#/properties/location_uuid/anyOf",
+                  keyword: "anyOf",
+                  params: {}
+                };
+                return vErrors.push(err3), errors++, validate197.errors = vErrors, !1;
+              }
+              errors = _errs7, vErrors.length = _errs7;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.availability) {
+                let data3 = data.availability, _errs13 = errors;
+                if ("string" != typeof data3) return validate197.errors = [ {
+                  instancePath: instancePath + "/availability",
+                  schemaPath: "#/properties/availability/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                if ("all" !== data3 && "live" !== data3 && "offline" !== data3 && "never_connected" !== data3 && "disabled" !== data3) return validate197.errors = [ {
+                  instancePath: instancePath + "/availability",
+                  schemaPath: "#/properties/availability/enum",
+                  keyword: "enum",
+                  params: {
+                    allowedValues: schema211.properties.availability.enum
+                  }
+                } ], !1;
+                var valid5 = _errs13 === errors;
+              } else valid5 = !0;
+              if (valid5) {
+                if (void 0 !== data.columns) {
+                  let data4 = data.columns, _errs15 = errors;
+                  if ("number" != typeof data4 || data4 % 1 || isNaN(data4) || !isFinite(data4)) return validate197.errors = [ {
+                    instancePath: instancePath + "/columns",
+                    schemaPath: "#/properties/columns/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  } ], !1;
+                  if (errors === _errs15 && "number" == typeof data4 && isFinite(data4)) {
+                    if (data4 > 9 || isNaN(data4)) return validate197.errors = [ {
+                      instancePath: instancePath + "/columns",
+                      schemaPath: "#/properties/columns/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 9
+                      }
+                    } ], !1;
+                    if (data4 < 1 || isNaN(data4)) return validate197.errors = [ {
+                      instancePath: instancePath + "/columns",
+                      schemaPath: "#/properties/columns/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 1
+                      }
+                    } ], !1;
+                  }
+                  var valid6 = _errs15 === errors;
+                } else valid6 = !0;
+                if (valid6) {
+                  if (void 0 !== data.rows) {
+                    let data5 = data.rows, _errs17 = errors;
+                    if ("number" != typeof data5 || data5 % 1 || isNaN(data5) || !isFinite(data5)) return validate197.errors = [ {
+                      instancePath: instancePath + "/rows",
+                      schemaPath: "#/properties/rows/type",
+                      keyword: "type",
+                      params: {
+                        type: "integer"
+                      }
+                    } ], !1;
+                    if (errors === _errs17 && "number" == typeof data5 && isFinite(data5)) {
+                      if (data5 > 9 || isNaN(data5)) return validate197.errors = [ {
+                        instancePath: instancePath + "/rows",
+                        schemaPath: "#/properties/rows/maximum",
+                        keyword: "maximum",
+                        params: {
+                          comparison: "<=",
+                          limit: 9
+                        }
+                      } ], !1;
+                      if (data5 < 1 || isNaN(data5)) return validate197.errors = [ {
+                        instancePath: instancePath + "/rows",
+                        schemaPath: "#/properties/rows/minimum",
+                        keyword: "minimum",
+                        params: {
+                          comparison: ">=",
+                          limit: 1
+                        }
+                      } ], !1;
+                    }
+                    var valid7 = _errs17 === errors;
+                  } else valid7 = !0;
+                  if (valid7) {
+                    if (void 0 !== data.camera_slots) {
+                      let data6 = data.camera_slots, _errs19 = errors;
+                      if (errors === _errs19) {
+                        if (!Array.isArray(data6)) return validate197.errors = [ {
+                          instancePath: instancePath + "/camera_slots",
+                          schemaPath: "#/properties/camera_slots/type",
+                          keyword: "type",
+                          params: {
+                            type: "array"
+                          }
+                        } ], !1;
+                        if (data6.length > 36) return validate197.errors = [ {
+                          instancePath: instancePath + "/camera_slots",
+                          schemaPath: "#/properties/camera_slots/maxItems",
+                          keyword: "maxItems",
+                          params: {
+                            limit: 36
+                          }
+                        } ], !1;
+                        {
+                          let len0 = data6.length;
+                          for (let i0 = 0; i0 < len0; i0++) {
+                            let _errs21 = errors;
+                            if (validate194(data6[i0], {
+                              instancePath: instancePath + "/camera_slots/" + i0,
+                              parentData: data6,
+                              parentDataProperty: i0,
+                              rootData: rootData,
+                              dynamicAnchors: dynamicAnchors
+                            }) || (vErrors = vErrors.concat(validate194.errors), errors = vErrors.length), _errs21 !== errors) break;
+                          }
+                        }
+                      }
+                      var valid8 = _errs19 === errors;
+                    } else valid8 = !0;
+                    if (valid8 && void 0 !== data.revision) {
+                      let data8 = data.revision, _errs22 = errors;
+                      if ("number" != typeof data8 || data8 % 1 || isNaN(data8) || !isFinite(data8)) return validate197.errors = [ {
+                        instancePath: instancePath + "/revision",
+                        schemaPath: "#/properties/revision/type",
+                        keyword: "type",
+                        params: {
+                          type: "integer"
+                        }
+                      } ], !1;
+                      if (errors === _errs22 && "number" == typeof data8 && isFinite(data8) && (data8 < 1 || isNaN(data8))) return validate197.errors = [ {
+                        instancePath: instancePath + "/revision",
+                        schemaPath: "#/properties/revision/minimum",
+                        keyword: "minimum",
+                        params: {
+                          comparison: ">=",
+                          limit: 1
+                        }
+                      } ], !1;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate197.errors = vErrors, 0 === errors;
+}
+
+validate197.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_LiveLayoutsResponse = validate201;
+
+function validate201(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate201.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate201.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.layouts) return validate201.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "layouts"
+      }
+    } ], !1;
+    if (void 0 === data.count) return validate201.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "count"
+      }
+    } ], !1;
+    if (void 0 === data.can_share) return validate201.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "can_share"
+      }
+    } ], !1;
+    if (void 0 === data.can_modify) return validate201.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "can_modify"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("layouts" !== key0 && "count" !== key0 && "can_share" !== key0 && "can_modify" !== key0) return validate201.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.layouts) {
+          let data0 = data.layouts, _errs2 = errors;
+          if (errors === _errs2) {
+            if (!Array.isArray(data0)) return validate201.errors = [ {
+              instancePath: instancePath + "/layouts",
+              schemaPath: "#/properties/layouts/type",
+              keyword: "type",
+              params: {
+                type: "array"
+              }
+            } ], !1;
+            {
+              let len0 = data0.length;
+              for (let i0 = 0; i0 < len0; i0++) {
+                let _errs4 = errors;
+                if (validate199(data0[i0], {
+                  instancePath: instancePath + "/layouts/" + i0,
+                  parentData: data0,
+                  parentDataProperty: i0,
+                  rootData: rootData,
+                  dynamicAnchors: dynamicAnchors
+                }) || (vErrors = vErrors.concat(validate199.errors), errors = vErrors.length), _errs4 !== errors) break;
+              }
+            }
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.count) {
+            let data2 = data.count, _errs5 = errors;
+            if ("number" != typeof data2 || data2 % 1 || isNaN(data2) || !isFinite(data2)) return validate201.errors = [ {
+              instancePath: instancePath + "/count",
+              schemaPath: "#/properties/count/type",
+              keyword: "type",
+              params: {
+                type: "integer"
+              }
+            } ], !1;
+            if (errors === _errs5 && "number" == typeof data2 && isFinite(data2) && (data2 < 0 || isNaN(data2))) return validate201.errors = [ {
+              instancePath: instancePath + "/count",
+              schemaPath: "#/properties/count/minimum",
+              keyword: "minimum",
+              params: {
+                comparison: ">=",
+                limit: 0
+              }
+            } ], !1;
+            var valid2 = _errs5 === errors;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.can_share) {
+              let _errs7 = errors;
+              if ("boolean" != typeof data.can_share) return validate201.errors = [ {
+                instancePath: instancePath + "/can_share",
+                schemaPath: "#/properties/can_share/type",
+                keyword: "type",
+                params: {
+                  type: "boolean"
+                }
+              } ], !1;
+              var valid3 = _errs7 === errors;
+            } else valid3 = !0;
+            if (valid3 && void 0 !== data.can_modify && "boolean" != typeof data.can_modify) return validate201.errors = [ {
+              instancePath: instancePath + "/can_modify",
+              schemaPath: "#/properties/can_modify/type",
+              keyword: "type",
+              params: {
+                type: "boolean"
+              }
+            } ], !1;
+          }
+        }
+      }
+    }
+  }
+  return validate201.errors = vErrors, 0 === errors;
+}
+
+validate201.evaluated = {
   props: !0,
   dynamicProps: !1,
   dynamicItems: !1
@@ -24990,6 +33514,22 @@ function validateCameraCollection(value) {
   })), valid;
 }
 
+function validateCameraCollectionCreate(value) {
+  let valid = __contract_CameraCollectionCreate(value);
+  return validateCameraCollectionCreate.errors = valid ? null : (__contract_CameraCollectionCreate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateCameraCollectionMembersRequest(value) {
+  let valid = __contract_CameraCollectionMembersRequest(value);
+  return validateCameraCollectionMembersRequest.errors = valid ? null : (__contract_CameraCollectionMembersRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateCameraCollectionMembersResponse(value) {
   let valid = __contract_CameraCollectionMembersResponse(value);
   return validateCameraCollectionMembersResponse.errors = valid ? null : (__contract_CameraCollectionMembersResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
@@ -25006,6 +33546,14 @@ function validateCameraCollectionPreview(value) {
   })), valid;
 }
 
+function validateCameraCollectionUpdate(value) {
+  let valid = __contract_CameraCollectionUpdate(value);
+  return validateCameraCollectionUpdate.errors = valid ? null : (__contract_CameraCollectionUpdate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateCameraCollectionsResponse(value) {
   let valid = __contract_CameraCollectionsResponse(value);
   return validateCameraCollectionsResponse.errors = valid ? null : (__contract_CameraCollectionsResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
@@ -25014,9 +33562,65 @@ function validateCameraCollectionsResponse(value) {
   })), valid;
 }
 
+function validateCameraFavorite(value) {
+  let valid = __contract_CameraFavorite(value);
+  return validateCameraFavorite.errors = valid ? null : (__contract_CameraFavorite.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateCameraFavoriteRemoval(value) {
+  let valid = __contract_CameraFavoriteRemoval(value);
+  return validateCameraFavoriteRemoval.errors = valid ? null : (__contract_CameraFavoriteRemoval.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateCameraFavoritesResponse(value) {
+  let valid = __contract_CameraFavoritesResponse(value);
+  return validateCameraFavoritesResponse.errors = valid ? null : (__contract_CameraFavoritesResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateCameraLocationAssignment(value) {
+  let valid = __contract_CameraLocationAssignment(value);
+  return validateCameraLocationAssignment.errors = valid ? null : (__contract_CameraLocationAssignment.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateCameraLocationAssignmentRequest(value) {
+  let valid = __contract_CameraLocationAssignmentRequest(value);
+  return validateCameraLocationAssignmentRequest.errors = valid ? null : (__contract_CameraLocationAssignmentRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateCameraTagAssignmentsRequest(value) {
+  let valid = __contract_CameraTagAssignmentsRequest(value);
+  return validateCameraTagAssignmentsRequest.errors = valid ? null : (__contract_CameraTagAssignmentsRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateCameraTagAssignmentsResponse(value) {
   let valid = __contract_CameraTagAssignmentsResponse(value);
   return validateCameraTagAssignmentsResponse.errors = valid ? null : (__contract_CameraTagAssignmentsResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateCameraUuid(value) {
+  let valid = __contract_CameraUuid(value);
+  return validateCameraUuid.errors = valid ? null : (__contract_CameraUuid.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
     keyword: keyword,
     schemaPath: schemaPath
   })), valid;
@@ -25046,9 +33650,33 @@ function validateFleetLocation(value) {
   })), valid;
 }
 
+function validateFleetLocationCreate(value) {
+  let valid = __contract_FleetLocationCreate(value);
+  return validateFleetLocationCreate.errors = valid ? null : (__contract_FleetLocationCreate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFleetLocationUpdate(value) {
+  let valid = __contract_FleetLocationUpdate(value);
+  return validateFleetLocationUpdate.errors = valid ? null : (__contract_FleetLocationUpdate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateFleetLocationsResponse(value) {
   let valid = __contract_FleetLocationsResponse(value);
   return validateFleetLocationsResponse.errors = valid ? null : (__contract_FleetLocationsResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFleetMutationAck(value) {
+  let valid = __contract_FleetMutationAck(value);
+  return validateFleetMutationAck.errors = valid ? null : (__contract_FleetMutationAck.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
     keyword: keyword,
     schemaPath: schemaPath
   })), valid;
@@ -25086,6 +33714,14 @@ function validateFleetQueryResponse(value) {
   })), valid;
 }
 
+function validateFleetRevisionRequest(value) {
+  let valid = __contract_FleetRevisionRequest(value);
+  return validateFleetRevisionRequest.errors = valid ? null : (__contract_FleetRevisionRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateFleetSavedView(value) {
   let valid = __contract_FleetSavedView(value);
   return validateFleetSavedView.errors = valid ? null : (__contract_FleetSavedView.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
@@ -25110,9 +33746,193 @@ function validateFleetTag(value) {
   })), valid;
 }
 
+function validateFleetTagCreate(value) {
+  let valid = __contract_FleetTagCreate(value);
+  return validateFleetTagCreate.errors = valid ? null : (__contract_FleetTagCreate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFleetTagMergeRequest(value) {
+  let valid = __contract_FleetTagMergeRequest(value);
+  return validateFleetTagMergeRequest.errors = valid ? null : (__contract_FleetTagMergeRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFleetTagMergeResult(value) {
+  let valid = __contract_FleetTagMergeResult(value);
+  return validateFleetTagMergeResult.errors = valid ? null : (__contract_FleetTagMergeResult.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFleetTagUpdate(value) {
+  let valid = __contract_FleetTagUpdate(value);
+  return validateFleetTagUpdate.errors = valid ? null : (__contract_FleetTagUpdate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateFleetTagsResponse(value) {
   let valid = __contract_FleetTagsResponse(value);
   return validateFleetTagsResponse.errors = valid ? null : (__contract_FleetTagsResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFleetViewCreate(value) {
+  let valid = __contract_FleetViewCreate(value);
+  return validateFleetViewCreate.errors = valid ? null : (__contract_FleetViewCreate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFleetViewUpdate(value) {
+  let valid = __contract_FleetViewUpdate(value);
+  return validateFleetViewUpdate.errors = valid ? null : (__contract_FleetViewUpdate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorPlan(value) {
+  let valid = __contract_FloorPlan(value);
+  return validateFloorPlan.errors = valid ? null : (__contract_FloorPlan.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorPlanCamera(value) {
+  let valid = __contract_FloorPlanCamera(value);
+  return validateFloorPlanCamera.errors = valid ? null : (__contract_FloorPlanCamera.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorPlanCameraRequest(value) {
+  let valid = __contract_FloorPlanCameraRequest(value);
+  return validateFloorPlanCameraRequest.errors = valid ? null : (__contract_FloorPlanCameraRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorPlanCreate(value) {
+  let valid = __contract_FloorPlanCreate(value);
+  return validateFloorPlanCreate.errors = valid ? null : (__contract_FloorPlanCreate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorPlanDeletion(value) {
+  let valid = __contract_FloorPlanDeletion(value);
+  return validateFloorPlanDeletion.errors = valid ? null : (__contract_FloorPlanDeletion.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorPlanUpdate(value) {
+  let valid = __contract_FloorPlanUpdate(value);
+  return validateFloorPlanUpdate.errors = valid ? null : (__contract_FloorPlanUpdate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorPlansResponse(value) {
+  let valid = __contract_FloorPlansResponse(value);
+  return validateFloorPlansResponse.errors = valid ? null : (__contract_FloorPlansResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorSketch(value) {
+  let valid = __contract_FloorSketch(value);
+  return validateFloorSketch.errors = valid ? null : (__contract_FloorSketch.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorSketchArea(value) {
+  let valid = __contract_FloorSketchArea(value);
+  return validateFloorSketchArea.errors = valid ? null : (__contract_FloorSketchArea.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorSketchLabel(value) {
+  let valid = __contract_FloorSketchLabel(value);
+  return validateFloorSketchLabel.errors = valid ? null : (__contract_FloorSketchLabel.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorSketchRect(value) {
+  let valid = __contract_FloorSketchRect(value);
+  return validateFloorSketchRect.errors = valid ? null : (__contract_FloorSketchRect.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateFloorSketchWall(value) {
+  let valid = __contract_FloorSketchWall(value);
+  return validateFloorSketchWall.errors = valid ? null : (__contract_FloorSketchWall.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateLiveCameraSlot(value) {
+  let valid = __contract_LiveCameraSlot(value);
+  return validateLiveCameraSlot.errors = valid ? null : (__contract_LiveCameraSlot.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateLiveLayout(value) {
+  let valid = __contract_LiveLayout(value);
+  return validateLiveLayout.errors = valid ? null : (__contract_LiveLayout.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateLiveLayoutCreate(value) {
+  let valid = __contract_LiveLayoutCreate(value);
+  return validateLiveLayoutCreate.errors = valid ? null : (__contract_LiveLayoutCreate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateLiveLayoutUpdate(value) {
+  let valid = __contract_LiveLayoutUpdate(value);
+  return validateLiveLayoutUpdate.errors = valid ? null : (__contract_LiveLayoutUpdate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateLiveLayoutsResponse(value) {
+  let valid = __contract_LiveLayoutsResponse(value);
+  return validateLiveLayoutsResponse.errors = valid ? null : (__contract_LiveLayoutsResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
     keyword: keyword,
     schemaPath: schemaPath
   })), valid;
@@ -25549,30 +34369,47 @@ validate130.evaluated = {
 }, validateApiError.errors = null, validateApiTokenCreateRequest.errors = null,
 validateApiTokenCreated.errors = null, validateApiTokenList.errors = null, validateApiTokenMetadata.errors = null,
 validateAuthSessionsResponse.errors = null, validateAuthVerifyResponse.errors = null,
-validateCameraCollection.errors = null, validateCameraCollectionMembersResponse.errors = null,
-validateCameraCollectionPreview.errors = null, validateCameraCollectionsResponse.errors = null,
-validateCameraTagAssignmentsResponse.errors = null, validateClientConfig.errors = null,
-validateCredentialRevoked.errors = null, validateFleetLocation.errors = null, validateFleetLocationsResponse.errors = null,
-validateFleetPreviewRequest.errors = null, validateFleetPreviewResponse.errors = null,
-validateFleetQueryRequest.errors = null, validateFleetQueryResponse.errors = null,
+validateCameraCollection.errors = null, validateCameraCollectionCreate.errors = null,
+validateCameraCollectionMembersRequest.errors = null, validateCameraCollectionMembersResponse.errors = null,
+validateCameraCollectionPreview.errors = null, validateCameraCollectionUpdate.errors = null,
+validateCameraCollectionsResponse.errors = null, validateCameraFavorite.errors = null,
+validateCameraFavoriteRemoval.errors = null, validateCameraFavoritesResponse.errors = null,
+validateCameraLocationAssignment.errors = null, validateCameraLocationAssignmentRequest.errors = null,
+validateCameraTagAssignmentsRequest.errors = null, validateCameraTagAssignmentsResponse.errors = null,
+validateCameraUuid.errors = null, validateClientConfig.errors = null, validateCredentialRevoked.errors = null,
+validateFleetLocation.errors = null, validateFleetLocationCreate.errors = null,
+validateFleetLocationUpdate.errors = null, validateFleetLocationsResponse.errors = null,
+validateFleetMutationAck.errors = null, validateFleetPreviewRequest.errors = null,
+validateFleetPreviewResponse.errors = null, validateFleetQueryRequest.errors = null,
+validateFleetQueryResponse.errors = null, validateFleetRevisionRequest.errors = null,
 validateFleetSavedView.errors = null, validateFleetSavedViewsResponse.errors = null,
-validateFleetTag.errors = null, validateFleetTagsResponse.errors = null, validateLiveStreamSummaryPage.errors = null,
-validateLoginConfig.errors = null, validateLoginMfaChallenge.errors = null, validateLoginRequest.errors = null,
-validateLoginResponse.errors = null, validateLoginSuccess.errors = null, validateLogoutResponse.errors = null,
-validateLprStreamSummaryPage.errors = null, validateOpenApiDocument.errors = null,
-validatePasswordAdminReset.errors = null, validatePasswordChangeRequest.errors = null,
-validatePasswordChangedResponse.errors = null, validatePasswordSelfChange.errors = null,
-validateRecordingBatchProtectionRequest.errors = null, validateRecordingBatchProtectionResult.errors = null,
-validateRecordingBatchTagsRequest.errors = null, validateRecordingBatchTagsResult.errors = null,
-validateRecordingDeletionFilter.errors = null, validateRecordingDeletionJobAccepted.errors = null,
-validateRecordingDeletionProgress.errors = null, validateRecordingDeletionRequest.errors = null,
-validateRecordingDeletionResult.errors = null, validateRecordingDetail.errors = null,
-validateRecordingDetectionLabels.errors = null, validateRecordingExportAccepted.errors = null,
-validateRecordingExportRequest.errors = null, validateRecordingExportStatus.errors = null,
-validateRecordingPlaybackPreparing.errors = null, validateRecordingPlaybackReady.errors = null,
-validateRecordingProtectionRequest.errors = null, validateRecordingProtectionResult.errors = null,
-validateRecordingRetentionRequest.errors = null, validateRecordingRetentionResult.errors = null,
-validateRecordingTags.errors = null, validateRecordingTagsById.errors = null, validateRecordingTagsRequest.errors = null,
+validateFleetTag.errors = null, validateFleetTagCreate.errors = null, validateFleetTagMergeRequest.errors = null,
+validateFleetTagMergeResult.errors = null, validateFleetTagUpdate.errors = null,
+validateFleetTagsResponse.errors = null, validateFleetViewCreate.errors = null,
+validateFleetViewUpdate.errors = null, validateFloorPlan.errors = null, validateFloorPlanCamera.errors = null,
+validateFloorPlanCameraRequest.errors = null, validateFloorPlanCreate.errors = null,
+validateFloorPlanDeletion.errors = null, validateFloorPlanUpdate.errors = null,
+validateFloorPlansResponse.errors = null, validateFloorSketch.errors = null, validateFloorSketchArea.errors = null,
+validateFloorSketchLabel.errors = null, validateFloorSketchRect.errors = null, validateFloorSketchWall.errors = null,
+validateLiveCameraSlot.errors = null, validateLiveLayout.errors = null, validateLiveLayoutCreate.errors = null,
+validateLiveLayoutUpdate.errors = null, validateLiveLayoutsResponse.errors = null,
+validateLiveStreamSummaryPage.errors = null, validateLoginConfig.errors = null,
+validateLoginMfaChallenge.errors = null, validateLoginRequest.errors = null, validateLoginResponse.errors = null,
+validateLoginSuccess.errors = null, validateLogoutResponse.errors = null, validateLprStreamSummaryPage.errors = null,
+validateOpenApiDocument.errors = null, validatePasswordAdminReset.errors = null,
+validatePasswordChangeRequest.errors = null, validatePasswordChangedResponse.errors = null,
+validatePasswordSelfChange.errors = null, validateRecordingBatchProtectionRequest.errors = null,
+validateRecordingBatchProtectionResult.errors = null, validateRecordingBatchTagsRequest.errors = null,
+validateRecordingBatchTagsResult.errors = null, validateRecordingDeletionFilter.errors = null,
+validateRecordingDeletionJobAccepted.errors = null, validateRecordingDeletionProgress.errors = null,
+validateRecordingDeletionRequest.errors = null, validateRecordingDeletionResult.errors = null,
+validateRecordingDetail.errors = null, validateRecordingDetectionLabels.errors = null,
+validateRecordingExportAccepted.errors = null, validateRecordingExportRequest.errors = null,
+validateRecordingExportStatus.errors = null, validateRecordingPlaybackPreparing.errors = null,
+validateRecordingPlaybackReady.errors = null, validateRecordingProtectionRequest.errors = null,
+validateRecordingProtectionResult.errors = null, validateRecordingRetentionRequest.errors = null,
+validateRecordingRetentionResult.errors = null, validateRecordingTags.errors = null,
+validateRecordingTagsById.errors = null, validateRecordingTagsRequest.errors = null,
 validateRecordingTimeline.errors = null, validateRecordingTimelineByIds.errors = null,
 validateRecordingsPage.errors = null, validateStreamCompatibilityList.errors = null,
 validateStreamFullResponse.errors = null, validateStreamPrivacyUpdated.errors = null,
@@ -25583,4 +34420,4 @@ validateTotpLoginRequest.errors = null, validateTotpLoginResponse.errors = null,
 validateTotpSetupResponse.errors = null, validateTotpStatusResponse.errors = null,
 validateTrustedDevicesResponse.errors = null;
 
-export { validateApiError, validateApiTokenCreateRequest, validateApiTokenCreated, validateApiTokenList, validateApiTokenMetadata, validateAuthSessionsResponse, validateAuthVerifyResponse, validateCameraCollection, validateCameraCollectionMembersResponse, validateCameraCollectionPreview, validateCameraCollectionsResponse, validateCameraTagAssignmentsResponse, validateClientConfig, validateCredentialRevoked, validateFleetLocation, validateFleetLocationsResponse, validateFleetPreviewRequest, validateFleetPreviewResponse, validateFleetQueryRequest, validateFleetQueryResponse, validateFleetSavedView, validateFleetSavedViewsResponse, validateFleetTag, validateFleetTagsResponse, validateLiveStreamSummaryPage, validateLoginConfig, validateLoginMfaChallenge, validateLoginRequest, validateLoginResponse, validateLoginSuccess, validateLogoutResponse, validateLprStreamSummaryPage, validateOpenApiDocument, validatePasswordAdminReset, validatePasswordChangeRequest, validatePasswordChangedResponse, validatePasswordSelfChange, validateRecordingBatchProtectionRequest, validateRecordingBatchProtectionResult, validateRecordingBatchTagsRequest, validateRecordingBatchTagsResult, validateRecordingDeletionFilter, validateRecordingDeletionJobAccepted, validateRecordingDeletionProgress, validateRecordingDeletionRequest, validateRecordingDeletionResult, validateRecordingDetail, validateRecordingDetectionLabels, validateRecordingExportAccepted, validateRecordingExportRequest, validateRecordingExportStatus, validateRecordingPlaybackPreparing, validateRecordingPlaybackReady, validateRecordingProtectionRequest, validateRecordingProtectionResult, validateRecordingRetentionRequest, validateRecordingRetentionResult, validateRecordingTags, validateRecordingTagsById, validateRecordingTagsRequest, validateRecordingTimeline, validateRecordingTimelineByIds, validateRecordingsPage, validateStreamCompatibilityList, validateStreamFullResponse, validateStreamPrivacyUpdated, validateStreamSummaryPage, validateStreamUpdateAccepted, validateStreamUpdateRequest, validateSuccessResponse, validateTotpChangedResponse, validateTotpCodeRequest, validateTotpLoginRequest, validateTotpLoginResponse, validateTotpSetupResponse, validateTotpStatusResponse, validateTrustedDevicesResponse };
+export { validateApiError, validateApiTokenCreateRequest, validateApiTokenCreated, validateApiTokenList, validateApiTokenMetadata, validateAuthSessionsResponse, validateAuthVerifyResponse, validateCameraCollection, validateCameraCollectionCreate, validateCameraCollectionMembersRequest, validateCameraCollectionMembersResponse, validateCameraCollectionPreview, validateCameraCollectionUpdate, validateCameraCollectionsResponse, validateCameraFavorite, validateCameraFavoriteRemoval, validateCameraFavoritesResponse, validateCameraLocationAssignment, validateCameraLocationAssignmentRequest, validateCameraTagAssignmentsRequest, validateCameraTagAssignmentsResponse, validateCameraUuid, validateClientConfig, validateCredentialRevoked, validateFleetLocation, validateFleetLocationCreate, validateFleetLocationUpdate, validateFleetLocationsResponse, validateFleetMutationAck, validateFleetPreviewRequest, validateFleetPreviewResponse, validateFleetQueryRequest, validateFleetQueryResponse, validateFleetRevisionRequest, validateFleetSavedView, validateFleetSavedViewsResponse, validateFleetTag, validateFleetTagCreate, validateFleetTagMergeRequest, validateFleetTagMergeResult, validateFleetTagUpdate, validateFleetTagsResponse, validateFleetViewCreate, validateFleetViewUpdate, validateFloorPlan, validateFloorPlanCamera, validateFloorPlanCameraRequest, validateFloorPlanCreate, validateFloorPlanDeletion, validateFloorPlanUpdate, validateFloorPlansResponse, validateFloorSketch, validateFloorSketchArea, validateFloorSketchLabel, validateFloorSketchRect, validateFloorSketchWall, validateLiveCameraSlot, validateLiveLayout, validateLiveLayoutCreate, validateLiveLayoutUpdate, validateLiveLayoutsResponse, validateLiveStreamSummaryPage, validateLoginConfig, validateLoginMfaChallenge, validateLoginRequest, validateLoginResponse, validateLoginSuccess, validateLogoutResponse, validateLprStreamSummaryPage, validateOpenApiDocument, validatePasswordAdminReset, validatePasswordChangeRequest, validatePasswordChangedResponse, validatePasswordSelfChange, validateRecordingBatchProtectionRequest, validateRecordingBatchProtectionResult, validateRecordingBatchTagsRequest, validateRecordingBatchTagsResult, validateRecordingDeletionFilter, validateRecordingDeletionJobAccepted, validateRecordingDeletionProgress, validateRecordingDeletionRequest, validateRecordingDeletionResult, validateRecordingDetail, validateRecordingDetectionLabels, validateRecordingExportAccepted, validateRecordingExportRequest, validateRecordingExportStatus, validateRecordingPlaybackPreparing, validateRecordingPlaybackReady, validateRecordingProtectionRequest, validateRecordingProtectionResult, validateRecordingRetentionRequest, validateRecordingRetentionResult, validateRecordingTags, validateRecordingTagsById, validateRecordingTagsRequest, validateRecordingTimeline, validateRecordingTimelineByIds, validateRecordingsPage, validateStreamCompatibilityList, validateStreamFullResponse, validateStreamPrivacyUpdated, validateStreamSummaryPage, validateStreamUpdateAccepted, validateStreamUpdateRequest, validateSuccessResponse, validateTotpChangedResponse, validateTotpCodeRequest, validateTotpLoginRequest, validateTotpLoginResponse, validateTotpSetupResponse, validateTotpStatusResponse, validateTrustedDevicesResponse };

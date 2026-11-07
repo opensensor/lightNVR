@@ -10,7 +10,8 @@
     "Recording-action slice covers twelve protection/retention, tags, deletion, direct download and export-job routes. Retention override is explicitly included by the engineering plan. Job discovery is authenticated; concrete access requires exact creator user and scoped-token identity. Mixed otherwise-valid unauthorized batches fail before mutation/job creation. Operational missing/incomplete/protected failures retain their documented early or partial-result semantics. These jobs expose no cancellation endpoint or cancelled state. Legacy file-path deletion and synchronization remain later.",
     "Session/trusted-device self-service adds four operations: real session/Basic/legacy key owners only, no scoped-token principal. Lists retain the explicit 32-entry cap; revocation and cookie clearing are independent of that cap. IDs are canonical positive safe integers. MFA/password/logout expansion remains pending.",
     "F1d adds MFA completion/enrollment/status, password change and legacy logout. Self-service or effective users.manage discovery; concrete target authorization remains enforced. Seven operations, 44 total. Login and MFA consumers validate responses before claiming success.",
-    "F2 covers 13 read/query/preview operations: fleet queries, saved view reads, collection list/detail/members/preview, locations, tags and camera tags. Data remains filtered independently of discovery; mutations are F4. Total 57 operations, 183 residual."
+    "F2 covers 13 read/query/preview operations: fleet queries, saved view reads, collection list/detail/members/preview, locations, tags and camera tags. Data remains filtered independently of discovery; mutations are F4. Total 57 operations, 183 residual.",
+    "Fleet write/workspace slice adds 31 operations. Background GET/PUT contracts are binary PNG/JPEG, verified independently from JSON plan responses."
   ],
   "operations": [
     {
@@ -122,8 +123,10 @@
       "handler": "handle_post_location",
       "source": "src/web/libuv_api_handlers.c",
       "line": 117,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "createFleetLocation",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -142,8 +145,10 @@
       "handler": "handle_put_location",
       "source": "src/web/libuv_api_handlers.c",
       "line": 119,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateFleetLocation",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "DELETE",
@@ -151,8 +156,10 @@
       "handler": "handle_delete_location",
       "source": "src/web/libuv_api_handlers.c",
       "line": 120,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteFleetLocation",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "PUT",
@@ -160,8 +167,10 @@
       "handler": "handle_put_camera_location",
       "source": "src/web/libuv_api_handlers.c",
       "line": 121,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "setCameraLocation",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -169,8 +178,10 @@
       "handler": "handle_get_operator_floor_plans",
       "source": "src/web/libuv_api_handlers.c",
       "line": 125,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "listFloorPlans",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "POST",
@@ -178,8 +189,10 @@
       "handler": "handle_post_operator_floor_plan",
       "source": "src/web/libuv_api_handlers.c",
       "line": 127,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "createFloorPlan",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -187,8 +200,10 @@
       "handler": "handle_get_operator_floor_plan_background",
       "source": "src/web/libuv_api_handlers.c",
       "line": 130,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "getFloorPlanBackground",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "PUT",
@@ -196,8 +211,10 @@
       "handler": "handle_put_operator_floor_plan_background",
       "source": "src/web/libuv_api_handlers.c",
       "line": 132,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "setFloorPlanBackground",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "DELETE",
@@ -205,8 +222,10 @@
       "handler": "handle_delete_operator_floor_plan_background",
       "source": "src/web/libuv_api_handlers.c",
       "line": 134,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteFloorPlanBackground",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -214,8 +233,10 @@
       "handler": "handle_get_operator_floor_plan",
       "source": "src/web/libuv_api_handlers.c",
       "line": 137,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "getFloorPlan",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "PUT",
@@ -223,8 +244,10 @@
       "handler": "handle_put_operator_floor_plan",
       "source": "src/web/libuv_api_handlers.c",
       "line": 139,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateFloorPlan",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "DELETE",
@@ -232,8 +255,10 @@
       "handler": "handle_delete_operator_floor_plan",
       "source": "src/web/libuv_api_handlers.c",
       "line": 141,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteFloorPlan",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -252,8 +277,10 @@
       "handler": "handle_post_camera_tag",
       "source": "src/web/libuv_api_handlers.c",
       "line": 146,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "createFleetTag",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "POST",
@@ -261,8 +288,10 @@
       "handler": "handle_post_camera_tag_merge",
       "source": "src/web/libuv_api_handlers.c",
       "line": 148,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "mergeFleetTag",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -281,8 +310,10 @@
       "handler": "handle_put_camera_tag",
       "source": "src/web/libuv_api_handlers.c",
       "line": 152,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateFleetTag",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "DELETE",
@@ -290,8 +321,10 @@
       "handler": "handle_delete_camera_tag",
       "source": "src/web/libuv_api_handlers.c",
       "line": 154,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteFleetTag",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -310,8 +343,10 @@
       "handler": "handle_put_camera_tag_assignments",
       "source": "src/web/libuv_api_handlers.c",
       "line": 158,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "setCameraTags",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "POST",
@@ -352,8 +387,10 @@
       "handler": "handle_post_fleet_saved_view",
       "source": "src/web/libuv_api_handlers.c",
       "line": 168,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "createFleetView",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -372,8 +409,10 @@
       "handler": "handle_put_fleet_saved_view",
       "source": "src/web/libuv_api_handlers.c",
       "line": 172,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateFleetView",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "DELETE",
@@ -381,8 +420,10 @@
       "handler": "handle_delete_fleet_saved_view",
       "source": "src/web/libuv_api_handlers.c",
       "line": 174,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteFleetView",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -390,8 +431,10 @@
       "handler": "handle_get_live_layouts",
       "source": "src/web/libuv_api_handlers.c",
       "line": 178,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "listLiveLayouts",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "POST",
@@ -399,8 +442,10 @@
       "handler": "handle_post_live_layout",
       "source": "src/web/libuv_api_handlers.c",
       "line": 180,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "createLiveLayout",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "PUT",
@@ -408,8 +453,10 @@
       "handler": "handle_put_live_layout",
       "source": "src/web/libuv_api_handlers.c",
       "line": 182,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateLiveLayout",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "DELETE",
@@ -417,8 +464,10 @@
       "handler": "handle_delete_live_layout",
       "source": "src/web/libuv_api_handlers.c",
       "line": 184,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteLiveLayout",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -426,8 +475,10 @@
       "handler": "handle_get_camera_favorites",
       "source": "src/web/libuv_api_handlers.c",
       "line": 188,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "listCameraFavorites",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "PUT",
@@ -435,8 +486,10 @@
       "handler": "handle_put_camera_favorite",
       "source": "src/web/libuv_api_handlers.c",
       "line": 190,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "addCameraFavorite",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "DELETE",
@@ -444,8 +497,10 @@
       "handler": "handle_delete_camera_favorite",
       "source": "src/web/libuv_api_handlers.c",
       "line": 192,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteCameraFavorite",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -464,8 +519,10 @@
       "handler": "handle_post_camera_collection",
       "source": "src/web/libuv_api_handlers.c",
       "line": 198,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "createCameraCollection",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",
@@ -484,8 +541,10 @@
       "handler": "handle_put_camera_collection_members",
       "source": "src/web/libuv_api_handlers.c",
       "line": 202,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "setCameraCollectionMembers",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "POST",
@@ -515,8 +574,10 @@
       "handler": "handle_put_camera_collection",
       "source": "src/web/libuv_api_handlers.c",
       "line": 208,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateCameraCollection",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "DELETE",
@@ -524,8 +585,10 @@
       "handler": "handle_delete_camera_collection",
       "source": "src/web/libuv_api_handlers.c",
       "line": 210,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-writes",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteCameraCollection",
+      "eligibility": "See canonical principal predicate; resource ownership and visibility still apply."
     },
     {
       "method": "GET",

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
+import { fleetWriteJSON } from '../../../api/fleetWrites.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog } from '../common/ModalDialog.tsx';
 import { buildFleetSavedViewPayload } from './fleetQuery.ts';
@@ -39,7 +39,7 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }: SavedViews
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const created = await fetchJSON<FleetSavedView>('/api/fleet/views', {
+      const created = await fleetWriteJSON<FleetSavedView>('/api/fleet/views', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildFleetSavedViewPayload(name, shared, state)),
@@ -60,7 +60,7 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }: SavedViews
   const remove = async (view: FleetSavedView | null) => {
     if (!view?.owned) return;
     try {
-      await fetchJSON(`/api/fleet/views/${encodeURIComponent(view.uuid)}`, {
+      await fleetWriteJSON(`/api/fleet/views/${encodeURIComponent(view.uuid)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ revision: view.revision }),

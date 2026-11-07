@@ -344,7 +344,11 @@ export interface paths {
          */
         get: operations["listCameraCollections"];
         put?: never;
-        post?: never;
+        /**
+         * CreateCameraCollection
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        post: operations["createCameraCollection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -363,9 +367,17 @@ export interface paths {
          * @description Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation.
          */
         get: operations["getCameraCollection"];
-        put?: never;
+        /**
+         * UpdateCameraCollection
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["updateCameraCollection"];
         post?: never;
-        delete?: never;
+        /**
+         * DeleteCameraCollection
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        delete: operations["deleteCameraCollection"];
         options?: never;
         head?: never;
         patch?: never;
@@ -383,7 +395,11 @@ export interface paths {
          * @description Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation.
          */
         get: operations["getCameraCollectionMembers"];
-        put?: never;
+        /**
+         * SetCameraCollectionMembers
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["setCameraCollectionMembers"];
         post?: never;
         delete?: never;
         options?: never;
@@ -411,6 +427,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/camera-favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListCameraFavorites
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["listCameraFavorites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/camera-favorites/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * AddCameraFavorite
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["addCameraFavorite"];
+        post?: never;
+        /**
+         * DeleteCameraFavorite
+         * @description Remove only the current user favorite, including cameras no longer visible. Idempotent; scoped tokens and demo identities cannot mutate.
+         */
+        delete: operations["deleteCameraFavorite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/camera-tags": {
         parameters: {
             query?: never;
@@ -420,11 +480,15 @@ export interface paths {
         };
         /**
          * List visible camera tags
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["listFleetTags"];
         put?: never;
-        post?: never;
+        /**
+         * CreateFleetTag
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        post: operations["createFleetTag"];
         delete?: never;
         options?: never;
         head?: never;
@@ -440,10 +504,58 @@ export interface paths {
         };
         /**
          * Read a visible camera tag
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["getFleetTag"];
+        /**
+         * UpdateFleetTag
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["updateFleetTag"];
+        post?: never;
+        /**
+         * DeleteFleetTag
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        delete: operations["deleteFleetTag"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/camera-tags/{uuid}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
         put?: never;
+        /**
+         * MergeFleetTag
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        post: operations["mergeFleetTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cameras/{uuid}/location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * SetCameraLocation
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["setCameraLocation"];
         post?: never;
         delete?: never;
         options?: never;
@@ -460,10 +572,14 @@ export interface paths {
         };
         /**
          * Read tags for an authorized camera
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["getCameraTagAssignments"];
-        put?: never;
+        /**
+         * SetCameraTags
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["setCameraTags"];
         post?: never;
         delete?: never;
         options?: never;
@@ -544,7 +660,11 @@ export interface paths {
          */
         get: operations["listFleetViews"];
         put?: never;
-        post?: never;
+        /**
+         * CreateFleetView
+         * @description Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.
+         */
+        post: operations["createFleetView"];
         delete?: never;
         options?: never;
         head?: never;
@@ -563,9 +683,145 @@ export interface paths {
          * @description Owned and shared saved filter configurations; up to 256 list entries. Stored selector references do not grant camera access and must be reauthorized on query. Existing can_share reflects the legacy admin role, not arbitrary action grants. Mutation contracts remain outside this read slice.
          */
         get: operations["getFleetView"];
-        put?: never;
+        /**
+         * UpdateFleetView
+         * @description Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.
+         */
+        put: operations["updateFleetView"];
         post?: never;
+        /**
+         * DeleteFleetView
+         * @description Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.
+         */
+        delete: operations["deleteFleetView"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/layouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListLiveLayouts
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["listLiveLayouts"];
+        put?: never;
+        /**
+         * CreateLiveLayout
+         * @description Personal layouts are owner-managed. Only administrators share. Scoped tokens and demo identities cannot mutate. Camera slots must all be live.view-visible; columns times rows must not exceed 36 and slots cannot exceed capacity. Updates/deletion require current revision.
+         */
+        post: operations["createLiveLayout"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/layouts/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * UpdateLiveLayout
+         * @description Personal layouts are owner-managed. Only administrators share. Scoped tokens and demo identities cannot mutate. Camera slots must all be live.view-visible; columns times rows must not exceed 36 and slots cannot exceed capacity. Updates/deletion require current revision.
+         */
+        put: operations["updateLiveLayout"];
+        post?: never;
+        /**
+         * DeleteLiveLayout
+         * @description Personal layouts are owner-managed. Only administrators share. Scoped tokens and demo identities cannot mutate. Camera slots must all be live.view-visible; columns times rows must not exceed 36 and slots cannot exceed capacity. Updates/deletion require current revision.
+         */
+        delete: operations["deleteLiveLayout"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListFloorPlans
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["listFloorPlans"];
+        put?: never;
+        /**
+         * CreateFloorPlan
+         * @description Shared plan library. Requires global camera.configure and a non-scoped identity; demo identities cannot mutate. Camera placements must be visible. Updates/deletion require current revision. Omitted sketch preserves it; null clears it.
+         */
+        post: operations["createFloorPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/plans/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetFloorPlan
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["getFloorPlan"];
+        /**
+         * UpdateFloorPlan
+         * @description Shared plan library. Requires global camera.configure and a non-scoped identity; demo identities cannot mutate. Camera placements must be visible. Updates/deletion require current revision. Omitted sketch preserves it; null clears it.
+         */
+        put: operations["updateFloorPlan"];
+        post?: never;
+        /**
+         * DeleteFloorPlan
+         * @description Shared plan library. Requires global camera.configure and a non-scoped identity; demo identities cannot mutate. Camera placements must be visible. Updates/deletion require current revision. Omitted sketch preserves it; null clears it.
+         */
+        delete: operations["deleteFloorPlan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/plans/{uuid}/background": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetFloorPlanBackground
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["getFloorPlanBackground"];
+        /**
+         * SetFloorPlanBackground
+         * @description Raw structurally validated PNG/JPEG, at most 786432 bytes. Atomic publication preserves previous bytes on invalid upload. Returns the new plan revision; no request revision is used.
+         */
+        put: operations["setFloorPlanBackground"];
+        post?: never;
+        /**
+         * DeleteFloorPlanBackground
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        delete: operations["deleteFloorPlanBackground"];
         options?: never;
         head?: never;
         patch?: never;
@@ -580,11 +836,15 @@ export interface paths {
         };
         /**
          * List visible camera locations
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["listFleetLocations"];
         put?: never;
-        post?: never;
+        /**
+         * CreateFleetLocation
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        post: operations["createFleetLocation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -600,12 +860,20 @@ export interface paths {
         };
         /**
          * Read a visible camera location
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["getFleetLocation"];
-        put?: never;
+        /**
+         * UpdateFleetLocation
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["updateFleetLocation"];
         post?: never;
-        delete?: never;
+        /**
+         * DeleteFleetLocation
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        delete: operations["deleteFleetLocation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1347,6 +1615,17 @@ export interface components {
             updated_at: number;
             uuid: string;
         };
+        CameraCollectionCreate: {
+            description?: string;
+            name: string;
+            selector?: components["schemas"]["FleetSelector"];
+            shared?: boolean;
+            /** @enum {string} */
+            type: "static" | "smart";
+        };
+        CameraCollectionMembersRequest: {
+            camera_uuids: components["schemas"]["CameraUuid"][];
+        };
         CameraCollectionMembersResponse: {
             camera_uuids: string[];
             collection_uuid: string;
@@ -1365,11 +1644,45 @@ export interface components {
             collections: components["schemas"]["CameraCollection"][];
             count: number;
         };
+        CameraCollectionUpdate: {
+            description?: string;
+            name?: string;
+            selector?: components["schemas"]["FleetSelector"];
+            shared?: boolean;
+            /** @enum {string} */
+            type?: "static" | "smart";
+        };
+        CameraFavorite: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+            created_at: number;
+        };
+        CameraFavoriteRemoval: {
+            removed: boolean;
+            /** @constant */
+            success: true;
+        };
+        CameraFavoritesResponse: {
+            can_modify: boolean;
+            favorites: components["schemas"]["CameraFavorite"][];
+        };
+        CameraLocationAssignment: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+            location_uuid: components["schemas"]["CameraUuid"];
+            /** @constant */
+            success: true;
+        };
+        CameraLocationAssignmentRequest: {
+            location_uuid: components["schemas"]["CameraUuid"];
+        };
+        CameraTagAssignmentsRequest: {
+            tag_uuids: components["schemas"]["CameraUuid"][];
+        };
         CameraTagAssignmentsResponse: {
             camera_uuid: string;
             count: number;
             tags: components["schemas"]["FleetTag"][];
         };
+        CameraUuid: string;
         /** @description Safe browser playback configuration only. Deliberately closed shape: no storage paths, integrations, private settings or credentials. go2rtc_available may stay true while its lifecycle guard is busy. */
         ClientConfig: {
             api_key?: never;
@@ -1477,10 +1790,32 @@ export interface components {
             updated_at: number;
             uuid: string;
         };
+        FleetLocationCreate: {
+            metadata?: {
+                [key: string]: unknown;
+            };
+            name: string;
+            parent_uuid?: components["schemas"]["CameraUuid"] | null;
+            sort_order?: number;
+            type?: string;
+        };
         FleetLocationsResponse: {
             count: number;
             locations: components["schemas"]["FleetLocation"][];
             unassigned_uuid?: string;
+        };
+        FleetLocationUpdate: {
+            metadata?: {
+                [key: string]: unknown;
+            };
+            name?: string;
+            parent_uuid?: components["schemas"]["CameraUuid"] | null;
+            sort_order?: number;
+            type?: string;
+        };
+        FleetMutationAck: {
+            /** @constant */
+            success: true;
         };
         FleetOperationalQueue: {
             count: number;
@@ -1563,6 +1898,9 @@ export interface components {
             total: number;
             total_pages: number;
         };
+        FleetRevisionRequest: {
+            revision: number;
+        };
         FleetSavedView: {
             collection_uuid: string | null;
             columns: string[];
@@ -1595,9 +1933,211 @@ export interface components {
             updated_at: number;
             uuid: string;
         };
+        FleetTagCreate: {
+            color?: string;
+            description?: string;
+            label: string;
+        };
+        FleetTagMergeRequest: {
+            target_uuid: components["schemas"]["CameraUuid"];
+        };
+        FleetTagMergeResult: {
+            source_uuid: components["schemas"]["CameraUuid"];
+            /** @constant */
+            success: true;
+            target_uuid: components["schemas"]["CameraUuid"];
+        };
         FleetTagsResponse: {
             count: number;
             tags: components["schemas"]["FleetTag"][];
+        };
+        FleetTagUpdate: {
+            color?: string;
+            description?: string;
+            label?: string;
+        };
+        FleetViewCreate: {
+            collection_uuid?: string;
+            columns?: string[];
+            is_shared?: boolean;
+            name: string;
+            search?: string;
+            selector: components["schemas"]["FleetSelector"];
+            /** @enum {unknown} */
+            sort_by?: "name" | "camera_uuid" | "location" | "health" | "enabled" | "recording_mode" | "address";
+            /** @enum {unknown} */
+            sort_order?: "asc" | "desc";
+        };
+        FleetViewUpdate: {
+            collection_uuid?: string;
+            columns?: string[];
+            is_shared?: boolean;
+            name: string;
+            revision: number;
+            search?: string;
+            selector: components["schemas"]["FleetSelector"];
+            /** @enum {unknown} */
+            sort_by?: "name" | "camera_uuid" | "location" | "health" | "enabled" | "recording_mode" | "address";
+            /** @enum {unknown} */
+            sort_order?: "asc" | "desc";
+        };
+        FloorPlan: {
+            /** @enum {string|null} */
+            background_mime: "image/png" | "image/jpeg" | null;
+            cameras: components["schemas"]["FloorPlanCamera"][];
+            can_modify?: boolean;
+            canvas_height: number;
+            canvas_width: number;
+            created_at: number;
+            location_uuid: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            parent_plan_uuid: components["schemas"]["CameraUuid"] | null;
+            partially_authorized: boolean;
+            revision: number;
+            sketch: components["schemas"]["FloorSketch"] | null;
+            updated_at: number;
+            uuid: components["schemas"]["CameraUuid"];
+        };
+        FloorPlanCamera: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+            fov: number;
+            rotation: number;
+            x: number;
+            y: number;
+        };
+        FloorPlanCameraRequest: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+            fov?: number;
+            rotation?: number;
+            x?: number;
+            y?: number;
+        };
+        FloorPlanCreate: {
+            cameras?: components["schemas"]["FloorPlanCameraRequest"][];
+            canvas_height?: number;
+            canvas_width?: number;
+            location_uuid?: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            parent_plan_uuid?: components["schemas"]["CameraUuid"] | null;
+            sketch?: components["schemas"]["FloorSketch"] | null;
+        };
+        FloorPlanDeletion: {
+            /** @constant */
+            deleted: true;
+        };
+        FloorPlansResponse: {
+            can_modify: boolean;
+            plans: components["schemas"]["FloorPlan"][];
+        };
+        FloorPlanUpdate: {
+            cameras: components["schemas"]["FloorPlanCameraRequest"][];
+            canvas_height?: number;
+            canvas_width?: number;
+            location_uuid?: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            parent_plan_uuid?: components["schemas"]["CameraUuid"] | null;
+            revision: number;
+            sketch?: components["schemas"]["FloorSketch"] | null;
+        };
+        FloorSketch: {
+            shapes: (components["schemas"]["FloorSketchRect"] | components["schemas"]["FloorSketchWall"] | components["schemas"]["FloorSketchArea"] | components["schemas"]["FloorSketchLabel"])[];
+            /** @constant */
+            version: 1;
+        };
+        FloorSketchArea: {
+            id: string;
+            label?: string;
+            points: [
+                number,
+                number
+            ][];
+            /** @enum {string} */
+            tone?: "slate" | "blue" | "green" | "amber" | "red" | "violet";
+            /** @constant */
+            type: "area";
+        };
+        FloorSketchLabel: {
+            id: string;
+            /** @enum {string} */
+            size?: "sm" | "md" | "lg";
+            text: string;
+            /** @enum {string} */
+            tone?: "slate" | "blue" | "green" | "amber" | "red" | "violet";
+            /** @constant */
+            type: "label";
+            x: number;
+            y: number;
+        };
+        FloorSketchRect: {
+            filled?: boolean;
+            h: number;
+            id: string;
+            label?: string;
+            /** @enum {string} */
+            tone?: "slate" | "blue" | "green" | "amber" | "red" | "violet";
+            /** @constant */
+            type: "rect";
+            w: number;
+            x: number;
+            y: number;
+        };
+        FloorSketchWall: {
+            id: string;
+            label?: string;
+            points: [
+                number,
+                number
+            ][];
+            /** @enum {string} */
+            tone?: "slate" | "blue" | "green" | "amber" | "red" | "violet";
+            /** @constant */
+            type: "wall";
+        };
+        LiveCameraSlot: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+        };
+        LiveLayout: {
+            /** @enum {string} */
+            availability: "all" | "live" | "offline" | "never_connected" | "disabled";
+            camera_slots: components["schemas"]["LiveCameraSlot"][];
+            columns: number;
+            created_at: number;
+            is_shared: boolean;
+            location_uuid: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            owned: boolean;
+            partially_authorized: boolean;
+            revision: number;
+            rows: number;
+            updated_at: number;
+            uuid: components["schemas"]["CameraUuid"];
+        };
+        LiveLayoutCreate: {
+            /** @enum {string} */
+            availability: "all" | "live" | "offline" | "never_connected" | "disabled";
+            camera_slots: components["schemas"]["LiveCameraSlot"][];
+            columns: number;
+            is_shared?: boolean;
+            location_uuid?: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            rows: number;
+        };
+        LiveLayoutsResponse: {
+            can_modify: boolean;
+            can_share: boolean;
+            count: number;
+            layouts: components["schemas"]["LiveLayout"][];
+        };
+        LiveLayoutUpdate: {
+            /** @enum {string} */
+            availability: "all" | "live" | "offline" | "never_connected" | "disabled";
+            camera_slots: components["schemas"]["LiveCameraSlot"][];
+            columns: number;
+            is_shared?: boolean;
+            location_uuid?: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            revision: number;
+            rows: number;
         };
         /** @description summary=true, surface=live. Uses the same filtered pagination envelope, with playback-specific row fields. */
         LiveStreamSummaryPage: {
@@ -3773,6 +4313,84 @@ export interface operations {
             };
         };
     };
+    createCameraCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraCollectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollection"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getCameraCollection: {
         parameters: {
             query?: never;
@@ -3830,6 +4448,162 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateCameraCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraCollectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollection"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteCameraCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -3916,6 +4690,86 @@ export interface operations {
             };
         };
     };
+    setCameraCollectionMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraCollectionMembersRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollectionMembersResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     previewCameraCollection: {
         parameters: {
             query?: never;
@@ -3983,6 +4837,232 @@ export interface operations {
             };
         };
     };
+    listCameraFavorites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraFavoritesResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    addCameraFavorite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraFavorite"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteCameraFavorite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraFavoriteRemoval"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listFleetTags: {
         parameters: {
             query?: never;
@@ -4038,6 +5118,84 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createFleetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetTagCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetTag"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -4115,6 +5273,322 @@ export interface operations {
             };
         };
     };
+    updateFleetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetTagUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetTag"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFleetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    mergeFleetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetTagMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetTagMergeResult"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setCameraLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraLocationAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraLocationAssignment"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getCameraTagAssignments: {
         parameters: {
             query?: never;
@@ -4172,6 +5646,86 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setCameraTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraTagAssignmentsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraTagAssignmentsResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -4423,6 +5977,84 @@ export interface operations {
             };
         };
     };
+    createFleetView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetViewCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetSavedView"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getFleetView: {
         parameters: {
             query?: never;
@@ -4480,6 +6112,1118 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateFleetView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetViewUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetSavedView"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFleetView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listLiveLayouts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLayoutsResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createLiveLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveLayoutCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLayout"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateLiveLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveLayoutUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLayout"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteLiveLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listFloorPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlansResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createFloorPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FloorPlanCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getFloorPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateFloorPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FloorPlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFloorPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlanDeletion"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getFloorPlanBackground: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact uploaded PNG/JPEG bytes, accessible only when the plan is visible. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setFloorPlanBackground: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/jpeg": string;
+                "image/png": string;
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Image too large or too short. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unsupported image content type. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFloorPlanBackground: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -4555,6 +7299,84 @@ export interface operations {
             };
         };
     };
+    createFleetLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetLocationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetLocation"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getFleetLocation: {
         parameters: {
             query?: never;
@@ -4612,6 +7434,162 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateFleetLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetLocationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetLocation"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFleetLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;

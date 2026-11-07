@@ -1,10 +1,11 @@
 /** Only stable operation names enter error messages; never URLs or wire data. */
 export type StreamOperation = 'listStreams' | 'listStreamSummaries' | 'getStreamFull' | 'updateStream';
 
+import type { FleetWorkspaceOperation } from './fleetWrites.ts';
 import type { FleetOperation } from './fleet.ts';
 import type { AuthenticationOperation } from './authentication.ts';
 
-type ContractOperation = FleetOperation | AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
+type ContractOperation = FleetWorkspaceOperation | FleetOperation | AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
 
 export class ContractValidationError extends Error {
   readonly name = 'ContractValidationError';
@@ -18,7 +19,7 @@ export class ContractValidationError extends Error {
     readonly issue: 'shape' | 'json' | 'status' = 'shape',
   ) {
     super(`Invalid ${operation} ${phase}: ${schema} (${issue}).`);
-    this.mayHaveApplied = ['updateStream', 'revokeAuthSession', 'revokeTrustedDevice', 'login', 'logout', 'completeTotpLogin', 'setupTotp', 'verifyTotp', 'disableTotp', 'changePassword'].includes(operation) && phase === 'response';
+    this.mayHaveApplied = ['createFleetLocation','updateFleetLocation','deleteFleetLocation','createFleetTag','updateFleetTag','deleteFleetTag','createCameraCollection','updateCameraCollection','deleteCameraCollection','setCameraLocation','setCameraTags','mergeFleetTag','setCameraCollectionMembers','createFleetView','updateFleetView','deleteFleetView','createLiveLayout','updateLiveLayout','deleteLiveLayout','addCameraFavorite','deleteCameraFavorite','createFloorPlan','updateFloorPlan','deleteFloorPlan','setFloorPlanBackground','deleteFloorPlanBackground','updateStream', 'revokeAuthSession', 'revokeTrustedDevice', 'login', 'logout', 'completeTotpLogin', 'setupTotp', 'verifyTotp', 'disableTotp', 'changePassword'].includes(operation) && phase === 'response';
   }
 }
 

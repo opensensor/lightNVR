@@ -1,6 +1,6 @@
 import { getCameraCollectionMembers, previewCameraCollection } from '../../../api/fleet.ts';
 import { useCallback, useEffect, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
+import { fleetWriteJSON } from '../../../api/fleetWrites.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog } from '../common/ModalDialog.tsx';
 import { CollectionSelectorBuilder } from './CollectionSelectorBuilder.tsx';
@@ -57,7 +57,7 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }: Colle
         shared: form.shared,
       };
       if (form.type === 'smart') payload.selector = selector;
-      const saved = await fetchJSON<CameraCollection>(collection ? `/api/camera-collections/${collection.uuid}` : '/api/camera-collections', {
+      const saved = await fleetWriteJSON<CameraCollection>(collection ? `/api/camera-collections/${collection.uuid}` : '/api/camera-collections', {
         method: collection ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -65,7 +65,7 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }: Colle
         retries: 1,
       });
       if (form.type === 'static') {
-        await fetchJSON(`/api/camera-collections/${saved.uuid}/members`, {
+        await fleetWriteJSON(`/api/camera-collections/${saved.uuid}/members`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ camera_uuids: members }),
@@ -245,7 +245,7 @@ export function CollectionManager({ collections, loading, isAdmin, locations, ta
 
   const deleteCollection = async (collection: CameraCollection) => {
     try {
-      await fetchJSON(`/api/camera-collections/${collection.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
+      await fleetWriteJSON(`/api/camera-collections/${collection.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
       showStatusMessage(t('collections.deleted'), 'success');
       await onRefresh();
     } catch (error) {
