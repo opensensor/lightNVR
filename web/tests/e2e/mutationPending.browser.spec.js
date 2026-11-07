@@ -13,7 +13,7 @@ async function openBrowser(view) {
       import {WorkspacesTab} from './js/components/preact/settings/WorkspacesTab.tsx';
       const summary=${JSON.stringify(baseline['admin-summary'].body)};summary.streams[0]={...summary.streams[0],name:'Camera',enabled:true};summary.streams=[summary.streams[0]];summary.total=1;summary.total_pages=1;
       const users={users:[{id:2,username:'Fixture user',email:'',role:2,role_name:'viewer',created_at:0,updated_at:0,last_login:0,is_active:true,password_change_locked:false,must_change_password:false,totp_enabled:false,authorization_mode:'legacy',allowed_login_cidrs:null}]};
-      const workspace=visible=>({workspaces:[{key:'live.navigator',label:'Navigator',description:'Fixture',visible,configurable:true}]});
+      const workspace=visible=>({workspaces:[{key:'live.navigator',label:'Navigator',description:'Fixture',visible,configurable:true,authorization_unchanged:true}],configurable:true,scope:'user'});
       window.writes=[];window.pending=[];window.messages=[];
       const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
       window.fetch=async(input,options={})=>{

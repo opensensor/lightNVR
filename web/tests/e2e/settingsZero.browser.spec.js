@@ -1,5 +1,7 @@
 /** Exercise SettingsView's load/save/refetch boundary with a server-supported zero. */
 const path = require('node:path');
+// Captured from the owned native /api/settings fixture; paths normalized.
+const nativeSettings = require('./systemSettingsFixture.json');
 
 async function openSettings(initial) {
   const { chromium } = require('../../../node_modules/playwright');
@@ -12,7 +14,7 @@ async function openSettings(initial) {
         import {QueryClient,QueryClientProvider} from './js/query-client.ts';
         import {SettingsView} from './js/components/preact/SettingsView.tsx';
         window.saved=[];
-        window.serverSettings={log_level:2,storage_path:'/fixture',web_port:8080,
+        window.serverSettings={...${JSON.stringify(nativeSettings)},log_level:2,storage_path:'/fixture',web_port:8080,
           web_auth_enabled:true,models_path:'/fixture/models-0',${initial}};
         window.fetch=async(input,options={})=>{
           const url=String(input);
@@ -23,7 +25,7 @@ async function openSettings(initial) {
               Object.assign(window.serverSettings,sent);
               // A changed response field provides an observable refetch barrier.
               window.serverSettings.models_path='/fixture/models-'+window.saved.length;
-              body={success:true};
+              body={success:true,restart_required:false};
             } else body=window.serverSettings;
           } else if(url.includes('trusted-devices')) body={devices:[]};
           else if(url.includes('/sessions')) body={sessions:[]};
