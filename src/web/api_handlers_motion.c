@@ -159,6 +159,8 @@ static void *motion_pulse_worker(void *arg) {
      * generation==0 means tracking was disabled (table-full fallback);
      * in that case always fire the stop rather than leave motion active. */
     bool still_current;
+    // Keep validation and all stop effects atomic with respect to a new
+    // trigger incrementing the generation; otherwise a stale stop can win.
     pthread_mutex_lock(&g_pulse_gen_mutex);
     if (task->generation == 0) {
         still_current = true;
