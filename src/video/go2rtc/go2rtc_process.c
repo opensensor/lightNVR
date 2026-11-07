@@ -254,7 +254,7 @@ static bool process_owns_tcp_listen_port(pid_t pid, int port) {
             char state[8] = {0};
             unsigned long inode = 0;
             int matched = sscanf(line,
-                                 " %*d: %79s %79s %7s %*s %*s %*s %*u %*u %lu",
+                                 " %*d: %79s %79s %7s %*s %*s %*s %*u %*u %*u %lu",
                                  local, remote, state, &inode);
             if (matched != 4 || strcmp(state, "0A") != 0 || inode == 0) {
                 continue;
