@@ -22,7 +22,18 @@
 #include "web/request_response.h"
 
 static bool valid_uuid_string(const char *uuid) {
-    return uuid && strlen(uuid) == CAMERA_UUID_STRING_SIZE - 1;
+    if (!uuid) return false;
+    if (strlen(uuid) != CAMERA_UUID_STRING_SIZE - 1) return false;
+
+    for (int i = 0; i < CAMERA_UUID_STRING_SIZE - 1; i++) {
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (uuid[i] != '-') return false;
+        } else if (!isxdigit((unsigned char)uuid[i])) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 static bool valid_color(const char *color) {
