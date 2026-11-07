@@ -88,7 +88,7 @@ Key files:
 - Direct camera connections (RTSP, ONVIF, HTTP, etc.)
 - WebRTC streaming for ultra-low-latency live viewing
 - RTSP server for local re-streaming (used by MP4/HLS recorders)
-- HLS segment generation
+- RTSP output consumed by LightNVR writers (including the HLS Writer that generates `.ts` segments)
 - Frame extraction via `frame.jpeg` endpoint (used for detection)
 - Two-way audio (backchannel) support
 
