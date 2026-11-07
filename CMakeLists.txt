@@ -910,7 +910,9 @@ endif()
 
 # Link SOD library if enabled
 if(ENABLE_SOD)
-    # Always link to the sod target, whether it's built as static or shared
+    # Link sod to the shared project library so all its consumers inherit it.
+    target_link_libraries(lightnvr_lib PUBLIC sod)
+    # Keep direct linkage for the main executable.
     target_link_libraries(lightnvr sod)
 
     # Log the linking method for clarity
