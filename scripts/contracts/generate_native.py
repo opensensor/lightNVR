@@ -25,9 +25,13 @@ def predicate(value):
         for req in requirements:
             if not isinstance(req, dict) or set(req) != {'action', 'resource'}:
                 raise ValueError('Unsupported authorization requirement keys')
-            if req['action'] not in ACTIONS or req['resource'] not in ('raw', 'runtime', 'live'):
+            action = req['action']
+            resource = req['resource']
+            if not isinstance(action, str) or not isinstance(resource, str):
                 raise ValueError('Unsupported authorization action or resource')
-            if kind in ('global', 'non_scoped_global', 'global_or_camera') and req['resource'] != 'raw':
+            if action not in ACTIONS or resource not in ('raw', 'runtime', 'live'):
+                raise ValueError('Unsupported authorization action or resource')
+            if kind in ('global', 'non_scoped_global', 'global_or_camera') and resource != 'raw':
                 raise ValueError('Global authorization uses raw resource placeholder')
 
 
@@ -76,8 +80,13 @@ def validate(doc, projected=False):
                         raise ValueError('Only local operationRef pointers are supported')
                     resolve_pointer(child)
                 if key == 'discriminator' and isinstance(child, dict):
-                    for reference in child.get('mapping', {}).values():
-                        if isinstance(reference, str) and reference.startswith('#/'):
+                    mapping = child.get('mapping', {})
+                    if not isinstance(mapping, dict):
+                        raise ValueError('Discriminator mapping must be an object')
+                    for reference in mapping.values():
+                        if not isinstance(reference, str):
+                            raise ValueError('Unsupported discriminator mapping reference')
+                        if reference.startswith('#/'):
                             resolve_pointer(reference)
                         elif reference not in doc.get('components', {}).get('schemas', {}):
                             raise ValueError('Unsupported discriminator mapping reference')

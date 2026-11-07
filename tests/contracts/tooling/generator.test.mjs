@@ -161,3 +161,46 @@ test('native generator reads UTF-8 schemas even under an ASCII locale', async ()
     env: {...process.env, LC_ALL: 'C', PYTHONCOERCECLOCALE: '0'}});
   assert.equal(result.status, 0, result.stderr);
 });
+
+test('native authorization requirements reject non-string actions and resources', async () => {
+  const original = JSON.parse(await readFile(source, 'utf8'));
+  for (const field of ['action', 'resource']) {
+    for (const value of [null, true, 42, [], {}, 'unknown']) {
+      const doc = structuredClone(original);
+      doc.paths['/api/fixture'].get['x-lightnvr-authorization'] = {
+        version: 1, kind: 'camera', requirements: [{action: 'live.view', resource: 'raw', [field]: value}],
+      };
+      const candidate = path.join(directory, 'invalid-native-requirement.json');
+      await writeFile(candidate, JSON.stringify(doc));
+      const result = spawnSync('python3', [path.join(root, 'scripts/contracts/generate_native.py'),
+        '--source', candidate, '--validate-only'], {encoding: 'utf8'});
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /ValueError: Unsupported authorization action or resource/);
+      assert.doesNotMatch(result.stderr, /TypeError/);
+    }
+  }
+});
+
+test('native discriminator mappings accept local references and reject malformed values', async () => {
+  const original = JSON.parse(await readFile(source, 'utf8'));
+  const cases = [
+    [{identity: 'Identity'}, true], [{identity: '#/components/schemas/Identity'}, true],
+    ...[null, true, 42, [], {}, 'Missing', '#/components/schemas/Missing', 'https://example.invalid/schema']
+      .map(value => [{identity: value}, false]),
+    ...[null, [], 'Identity', 42].map(value => [value, false]),
+  ];
+  for (const [mapping, valid] of cases) {
+    const doc = structuredClone(original);
+    doc.components.schemas.Fixture.discriminator = {propertyName: 'variant', mapping};
+    const candidate = path.join(directory, 'native-discriminator.json');
+    await writeFile(candidate, JSON.stringify(doc));
+    const result = spawnSync('python3', [path.join(root, 'scripts/contracts/generate_native.py'),
+      '--source', candidate, '--validate-only'], {encoding: 'utf8'});
+    if (valid) assert.equal(result.status, 0, result.stderr);
+    else {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /ValueError:/);
+      assert.doesNotMatch(result.stderr, /TypeError|AttributeError/);
+    }
+  }
+});
