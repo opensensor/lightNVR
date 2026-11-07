@@ -621,9 +621,8 @@ cd lightNVR
 # Pull the latest changes
 git pull
 
-# Rebuild and restart
-docker compose down
-docker compose build
+# Pull latest image and restart
+docker compose pull
 docker compose up -d
 ```
 
