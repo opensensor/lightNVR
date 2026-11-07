@@ -180,22 +180,14 @@ describe('recordingsAPI', () => {
     const recording = {
       id: 89,
       stream: 'backyard',
-      start_time: 'invalid-start-timestamp',
-      end_time: 'invalid-end-timestamp'
+      start_time: 'not-a-timestamp',
+      end_time: '2026-02-18T05:30:00Z'
     };
-
-    const parseSpy = jest
-      .spyOn(recordingsAPI, 'parseRecordingTimestamp')
-      .mockImplementation(() => {
-        throw new Error('parse error');
-      });
 
     const result = await recordingsAPI.getRecordingDetections(recording);
 
     expect(result).toEqual([]);
     expect(enhancedFetch).not.toHaveBeenCalled();
-
-    parseSpy.mockRestore();
   });
 
   test('getRecordingDetections returns empty array when enhancedFetch rejects', async () => {
