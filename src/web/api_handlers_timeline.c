@@ -344,8 +344,13 @@ int get_timeline_coverage_by_camera_uuid(
         time_t clipped_start = segment_start < start_time
             ? start_time : segment_start;
         time_t clipped_end = segment_end > end_time ? end_time : segment_end;
+        /* Half-open interval [clipped_start, clipped_end): skip empty coverage. */
+        if (clipped_end <= clipped_start) {
+            continue;
+        }
         int first = (int)(((int64_t)clipped_start - start_time) / resolution);
-        int last = (int)(((int64_t)clipped_end - start_time) / resolution);
+        /* Use the final covered instant to avoid spilling into the next bucket. */
+        int last = (int)((((int64_t)clipped_end - 1) - start_time) / resolution);
         if (first < 0) first = 0;
         if (last >= bucket_count) last = bucket_count - 1;
         for (int index = first; index <= last; index++) {
