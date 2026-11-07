@@ -817,6 +817,8 @@ int onvif_ptz_get_presets(const char *ptz_url, const char *profile_token,
         return -1;
     }
 
+    if (strstr(response, "Fault")) { free(response); return -1; }
+
     // Parse presets from response
     int count = 0;
     ezxml_t xml = ezxml_parse_str(response, strlen(response));
@@ -870,13 +872,16 @@ int onvif_ptz_goto_preset(const char *ptz_url, const char *profile_token,
         return -1;
     }
 
-    char request_body[512];
+    char escaped_profile[384], escaped_value[384];
+    if (xml_escape(profile_token, escaped_profile, sizeof(escaped_profile)) != 0 ||
+        xml_escape(preset_token ? preset_token : "", escaped_value, sizeof(escaped_value)) != 0) return -1;
+    char request_body[1024];
     snprintf(request_body, sizeof(request_body),
         "<tptz:GotoPreset>"
             "<tptz:ProfileToken>%s</tptz:ProfileToken>"
             "<tptz:PresetToken>%s</tptz:PresetToken>"
         "</tptz:GotoPreset>",
-        profile_token, preset_token);
+        escaped_profile, escaped_value);
 
     char *response = send_ptz_soap_request(ptz_url,
         "http://www.onvif.org/ver20/ptz/wsdl/GotoPreset",
@@ -904,20 +909,23 @@ int onvif_ptz_set_preset(const char *ptz_url, const char *profile_token,
         return -1;
     }
 
-    char request_body[512];
+    char escaped_profile[384], escaped_value[384];
+    if (xml_escape(profile_token, escaped_profile, sizeof(escaped_profile)) != 0 ||
+        xml_escape(preset_name ? preset_name : "", escaped_value, sizeof(escaped_value)) != 0) return -1;
+    char request_body[1024];
     if (preset_name && strlen(preset_name) > 0) {
         snprintf(request_body, sizeof(request_body),
             "<tptz:SetPreset>"
                 "<tptz:ProfileToken>%s</tptz:ProfileToken>"
                 "<tptz:PresetName>%s</tptz:PresetName>"
             "</tptz:SetPreset>",
-            profile_token, preset_name);
+            escaped_profile, escaped_value);
     } else {
         snprintf(request_body, sizeof(request_body),
             "<tptz:SetPreset>"
                 "<tptz:ProfileToken>%s</tptz:ProfileToken>"
             "</tptz:SetPreset>",
-            profile_token);
+            escaped_profile);
     }
 
     char *response = send_ptz_soap_request(ptz_url,

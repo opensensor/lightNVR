@@ -5985,6 +5985,961 @@ validate131.evaluated = {
   dynamicItems: !1
 };
 
+var __contract_DaynightRequest = validate198;
+
+function validate198(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate198.evaluated;
+  evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0);
+  let _errs1 = errors, valid0 = !1, _errs2 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.mode) {
+    let err0 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/0/required",
+      keyword: "required",
+      params: {
+        missingProperty: "mode"
+      }
+    };
+    vErrors.push(err0), errors++;
+  } else if (void 0 !== data.mode) {
+    let data0 = data.mode;
+    if (errors == errors) if ("string" == typeof data0) {
+      if (func1(data0) > 15) {
+        let err1 = {
+          instancePath: instancePath + "/mode",
+          schemaPath: "#/anyOf/0/properties/mode/maxLength",
+          keyword: "maxLength",
+          params: {
+            limit: 15
+          }
+        };
+        vErrors.push(err1), errors++;
+      } else if (func1(data0) < 1) {
+        let err2 = {
+          instancePath: instancePath + "/mode",
+          schemaPath: "#/anyOf/0/properties/mode/minLength",
+          keyword: "minLength",
+          params: {
+            limit: 1
+          }
+        };
+        vErrors.push(err2), errors++;
+      }
+    } else {
+      let err3 = {
+        instancePath: instancePath + "/mode",
+        schemaPath: "#/anyOf/0/properties/mode/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      };
+      vErrors.push(err3), errors++;
+    }
+  }
+  var _valid0 = _errs2 === errors;
+  if (valid0 = valid0 || _valid0, _valid0) var props0 = {
+    mode: !0
+  };
+  let _errs5 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.daynight) {
+    let err4 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/1/required",
+      keyword: "required",
+      params: {
+        missingProperty: "daynight"
+      }
+    };
+    vErrors.push(err4), errors++;
+  } else if (void 0 !== data.daynight) {
+    let data1 = data.daynight;
+    if (errors == errors) if ("string" == typeof data1) {
+      if (func1(data1) > 15) {
+        let err5 = {
+          instancePath: instancePath + "/daynight",
+          schemaPath: "#/anyOf/1/properties/daynight/maxLength",
+          keyword: "maxLength",
+          params: {
+            limit: 15
+          }
+        };
+        vErrors.push(err5), errors++;
+      } else if (func1(data1) < 1) {
+        let err6 = {
+          instancePath: instancePath + "/daynight",
+          schemaPath: "#/anyOf/1/properties/daynight/minLength",
+          keyword: "minLength",
+          params: {
+            limit: 1
+          }
+        };
+        vErrors.push(err6), errors++;
+      }
+    } else {
+      let err7 = {
+        instancePath: instancePath + "/daynight",
+        schemaPath: "#/anyOf/1/properties/daynight/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      };
+      vErrors.push(err7), errors++;
+    }
+  }
+  _valid0 = _errs5 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).daynight = !0);
+  let _errs8 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.ir_cut_filter) {
+    let err8 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/2/required",
+      keyword: "required",
+      params: {
+        missingProperty: "ir_cut_filter"
+      }
+    };
+    vErrors.push(err8), errors++;
+  } else if (void 0 !== data.ir_cut_filter) {
+    let data2 = data.ir_cut_filter;
+    if (errors == errors) if ("string" == typeof data2) {
+      if (func1(data2) > 15) {
+        let err9 = {
+          instancePath: instancePath + "/ir_cut_filter",
+          schemaPath: "#/anyOf/2/properties/ir_cut_filter/maxLength",
+          keyword: "maxLength",
+          params: {
+            limit: 15
+          }
+        };
+        vErrors.push(err9), errors++;
+      } else if (func1(data2) < 1) {
+        let err10 = {
+          instancePath: instancePath + "/ir_cut_filter",
+          schemaPath: "#/anyOf/2/properties/ir_cut_filter/minLength",
+          keyword: "minLength",
+          params: {
+            limit: 1
+          }
+        };
+        vErrors.push(err10), errors++;
+      }
+    } else {
+      let err11 = {
+        instancePath: instancePath + "/ir_cut_filter",
+        schemaPath: "#/anyOf/2/properties/ir_cut_filter/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      };
+      vErrors.push(err11), errors++;
+    }
+  }
+  _valid0 = _errs8 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).ir_cut_filter = !0);
+  let _errs11 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.ircut) {
+    let err12 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/3/required",
+      keyword: "required",
+      params: {
+        missingProperty: "ircut"
+      }
+    };
+    vErrors.push(err12), errors++;
+  } else if (void 0 !== data.ircut) {
+    let data3 = data.ircut;
+    if (errors == errors) if ("string" == typeof data3) {
+      if (func1(data3) > 15) {
+        let err13 = {
+          instancePath: instancePath + "/ircut",
+          schemaPath: "#/anyOf/3/properties/ircut/maxLength",
+          keyword: "maxLength",
+          params: {
+            limit: 15
+          }
+        };
+        vErrors.push(err13), errors++;
+      } else if (func1(data3) < 1) {
+        let err14 = {
+          instancePath: instancePath + "/ircut",
+          schemaPath: "#/anyOf/3/properties/ircut/minLength",
+          keyword: "minLength",
+          params: {
+            limit: 1
+          }
+        };
+        vErrors.push(err14), errors++;
+      }
+    } else {
+      let err15 = {
+        instancePath: instancePath + "/ircut",
+        schemaPath: "#/anyOf/3/properties/ircut/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      };
+      vErrors.push(err15), errors++;
+    }
+  }
+  if (_valid0 = _errs11 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).ircut = !0),
+  !valid0) {
+    let err16 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf",
+      keyword: "anyOf",
+      params: {}
+    };
+    return vErrors.push(err16), errors++, validate198.errors = vErrors, !1;
+  }
+  if (errors = _errs1, vErrors.length = _errs1, 0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate198.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    {
+      let _errs14 = errors;
+      for (let key0 in data) if ("mode" !== key0 && "daynight" !== key0 && "ir_cut_filter" !== key0 && "ircut" !== key0 && "force_persistence" !== key0) return validate198.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs14 === errors) {
+        if (void 0 !== data.mode) {
+          let data4 = data.mode, _errs15 = errors;
+          if (errors === _errs15) {
+            if ("string" != typeof data4) return validate198.errors = [ {
+              instancePath: instancePath + "/mode",
+              schemaPath: "#/properties/mode/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data4) > 15) return validate198.errors = [ {
+              instancePath: instancePath + "/mode",
+              schemaPath: "#/properties/mode/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 15
+              }
+            } ], !1;
+            if (func1(data4) < 1) return validate198.errors = [ {
+              instancePath: instancePath + "/mode",
+              schemaPath: "#/properties/mode/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid5 = _errs15 === errors;
+        } else valid5 = !0;
+        if (valid5) {
+          if (void 0 !== data.daynight) {
+            let data5 = data.daynight, _errs17 = errors;
+            if (errors === _errs17) {
+              if ("string" != typeof data5) return validate198.errors = [ {
+                instancePath: instancePath + "/daynight",
+                schemaPath: "#/properties/daynight/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data5) > 15) return validate198.errors = [ {
+                instancePath: instancePath + "/daynight",
+                schemaPath: "#/properties/daynight/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 15
+                }
+              } ], !1;
+              if (func1(data5) < 1) return validate198.errors = [ {
+                instancePath: instancePath + "/daynight",
+                schemaPath: "#/properties/daynight/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              } ], !1;
+            }
+            var valid6 = _errs17 === errors;
+          } else valid6 = !0;
+          if (valid6) {
+            if (void 0 !== data.ir_cut_filter) {
+              let data6 = data.ir_cut_filter, _errs19 = errors;
+              if (errors === _errs19) {
+                if ("string" != typeof data6) return validate198.errors = [ {
+                  instancePath: instancePath + "/ir_cut_filter",
+                  schemaPath: "#/properties/ir_cut_filter/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                if (func1(data6) > 15) return validate198.errors = [ {
+                  instancePath: instancePath + "/ir_cut_filter",
+                  schemaPath: "#/properties/ir_cut_filter/maxLength",
+                  keyword: "maxLength",
+                  params: {
+                    limit: 15
+                  }
+                } ], !1;
+                if (func1(data6) < 1) return validate198.errors = [ {
+                  instancePath: instancePath + "/ir_cut_filter",
+                  schemaPath: "#/properties/ir_cut_filter/minLength",
+                  keyword: "minLength",
+                  params: {
+                    limit: 1
+                  }
+                } ], !1;
+              }
+              var valid7 = _errs19 === errors;
+            } else valid7 = !0;
+            if (valid7) {
+              if (void 0 !== data.ircut) {
+                let data7 = data.ircut, _errs21 = errors;
+                if (errors === _errs21) {
+                  if ("string" != typeof data7) return validate198.errors = [ {
+                    instancePath: instancePath + "/ircut",
+                    schemaPath: "#/properties/ircut/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  if (func1(data7) > 15) return validate198.errors = [ {
+                    instancePath: instancePath + "/ircut",
+                    schemaPath: "#/properties/ircut/maxLength",
+                    keyword: "maxLength",
+                    params: {
+                      limit: 15
+                    }
+                  } ], !1;
+                  if (func1(data7) < 1) return validate198.errors = [ {
+                    instancePath: instancePath + "/ircut",
+                    schemaPath: "#/properties/ircut/minLength",
+                    keyword: "minLength",
+                    params: {
+                      limit: 1
+                    }
+                  } ], !1;
+                }
+                var valid8 = _errs21 === errors;
+              } else valid8 = !0;
+              if (valid8 && void 0 !== data.force_persistence && "boolean" != typeof data.force_persistence) return validate198.errors = [ {
+                instancePath: instancePath + "/force_persistence",
+                schemaPath: "#/properties/force_persistence/type",
+                keyword: "type",
+                params: {
+                  type: "boolean"
+                }
+              } ], !1;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate198.errors = vErrors, 0 === errors;
+}
+
+validate198.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_DaynightResponse = validate199, schema229 = {
+  type: "object",
+  properties: {
+    success: {
+      const: !0
+    },
+    source: {
+      const: "onvif-imaging"
+    },
+    video_source_token: {
+      type: "string"
+    },
+    mode: {
+      enum: [ "day", "night", "auto", "unknown" ]
+    },
+    ir_cut_filter: {
+      type: "string"
+    },
+    supported_modes: {
+      type: "array",
+      items: {
+        enum: [ "day", "night", "auto" ]
+      }
+    },
+    options_available: {
+      type: "boolean"
+    }
+  },
+  required: [ "success", "source", "video_source_token", "mode", "supported_modes", "options_available" ],
+  additionalProperties: !1
+};
+
+function validate199(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate199.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  if (void 0 === data.source) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "source"
+    }
+  } ], !1;
+  if (void 0 === data.video_source_token) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "video_source_token"
+    }
+  } ], !1;
+  if (void 0 === data.mode) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "mode"
+    }
+  } ], !1;
+  if (void 0 === data.supported_modes) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "supported_modes"
+    }
+  } ], !1;
+  if (void 0 === data.options_available) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "options_available"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0 && "source" !== key0 && "video_source_token" !== key0 && "mode" !== key0 && "ir_cut_filter" !== key0 && "supported_modes" !== key0 && "options_available" !== key0) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.success) {
+        let _errs2 = 0;
+        if (!0 !== data.success) return validate199.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/const",
+          keyword: "const",
+          params: {
+            allowedValue: !0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.source) {
+          let _errs3 = 0;
+          if ("onvif-imaging" !== data.source) return validate199.errors = [ {
+            instancePath: instancePath + "/source",
+            schemaPath: "#/properties/source/const",
+            keyword: "const",
+            params: {
+              allowedValue: "onvif-imaging"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs3;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.video_source_token) {
+            let _errs4 = 0;
+            if ("string" != typeof data.video_source_token) return validate199.errors = [ {
+              instancePath: instancePath + "/video_source_token",
+              schemaPath: "#/properties/video_source_token/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs4;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.mode) {
+              let data3 = data.mode, _errs6 = 0;
+              if ("day" !== data3 && "night" !== data3 && "auto" !== data3 && "unknown" !== data3) return validate199.errors = [ {
+                instancePath: instancePath + "/mode",
+                schemaPath: "#/properties/mode/enum",
+                keyword: "enum",
+                params: {
+                  allowedValues: schema229.properties.mode.enum
+                }
+              } ], !1;
+              var valid3 = 0 === _errs6;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.ir_cut_filter) {
+                let _errs7 = 0;
+                if ("string" != typeof data.ir_cut_filter) return validate199.errors = [ {
+                  instancePath: instancePath + "/ir_cut_filter",
+                  schemaPath: "#/properties/ir_cut_filter/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                var valid4 = 0 === _errs7;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.supported_modes) {
+                  let data5 = data.supported_modes, _errs9 = 0;
+                  if (0 === _errs9) {
+                    if (!Array.isArray(data5)) return validate199.errors = [ {
+                      instancePath: instancePath + "/supported_modes",
+                      schemaPath: "#/properties/supported_modes/type",
+                      keyword: "type",
+                      params: {
+                        type: "array"
+                      }
+                    } ], !1;
+                    {
+                      let len0 = data5.length;
+                      for (let i0 = 0; i0 < len0; i0++) {
+                        let data6 = data5[i0], _errs11 = 0;
+                        if ("day" !== data6 && "night" !== data6 && "auto" !== data6) return validate199.errors = [ {
+                          instancePath: instancePath + "/supported_modes/" + i0,
+                          schemaPath: "#/properties/supported_modes/items/enum",
+                          keyword: "enum",
+                          params: {
+                            allowedValues: schema229.properties.supported_modes.items.enum
+                          }
+                        } ], !1;
+                        if (0 !== _errs11) break;
+                      }
+                    }
+                  }
+                  var valid5 = 0 === _errs9;
+                } else valid5 = !0;
+                if (valid5 && void 0 !== data.options_available && "boolean" != typeof data.options_available) return validate199.errors = [ {
+                  instancePath: instancePath + "/options_available",
+                  schemaPath: "#/properties/options_available/type",
+                  keyword: "type",
+                  params: {
+                    type: "boolean"
+                  }
+                } ], !1;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate199.errors = [], !0;
+}
+
+validate199.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_DaynightUpdated = validate200, schema230 = {
+  type: "object",
+  properties: {
+    success: {
+      const: !0
+    },
+    source: {
+      const: "onvif-imaging"
+    },
+    mode: {
+      enum: [ "day", "night", "auto" ]
+    },
+    ir_cut_filter: {
+      enum: [ "On", "Off", "Auto" ]
+    }
+  },
+  required: [ "success", "source", "mode", "ir_cut_filter" ],
+  additionalProperties: !1
+};
+
+function validate200(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate200.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate200.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate200.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  if (void 0 === data.source) return validate200.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "source"
+    }
+  } ], !1;
+  if (void 0 === data.mode) return validate200.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "mode"
+    }
+  } ], !1;
+  if (void 0 === data.ir_cut_filter) return validate200.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "ir_cut_filter"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0 && "source" !== key0 && "mode" !== key0 && "ir_cut_filter" !== key0) return validate200.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.success) {
+        let _errs2 = 0;
+        if (!0 !== data.success) return validate200.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/const",
+          keyword: "const",
+          params: {
+            allowedValue: !0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.source) {
+          let _errs3 = 0;
+          if ("onvif-imaging" !== data.source) return validate200.errors = [ {
+            instancePath: instancePath + "/source",
+            schemaPath: "#/properties/source/const",
+            keyword: "const",
+            params: {
+              allowedValue: "onvif-imaging"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs3;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.mode) {
+            let data2 = data.mode, _errs4 = 0;
+            if ("day" !== data2 && "night" !== data2 && "auto" !== data2) return validate200.errors = [ {
+              instancePath: instancePath + "/mode",
+              schemaPath: "#/properties/mode/enum",
+              keyword: "enum",
+              params: {
+                allowedValues: schema230.properties.mode.enum
+              }
+            } ], !1;
+            var valid2 = 0 === _errs4;
+          } else valid2 = !0;
+          if (valid2 && void 0 !== data.ir_cut_filter) {
+            let data3 = data.ir_cut_filter;
+            if ("On" !== data3 && "Off" !== data3 && "Auto" !== data3) return validate200.errors = [ {
+              instancePath: instancePath + "/ir_cut_filter",
+              schemaPath: "#/properties/ir_cut_filter/enum",
+              keyword: "enum",
+              params: {
+                allowedValues: schema230.properties.ir_cut_filter.enum
+              }
+            } ], !1;
+          }
+        }
+      }
+    }
+  }
+  return validate200.errors = [], !0;
+}
+
+validate200.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_DeviceCommandResult = validate175;
+
+function validate175(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate175.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate175.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate175.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  if (void 0 === data.message) return validate175.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "message"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0 && "message" !== key0) return validate175.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.success) {
+        let _errs2 = 0;
+        if (!0 !== data.success) return validate175.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/const",
+          keyword: "const",
+          params: {
+            allowedValue: !0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0 && void 0 !== data.message && "string" != typeof data.message) return validate175.errors = [ {
+        instancePath: instancePath + "/message",
+        schemaPath: "#/properties/message/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      } ], !1;
+    }
+  }
+  return validate175.errors = [], !0;
+}
+
+validate175.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_DeviceEmptyRequest = validate177;
+
+function validate177(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate177.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate177.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  for (let key0 in data) return validate177.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/additionalProperties",
+    keyword: "additionalProperties",
+    params: {
+      additionalProperty: key0
+    }
+  } ], !1;
+  return validate177.errors = [], !0;
+}
+
+validate177.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_DeviceFloatRange = validate174;
+
+function validate174(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate174.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate174.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.min) return validate174.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "min"
+    }
+  } ], !1;
+  if (void 0 === data.max) return validate174.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "max"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("min" !== key0 && "max" !== key0) return validate174.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.min) {
+        let data0 = data.min, _errs2 = 0;
+        if ("number" != typeof data0 || !isFinite(data0)) return validate174.errors = [ {
+          instancePath: instancePath + "/min",
+          schemaPath: "#/properties/min/type",
+          keyword: "type",
+          params: {
+            type: "number"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0 && void 0 !== data.max) {
+        let data1 = data.max;
+        if ("number" != typeof data1 || !isFinite(data1)) return validate174.errors = [ {
+          instancePath: instancePath + "/max",
+          schemaPath: "#/properties/max/type",
+          keyword: "type",
+          params: {
+            type: "number"
+          }
+        } ], !1;
+      }
+    }
+  }
+  return validate174.errors = [], !0;
+}
+
+validate174.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_DeviceSuccess = validate176;
+
+function validate176(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate176.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate176.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate176.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0) return validate176.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.success && !0 !== data.success) return validate176.errors = [ {
+      instancePath: instancePath + "/success",
+      schemaPath: "#/properties/success/const",
+      keyword: "const",
+      params: {
+        allowedValue: !0
+      }
+    } ], !1;
+  }
+  return validate176.errors = [], !0;
+}
+
+validate176.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
 var __contract_FleetLocation = validate163, schema169 = {
   type: "object",
   properties: {
@@ -11905,6 +12860,5121 @@ validate166.evaluated = {
   dynamicItems: !1
 };
 
+var __contract_ImagingModeLevel = validate184;
+
+function validate184(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate184.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate184.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("mode" !== key0 && "level" !== key0) return validate184.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.mode) {
+        let _errs2 = 0;
+        if ("string" != typeof data.mode) return validate184.errors = [ {
+          instancePath: instancePath + "/mode",
+          schemaPath: "#/properties/mode/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0 && void 0 !== data.level) {
+        let data1 = data.level;
+        if ("number" != typeof data1 || !isFinite(data1)) return validate184.errors = [ {
+          instancePath: instancePath + "/level",
+          schemaPath: "#/properties/level/type",
+          keyword: "type",
+          params: {
+            type: "number"
+          }
+        } ], !1;
+      }
+    }
+  }
+  return validate184.errors = [], !0;
+}
+
+validate184.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_ImagingModeLevelUpdate = validate185;
+
+function validate185(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate185.evaluated;
+  evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0);
+  let _errs0 = errors, valid0 = !1, passing0 = null, _errs1 = errors;
+  if (errors === _errs1) if ("number" == typeof data && isFinite(data)) {
+    if (data > 34028234663852886e22 || isNaN(data)) {
+      let err0 = {
+        instancePath: instancePath,
+        schemaPath: "#/oneOf/0/maximum",
+        keyword: "maximum",
+        params: {
+          comparison: "<=",
+          limit: 34028234663852886e22
+        }
+      };
+      vErrors.push(err0), errors++;
+    } else if (data < -34028234663852886e22 || isNaN(data)) {
+      let err1 = {
+        instancePath: instancePath,
+        schemaPath: "#/oneOf/0/minimum",
+        keyword: "minimum",
+        params: {
+          comparison: ">=",
+          limit: -34028234663852886e22
+        }
+      };
+      vErrors.push(err1), errors++;
+    }
+  } else {
+    let err2 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf/0/type",
+      keyword: "type",
+      params: {
+        type: "number"
+      }
+    };
+    vErrors.push(err2), errors++;
+  }
+  _errs1 === errors && (valid0 = !0, passing0 = 0);
+  let _errs3 = errors;
+  if (errors === _errs3) if (data && "object" == typeof data && !Array.isArray(data)) if (Object.keys(data).length < 1) {
+    let err3 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf/1/minProperties",
+      keyword: "minProperties",
+      params: {
+        limit: 1
+      }
+    };
+    vErrors.push(err3), errors++;
+  } else {
+    let _errs5 = errors;
+    for (let key0 in data) if ("mode" !== key0 && "level" !== key0) {
+      let err4 = {
+        instancePath: instancePath,
+        schemaPath: "#/oneOf/1/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      };
+      vErrors.push(err4), errors++;
+      break;
+    }
+    if (_errs5 === errors) {
+      if (void 0 !== data.mode) {
+        let data0 = data.mode, _errs6 = errors;
+        if (errors === _errs6) if ("string" == typeof data0) {
+          if (func1(data0) > 31) {
+            let err5 = {
+              instancePath: instancePath + "/mode",
+              schemaPath: "#/oneOf/1/properties/mode/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 31
+              }
+            };
+            vErrors.push(err5), errors++;
+          } else if (func1(data0) < 1) {
+            let err6 = {
+              instancePath: instancePath + "/mode",
+              schemaPath: "#/oneOf/1/properties/mode/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            };
+            vErrors.push(err6), errors++;
+          }
+        } else {
+          let err7 = {
+            instancePath: instancePath + "/mode",
+            schemaPath: "#/oneOf/1/properties/mode/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          };
+          vErrors.push(err7), errors++;
+        }
+        var valid1 = _errs6 === errors;
+      } else valid1 = !0;
+      if (valid1 && void 0 !== data.level) {
+        let data1 = data.level;
+        if (errors == errors) if ("number" == typeof data1 && isFinite(data1)) {
+          if (data1 > 34028234663852886e22 || isNaN(data1)) {
+            let err8 = {
+              instancePath: instancePath + "/level",
+              schemaPath: "#/oneOf/1/properties/level/maximum",
+              keyword: "maximum",
+              params: {
+                comparison: "<=",
+                limit: 34028234663852886e22
+              }
+            };
+            vErrors.push(err8), errors++;
+          } else if (data1 < -34028234663852886e22 || isNaN(data1)) {
+            let err9 = {
+              instancePath: instancePath + "/level",
+              schemaPath: "#/oneOf/1/properties/level/minimum",
+              keyword: "minimum",
+              params: {
+                comparison: ">=",
+                limit: -34028234663852886e22
+              }
+            };
+            vErrors.push(err9), errors++;
+          }
+        } else {
+          let err10 = {
+            instancePath: instancePath + "/level",
+            schemaPath: "#/oneOf/1/properties/level/type",
+            keyword: "type",
+            params: {
+              type: "number"
+            }
+          };
+          vErrors.push(err10), errors++;
+        }
+      }
+    }
+  } else {
+    let err11 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf/1/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    };
+    vErrors.push(err11), errors++;
+  }
+  var _valid0;
+  if ((_valid0 = _errs3 === errors) && valid0) valid0 = !1, passing0 = [ passing0, 1 ]; else if (_valid0) {
+    valid0 = !0, passing0 = 1;
+    var props0 = !0;
+  }
+  if (!valid0) {
+    let err12 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf",
+      keyword: "oneOf",
+      params: {
+        passingSchemas: passing0
+      }
+    };
+    return vErrors.push(err12), errors++, validate185.errors = vErrors, !1;
+  }
+  return errors = _errs0, vErrors.length = _errs0, validate185.errors = vErrors, evaluated0.props = props0,
+  0 === errors;
+}
+
+validate185.evaluated = {
+  dynamicProps: !0,
+  dynamicItems: !1
+};
+
+var __contract_ImagingModeOptions = validate189;
+
+function validate189(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate189.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate189.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.modes) return validate189.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "modes"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("modes" !== key0 && "level" !== key0) return validate189.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.modes) {
+        let data0 = data.modes, _errs2 = 0;
+        if (0 === _errs2) {
+          if (!Array.isArray(data0)) return validate189.errors = [ {
+            instancePath: instancePath + "/modes",
+            schemaPath: "#/properties/modes/type",
+            keyword: "type",
+            params: {
+              type: "array"
+            }
+          } ], !1;
+          {
+            let len0 = data0.length;
+            for (let i0 = 0; i0 < len0; i0++) {
+              let _errs4 = 0;
+              if ("string" != typeof data0[i0]) return validate189.errors = [ {
+                instancePath: instancePath + "/modes/" + i0,
+                schemaPath: "#/properties/modes/items/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (0 !== _errs4) break;
+            }
+          }
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0 && void 0 !== data.level) {
+        let data2 = data.level;
+        if (!data2 || "object" != typeof data2 || Array.isArray(data2)) return validate189.errors = [ {
+          instancePath: instancePath + "/level",
+          schemaPath: "#/$defs/DeviceFloatRange/type",
+          keyword: "type",
+          params: {
+            type: "object"
+          }
+        } ], !1;
+        if (void 0 === data2.min) return validate189.errors = [ {
+          instancePath: instancePath + "/level",
+          schemaPath: "#/$defs/DeviceFloatRange/required",
+          keyword: "required",
+          params: {
+            missingProperty: "min"
+          }
+        } ], !1;
+        if (void 0 === data2.max) return validate189.errors = [ {
+          instancePath: instancePath + "/level",
+          schemaPath: "#/$defs/DeviceFloatRange/required",
+          keyword: "required",
+          params: {
+            missingProperty: "max"
+          }
+        } ], !1;
+        {
+          let _errs9 = 0;
+          for (let key1 in data2) if ("min" !== key1 && "max" !== key1) return validate189.errors = [ {
+            instancePath: instancePath + "/level",
+            schemaPath: "#/$defs/DeviceFloatRange/additionalProperties",
+            keyword: "additionalProperties",
+            params: {
+              additionalProperty: key1
+            }
+          } ], !1;
+          if (0 === _errs9) {
+            if (void 0 !== data2.min) {
+              let data3 = data2.min, _errs10 = 0;
+              if ("number" != typeof data3 || !isFinite(data3)) return validate189.errors = [ {
+                instancePath: instancePath + "/level/min",
+                schemaPath: "#/$defs/DeviceFloatRange/properties/min/type",
+                keyword: "type",
+                params: {
+                  type: "number"
+                }
+              } ], !1;
+              var valid4 = 0 === _errs10;
+            } else valid4 = !0;
+            if (valid4 && void 0 !== data2.max) {
+              let data4 = data2.max;
+              if ("number" != typeof data4 || !isFinite(data4)) return validate189.errors = [ {
+                instancePath: instancePath + "/level/max",
+                schemaPath: "#/$defs/DeviceFloatRange/properties/max/type",
+                keyword: "type",
+                params: {
+                  type: "number"
+                }
+              } ], !1;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate189.errors = [], !0;
+}
+
+validate189.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_ImagingOptions = validate190, schema204 = {
+  type: "object",
+  properties: {
+    video_source_token: {
+      type: "string"
+    },
+    brightness: {
+      $ref: "#/$defs/DeviceFloatRange"
+    },
+    color_saturation: {
+      $ref: "#/$defs/DeviceFloatRange"
+    },
+    contrast: {
+      $ref: "#/$defs/DeviceFloatRange"
+    },
+    sharpness: {
+      $ref: "#/$defs/DeviceFloatRange"
+    },
+    noise_reduction: {
+      $ref: "#/$defs/DeviceFloatRange"
+    },
+    backlight_compensation: {
+      $ref: "#/$defs/ImagingModeOptions"
+    },
+    wide_dynamic_range: {
+      $ref: "#/$defs/ImagingModeOptions"
+    },
+    tone_compensation: {
+      $ref: "#/$defs/ImagingModeOptions"
+    },
+    defogging: {
+      $ref: "#/$defs/ImagingModeOptions"
+    },
+    ir_cut_filter_modes: {
+      type: "array",
+      items: {
+        type: "string"
+      }
+    }
+  },
+  required: [ "video_source_token", "ir_cut_filter_modes" ],
+  additionalProperties: !1
+};
+
+function validate190(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate190.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate190.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.video_source_token) return validate190.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "video_source_token"
+      }
+    } ], !1;
+    if (void 0 === data.ir_cut_filter_modes) return validate190.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "ir_cut_filter_modes"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if (!func5.call(schema204.properties, key0)) return validate190.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.video_source_token) {
+          let _errs2 = errors;
+          if ("string" != typeof data.video_source_token) return validate190.errors = [ {
+            instancePath: instancePath + "/video_source_token",
+            schemaPath: "#/properties/video_source_token/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.brightness) {
+            let data1 = data.brightness, _errs4 = errors;
+            if (errors == errors) {
+              if (!data1 || "object" != typeof data1 || Array.isArray(data1)) return validate190.errors = [ {
+                instancePath: instancePath + "/brightness",
+                schemaPath: "#/$defs/DeviceFloatRange/type",
+                keyword: "type",
+                params: {
+                  type: "object"
+                }
+              } ], !1;
+              if (void 0 === data1.min) return validate190.errors = [ {
+                instancePath: instancePath + "/brightness",
+                schemaPath: "#/$defs/DeviceFloatRange/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "min"
+                }
+              } ], !1;
+              if (void 0 === data1.max) return validate190.errors = [ {
+                instancePath: instancePath + "/brightness",
+                schemaPath: "#/$defs/DeviceFloatRange/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "max"
+                }
+              } ], !1;
+              {
+                let _errs7 = errors;
+                for (let key1 in data1) if ("min" !== key1 && "max" !== key1) return validate190.errors = [ {
+                  instancePath: instancePath + "/brightness",
+                  schemaPath: "#/$defs/DeviceFloatRange/additionalProperties",
+                  keyword: "additionalProperties",
+                  params: {
+                    additionalProperty: key1
+                  }
+                } ], !1;
+                if (_errs7 === errors) {
+                  if (void 0 !== data1.min) {
+                    let data2 = data1.min, _errs8 = errors;
+                    if ("number" != typeof data2 || !isFinite(data2)) return validate190.errors = [ {
+                      instancePath: instancePath + "/brightness/min",
+                      schemaPath: "#/$defs/DeviceFloatRange/properties/min/type",
+                      keyword: "type",
+                      params: {
+                        type: "number"
+                      }
+                    } ], !1;
+                    var valid3 = _errs8 === errors;
+                  } else valid3 = !0;
+                  if (valid3 && void 0 !== data1.max) {
+                    let data3 = data1.max;
+                    if ("number" != typeof data3 || !isFinite(data3)) return validate190.errors = [ {
+                      instancePath: instancePath + "/brightness/max",
+                      schemaPath: "#/$defs/DeviceFloatRange/properties/max/type",
+                      keyword: "type",
+                      params: {
+                        type: "number"
+                      }
+                    } ], !1;
+                  }
+                }
+              }
+            }
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.color_saturation) {
+              let data4 = data.color_saturation, _errs12 = errors;
+              if (errors == errors) {
+                if (!data4 || "object" != typeof data4 || Array.isArray(data4)) return validate190.errors = [ {
+                  instancePath: instancePath + "/color_saturation",
+                  schemaPath: "#/$defs/DeviceFloatRange/type",
+                  keyword: "type",
+                  params: {
+                    type: "object"
+                  }
+                } ], !1;
+                if (void 0 === data4.min) return validate190.errors = [ {
+                  instancePath: instancePath + "/color_saturation",
+                  schemaPath: "#/$defs/DeviceFloatRange/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "min"
+                  }
+                } ], !1;
+                if (void 0 === data4.max) return validate190.errors = [ {
+                  instancePath: instancePath + "/color_saturation",
+                  schemaPath: "#/$defs/DeviceFloatRange/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "max"
+                  }
+                } ], !1;
+                {
+                  let _errs15 = errors;
+                  for (let key2 in data4) if ("min" !== key2 && "max" !== key2) return validate190.errors = [ {
+                    instancePath: instancePath + "/color_saturation",
+                    schemaPath: "#/$defs/DeviceFloatRange/additionalProperties",
+                    keyword: "additionalProperties",
+                    params: {
+                      additionalProperty: key2
+                    }
+                  } ], !1;
+                  if (_errs15 === errors) {
+                    if (void 0 !== data4.min) {
+                      let data5 = data4.min, _errs16 = errors;
+                      if ("number" != typeof data5 || !isFinite(data5)) return validate190.errors = [ {
+                        instancePath: instancePath + "/color_saturation/min",
+                        schemaPath: "#/$defs/DeviceFloatRange/properties/min/type",
+                        keyword: "type",
+                        params: {
+                          type: "number"
+                        }
+                      } ], !1;
+                      var valid7 = _errs16 === errors;
+                    } else valid7 = !0;
+                    if (valid7 && void 0 !== data4.max) {
+                      let data6 = data4.max;
+                      if ("number" != typeof data6 || !isFinite(data6)) return validate190.errors = [ {
+                        instancePath: instancePath + "/color_saturation/max",
+                        schemaPath: "#/$defs/DeviceFloatRange/properties/max/type",
+                        keyword: "type",
+                        params: {
+                          type: "number"
+                        }
+                      } ], !1;
+                    }
+                  }
+                }
+              }
+              var valid5 = _errs12 === errors;
+            } else valid5 = !0;
+            if (valid5) {
+              if (void 0 !== data.contrast) {
+                let data7 = data.contrast, _errs20 = errors;
+                if (errors == errors) {
+                  if (!data7 || "object" != typeof data7 || Array.isArray(data7)) return validate190.errors = [ {
+                    instancePath: instancePath + "/contrast",
+                    schemaPath: "#/$defs/DeviceFloatRange/type",
+                    keyword: "type",
+                    params: {
+                      type: "object"
+                    }
+                  } ], !1;
+                  if (void 0 === data7.min) return validate190.errors = [ {
+                    instancePath: instancePath + "/contrast",
+                    schemaPath: "#/$defs/DeviceFloatRange/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "min"
+                    }
+                  } ], !1;
+                  if (void 0 === data7.max) return validate190.errors = [ {
+                    instancePath: instancePath + "/contrast",
+                    schemaPath: "#/$defs/DeviceFloatRange/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "max"
+                    }
+                  } ], !1;
+                  {
+                    let _errs23 = errors;
+                    for (let key3 in data7) if ("min" !== key3 && "max" !== key3) return validate190.errors = [ {
+                      instancePath: instancePath + "/contrast",
+                      schemaPath: "#/$defs/DeviceFloatRange/additionalProperties",
+                      keyword: "additionalProperties",
+                      params: {
+                        additionalProperty: key3
+                      }
+                    } ], !1;
+                    if (_errs23 === errors) {
+                      if (void 0 !== data7.min) {
+                        let data8 = data7.min, _errs24 = errors;
+                        if ("number" != typeof data8 || !isFinite(data8)) return validate190.errors = [ {
+                          instancePath: instancePath + "/contrast/min",
+                          schemaPath: "#/$defs/DeviceFloatRange/properties/min/type",
+                          keyword: "type",
+                          params: {
+                            type: "number"
+                          }
+                        } ], !1;
+                        var valid11 = _errs24 === errors;
+                      } else valid11 = !0;
+                      if (valid11 && void 0 !== data7.max) {
+                        let data9 = data7.max;
+                        if ("number" != typeof data9 || !isFinite(data9)) return validate190.errors = [ {
+                          instancePath: instancePath + "/contrast/max",
+                          schemaPath: "#/$defs/DeviceFloatRange/properties/max/type",
+                          keyword: "type",
+                          params: {
+                            type: "number"
+                          }
+                        } ], !1;
+                      }
+                    }
+                  }
+                }
+                var valid9 = _errs20 === errors;
+              } else valid9 = !0;
+              if (valid9) {
+                if (void 0 !== data.sharpness) {
+                  let data10 = data.sharpness, _errs28 = errors;
+                  if (errors == errors) {
+                    if (!data10 || "object" != typeof data10 || Array.isArray(data10)) return validate190.errors = [ {
+                      instancePath: instancePath + "/sharpness",
+                      schemaPath: "#/$defs/DeviceFloatRange/type",
+                      keyword: "type",
+                      params: {
+                        type: "object"
+                      }
+                    } ], !1;
+                    if (void 0 === data10.min) return validate190.errors = [ {
+                      instancePath: instancePath + "/sharpness",
+                      schemaPath: "#/$defs/DeviceFloatRange/required",
+                      keyword: "required",
+                      params: {
+                        missingProperty: "min"
+                      }
+                    } ], !1;
+                    if (void 0 === data10.max) return validate190.errors = [ {
+                      instancePath: instancePath + "/sharpness",
+                      schemaPath: "#/$defs/DeviceFloatRange/required",
+                      keyword: "required",
+                      params: {
+                        missingProperty: "max"
+                      }
+                    } ], !1;
+                    {
+                      let _errs31 = errors;
+                      for (let key4 in data10) if ("min" !== key4 && "max" !== key4) return validate190.errors = [ {
+                        instancePath: instancePath + "/sharpness",
+                        schemaPath: "#/$defs/DeviceFloatRange/additionalProperties",
+                        keyword: "additionalProperties",
+                        params: {
+                          additionalProperty: key4
+                        }
+                      } ], !1;
+                      if (_errs31 === errors) {
+                        if (void 0 !== data10.min) {
+                          let data11 = data10.min, _errs32 = errors;
+                          if ("number" != typeof data11 || !isFinite(data11)) return validate190.errors = [ {
+                            instancePath: instancePath + "/sharpness/min",
+                            schemaPath: "#/$defs/DeviceFloatRange/properties/min/type",
+                            keyword: "type",
+                            params: {
+                              type: "number"
+                            }
+                          } ], !1;
+                          var valid15 = _errs32 === errors;
+                        } else valid15 = !0;
+                        if (valid15 && void 0 !== data10.max) {
+                          let data12 = data10.max;
+                          if ("number" != typeof data12 || !isFinite(data12)) return validate190.errors = [ {
+                            instancePath: instancePath + "/sharpness/max",
+                            schemaPath: "#/$defs/DeviceFloatRange/properties/max/type",
+                            keyword: "type",
+                            params: {
+                              type: "number"
+                            }
+                          } ], !1;
+                        }
+                      }
+                    }
+                  }
+                  var valid13 = _errs28 === errors;
+                } else valid13 = !0;
+                if (valid13) {
+                  if (void 0 !== data.noise_reduction) {
+                    let data13 = data.noise_reduction, _errs36 = errors;
+                    if (errors == errors) {
+                      if (!data13 || "object" != typeof data13 || Array.isArray(data13)) return validate190.errors = [ {
+                        instancePath: instancePath + "/noise_reduction",
+                        schemaPath: "#/$defs/DeviceFloatRange/type",
+                        keyword: "type",
+                        params: {
+                          type: "object"
+                        }
+                      } ], !1;
+                      if (void 0 === data13.min) return validate190.errors = [ {
+                        instancePath: instancePath + "/noise_reduction",
+                        schemaPath: "#/$defs/DeviceFloatRange/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "min"
+                        }
+                      } ], !1;
+                      if (void 0 === data13.max) return validate190.errors = [ {
+                        instancePath: instancePath + "/noise_reduction",
+                        schemaPath: "#/$defs/DeviceFloatRange/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "max"
+                        }
+                      } ], !1;
+                      {
+                        let _errs39 = errors;
+                        for (let key5 in data13) if ("min" !== key5 && "max" !== key5) return validate190.errors = [ {
+                          instancePath: instancePath + "/noise_reduction",
+                          schemaPath: "#/$defs/DeviceFloatRange/additionalProperties",
+                          keyword: "additionalProperties",
+                          params: {
+                            additionalProperty: key5
+                          }
+                        } ], !1;
+                        if (_errs39 === errors) {
+                          if (void 0 !== data13.min) {
+                            let data14 = data13.min, _errs40 = errors;
+                            if ("number" != typeof data14 || !isFinite(data14)) return validate190.errors = [ {
+                              instancePath: instancePath + "/noise_reduction/min",
+                              schemaPath: "#/$defs/DeviceFloatRange/properties/min/type",
+                              keyword: "type",
+                              params: {
+                                type: "number"
+                              }
+                            } ], !1;
+                            var valid19 = _errs40 === errors;
+                          } else valid19 = !0;
+                          if (valid19 && void 0 !== data13.max) {
+                            let data15 = data13.max;
+                            if ("number" != typeof data15 || !isFinite(data15)) return validate190.errors = [ {
+                              instancePath: instancePath + "/noise_reduction/max",
+                              schemaPath: "#/$defs/DeviceFloatRange/properties/max/type",
+                              keyword: "type",
+                              params: {
+                                type: "number"
+                              }
+                            } ], !1;
+                          }
+                        }
+                      }
+                    }
+                    var valid17 = _errs36 === errors;
+                  } else valid17 = !0;
+                  if (valid17) {
+                    if (void 0 !== data.backlight_compensation) {
+                      let _errs44 = errors;
+                      validate189(data.backlight_compensation, {
+                        instancePath: instancePath + "/backlight_compensation",
+                        parentData: data,
+                        parentDataProperty: "backlight_compensation",
+                        rootData: rootData,
+                        dynamicAnchors: dynamicAnchors
+                      }) || (vErrors = vErrors.concat(validate189.errors), errors = vErrors.length);
+                      var valid21 = _errs44 === errors;
+                    } else valid21 = !0;
+                    if (valid21) {
+                      if (void 0 !== data.wide_dynamic_range) {
+                        let _errs45 = errors;
+                        validate189(data.wide_dynamic_range, {
+                          instancePath: instancePath + "/wide_dynamic_range",
+                          parentData: data,
+                          parentDataProperty: "wide_dynamic_range",
+                          rootData: rootData,
+                          dynamicAnchors: dynamicAnchors
+                        }) || (vErrors = vErrors.concat(validate189.errors), errors = vErrors.length);
+                        var valid22 = _errs45 === errors;
+                      } else valid22 = !0;
+                      if (valid22) {
+                        if (void 0 !== data.tone_compensation) {
+                          let _errs46 = errors;
+                          validate189(data.tone_compensation, {
+                            instancePath: instancePath + "/tone_compensation",
+                            parentData: data,
+                            parentDataProperty: "tone_compensation",
+                            rootData: rootData,
+                            dynamicAnchors: dynamicAnchors
+                          }) || (vErrors = vErrors.concat(validate189.errors), errors = vErrors.length);
+                          var valid23 = _errs46 === errors;
+                        } else valid23 = !0;
+                        if (valid23) {
+                          if (void 0 !== data.defogging) {
+                            let _errs47 = errors;
+                            validate189(data.defogging, {
+                              instancePath: instancePath + "/defogging",
+                              parentData: data,
+                              parentDataProperty: "defogging",
+                              rootData: rootData,
+                              dynamicAnchors: dynamicAnchors
+                            }) || (vErrors = vErrors.concat(validate189.errors), errors = vErrors.length);
+                            var valid24 = _errs47 === errors;
+                          } else valid24 = !0;
+                          if (valid24 && void 0 !== data.ir_cut_filter_modes) {
+                            let data20 = data.ir_cut_filter_modes;
+                            if (errors == errors) {
+                              if (!Array.isArray(data20)) return validate190.errors = [ {
+                                instancePath: instancePath + "/ir_cut_filter_modes",
+                                schemaPath: "#/properties/ir_cut_filter_modes/type",
+                                keyword: "type",
+                                params: {
+                                  type: "array"
+                                }
+                              } ], !1;
+                              {
+                                let len0 = data20.length;
+                                for (let i0 = 0; i0 < len0; i0++) {
+                                  let _errs50 = errors;
+                                  if ("string" != typeof data20[i0]) return validate190.errors = [ {
+                                    instancePath: instancePath + "/ir_cut_filter_modes/" + i0,
+                                    schemaPath: "#/properties/ir_cut_filter_modes/items/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  } ], !1;
+                                  if (_errs50 !== errors) break;
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate190.errors = vErrors, 0 === errors;
+}
+
+validate190.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_ImagingOptionsResponse = validate195;
+
+function validate195(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate195.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate195.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.success) return validate195.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "success"
+      }
+    } ], !1;
+    if (void 0 === data.options) return validate195.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "options"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("success" !== key0 && "options" !== key0) return validate195.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.success) {
+          let _errs2 = errors;
+          if (!0 !== data.success) return validate195.errors = [ {
+            instancePath: instancePath + "/success",
+            schemaPath: "#/properties/success/const",
+            keyword: "const",
+            params: {
+              allowedValue: !0
+            }
+          } ], !1;
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        valid0 && void 0 !== data.options && (validate190(data.options, {
+          instancePath: instancePath + "/options",
+          parentData: data,
+          parentDataProperty: "options",
+          rootData: rootData,
+          dynamicAnchors: dynamicAnchors
+        }) || (vErrors = vErrors.concat(validate190.errors), errors = vErrors.length));
+      }
+    }
+  }
+  return validate195.errors = vErrors, 0 === errors;
+}
+
+validate195.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_ImagingSettings = validate186, schema196 = {
+  type: "object",
+  properties: {
+    video_source_token: {
+      type: "string"
+    },
+    brightness: {
+      type: "number"
+    },
+    color_saturation: {
+      type: "number"
+    },
+    contrast: {
+      type: "number"
+    },
+    sharpness: {
+      type: "number"
+    },
+    noise_reduction: {
+      type: "number"
+    },
+    backlight_compensation: {
+      $ref: "#/$defs/ImagingModeLevel"
+    },
+    wide_dynamic_range: {
+      $ref: "#/$defs/ImagingModeLevel"
+    },
+    tone_compensation: {
+      $ref: "#/$defs/ImagingModeLevel"
+    },
+    defogging: {
+      $ref: "#/$defs/ImagingModeLevel"
+    },
+    ir_cut_filter: {
+      type: "string"
+    }
+  },
+  required: [ "video_source_token" ],
+  additionalProperties: !1
+};
+
+function validate186(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate186.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate186.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.video_source_token) return validate186.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "video_source_token"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if (!func5.call(schema196.properties, key0)) return validate186.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.video_source_token) {
+        let _errs2 = 0;
+        if ("string" != typeof data.video_source_token) return validate186.errors = [ {
+          instancePath: instancePath + "/video_source_token",
+          schemaPath: "#/properties/video_source_token/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.brightness) {
+          let data1 = data.brightness, _errs4 = 0;
+          if ("number" != typeof data1 || !isFinite(data1)) return validate186.errors = [ {
+            instancePath: instancePath + "/brightness",
+            schemaPath: "#/properties/brightness/type",
+            keyword: "type",
+            params: {
+              type: "number"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.color_saturation) {
+            let data2 = data.color_saturation, _errs6 = 0;
+            if ("number" != typeof data2 || !isFinite(data2)) return validate186.errors = [ {
+              instancePath: instancePath + "/color_saturation",
+              schemaPath: "#/properties/color_saturation/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.contrast) {
+              let data3 = data.contrast, _errs8 = 0;
+              if ("number" != typeof data3 || !isFinite(data3)) return validate186.errors = [ {
+                instancePath: instancePath + "/contrast",
+                schemaPath: "#/properties/contrast/type",
+                keyword: "type",
+                params: {
+                  type: "number"
+                }
+              } ], !1;
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.sharpness) {
+                let data4 = data.sharpness, _errs10 = 0;
+                if ("number" != typeof data4 || !isFinite(data4)) return validate186.errors = [ {
+                  instancePath: instancePath + "/sharpness",
+                  schemaPath: "#/properties/sharpness/type",
+                  keyword: "type",
+                  params: {
+                    type: "number"
+                  }
+                } ], !1;
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.noise_reduction) {
+                  let data5 = data.noise_reduction, _errs12 = 0;
+                  if ("number" != typeof data5 || !isFinite(data5)) return validate186.errors = [ {
+                    instancePath: instancePath + "/noise_reduction",
+                    schemaPath: "#/properties/noise_reduction/type",
+                    keyword: "type",
+                    params: {
+                      type: "number"
+                    }
+                  } ], !1;
+                  var valid5 = 0 === _errs12;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.backlight_compensation) {
+                    let data6 = data.backlight_compensation, _errs14 = 0;
+                    if (!data6 || "object" != typeof data6 || Array.isArray(data6)) return validate186.errors = [ {
+                      instancePath: instancePath + "/backlight_compensation",
+                      schemaPath: "#/$defs/ImagingModeLevel/type",
+                      keyword: "type",
+                      params: {
+                        type: "object"
+                      }
+                    } ], !1;
+                    {
+                      let _errs17 = 0;
+                      for (let key1 in data6) if ("mode" !== key1 && "level" !== key1) return validate186.errors = [ {
+                        instancePath: instancePath + "/backlight_compensation",
+                        schemaPath: "#/$defs/ImagingModeLevel/additionalProperties",
+                        keyword: "additionalProperties",
+                        params: {
+                          additionalProperty: key1
+                        }
+                      } ], !1;
+                      if (0 === _errs17) {
+                        if (void 0 !== data6.mode) {
+                          let _errs18 = 0;
+                          if ("string" != typeof data6.mode) return validate186.errors = [ {
+                            instancePath: instancePath + "/backlight_compensation/mode",
+                            schemaPath: "#/$defs/ImagingModeLevel/properties/mode/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          var valid8 = 0 === _errs18;
+                        } else valid8 = !0;
+                        if (valid8 && void 0 !== data6.level) {
+                          let data8 = data6.level;
+                          if ("number" != typeof data8 || !isFinite(data8)) return validate186.errors = [ {
+                            instancePath: instancePath + "/backlight_compensation/level",
+                            schemaPath: "#/$defs/ImagingModeLevel/properties/level/type",
+                            keyword: "type",
+                            params: {
+                              type: "number"
+                            }
+                          } ], !1;
+                        }
+                      }
+                    }
+                    var valid6 = 0 === _errs14;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data.wide_dynamic_range) {
+                      let data9 = data.wide_dynamic_range, _errs22 = 0;
+                      if (!data9 || "object" != typeof data9 || Array.isArray(data9)) return validate186.errors = [ {
+                        instancePath: instancePath + "/wide_dynamic_range",
+                        schemaPath: "#/$defs/ImagingModeLevel/type",
+                        keyword: "type",
+                        params: {
+                          type: "object"
+                        }
+                      } ], !1;
+                      {
+                        let _errs25 = 0;
+                        for (let key2 in data9) if ("mode" !== key2 && "level" !== key2) return validate186.errors = [ {
+                          instancePath: instancePath + "/wide_dynamic_range",
+                          schemaPath: "#/$defs/ImagingModeLevel/additionalProperties",
+                          keyword: "additionalProperties",
+                          params: {
+                            additionalProperty: key2
+                          }
+                        } ], !1;
+                        if (0 === _errs25) {
+                          if (void 0 !== data9.mode) {
+                            let _errs26 = 0;
+                            if ("string" != typeof data9.mode) return validate186.errors = [ {
+                              instancePath: instancePath + "/wide_dynamic_range/mode",
+                              schemaPath: "#/$defs/ImagingModeLevel/properties/mode/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            var valid12 = 0 === _errs26;
+                          } else valid12 = !0;
+                          if (valid12 && void 0 !== data9.level) {
+                            let data11 = data9.level;
+                            if ("number" != typeof data11 || !isFinite(data11)) return validate186.errors = [ {
+                              instancePath: instancePath + "/wide_dynamic_range/level",
+                              schemaPath: "#/$defs/ImagingModeLevel/properties/level/type",
+                              keyword: "type",
+                              params: {
+                                type: "number"
+                              }
+                            } ], !1;
+                          }
+                        }
+                      }
+                      var valid10 = 0 === _errs22;
+                    } else valid10 = !0;
+                    if (valid10) {
+                      if (void 0 !== data.tone_compensation) {
+                        let data12 = data.tone_compensation, _errs30 = 0;
+                        if (!data12 || "object" != typeof data12 || Array.isArray(data12)) return validate186.errors = [ {
+                          instancePath: instancePath + "/tone_compensation",
+                          schemaPath: "#/$defs/ImagingModeLevel/type",
+                          keyword: "type",
+                          params: {
+                            type: "object"
+                          }
+                        } ], !1;
+                        {
+                          let _errs33 = 0;
+                          for (let key3 in data12) if ("mode" !== key3 && "level" !== key3) return validate186.errors = [ {
+                            instancePath: instancePath + "/tone_compensation",
+                            schemaPath: "#/$defs/ImagingModeLevel/additionalProperties",
+                            keyword: "additionalProperties",
+                            params: {
+                              additionalProperty: key3
+                            }
+                          } ], !1;
+                          if (0 === _errs33) {
+                            if (void 0 !== data12.mode) {
+                              let _errs34 = 0;
+                              if ("string" != typeof data12.mode) return validate186.errors = [ {
+                                instancePath: instancePath + "/tone_compensation/mode",
+                                schemaPath: "#/$defs/ImagingModeLevel/properties/mode/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              var valid16 = 0 === _errs34;
+                            } else valid16 = !0;
+                            if (valid16 && void 0 !== data12.level) {
+                              let data14 = data12.level;
+                              if ("number" != typeof data14 || !isFinite(data14)) return validate186.errors = [ {
+                                instancePath: instancePath + "/tone_compensation/level",
+                                schemaPath: "#/$defs/ImagingModeLevel/properties/level/type",
+                                keyword: "type",
+                                params: {
+                                  type: "number"
+                                }
+                              } ], !1;
+                            }
+                          }
+                        }
+                        var valid14 = 0 === _errs30;
+                      } else valid14 = !0;
+                      if (valid14) {
+                        if (void 0 !== data.defogging) {
+                          let data15 = data.defogging, _errs38 = 0;
+                          if (!data15 || "object" != typeof data15 || Array.isArray(data15)) return validate186.errors = [ {
+                            instancePath: instancePath + "/defogging",
+                            schemaPath: "#/$defs/ImagingModeLevel/type",
+                            keyword: "type",
+                            params: {
+                              type: "object"
+                            }
+                          } ], !1;
+                          {
+                            let _errs41 = 0;
+                            for (let key4 in data15) if ("mode" !== key4 && "level" !== key4) return validate186.errors = [ {
+                              instancePath: instancePath + "/defogging",
+                              schemaPath: "#/$defs/ImagingModeLevel/additionalProperties",
+                              keyword: "additionalProperties",
+                              params: {
+                                additionalProperty: key4
+                              }
+                            } ], !1;
+                            if (0 === _errs41) {
+                              if (void 0 !== data15.mode) {
+                                let _errs42 = 0;
+                                if ("string" != typeof data15.mode) return validate186.errors = [ {
+                                  instancePath: instancePath + "/defogging/mode",
+                                  schemaPath: "#/$defs/ImagingModeLevel/properties/mode/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                var valid20 = 0 === _errs42;
+                              } else valid20 = !0;
+                              if (valid20 && void 0 !== data15.level) {
+                                let data17 = data15.level;
+                                if ("number" != typeof data17 || !isFinite(data17)) return validate186.errors = [ {
+                                  instancePath: instancePath + "/defogging/level",
+                                  schemaPath: "#/$defs/ImagingModeLevel/properties/level/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "number"
+                                  }
+                                } ], !1;
+                              }
+                            }
+                          }
+                          var valid18 = 0 === _errs38;
+                        } else valid18 = !0;
+                        if (valid18 && void 0 !== data.ir_cut_filter && "string" != typeof data.ir_cut_filter) return validate186.errors = [ {
+                          instancePath: instancePath + "/ir_cut_filter",
+                          schemaPath: "#/properties/ir_cut_filter/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate186.errors = [], !0;
+}
+
+validate186.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_ImagingSettingsRequest = validate197, schema211 = {
+  type: "object",
+  properties: {
+    brightness: {
+      type: "number",
+      minimum: -34028234663852886e22,
+      maximum: 34028234663852886e22
+    },
+    color_saturation: {
+      type: "number",
+      minimum: -34028234663852886e22,
+      maximum: 34028234663852886e22
+    },
+    contrast: {
+      type: "number",
+      minimum: -34028234663852886e22,
+      maximum: 34028234663852886e22
+    },
+    sharpness: {
+      type: "number",
+      minimum: -34028234663852886e22,
+      maximum: 34028234663852886e22
+    },
+    noise_reduction: {
+      type: "number",
+      minimum: -34028234663852886e22,
+      maximum: 34028234663852886e22
+    },
+    saturation: {
+      type: "number",
+      minimum: -34028234663852886e22,
+      maximum: 34028234663852886e22
+    },
+    backlight_compensation: {
+      $ref: "#/$defs/ImagingModeLevelUpdate"
+    },
+    wide_dynamic_range: {
+      $ref: "#/$defs/ImagingModeLevelUpdate"
+    },
+    tone_compensation: {
+      $ref: "#/$defs/ImagingModeLevelUpdate"
+    },
+    defogging: {
+      $ref: "#/$defs/ImagingModeLevelUpdate"
+    },
+    backlight: {
+      $ref: "#/$defs/ImagingModeLevelUpdate"
+    },
+    wdr: {
+      $ref: "#/$defs/ImagingModeLevelUpdate"
+    },
+    tone: {
+      $ref: "#/$defs/ImagingModeLevelUpdate"
+    },
+    defog: {
+      $ref: "#/$defs/ImagingModeLevelUpdate"
+    },
+    ir_cut_filter: {
+      type: "string",
+      maxLength: 15,
+      minLength: 1
+    },
+    ircut: {
+      type: "string",
+      maxLength: 15,
+      minLength: 1
+    },
+    force_persistence: {
+      type: "boolean"
+    }
+  },
+  required: [],
+  additionalProperties: !1,
+  minProperties: 1,
+  description: "Known aliases remain accepted; force_persistence alone is rejected. Numeric limits come from the device options rather than an invented global range.",
+  anyOf: [ {
+    properties: {
+      brightness: {
+        type: "number",
+        minimum: -34028234663852886e22,
+        maximum: 34028234663852886e22
+      }
+    },
+    required: [ "brightness" ]
+  }, {
+    properties: {
+      color_saturation: {
+        type: "number",
+        minimum: -34028234663852886e22,
+        maximum: 34028234663852886e22
+      }
+    },
+    required: [ "color_saturation" ]
+  }, {
+    properties: {
+      contrast: {
+        type: "number",
+        minimum: -34028234663852886e22,
+        maximum: 34028234663852886e22
+      }
+    },
+    required: [ "contrast" ]
+  }, {
+    properties: {
+      sharpness: {
+        type: "number",
+        minimum: -34028234663852886e22,
+        maximum: 34028234663852886e22
+      }
+    },
+    required: [ "sharpness" ]
+  }, {
+    properties: {
+      noise_reduction: {
+        type: "number",
+        minimum: -34028234663852886e22,
+        maximum: 34028234663852886e22
+      }
+    },
+    required: [ "noise_reduction" ]
+  }, {
+    properties: {
+      saturation: {
+        type: "number",
+        minimum: -34028234663852886e22,
+        maximum: 34028234663852886e22
+      }
+    },
+    required: [ "saturation" ]
+  }, {
+    properties: {
+      backlight_compensation: {
+        $ref: "#/$defs/ImagingModeLevelUpdate"
+      }
+    },
+    required: [ "backlight_compensation" ]
+  }, {
+    properties: {
+      wide_dynamic_range: {
+        $ref: "#/$defs/ImagingModeLevelUpdate"
+      }
+    },
+    required: [ "wide_dynamic_range" ]
+  }, {
+    properties: {
+      tone_compensation: {
+        $ref: "#/$defs/ImagingModeLevelUpdate"
+      }
+    },
+    required: [ "tone_compensation" ]
+  }, {
+    properties: {
+      defogging: {
+        $ref: "#/$defs/ImagingModeLevelUpdate"
+      }
+    },
+    required: [ "defogging" ]
+  }, {
+    properties: {
+      backlight: {
+        $ref: "#/$defs/ImagingModeLevelUpdate"
+      }
+    },
+    required: [ "backlight" ]
+  }, {
+    properties: {
+      wdr: {
+        $ref: "#/$defs/ImagingModeLevelUpdate"
+      }
+    },
+    required: [ "wdr" ]
+  }, {
+    properties: {
+      tone: {
+        $ref: "#/$defs/ImagingModeLevelUpdate"
+      }
+    },
+    required: [ "tone" ]
+  }, {
+    properties: {
+      defog: {
+        $ref: "#/$defs/ImagingModeLevelUpdate"
+      }
+    },
+    required: [ "defog" ]
+  }, {
+    properties: {
+      ir_cut_filter: {
+        type: "string",
+        maxLength: 15,
+        minLength: 1
+      }
+    },
+    required: [ "ir_cut_filter" ]
+  }, {
+    properties: {
+      ircut: {
+        type: "string",
+        maxLength: 15,
+        minLength: 1
+      }
+    },
+    required: [ "ircut" ]
+  } ]
+};
+
+function validate197(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate197.evaluated;
+  evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0);
+  let _errs1 = errors, valid0 = !1, _errs2 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.brightness) {
+    let err0 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/0/required",
+      keyword: "required",
+      params: {
+        missingProperty: "brightness"
+      }
+    };
+    vErrors.push(err0), errors++;
+  } else if (void 0 !== data.brightness) {
+    let data0 = data.brightness;
+    if (errors == errors) if ("number" == typeof data0 && isFinite(data0)) {
+      if (data0 > 34028234663852886e22 || isNaN(data0)) {
+        let err1 = {
+          instancePath: instancePath + "/brightness",
+          schemaPath: "#/anyOf/0/properties/brightness/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err1), errors++;
+      } else if (data0 < -34028234663852886e22 || isNaN(data0)) {
+        let err2 = {
+          instancePath: instancePath + "/brightness",
+          schemaPath: "#/anyOf/0/properties/brightness/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err2), errors++;
+      }
+    } else {
+      let err3 = {
+        instancePath: instancePath + "/brightness",
+        schemaPath: "#/anyOf/0/properties/brightness/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err3), errors++;
+    }
+  }
+  var _valid0 = _errs2 === errors;
+  if (valid0 = valid0 || _valid0, _valid0) var props0 = {
+    brightness: !0
+  };
+  let _errs5 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.color_saturation) {
+    let err4 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/1/required",
+      keyword: "required",
+      params: {
+        missingProperty: "color_saturation"
+      }
+    };
+    vErrors.push(err4), errors++;
+  } else if (void 0 !== data.color_saturation) {
+    let data1 = data.color_saturation;
+    if (errors == errors) if ("number" == typeof data1 && isFinite(data1)) {
+      if (data1 > 34028234663852886e22 || isNaN(data1)) {
+        let err5 = {
+          instancePath: instancePath + "/color_saturation",
+          schemaPath: "#/anyOf/1/properties/color_saturation/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err5), errors++;
+      } else if (data1 < -34028234663852886e22 || isNaN(data1)) {
+        let err6 = {
+          instancePath: instancePath + "/color_saturation",
+          schemaPath: "#/anyOf/1/properties/color_saturation/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err6), errors++;
+      }
+    } else {
+      let err7 = {
+        instancePath: instancePath + "/color_saturation",
+        schemaPath: "#/anyOf/1/properties/color_saturation/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err7), errors++;
+    }
+  }
+  _valid0 = _errs5 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).color_saturation = !0);
+  let _errs8 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.contrast) {
+    let err8 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/2/required",
+      keyword: "required",
+      params: {
+        missingProperty: "contrast"
+      }
+    };
+    vErrors.push(err8), errors++;
+  } else if (void 0 !== data.contrast) {
+    let data2 = data.contrast;
+    if (errors == errors) if ("number" == typeof data2 && isFinite(data2)) {
+      if (data2 > 34028234663852886e22 || isNaN(data2)) {
+        let err9 = {
+          instancePath: instancePath + "/contrast",
+          schemaPath: "#/anyOf/2/properties/contrast/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err9), errors++;
+      } else if (data2 < -34028234663852886e22 || isNaN(data2)) {
+        let err10 = {
+          instancePath: instancePath + "/contrast",
+          schemaPath: "#/anyOf/2/properties/contrast/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err10), errors++;
+      }
+    } else {
+      let err11 = {
+        instancePath: instancePath + "/contrast",
+        schemaPath: "#/anyOf/2/properties/contrast/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err11), errors++;
+    }
+  }
+  _valid0 = _errs8 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).contrast = !0);
+  let _errs11 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.sharpness) {
+    let err12 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/3/required",
+      keyword: "required",
+      params: {
+        missingProperty: "sharpness"
+      }
+    };
+    vErrors.push(err12), errors++;
+  } else if (void 0 !== data.sharpness) {
+    let data3 = data.sharpness;
+    if (errors == errors) if ("number" == typeof data3 && isFinite(data3)) {
+      if (data3 > 34028234663852886e22 || isNaN(data3)) {
+        let err13 = {
+          instancePath: instancePath + "/sharpness",
+          schemaPath: "#/anyOf/3/properties/sharpness/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err13), errors++;
+      } else if (data3 < -34028234663852886e22 || isNaN(data3)) {
+        let err14 = {
+          instancePath: instancePath + "/sharpness",
+          schemaPath: "#/anyOf/3/properties/sharpness/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err14), errors++;
+      }
+    } else {
+      let err15 = {
+        instancePath: instancePath + "/sharpness",
+        schemaPath: "#/anyOf/3/properties/sharpness/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err15), errors++;
+    }
+  }
+  _valid0 = _errs11 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).sharpness = !0);
+  let _errs14 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.noise_reduction) {
+    let err16 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/4/required",
+      keyword: "required",
+      params: {
+        missingProperty: "noise_reduction"
+      }
+    };
+    vErrors.push(err16), errors++;
+  } else if (void 0 !== data.noise_reduction) {
+    let data4 = data.noise_reduction;
+    if (errors == errors) if ("number" == typeof data4 && isFinite(data4)) {
+      if (data4 > 34028234663852886e22 || isNaN(data4)) {
+        let err17 = {
+          instancePath: instancePath + "/noise_reduction",
+          schemaPath: "#/anyOf/4/properties/noise_reduction/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err17), errors++;
+      } else if (data4 < -34028234663852886e22 || isNaN(data4)) {
+        let err18 = {
+          instancePath: instancePath + "/noise_reduction",
+          schemaPath: "#/anyOf/4/properties/noise_reduction/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err18), errors++;
+      }
+    } else {
+      let err19 = {
+        instancePath: instancePath + "/noise_reduction",
+        schemaPath: "#/anyOf/4/properties/noise_reduction/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err19), errors++;
+    }
+  }
+  _valid0 = _errs14 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).noise_reduction = !0);
+  let _errs17 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.saturation) {
+    let err20 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/5/required",
+      keyword: "required",
+      params: {
+        missingProperty: "saturation"
+      }
+    };
+    vErrors.push(err20), errors++;
+  } else if (void 0 !== data.saturation) {
+    let data5 = data.saturation;
+    if (errors == errors) if ("number" == typeof data5 && isFinite(data5)) {
+      if (data5 > 34028234663852886e22 || isNaN(data5)) {
+        let err21 = {
+          instancePath: instancePath + "/saturation",
+          schemaPath: "#/anyOf/5/properties/saturation/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err21), errors++;
+      } else if (data5 < -34028234663852886e22 || isNaN(data5)) {
+        let err22 = {
+          instancePath: instancePath + "/saturation",
+          schemaPath: "#/anyOf/5/properties/saturation/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err22), errors++;
+      }
+    } else {
+      let err23 = {
+        instancePath: instancePath + "/saturation",
+        schemaPath: "#/anyOf/5/properties/saturation/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err23), errors++;
+    }
+  }
+  _valid0 = _errs17 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).saturation = !0);
+  let _errs20 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.backlight_compensation) {
+    let err24 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/6/required",
+      keyword: "required",
+      params: {
+        missingProperty: "backlight_compensation"
+      }
+    };
+    vErrors.push(err24), errors++;
+  } else if (void 0 !== data.backlight_compensation) {
+    let data6 = data.backlight_compensation, _errs23 = errors, valid9 = !1, passing0 = null, _errs24 = errors;
+    if (errors === _errs24) if ("number" == typeof data6 && isFinite(data6)) {
+      if (data6 > 34028234663852886e22 || isNaN(data6)) {
+        let err25 = {
+          instancePath: instancePath + "/backlight_compensation",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err25), errors++;
+      } else if (data6 < -34028234663852886e22 || isNaN(data6)) {
+        let err26 = {
+          instancePath: instancePath + "/backlight_compensation",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err26), errors++;
+      }
+    } else {
+      let err27 = {
+        instancePath: instancePath + "/backlight_compensation",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err27), errors++;
+    }
+    _errs24 === errors && (valid9 = !0, passing0 = 0);
+    let _errs26 = errors;
+    if (errors === _errs26) if (data6 && "object" == typeof data6 && !Array.isArray(data6)) if (Object.keys(data6).length < 1) {
+      let err28 = {
+        instancePath: instancePath + "/backlight_compensation",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+        keyword: "minProperties",
+        params: {
+          limit: 1
+        }
+      };
+      vErrors.push(err28), errors++;
+    } else {
+      let _errs28 = errors;
+      for (let key0 in data6) if ("mode" !== key0 && "level" !== key0) {
+        let err29 = {
+          instancePath: instancePath + "/backlight_compensation",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+          keyword: "additionalProperties",
+          params: {
+            additionalProperty: key0
+          }
+        };
+        vErrors.push(err29), errors++;
+        break;
+      }
+      if (_errs28 === errors) {
+        if (void 0 !== data6.mode) {
+          let data7 = data6.mode, _errs29 = errors;
+          if (errors === _errs29) if ("string" == typeof data7) {
+            if (func1(data7) > 31) {
+              let err30 = {
+                instancePath: instancePath + "/backlight_compensation/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 31
+                }
+              };
+              vErrors.push(err30), errors++;
+            } else if (func1(data7) < 1) {
+              let err31 = {
+                instancePath: instancePath + "/backlight_compensation/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              };
+              vErrors.push(err31), errors++;
+            }
+          } else {
+            let err32 = {
+              instancePath: instancePath + "/backlight_compensation/mode",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            };
+            vErrors.push(err32), errors++;
+          }
+          var valid10 = _errs29 === errors;
+        } else valid10 = !0;
+        if (valid10 && void 0 !== data6.level) {
+          let data8 = data6.level;
+          if (errors == errors) if ("number" == typeof data8 && isFinite(data8)) {
+            if (data8 > 34028234663852886e22 || isNaN(data8)) {
+              let err33 = {
+                instancePath: instancePath + "/backlight_compensation/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 34028234663852886e22
+                }
+              };
+              vErrors.push(err33), errors++;
+            } else if (data8 < -34028234663852886e22 || isNaN(data8)) {
+              let err34 = {
+                instancePath: instancePath + "/backlight_compensation/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: -34028234663852886e22
+                }
+              };
+              vErrors.push(err34), errors++;
+            }
+          } else {
+            let err35 = {
+              instancePath: instancePath + "/backlight_compensation/level",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            };
+            vErrors.push(err35), errors++;
+          }
+        }
+      }
+    } else {
+      let err36 = {
+        instancePath: instancePath + "/backlight_compensation",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+        keyword: "type",
+        params: {
+          type: "object"
+        }
+      };
+      vErrors.push(err36), errors++;
+    }
+    var _valid1;
+    if ((_valid1 = _errs26 === errors) && valid9 ? (valid9 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid9 = !0,
+    passing0 = 1), valid9) errors = _errs23, vErrors.length = _errs23; else {
+      let err37 = {
+        instancePath: instancePath + "/backlight_compensation",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+        keyword: "oneOf",
+        params: {
+          passingSchemas: passing0
+        }
+      };
+      vErrors.push(err37), errors++;
+    }
+  }
+  _valid0 = _errs20 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).backlight_compensation = !0);
+  let _errs33 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.wide_dynamic_range) {
+    let err38 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/7/required",
+      keyword: "required",
+      params: {
+        missingProperty: "wide_dynamic_range"
+      }
+    };
+    vErrors.push(err38), errors++;
+  } else if (void 0 !== data.wide_dynamic_range) {
+    let data9 = data.wide_dynamic_range, _errs36 = errors, valid14 = !1, passing1 = null, _errs37 = errors;
+    if (errors === _errs37) if ("number" == typeof data9 && isFinite(data9)) {
+      if (data9 > 34028234663852886e22 || isNaN(data9)) {
+        let err39 = {
+          instancePath: instancePath + "/wide_dynamic_range",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err39), errors++;
+      } else if (data9 < -34028234663852886e22 || isNaN(data9)) {
+        let err40 = {
+          instancePath: instancePath + "/wide_dynamic_range",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err40), errors++;
+      }
+    } else {
+      let err41 = {
+        instancePath: instancePath + "/wide_dynamic_range",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err41), errors++;
+    }
+    _errs37 === errors && (valid14 = !0, passing1 = 0);
+    let _errs39 = errors;
+    if (errors === _errs39) if (data9 && "object" == typeof data9 && !Array.isArray(data9)) if (Object.keys(data9).length < 1) {
+      let err42 = {
+        instancePath: instancePath + "/wide_dynamic_range",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+        keyword: "minProperties",
+        params: {
+          limit: 1
+        }
+      };
+      vErrors.push(err42), errors++;
+    } else {
+      let _errs41 = errors;
+      for (let key1 in data9) if ("mode" !== key1 && "level" !== key1) {
+        let err43 = {
+          instancePath: instancePath + "/wide_dynamic_range",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+          keyword: "additionalProperties",
+          params: {
+            additionalProperty: key1
+          }
+        };
+        vErrors.push(err43), errors++;
+        break;
+      }
+      if (_errs41 === errors) {
+        if (void 0 !== data9.mode) {
+          let data10 = data9.mode, _errs42 = errors;
+          if (errors === _errs42) if ("string" == typeof data10) {
+            if (func1(data10) > 31) {
+              let err44 = {
+                instancePath: instancePath + "/wide_dynamic_range/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 31
+                }
+              };
+              vErrors.push(err44), errors++;
+            } else if (func1(data10) < 1) {
+              let err45 = {
+                instancePath: instancePath + "/wide_dynamic_range/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              };
+              vErrors.push(err45), errors++;
+            }
+          } else {
+            let err46 = {
+              instancePath: instancePath + "/wide_dynamic_range/mode",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            };
+            vErrors.push(err46), errors++;
+          }
+          var valid15 = _errs42 === errors;
+        } else valid15 = !0;
+        if (valid15 && void 0 !== data9.level) {
+          let data11 = data9.level;
+          if (errors == errors) if ("number" == typeof data11 && isFinite(data11)) {
+            if (data11 > 34028234663852886e22 || isNaN(data11)) {
+              let err47 = {
+                instancePath: instancePath + "/wide_dynamic_range/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 34028234663852886e22
+                }
+              };
+              vErrors.push(err47), errors++;
+            } else if (data11 < -34028234663852886e22 || isNaN(data11)) {
+              let err48 = {
+                instancePath: instancePath + "/wide_dynamic_range/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: -34028234663852886e22
+                }
+              };
+              vErrors.push(err48), errors++;
+            }
+          } else {
+            let err49 = {
+              instancePath: instancePath + "/wide_dynamic_range/level",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            };
+            vErrors.push(err49), errors++;
+          }
+        }
+      }
+    } else {
+      let err50 = {
+        instancePath: instancePath + "/wide_dynamic_range",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+        keyword: "type",
+        params: {
+          type: "object"
+        }
+      };
+      vErrors.push(err50), errors++;
+    }
+    var _valid2;
+    if ((_valid2 = _errs39 === errors) && valid14 ? (valid14 = !1, passing1 = [ passing1, 1 ]) : _valid2 && (valid14 = !0,
+    passing1 = 1), valid14) errors = _errs36, vErrors.length = _errs36; else {
+      let err51 = {
+        instancePath: instancePath + "/wide_dynamic_range",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+        keyword: "oneOf",
+        params: {
+          passingSchemas: passing1
+        }
+      };
+      vErrors.push(err51), errors++;
+    }
+  }
+  _valid0 = _errs33 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).wide_dynamic_range = !0);
+  let _errs46 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.tone_compensation) {
+    let err52 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/8/required",
+      keyword: "required",
+      params: {
+        missingProperty: "tone_compensation"
+      }
+    };
+    vErrors.push(err52), errors++;
+  } else if (void 0 !== data.tone_compensation) {
+    let data12 = data.tone_compensation, _errs49 = errors, valid19 = !1, passing2 = null, _errs50 = errors;
+    if (errors === _errs50) if ("number" == typeof data12 && isFinite(data12)) {
+      if (data12 > 34028234663852886e22 || isNaN(data12)) {
+        let err53 = {
+          instancePath: instancePath + "/tone_compensation",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err53), errors++;
+      } else if (data12 < -34028234663852886e22 || isNaN(data12)) {
+        let err54 = {
+          instancePath: instancePath + "/tone_compensation",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err54), errors++;
+      }
+    } else {
+      let err55 = {
+        instancePath: instancePath + "/tone_compensation",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err55), errors++;
+    }
+    _errs50 === errors && (valid19 = !0, passing2 = 0);
+    let _errs52 = errors;
+    if (errors === _errs52) if (data12 && "object" == typeof data12 && !Array.isArray(data12)) if (Object.keys(data12).length < 1) {
+      let err56 = {
+        instancePath: instancePath + "/tone_compensation",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+        keyword: "minProperties",
+        params: {
+          limit: 1
+        }
+      };
+      vErrors.push(err56), errors++;
+    } else {
+      let _errs54 = errors;
+      for (let key2 in data12) if ("mode" !== key2 && "level" !== key2) {
+        let err57 = {
+          instancePath: instancePath + "/tone_compensation",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+          keyword: "additionalProperties",
+          params: {
+            additionalProperty: key2
+          }
+        };
+        vErrors.push(err57), errors++;
+        break;
+      }
+      if (_errs54 === errors) {
+        if (void 0 !== data12.mode) {
+          let data13 = data12.mode, _errs55 = errors;
+          if (errors === _errs55) if ("string" == typeof data13) {
+            if (func1(data13) > 31) {
+              let err58 = {
+                instancePath: instancePath + "/tone_compensation/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 31
+                }
+              };
+              vErrors.push(err58), errors++;
+            } else if (func1(data13) < 1) {
+              let err59 = {
+                instancePath: instancePath + "/tone_compensation/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              };
+              vErrors.push(err59), errors++;
+            }
+          } else {
+            let err60 = {
+              instancePath: instancePath + "/tone_compensation/mode",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            };
+            vErrors.push(err60), errors++;
+          }
+          var valid20 = _errs55 === errors;
+        } else valid20 = !0;
+        if (valid20 && void 0 !== data12.level) {
+          let data14 = data12.level;
+          if (errors == errors) if ("number" == typeof data14 && isFinite(data14)) {
+            if (data14 > 34028234663852886e22 || isNaN(data14)) {
+              let err61 = {
+                instancePath: instancePath + "/tone_compensation/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 34028234663852886e22
+                }
+              };
+              vErrors.push(err61), errors++;
+            } else if (data14 < -34028234663852886e22 || isNaN(data14)) {
+              let err62 = {
+                instancePath: instancePath + "/tone_compensation/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: -34028234663852886e22
+                }
+              };
+              vErrors.push(err62), errors++;
+            }
+          } else {
+            let err63 = {
+              instancePath: instancePath + "/tone_compensation/level",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            };
+            vErrors.push(err63), errors++;
+          }
+        }
+      }
+    } else {
+      let err64 = {
+        instancePath: instancePath + "/tone_compensation",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+        keyword: "type",
+        params: {
+          type: "object"
+        }
+      };
+      vErrors.push(err64), errors++;
+    }
+    var _valid3;
+    if ((_valid3 = _errs52 === errors) && valid19 ? (valid19 = !1, passing2 = [ passing2, 1 ]) : _valid3 && (valid19 = !0,
+    passing2 = 1), valid19) errors = _errs49, vErrors.length = _errs49; else {
+      let err65 = {
+        instancePath: instancePath + "/tone_compensation",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+        keyword: "oneOf",
+        params: {
+          passingSchemas: passing2
+        }
+      };
+      vErrors.push(err65), errors++;
+    }
+  }
+  _valid0 = _errs46 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).tone_compensation = !0);
+  let _errs59 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.defogging) {
+    let err66 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/9/required",
+      keyword: "required",
+      params: {
+        missingProperty: "defogging"
+      }
+    };
+    vErrors.push(err66), errors++;
+  } else if (void 0 !== data.defogging) {
+    let data15 = data.defogging, _errs62 = errors, valid24 = !1, passing3 = null, _errs63 = errors;
+    if (errors === _errs63) if ("number" == typeof data15 && isFinite(data15)) {
+      if (data15 > 34028234663852886e22 || isNaN(data15)) {
+        let err67 = {
+          instancePath: instancePath + "/defogging",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err67), errors++;
+      } else if (data15 < -34028234663852886e22 || isNaN(data15)) {
+        let err68 = {
+          instancePath: instancePath + "/defogging",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err68), errors++;
+      }
+    } else {
+      let err69 = {
+        instancePath: instancePath + "/defogging",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err69), errors++;
+    }
+    _errs63 === errors && (valid24 = !0, passing3 = 0);
+    let _errs65 = errors;
+    if (errors === _errs65) if (data15 && "object" == typeof data15 && !Array.isArray(data15)) if (Object.keys(data15).length < 1) {
+      let err70 = {
+        instancePath: instancePath + "/defogging",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+        keyword: "minProperties",
+        params: {
+          limit: 1
+        }
+      };
+      vErrors.push(err70), errors++;
+    } else {
+      let _errs67 = errors;
+      for (let key3 in data15) if ("mode" !== key3 && "level" !== key3) {
+        let err71 = {
+          instancePath: instancePath + "/defogging",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+          keyword: "additionalProperties",
+          params: {
+            additionalProperty: key3
+          }
+        };
+        vErrors.push(err71), errors++;
+        break;
+      }
+      if (_errs67 === errors) {
+        if (void 0 !== data15.mode) {
+          let data16 = data15.mode, _errs68 = errors;
+          if (errors === _errs68) if ("string" == typeof data16) {
+            if (func1(data16) > 31) {
+              let err72 = {
+                instancePath: instancePath + "/defogging/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 31
+                }
+              };
+              vErrors.push(err72), errors++;
+            } else if (func1(data16) < 1) {
+              let err73 = {
+                instancePath: instancePath + "/defogging/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              };
+              vErrors.push(err73), errors++;
+            }
+          } else {
+            let err74 = {
+              instancePath: instancePath + "/defogging/mode",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            };
+            vErrors.push(err74), errors++;
+          }
+          var valid25 = _errs68 === errors;
+        } else valid25 = !0;
+        if (valid25 && void 0 !== data15.level) {
+          let data17 = data15.level;
+          if (errors == errors) if ("number" == typeof data17 && isFinite(data17)) {
+            if (data17 > 34028234663852886e22 || isNaN(data17)) {
+              let err75 = {
+                instancePath: instancePath + "/defogging/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 34028234663852886e22
+                }
+              };
+              vErrors.push(err75), errors++;
+            } else if (data17 < -34028234663852886e22 || isNaN(data17)) {
+              let err76 = {
+                instancePath: instancePath + "/defogging/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: -34028234663852886e22
+                }
+              };
+              vErrors.push(err76), errors++;
+            }
+          } else {
+            let err77 = {
+              instancePath: instancePath + "/defogging/level",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            };
+            vErrors.push(err77), errors++;
+          }
+        }
+      }
+    } else {
+      let err78 = {
+        instancePath: instancePath + "/defogging",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+        keyword: "type",
+        params: {
+          type: "object"
+        }
+      };
+      vErrors.push(err78), errors++;
+    }
+    var _valid4;
+    if ((_valid4 = _errs65 === errors) && valid24 ? (valid24 = !1, passing3 = [ passing3, 1 ]) : _valid4 && (valid24 = !0,
+    passing3 = 1), valid24) errors = _errs62, vErrors.length = _errs62; else {
+      let err79 = {
+        instancePath: instancePath + "/defogging",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+        keyword: "oneOf",
+        params: {
+          passingSchemas: passing3
+        }
+      };
+      vErrors.push(err79), errors++;
+    }
+  }
+  _valid0 = _errs59 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).defogging = !0);
+  let _errs72 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.backlight) {
+    let err80 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/10/required",
+      keyword: "required",
+      params: {
+        missingProperty: "backlight"
+      }
+    };
+    vErrors.push(err80), errors++;
+  } else if (void 0 !== data.backlight) {
+    let data18 = data.backlight, _errs75 = errors, valid29 = !1, passing4 = null, _errs76 = errors;
+    if (errors === _errs76) if ("number" == typeof data18 && isFinite(data18)) {
+      if (data18 > 34028234663852886e22 || isNaN(data18)) {
+        let err81 = {
+          instancePath: instancePath + "/backlight",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err81), errors++;
+      } else if (data18 < -34028234663852886e22 || isNaN(data18)) {
+        let err82 = {
+          instancePath: instancePath + "/backlight",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err82), errors++;
+      }
+    } else {
+      let err83 = {
+        instancePath: instancePath + "/backlight",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err83), errors++;
+    }
+    _errs76 === errors && (valid29 = !0, passing4 = 0);
+    let _errs78 = errors;
+    if (errors === _errs78) if (data18 && "object" == typeof data18 && !Array.isArray(data18)) if (Object.keys(data18).length < 1) {
+      let err84 = {
+        instancePath: instancePath + "/backlight",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+        keyword: "minProperties",
+        params: {
+          limit: 1
+        }
+      };
+      vErrors.push(err84), errors++;
+    } else {
+      let _errs80 = errors;
+      for (let key4 in data18) if ("mode" !== key4 && "level" !== key4) {
+        let err85 = {
+          instancePath: instancePath + "/backlight",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+          keyword: "additionalProperties",
+          params: {
+            additionalProperty: key4
+          }
+        };
+        vErrors.push(err85), errors++;
+        break;
+      }
+      if (_errs80 === errors) {
+        if (void 0 !== data18.mode) {
+          let data19 = data18.mode, _errs81 = errors;
+          if (errors === _errs81) if ("string" == typeof data19) {
+            if (func1(data19) > 31) {
+              let err86 = {
+                instancePath: instancePath + "/backlight/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 31
+                }
+              };
+              vErrors.push(err86), errors++;
+            } else if (func1(data19) < 1) {
+              let err87 = {
+                instancePath: instancePath + "/backlight/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              };
+              vErrors.push(err87), errors++;
+            }
+          } else {
+            let err88 = {
+              instancePath: instancePath + "/backlight/mode",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            };
+            vErrors.push(err88), errors++;
+          }
+          var valid30 = _errs81 === errors;
+        } else valid30 = !0;
+        if (valid30 && void 0 !== data18.level) {
+          let data20 = data18.level;
+          if (errors == errors) if ("number" == typeof data20 && isFinite(data20)) {
+            if (data20 > 34028234663852886e22 || isNaN(data20)) {
+              let err89 = {
+                instancePath: instancePath + "/backlight/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 34028234663852886e22
+                }
+              };
+              vErrors.push(err89), errors++;
+            } else if (data20 < -34028234663852886e22 || isNaN(data20)) {
+              let err90 = {
+                instancePath: instancePath + "/backlight/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: -34028234663852886e22
+                }
+              };
+              vErrors.push(err90), errors++;
+            }
+          } else {
+            let err91 = {
+              instancePath: instancePath + "/backlight/level",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            };
+            vErrors.push(err91), errors++;
+          }
+        }
+      }
+    } else {
+      let err92 = {
+        instancePath: instancePath + "/backlight",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+        keyword: "type",
+        params: {
+          type: "object"
+        }
+      };
+      vErrors.push(err92), errors++;
+    }
+    var _valid5;
+    if ((_valid5 = _errs78 === errors) && valid29 ? (valid29 = !1, passing4 = [ passing4, 1 ]) : _valid5 && (valid29 = !0,
+    passing4 = 1), valid29) errors = _errs75, vErrors.length = _errs75; else {
+      let err93 = {
+        instancePath: instancePath + "/backlight",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+        keyword: "oneOf",
+        params: {
+          passingSchemas: passing4
+        }
+      };
+      vErrors.push(err93), errors++;
+    }
+  }
+  _valid0 = _errs72 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).backlight = !0);
+  let _errs85 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.wdr) {
+    let err94 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/11/required",
+      keyword: "required",
+      params: {
+        missingProperty: "wdr"
+      }
+    };
+    vErrors.push(err94), errors++;
+  } else if (void 0 !== data.wdr) {
+    let data21 = data.wdr, _errs88 = errors, valid34 = !1, passing5 = null, _errs89 = errors;
+    if (errors === _errs89) if ("number" == typeof data21 && isFinite(data21)) {
+      if (data21 > 34028234663852886e22 || isNaN(data21)) {
+        let err95 = {
+          instancePath: instancePath + "/wdr",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err95), errors++;
+      } else if (data21 < -34028234663852886e22 || isNaN(data21)) {
+        let err96 = {
+          instancePath: instancePath + "/wdr",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err96), errors++;
+      }
+    } else {
+      let err97 = {
+        instancePath: instancePath + "/wdr",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err97), errors++;
+    }
+    _errs89 === errors && (valid34 = !0, passing5 = 0);
+    let _errs91 = errors;
+    if (errors === _errs91) if (data21 && "object" == typeof data21 && !Array.isArray(data21)) if (Object.keys(data21).length < 1) {
+      let err98 = {
+        instancePath: instancePath + "/wdr",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+        keyword: "minProperties",
+        params: {
+          limit: 1
+        }
+      };
+      vErrors.push(err98), errors++;
+    } else {
+      let _errs93 = errors;
+      for (let key5 in data21) if ("mode" !== key5 && "level" !== key5) {
+        let err99 = {
+          instancePath: instancePath + "/wdr",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+          keyword: "additionalProperties",
+          params: {
+            additionalProperty: key5
+          }
+        };
+        vErrors.push(err99), errors++;
+        break;
+      }
+      if (_errs93 === errors) {
+        if (void 0 !== data21.mode) {
+          let data22 = data21.mode, _errs94 = errors;
+          if (errors === _errs94) if ("string" == typeof data22) {
+            if (func1(data22) > 31) {
+              let err100 = {
+                instancePath: instancePath + "/wdr/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 31
+                }
+              };
+              vErrors.push(err100), errors++;
+            } else if (func1(data22) < 1) {
+              let err101 = {
+                instancePath: instancePath + "/wdr/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              };
+              vErrors.push(err101), errors++;
+            }
+          } else {
+            let err102 = {
+              instancePath: instancePath + "/wdr/mode",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            };
+            vErrors.push(err102), errors++;
+          }
+          var valid35 = _errs94 === errors;
+        } else valid35 = !0;
+        if (valid35 && void 0 !== data21.level) {
+          let data23 = data21.level;
+          if (errors == errors) if ("number" == typeof data23 && isFinite(data23)) {
+            if (data23 > 34028234663852886e22 || isNaN(data23)) {
+              let err103 = {
+                instancePath: instancePath + "/wdr/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 34028234663852886e22
+                }
+              };
+              vErrors.push(err103), errors++;
+            } else if (data23 < -34028234663852886e22 || isNaN(data23)) {
+              let err104 = {
+                instancePath: instancePath + "/wdr/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: -34028234663852886e22
+                }
+              };
+              vErrors.push(err104), errors++;
+            }
+          } else {
+            let err105 = {
+              instancePath: instancePath + "/wdr/level",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            };
+            vErrors.push(err105), errors++;
+          }
+        }
+      }
+    } else {
+      let err106 = {
+        instancePath: instancePath + "/wdr",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+        keyword: "type",
+        params: {
+          type: "object"
+        }
+      };
+      vErrors.push(err106), errors++;
+    }
+    var _valid6;
+    if ((_valid6 = _errs91 === errors) && valid34 ? (valid34 = !1, passing5 = [ passing5, 1 ]) : _valid6 && (valid34 = !0,
+    passing5 = 1), valid34) errors = _errs88, vErrors.length = _errs88; else {
+      let err107 = {
+        instancePath: instancePath + "/wdr",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+        keyword: "oneOf",
+        params: {
+          passingSchemas: passing5
+        }
+      };
+      vErrors.push(err107), errors++;
+    }
+  }
+  _valid0 = _errs85 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).wdr = !0);
+  let _errs98 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.tone) {
+    let err108 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/12/required",
+      keyword: "required",
+      params: {
+        missingProperty: "tone"
+      }
+    };
+    vErrors.push(err108), errors++;
+  } else if (void 0 !== data.tone) {
+    let data24 = data.tone, _errs101 = errors, valid39 = !1, passing6 = null, _errs102 = errors;
+    if (errors === _errs102) if ("number" == typeof data24 && isFinite(data24)) {
+      if (data24 > 34028234663852886e22 || isNaN(data24)) {
+        let err109 = {
+          instancePath: instancePath + "/tone",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err109), errors++;
+      } else if (data24 < -34028234663852886e22 || isNaN(data24)) {
+        let err110 = {
+          instancePath: instancePath + "/tone",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err110), errors++;
+      }
+    } else {
+      let err111 = {
+        instancePath: instancePath + "/tone",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err111), errors++;
+    }
+    _errs102 === errors && (valid39 = !0, passing6 = 0);
+    let _errs104 = errors;
+    if (errors === _errs104) if (data24 && "object" == typeof data24 && !Array.isArray(data24)) if (Object.keys(data24).length < 1) {
+      let err112 = {
+        instancePath: instancePath + "/tone",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+        keyword: "minProperties",
+        params: {
+          limit: 1
+        }
+      };
+      vErrors.push(err112), errors++;
+    } else {
+      let _errs106 = errors;
+      for (let key6 in data24) if ("mode" !== key6 && "level" !== key6) {
+        let err113 = {
+          instancePath: instancePath + "/tone",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+          keyword: "additionalProperties",
+          params: {
+            additionalProperty: key6
+          }
+        };
+        vErrors.push(err113), errors++;
+        break;
+      }
+      if (_errs106 === errors) {
+        if (void 0 !== data24.mode) {
+          let data25 = data24.mode, _errs107 = errors;
+          if (errors === _errs107) if ("string" == typeof data25) {
+            if (func1(data25) > 31) {
+              let err114 = {
+                instancePath: instancePath + "/tone/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 31
+                }
+              };
+              vErrors.push(err114), errors++;
+            } else if (func1(data25) < 1) {
+              let err115 = {
+                instancePath: instancePath + "/tone/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              };
+              vErrors.push(err115), errors++;
+            }
+          } else {
+            let err116 = {
+              instancePath: instancePath + "/tone/mode",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            };
+            vErrors.push(err116), errors++;
+          }
+          var valid40 = _errs107 === errors;
+        } else valid40 = !0;
+        if (valid40 && void 0 !== data24.level) {
+          let data26 = data24.level;
+          if (errors == errors) if ("number" == typeof data26 && isFinite(data26)) {
+            if (data26 > 34028234663852886e22 || isNaN(data26)) {
+              let err117 = {
+                instancePath: instancePath + "/tone/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 34028234663852886e22
+                }
+              };
+              vErrors.push(err117), errors++;
+            } else if (data26 < -34028234663852886e22 || isNaN(data26)) {
+              let err118 = {
+                instancePath: instancePath + "/tone/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: -34028234663852886e22
+                }
+              };
+              vErrors.push(err118), errors++;
+            }
+          } else {
+            let err119 = {
+              instancePath: instancePath + "/tone/level",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            };
+            vErrors.push(err119), errors++;
+          }
+        }
+      }
+    } else {
+      let err120 = {
+        instancePath: instancePath + "/tone",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+        keyword: "type",
+        params: {
+          type: "object"
+        }
+      };
+      vErrors.push(err120), errors++;
+    }
+    var _valid7;
+    if ((_valid7 = _errs104 === errors) && valid39 ? (valid39 = !1, passing6 = [ passing6, 1 ]) : _valid7 && (valid39 = !0,
+    passing6 = 1), valid39) errors = _errs101, vErrors.length = _errs101; else {
+      let err121 = {
+        instancePath: instancePath + "/tone",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+        keyword: "oneOf",
+        params: {
+          passingSchemas: passing6
+        }
+      };
+      vErrors.push(err121), errors++;
+    }
+  }
+  _valid0 = _errs98 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).tone = !0);
+  let _errs111 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.defog) {
+    let err122 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/13/required",
+      keyword: "required",
+      params: {
+        missingProperty: "defog"
+      }
+    };
+    vErrors.push(err122), errors++;
+  } else if (void 0 !== data.defog) {
+    let data27 = data.defog, _errs114 = errors, valid44 = !1, passing7 = null, _errs115 = errors;
+    if (errors === _errs115) if ("number" == typeof data27 && isFinite(data27)) {
+      if (data27 > 34028234663852886e22 || isNaN(data27)) {
+        let err123 = {
+          instancePath: instancePath + "/defog",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+          keyword: "maximum",
+          params: {
+            comparison: "<=",
+            limit: 34028234663852886e22
+          }
+        };
+        vErrors.push(err123), errors++;
+      } else if (data27 < -34028234663852886e22 || isNaN(data27)) {
+        let err124 = {
+          instancePath: instancePath + "/defog",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: -34028234663852886e22
+          }
+        };
+        vErrors.push(err124), errors++;
+      }
+    } else {
+      let err125 = {
+        instancePath: instancePath + "/defog",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+        keyword: "type",
+        params: {
+          type: "number"
+        }
+      };
+      vErrors.push(err125), errors++;
+    }
+    _errs115 === errors && (valid44 = !0, passing7 = 0);
+    let _errs117 = errors;
+    if (errors === _errs117) if (data27 && "object" == typeof data27 && !Array.isArray(data27)) if (Object.keys(data27).length < 1) {
+      let err126 = {
+        instancePath: instancePath + "/defog",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+        keyword: "minProperties",
+        params: {
+          limit: 1
+        }
+      };
+      vErrors.push(err126), errors++;
+    } else {
+      let _errs119 = errors;
+      for (let key7 in data27) if ("mode" !== key7 && "level" !== key7) {
+        let err127 = {
+          instancePath: instancePath + "/defog",
+          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+          keyword: "additionalProperties",
+          params: {
+            additionalProperty: key7
+          }
+        };
+        vErrors.push(err127), errors++;
+        break;
+      }
+      if (_errs119 === errors) {
+        if (void 0 !== data27.mode) {
+          let data28 = data27.mode, _errs120 = errors;
+          if (errors === _errs120) if ("string" == typeof data28) {
+            if (func1(data28) > 31) {
+              let err128 = {
+                instancePath: instancePath + "/defog/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 31
+                }
+              };
+              vErrors.push(err128), errors++;
+            } else if (func1(data28) < 1) {
+              let err129 = {
+                instancePath: instancePath + "/defog/mode",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              };
+              vErrors.push(err129), errors++;
+            }
+          } else {
+            let err130 = {
+              instancePath: instancePath + "/defog/mode",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            };
+            vErrors.push(err130), errors++;
+          }
+          var valid45 = _errs120 === errors;
+        } else valid45 = !0;
+        if (valid45 && void 0 !== data27.level) {
+          let data29 = data27.level;
+          if (errors == errors) if ("number" == typeof data29 && isFinite(data29)) {
+            if (data29 > 34028234663852886e22 || isNaN(data29)) {
+              let err131 = {
+                instancePath: instancePath + "/defog/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 34028234663852886e22
+                }
+              };
+              vErrors.push(err131), errors++;
+            } else if (data29 < -34028234663852886e22 || isNaN(data29)) {
+              let err132 = {
+                instancePath: instancePath + "/defog/level",
+                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: -34028234663852886e22
+                }
+              };
+              vErrors.push(err132), errors++;
+            }
+          } else {
+            let err133 = {
+              instancePath: instancePath + "/defog/level",
+              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            };
+            vErrors.push(err133), errors++;
+          }
+        }
+      }
+    } else {
+      let err134 = {
+        instancePath: instancePath + "/defog",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+        keyword: "type",
+        params: {
+          type: "object"
+        }
+      };
+      vErrors.push(err134), errors++;
+    }
+    var _valid8;
+    if ((_valid8 = _errs117 === errors) && valid44 ? (valid44 = !1, passing7 = [ passing7, 1 ]) : _valid8 && (valid44 = !0,
+    passing7 = 1), valid44) errors = _errs114, vErrors.length = _errs114; else {
+      let err135 = {
+        instancePath: instancePath + "/defog",
+        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+        keyword: "oneOf",
+        params: {
+          passingSchemas: passing7
+        }
+      };
+      vErrors.push(err135), errors++;
+    }
+  }
+  _valid0 = _errs111 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).defog = !0);
+  let _errs124 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.ir_cut_filter) {
+    let err136 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/14/required",
+      keyword: "required",
+      params: {
+        missingProperty: "ir_cut_filter"
+      }
+    };
+    vErrors.push(err136), errors++;
+  } else if (void 0 !== data.ir_cut_filter) {
+    let data30 = data.ir_cut_filter;
+    if (errors == errors) if ("string" == typeof data30) {
+      if (func1(data30) > 15) {
+        let err137 = {
+          instancePath: instancePath + "/ir_cut_filter",
+          schemaPath: "#/anyOf/14/properties/ir_cut_filter/maxLength",
+          keyword: "maxLength",
+          params: {
+            limit: 15
+          }
+        };
+        vErrors.push(err137), errors++;
+      } else if (func1(data30) < 1) {
+        let err138 = {
+          instancePath: instancePath + "/ir_cut_filter",
+          schemaPath: "#/anyOf/14/properties/ir_cut_filter/minLength",
+          keyword: "minLength",
+          params: {
+            limit: 1
+          }
+        };
+        vErrors.push(err138), errors++;
+      }
+    } else {
+      let err139 = {
+        instancePath: instancePath + "/ir_cut_filter",
+        schemaPath: "#/anyOf/14/properties/ir_cut_filter/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      };
+      vErrors.push(err139), errors++;
+    }
+  }
+  _valid0 = _errs124 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).ir_cut_filter = !0);
+  let _errs127 = errors;
+  if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.ircut) {
+    let err140 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf/15/required",
+      keyword: "required",
+      params: {
+        missingProperty: "ircut"
+      }
+    };
+    vErrors.push(err140), errors++;
+  } else if (void 0 !== data.ircut) {
+    let data31 = data.ircut;
+    if (errors == errors) if ("string" == typeof data31) {
+      if (func1(data31) > 15) {
+        let err141 = {
+          instancePath: instancePath + "/ircut",
+          schemaPath: "#/anyOf/15/properties/ircut/maxLength",
+          keyword: "maxLength",
+          params: {
+            limit: 15
+          }
+        };
+        vErrors.push(err141), errors++;
+      } else if (func1(data31) < 1) {
+        let err142 = {
+          instancePath: instancePath + "/ircut",
+          schemaPath: "#/anyOf/15/properties/ircut/minLength",
+          keyword: "minLength",
+          params: {
+            limit: 1
+          }
+        };
+        vErrors.push(err142), errors++;
+      }
+    } else {
+      let err143 = {
+        instancePath: instancePath + "/ircut",
+        schemaPath: "#/anyOf/15/properties/ircut/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      };
+      vErrors.push(err143), errors++;
+    }
+  }
+  if (_valid0 = _errs127 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).ircut = !0),
+  !valid0) {
+    let err144 = {
+      instancePath: instancePath,
+      schemaPath: "#/anyOf",
+      keyword: "anyOf",
+      params: {}
+    };
+    return vErrors.push(err144), errors++, validate197.errors = vErrors, !1;
+  }
+  if (errors = _errs1, vErrors.length = _errs1, 0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate197.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (Object.keys(data).length < 1) return validate197.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/minProperties",
+      keyword: "minProperties",
+      params: {
+        limit: 1
+      }
+    } ], !1;
+    {
+      let _errs130 = errors;
+      for (let key8 in data) if (!func5.call(schema211.properties, key8)) return validate197.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key8
+        }
+      } ], !1;
+      if (_errs130 === errors) {
+        if (void 0 !== data.brightness) {
+          let data32 = data.brightness, _errs131 = errors;
+          if (errors === _errs131) {
+            if ("number" != typeof data32 || !isFinite(data32)) return validate197.errors = [ {
+              instancePath: instancePath + "/brightness",
+              schemaPath: "#/properties/brightness/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            } ], !1;
+            if (data32 > 34028234663852886e22 || isNaN(data32)) return validate197.errors = [ {
+              instancePath: instancePath + "/brightness",
+              schemaPath: "#/properties/brightness/maximum",
+              keyword: "maximum",
+              params: {
+                comparison: "<=",
+                limit: 34028234663852886e22
+              }
+            } ], !1;
+            if (data32 < -34028234663852886e22 || isNaN(data32)) return validate197.errors = [ {
+              instancePath: instancePath + "/brightness",
+              schemaPath: "#/properties/brightness/minimum",
+              keyword: "minimum",
+              params: {
+                comparison: ">=",
+                limit: -34028234663852886e22
+              }
+            } ], !1;
+          }
+          var valid49 = _errs131 === errors;
+        } else valid49 = !0;
+        if (valid49) {
+          if (void 0 !== data.color_saturation) {
+            let data33 = data.color_saturation, _errs133 = errors;
+            if (errors === _errs133) {
+              if ("number" != typeof data33 || !isFinite(data33)) return validate197.errors = [ {
+                instancePath: instancePath + "/color_saturation",
+                schemaPath: "#/properties/color_saturation/type",
+                keyword: "type",
+                params: {
+                  type: "number"
+                }
+              } ], !1;
+              if (data33 > 34028234663852886e22 || isNaN(data33)) return validate197.errors = [ {
+                instancePath: instancePath + "/color_saturation",
+                schemaPath: "#/properties/color_saturation/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 34028234663852886e22
+                }
+              } ], !1;
+              if (data33 < -34028234663852886e22 || isNaN(data33)) return validate197.errors = [ {
+                instancePath: instancePath + "/color_saturation",
+                schemaPath: "#/properties/color_saturation/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: -34028234663852886e22
+                }
+              } ], !1;
+            }
+            var valid50 = _errs133 === errors;
+          } else valid50 = !0;
+          if (valid50) {
+            if (void 0 !== data.contrast) {
+              let data34 = data.contrast, _errs135 = errors;
+              if (errors === _errs135) {
+                if ("number" != typeof data34 || !isFinite(data34)) return validate197.errors = [ {
+                  instancePath: instancePath + "/contrast",
+                  schemaPath: "#/properties/contrast/type",
+                  keyword: "type",
+                  params: {
+                    type: "number"
+                  }
+                } ], !1;
+                if (data34 > 34028234663852886e22 || isNaN(data34)) return validate197.errors = [ {
+                  instancePath: instancePath + "/contrast",
+                  schemaPath: "#/properties/contrast/maximum",
+                  keyword: "maximum",
+                  params: {
+                    comparison: "<=",
+                    limit: 34028234663852886e22
+                  }
+                } ], !1;
+                if (data34 < -34028234663852886e22 || isNaN(data34)) return validate197.errors = [ {
+                  instancePath: instancePath + "/contrast",
+                  schemaPath: "#/properties/contrast/minimum",
+                  keyword: "minimum",
+                  params: {
+                    comparison: ">=",
+                    limit: -34028234663852886e22
+                  }
+                } ], !1;
+              }
+              var valid51 = _errs135 === errors;
+            } else valid51 = !0;
+            if (valid51) {
+              if (void 0 !== data.sharpness) {
+                let data35 = data.sharpness, _errs137 = errors;
+                if (errors === _errs137) {
+                  if ("number" != typeof data35 || !isFinite(data35)) return validate197.errors = [ {
+                    instancePath: instancePath + "/sharpness",
+                    schemaPath: "#/properties/sharpness/type",
+                    keyword: "type",
+                    params: {
+                      type: "number"
+                    }
+                  } ], !1;
+                  if (data35 > 34028234663852886e22 || isNaN(data35)) return validate197.errors = [ {
+                    instancePath: instancePath + "/sharpness",
+                    schemaPath: "#/properties/sharpness/maximum",
+                    keyword: "maximum",
+                    params: {
+                      comparison: "<=",
+                      limit: 34028234663852886e22
+                    }
+                  } ], !1;
+                  if (data35 < -34028234663852886e22 || isNaN(data35)) return validate197.errors = [ {
+                    instancePath: instancePath + "/sharpness",
+                    schemaPath: "#/properties/sharpness/minimum",
+                    keyword: "minimum",
+                    params: {
+                      comparison: ">=",
+                      limit: -34028234663852886e22
+                    }
+                  } ], !1;
+                }
+                var valid52 = _errs137 === errors;
+              } else valid52 = !0;
+              if (valid52) {
+                if (void 0 !== data.noise_reduction) {
+                  let data36 = data.noise_reduction, _errs139 = errors;
+                  if (errors === _errs139) {
+                    if ("number" != typeof data36 || !isFinite(data36)) return validate197.errors = [ {
+                      instancePath: instancePath + "/noise_reduction",
+                      schemaPath: "#/properties/noise_reduction/type",
+                      keyword: "type",
+                      params: {
+                        type: "number"
+                      }
+                    } ], !1;
+                    if (data36 > 34028234663852886e22 || isNaN(data36)) return validate197.errors = [ {
+                      instancePath: instancePath + "/noise_reduction",
+                      schemaPath: "#/properties/noise_reduction/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 34028234663852886e22
+                      }
+                    } ], !1;
+                    if (data36 < -34028234663852886e22 || isNaN(data36)) return validate197.errors = [ {
+                      instancePath: instancePath + "/noise_reduction",
+                      schemaPath: "#/properties/noise_reduction/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: -34028234663852886e22
+                      }
+                    } ], !1;
+                  }
+                  var valid53 = _errs139 === errors;
+                } else valid53 = !0;
+                if (valid53) {
+                  if (void 0 !== data.saturation) {
+                    let data37 = data.saturation, _errs141 = errors;
+                    if (errors === _errs141) {
+                      if ("number" != typeof data37 || !isFinite(data37)) return validate197.errors = [ {
+                        instancePath: instancePath + "/saturation",
+                        schemaPath: "#/properties/saturation/type",
+                        keyword: "type",
+                        params: {
+                          type: "number"
+                        }
+                      } ], !1;
+                      if (data37 > 34028234663852886e22 || isNaN(data37)) return validate197.errors = [ {
+                        instancePath: instancePath + "/saturation",
+                        schemaPath: "#/properties/saturation/maximum",
+                        keyword: "maximum",
+                        params: {
+                          comparison: "<=",
+                          limit: 34028234663852886e22
+                        }
+                      } ], !1;
+                      if (data37 < -34028234663852886e22 || isNaN(data37)) return validate197.errors = [ {
+                        instancePath: instancePath + "/saturation",
+                        schemaPath: "#/properties/saturation/minimum",
+                        keyword: "minimum",
+                        params: {
+                          comparison: ">=",
+                          limit: -34028234663852886e22
+                        }
+                      } ], !1;
+                    }
+                    var valid54 = _errs141 === errors;
+                  } else valid54 = !0;
+                  if (valid54) {
+                    if (void 0 !== data.backlight_compensation) {
+                      let data38 = data.backlight_compensation, _errs143 = errors, _errs145 = errors, valid57 = !1, passing8 = null, _errs146 = errors;
+                      if (errors === _errs146) if ("number" == typeof data38 && isFinite(data38)) {
+                        if (data38 > 34028234663852886e22 || isNaN(data38)) {
+                          let err145 = {
+                            instancePath: instancePath + "/backlight_compensation",
+                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+                            keyword: "maximum",
+                            params: {
+                              comparison: "<=",
+                              limit: 34028234663852886e22
+                            }
+                          };
+                          vErrors.push(err145), errors++;
+                        } else if (data38 < -34028234663852886e22 || isNaN(data38)) {
+                          let err146 = {
+                            instancePath: instancePath + "/backlight_compensation",
+                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+                            keyword: "minimum",
+                            params: {
+                              comparison: ">=",
+                              limit: -34028234663852886e22
+                            }
+                          };
+                          vErrors.push(err146), errors++;
+                        }
+                      } else {
+                        let err147 = {
+                          instancePath: instancePath + "/backlight_compensation",
+                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+                          keyword: "type",
+                          params: {
+                            type: "number"
+                          }
+                        };
+                        vErrors.push(err147), errors++;
+                      }
+                      _errs146 === errors && (valid57 = !0, passing8 = 0);
+                      let _errs148 = errors;
+                      if (errors === _errs148) if (data38 && "object" == typeof data38 && !Array.isArray(data38)) if (Object.keys(data38).length < 1) {
+                        let err148 = {
+                          instancePath: instancePath + "/backlight_compensation",
+                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+                          keyword: "minProperties",
+                          params: {
+                            limit: 1
+                          }
+                        };
+                        vErrors.push(err148), errors++;
+                      } else {
+                        let _errs150 = errors;
+                        for (let key9 in data38) if ("mode" !== key9 && "level" !== key9) {
+                          let err149 = {
+                            instancePath: instancePath + "/backlight_compensation",
+                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+                            keyword: "additionalProperties",
+                            params: {
+                              additionalProperty: key9
+                            }
+                          };
+                          vErrors.push(err149), errors++;
+                          break;
+                        }
+                        if (_errs150 === errors) {
+                          if (void 0 !== data38.mode) {
+                            let data39 = data38.mode, _errs151 = errors;
+                            if (errors === _errs151) if ("string" == typeof data39) {
+                              if (func1(data39) > 31) {
+                                let err150 = {
+                                  instancePath: instancePath + "/backlight_compensation/mode",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                                  keyword: "maxLength",
+                                  params: {
+                                    limit: 31
+                                  }
+                                };
+                                vErrors.push(err150), errors++;
+                              } else if (func1(data39) < 1) {
+                                let err151 = {
+                                  instancePath: instancePath + "/backlight_compensation/mode",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                                  keyword: "minLength",
+                                  params: {
+                                    limit: 1
+                                  }
+                                };
+                                vErrors.push(err151), errors++;
+                              }
+                            } else {
+                              let err152 = {
+                                instancePath: instancePath + "/backlight_compensation/mode",
+                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              };
+                              vErrors.push(err152), errors++;
+                            }
+                            var valid58 = _errs151 === errors;
+                          } else valid58 = !0;
+                          if (valid58 && void 0 !== data38.level) {
+                            let data40 = data38.level;
+                            if (errors == errors) if ("number" == typeof data40 && isFinite(data40)) {
+                              if (data40 > 34028234663852886e22 || isNaN(data40)) {
+                                let err153 = {
+                                  instancePath: instancePath + "/backlight_compensation/level",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                                  keyword: "maximum",
+                                  params: {
+                                    comparison: "<=",
+                                    limit: 34028234663852886e22
+                                  }
+                                };
+                                vErrors.push(err153), errors++;
+                              } else if (data40 < -34028234663852886e22 || isNaN(data40)) {
+                                let err154 = {
+                                  instancePath: instancePath + "/backlight_compensation/level",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: -34028234663852886e22
+                                  }
+                                };
+                                vErrors.push(err154), errors++;
+                              }
+                            } else {
+                              let err155 = {
+                                instancePath: instancePath + "/backlight_compensation/level",
+                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+                                keyword: "type",
+                                params: {
+                                  type: "number"
+                                }
+                              };
+                              vErrors.push(err155), errors++;
+                            }
+                          }
+                        }
+                      } else {
+                        let err156 = {
+                          instancePath: instancePath + "/backlight_compensation",
+                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+                          keyword: "type",
+                          params: {
+                            type: "object"
+                          }
+                        };
+                        vErrors.push(err156), errors++;
+                      }
+                      var _valid9;
+                      if ((_valid9 = _errs148 === errors) && valid57 ? (valid57 = !1, passing8 = [ passing8, 1 ]) : _valid9 && (valid57 = !0,
+                      passing8 = 1), !valid57) {
+                        let err157 = {
+                          instancePath: instancePath + "/backlight_compensation",
+                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+                          keyword: "oneOf",
+                          params: {
+                            passingSchemas: passing8
+                          }
+                        };
+                        return vErrors.push(err157), errors++, validate197.errors = vErrors, !1;
+                      }
+                      errors = _errs145, vErrors.length = _errs145;
+                      var valid55 = _errs143 === errors;
+                    } else valid55 = !0;
+                    if (valid55) {
+                      if (void 0 !== data.wide_dynamic_range) {
+                        let data41 = data.wide_dynamic_range, _errs155 = errors, _errs157 = errors, valid62 = !1, passing9 = null, _errs158 = errors;
+                        if (errors === _errs158) if ("number" == typeof data41 && isFinite(data41)) {
+                          if (data41 > 34028234663852886e22 || isNaN(data41)) {
+                            let err158 = {
+                              instancePath: instancePath + "/wide_dynamic_range",
+                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+                              keyword: "maximum",
+                              params: {
+                                comparison: "<=",
+                                limit: 34028234663852886e22
+                              }
+                            };
+                            vErrors.push(err158), errors++;
+                          } else if (data41 < -34028234663852886e22 || isNaN(data41)) {
+                            let err159 = {
+                              instancePath: instancePath + "/wide_dynamic_range",
+                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+                              keyword: "minimum",
+                              params: {
+                                comparison: ">=",
+                                limit: -34028234663852886e22
+                              }
+                            };
+                            vErrors.push(err159), errors++;
+                          }
+                        } else {
+                          let err160 = {
+                            instancePath: instancePath + "/wide_dynamic_range",
+                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+                            keyword: "type",
+                            params: {
+                              type: "number"
+                            }
+                          };
+                          vErrors.push(err160), errors++;
+                        }
+                        _errs158 === errors && (valid62 = !0, passing9 = 0);
+                        let _errs160 = errors;
+                        if (errors === _errs160) if (data41 && "object" == typeof data41 && !Array.isArray(data41)) if (Object.keys(data41).length < 1) {
+                          let err161 = {
+                            instancePath: instancePath + "/wide_dynamic_range",
+                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+                            keyword: "minProperties",
+                            params: {
+                              limit: 1
+                            }
+                          };
+                          vErrors.push(err161), errors++;
+                        } else {
+                          let _errs162 = errors;
+                          for (let key10 in data41) if ("mode" !== key10 && "level" !== key10) {
+                            let err162 = {
+                              instancePath: instancePath + "/wide_dynamic_range",
+                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+                              keyword: "additionalProperties",
+                              params: {
+                                additionalProperty: key10
+                              }
+                            };
+                            vErrors.push(err162), errors++;
+                            break;
+                          }
+                          if (_errs162 === errors) {
+                            if (void 0 !== data41.mode) {
+                              let data42 = data41.mode, _errs163 = errors;
+                              if (errors === _errs163) if ("string" == typeof data42) {
+                                if (func1(data42) > 31) {
+                                  let err163 = {
+                                    instancePath: instancePath + "/wide_dynamic_range/mode",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                                    keyword: "maxLength",
+                                    params: {
+                                      limit: 31
+                                    }
+                                  };
+                                  vErrors.push(err163), errors++;
+                                } else if (func1(data42) < 1) {
+                                  let err164 = {
+                                    instancePath: instancePath + "/wide_dynamic_range/mode",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                                    keyword: "minLength",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  };
+                                  vErrors.push(err164), errors++;
+                                }
+                              } else {
+                                let err165 = {
+                                  instancePath: instancePath + "/wide_dynamic_range/mode",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                };
+                                vErrors.push(err165), errors++;
+                              }
+                              var valid63 = _errs163 === errors;
+                            } else valid63 = !0;
+                            if (valid63 && void 0 !== data41.level) {
+                              let data43 = data41.level;
+                              if (errors == errors) if ("number" == typeof data43 && isFinite(data43)) {
+                                if (data43 > 34028234663852886e22 || isNaN(data43)) {
+                                  let err166 = {
+                                    instancePath: instancePath + "/wide_dynamic_range/level",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                                    keyword: "maximum",
+                                    params: {
+                                      comparison: "<=",
+                                      limit: 34028234663852886e22
+                                    }
+                                  };
+                                  vErrors.push(err166), errors++;
+                                } else if (data43 < -34028234663852886e22 || isNaN(data43)) {
+                                  let err167 = {
+                                    instancePath: instancePath + "/wide_dynamic_range/level",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                                    keyword: "minimum",
+                                    params: {
+                                      comparison: ">=",
+                                      limit: -34028234663852886e22
+                                    }
+                                  };
+                                  vErrors.push(err167), errors++;
+                                }
+                              } else {
+                                let err168 = {
+                                  instancePath: instancePath + "/wide_dynamic_range/level",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "number"
+                                  }
+                                };
+                                vErrors.push(err168), errors++;
+                              }
+                            }
+                          }
+                        } else {
+                          let err169 = {
+                            instancePath: instancePath + "/wide_dynamic_range",
+                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+                            keyword: "type",
+                            params: {
+                              type: "object"
+                            }
+                          };
+                          vErrors.push(err169), errors++;
+                        }
+                        var _valid10;
+                        if ((_valid10 = _errs160 === errors) && valid62 ? (valid62 = !1, passing9 = [ passing9, 1 ]) : _valid10 && (valid62 = !0,
+                        passing9 = 1), !valid62) {
+                          let err170 = {
+                            instancePath: instancePath + "/wide_dynamic_range",
+                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+                            keyword: "oneOf",
+                            params: {
+                              passingSchemas: passing9
+                            }
+                          };
+                          return vErrors.push(err170), errors++, validate197.errors = vErrors, !1;
+                        }
+                        errors = _errs157, vErrors.length = _errs157;
+                        var valid60 = _errs155 === errors;
+                      } else valid60 = !0;
+                      if (valid60) {
+                        if (void 0 !== data.tone_compensation) {
+                          let data44 = data.tone_compensation, _errs167 = errors, _errs169 = errors, valid67 = !1, passing10 = null, _errs170 = errors;
+                          if (errors === _errs170) if ("number" == typeof data44 && isFinite(data44)) {
+                            if (data44 > 34028234663852886e22 || isNaN(data44)) {
+                              let err171 = {
+                                instancePath: instancePath + "/tone_compensation",
+                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+                                keyword: "maximum",
+                                params: {
+                                  comparison: "<=",
+                                  limit: 34028234663852886e22
+                                }
+                              };
+                              vErrors.push(err171), errors++;
+                            } else if (data44 < -34028234663852886e22 || isNaN(data44)) {
+                              let err172 = {
+                                instancePath: instancePath + "/tone_compensation",
+                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+                                keyword: "minimum",
+                                params: {
+                                  comparison: ">=",
+                                  limit: -34028234663852886e22
+                                }
+                              };
+                              vErrors.push(err172), errors++;
+                            }
+                          } else {
+                            let err173 = {
+                              instancePath: instancePath + "/tone_compensation",
+                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+                              keyword: "type",
+                              params: {
+                                type: "number"
+                              }
+                            };
+                            vErrors.push(err173), errors++;
+                          }
+                          _errs170 === errors && (valid67 = !0, passing10 = 0);
+                          let _errs172 = errors;
+                          if (errors === _errs172) if (data44 && "object" == typeof data44 && !Array.isArray(data44)) if (Object.keys(data44).length < 1) {
+                            let err174 = {
+                              instancePath: instancePath + "/tone_compensation",
+                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+                              keyword: "minProperties",
+                              params: {
+                                limit: 1
+                              }
+                            };
+                            vErrors.push(err174), errors++;
+                          } else {
+                            let _errs174 = errors;
+                            for (let key11 in data44) if ("mode" !== key11 && "level" !== key11) {
+                              let err175 = {
+                                instancePath: instancePath + "/tone_compensation",
+                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+                                keyword: "additionalProperties",
+                                params: {
+                                  additionalProperty: key11
+                                }
+                              };
+                              vErrors.push(err175), errors++;
+                              break;
+                            }
+                            if (_errs174 === errors) {
+                              if (void 0 !== data44.mode) {
+                                let data45 = data44.mode, _errs175 = errors;
+                                if (errors === _errs175) if ("string" == typeof data45) {
+                                  if (func1(data45) > 31) {
+                                    let err176 = {
+                                      instancePath: instancePath + "/tone_compensation/mode",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                                      keyword: "maxLength",
+                                      params: {
+                                        limit: 31
+                                      }
+                                    };
+                                    vErrors.push(err176), errors++;
+                                  } else if (func1(data45) < 1) {
+                                    let err177 = {
+                                      instancePath: instancePath + "/tone_compensation/mode",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                                      keyword: "minLength",
+                                      params: {
+                                        limit: 1
+                                      }
+                                    };
+                                    vErrors.push(err177), errors++;
+                                  }
+                                } else {
+                                  let err178 = {
+                                    instancePath: instancePath + "/tone_compensation/mode",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  };
+                                  vErrors.push(err178), errors++;
+                                }
+                                var valid68 = _errs175 === errors;
+                              } else valid68 = !0;
+                              if (valid68 && void 0 !== data44.level) {
+                                let data46 = data44.level;
+                                if (errors == errors) if ("number" == typeof data46 && isFinite(data46)) {
+                                  if (data46 > 34028234663852886e22 || isNaN(data46)) {
+                                    let err179 = {
+                                      instancePath: instancePath + "/tone_compensation/level",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 34028234663852886e22
+                                      }
+                                    };
+                                    vErrors.push(err179), errors++;
+                                  } else if (data46 < -34028234663852886e22 || isNaN(data46)) {
+                                    let err180 = {
+                                      instancePath: instancePath + "/tone_compensation/level",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: -34028234663852886e22
+                                      }
+                                    };
+                                    vErrors.push(err180), errors++;
+                                  }
+                                } else {
+                                  let err181 = {
+                                    instancePath: instancePath + "/tone_compensation/level",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "number"
+                                    }
+                                  };
+                                  vErrors.push(err181), errors++;
+                                }
+                              }
+                            }
+                          } else {
+                            let err182 = {
+                              instancePath: instancePath + "/tone_compensation",
+                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+                              keyword: "type",
+                              params: {
+                                type: "object"
+                              }
+                            };
+                            vErrors.push(err182), errors++;
+                          }
+                          var _valid11;
+                          if ((_valid11 = _errs172 === errors) && valid67 ? (valid67 = !1, passing10 = [ passing10, 1 ]) : _valid11 && (valid67 = !0,
+                          passing10 = 1), !valid67) {
+                            let err183 = {
+                              instancePath: instancePath + "/tone_compensation",
+                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+                              keyword: "oneOf",
+                              params: {
+                                passingSchemas: passing10
+                              }
+                            };
+                            return vErrors.push(err183), errors++, validate197.errors = vErrors, !1;
+                          }
+                          errors = _errs169, vErrors.length = _errs169;
+                          var valid65 = _errs167 === errors;
+                        } else valid65 = !0;
+                        if (valid65) {
+                          if (void 0 !== data.defogging) {
+                            let data47 = data.defogging, _errs179 = errors, _errs181 = errors, valid72 = !1, passing11 = null, _errs182 = errors;
+                            if (errors === _errs182) if ("number" == typeof data47 && isFinite(data47)) {
+                              if (data47 > 34028234663852886e22 || isNaN(data47)) {
+                                let err184 = {
+                                  instancePath: instancePath + "/defogging",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+                                  keyword: "maximum",
+                                  params: {
+                                    comparison: "<=",
+                                    limit: 34028234663852886e22
+                                  }
+                                };
+                                vErrors.push(err184), errors++;
+                              } else if (data47 < -34028234663852886e22 || isNaN(data47)) {
+                                let err185 = {
+                                  instancePath: instancePath + "/defogging",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: -34028234663852886e22
+                                  }
+                                };
+                                vErrors.push(err185), errors++;
+                              }
+                            } else {
+                              let err186 = {
+                                instancePath: instancePath + "/defogging",
+                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+                                keyword: "type",
+                                params: {
+                                  type: "number"
+                                }
+                              };
+                              vErrors.push(err186), errors++;
+                            }
+                            _errs182 === errors && (valid72 = !0, passing11 = 0);
+                            let _errs184 = errors;
+                            if (errors === _errs184) if (data47 && "object" == typeof data47 && !Array.isArray(data47)) if (Object.keys(data47).length < 1) {
+                              let err187 = {
+                                instancePath: instancePath + "/defogging",
+                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+                                keyword: "minProperties",
+                                params: {
+                                  limit: 1
+                                }
+                              };
+                              vErrors.push(err187), errors++;
+                            } else {
+                              let _errs186 = errors;
+                              for (let key12 in data47) if ("mode" !== key12 && "level" !== key12) {
+                                let err188 = {
+                                  instancePath: instancePath + "/defogging",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+                                  keyword: "additionalProperties",
+                                  params: {
+                                    additionalProperty: key12
+                                  }
+                                };
+                                vErrors.push(err188), errors++;
+                                break;
+                              }
+                              if (_errs186 === errors) {
+                                if (void 0 !== data47.mode) {
+                                  let data48 = data47.mode, _errs187 = errors;
+                                  if (errors === _errs187) if ("string" == typeof data48) {
+                                    if (func1(data48) > 31) {
+                                      let err189 = {
+                                        instancePath: instancePath + "/defogging/mode",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                                        keyword: "maxLength",
+                                        params: {
+                                          limit: 31
+                                        }
+                                      };
+                                      vErrors.push(err189), errors++;
+                                    } else if (func1(data48) < 1) {
+                                      let err190 = {
+                                        instancePath: instancePath + "/defogging/mode",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                                        keyword: "minLength",
+                                        params: {
+                                          limit: 1
+                                        }
+                                      };
+                                      vErrors.push(err190), errors++;
+                                    }
+                                  } else {
+                                    let err191 = {
+                                      instancePath: instancePath + "/defogging/mode",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    };
+                                    vErrors.push(err191), errors++;
+                                  }
+                                  var valid73 = _errs187 === errors;
+                                } else valid73 = !0;
+                                if (valid73 && void 0 !== data47.level) {
+                                  let data49 = data47.level;
+                                  if (errors == errors) if ("number" == typeof data49 && isFinite(data49)) {
+                                    if (data49 > 34028234663852886e22 || isNaN(data49)) {
+                                      let err192 = {
+                                        instancePath: instancePath + "/defogging/level",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 34028234663852886e22
+                                        }
+                                      };
+                                      vErrors.push(err192), errors++;
+                                    } else if (data49 < -34028234663852886e22 || isNaN(data49)) {
+                                      let err193 = {
+                                        instancePath: instancePath + "/defogging/level",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: -34028234663852886e22
+                                        }
+                                      };
+                                      vErrors.push(err193), errors++;
+                                    }
+                                  } else {
+                                    let err194 = {
+                                      instancePath: instancePath + "/defogging/level",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "number"
+                                      }
+                                    };
+                                    vErrors.push(err194), errors++;
+                                  }
+                                }
+                              }
+                            } else {
+                              let err195 = {
+                                instancePath: instancePath + "/defogging",
+                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+                                keyword: "type",
+                                params: {
+                                  type: "object"
+                                }
+                              };
+                              vErrors.push(err195), errors++;
+                            }
+                            var _valid12;
+                            if ((_valid12 = _errs184 === errors) && valid72 ? (valid72 = !1, passing11 = [ passing11, 1 ]) : _valid12 && (valid72 = !0,
+                            passing11 = 1), !valid72) {
+                              let err196 = {
+                                instancePath: instancePath + "/defogging",
+                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+                                keyword: "oneOf",
+                                params: {
+                                  passingSchemas: passing11
+                                }
+                              };
+                              return vErrors.push(err196), errors++, validate197.errors = vErrors, !1;
+                            }
+                            errors = _errs181, vErrors.length = _errs181;
+                            var valid70 = _errs179 === errors;
+                          } else valid70 = !0;
+                          if (valid70) {
+                            if (void 0 !== data.backlight) {
+                              let data50 = data.backlight, _errs191 = errors, _errs193 = errors, valid77 = !1, passing12 = null, _errs194 = errors;
+                              if (errors === _errs194) if ("number" == typeof data50 && isFinite(data50)) {
+                                if (data50 > 34028234663852886e22 || isNaN(data50)) {
+                                  let err197 = {
+                                    instancePath: instancePath + "/backlight",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+                                    keyword: "maximum",
+                                    params: {
+                                      comparison: "<=",
+                                      limit: 34028234663852886e22
+                                    }
+                                  };
+                                  vErrors.push(err197), errors++;
+                                } else if (data50 < -34028234663852886e22 || isNaN(data50)) {
+                                  let err198 = {
+                                    instancePath: instancePath + "/backlight",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+                                    keyword: "minimum",
+                                    params: {
+                                      comparison: ">=",
+                                      limit: -34028234663852886e22
+                                    }
+                                  };
+                                  vErrors.push(err198), errors++;
+                                }
+                              } else {
+                                let err199 = {
+                                  instancePath: instancePath + "/backlight",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "number"
+                                  }
+                                };
+                                vErrors.push(err199), errors++;
+                              }
+                              _errs194 === errors && (valid77 = !0, passing12 = 0);
+                              let _errs196 = errors;
+                              if (errors === _errs196) if (data50 && "object" == typeof data50 && !Array.isArray(data50)) if (Object.keys(data50).length < 1) {
+                                let err200 = {
+                                  instancePath: instancePath + "/backlight",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+                                  keyword: "minProperties",
+                                  params: {
+                                    limit: 1
+                                  }
+                                };
+                                vErrors.push(err200), errors++;
+                              } else {
+                                let _errs198 = errors;
+                                for (let key13 in data50) if ("mode" !== key13 && "level" !== key13) {
+                                  let err201 = {
+                                    instancePath: instancePath + "/backlight",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+                                    keyword: "additionalProperties",
+                                    params: {
+                                      additionalProperty: key13
+                                    }
+                                  };
+                                  vErrors.push(err201), errors++;
+                                  break;
+                                }
+                                if (_errs198 === errors) {
+                                  if (void 0 !== data50.mode) {
+                                    let data51 = data50.mode, _errs199 = errors;
+                                    if (errors === _errs199) if ("string" == typeof data51) {
+                                      if (func1(data51) > 31) {
+                                        let err202 = {
+                                          instancePath: instancePath + "/backlight/mode",
+                                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                                          keyword: "maxLength",
+                                          params: {
+                                            limit: 31
+                                          }
+                                        };
+                                        vErrors.push(err202), errors++;
+                                      } else if (func1(data51) < 1) {
+                                        let err203 = {
+                                          instancePath: instancePath + "/backlight/mode",
+                                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                                          keyword: "minLength",
+                                          params: {
+                                            limit: 1
+                                          }
+                                        };
+                                        vErrors.push(err203), errors++;
+                                      }
+                                    } else {
+                                      let err204 = {
+                                        instancePath: instancePath + "/backlight/mode",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      };
+                                      vErrors.push(err204), errors++;
+                                    }
+                                    var valid78 = _errs199 === errors;
+                                  } else valid78 = !0;
+                                  if (valid78 && void 0 !== data50.level) {
+                                    let data52 = data50.level;
+                                    if (errors == errors) if ("number" == typeof data52 && isFinite(data52)) {
+                                      if (data52 > 34028234663852886e22 || isNaN(data52)) {
+                                        let err205 = {
+                                          instancePath: instancePath + "/backlight/level",
+                                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                                          keyword: "maximum",
+                                          params: {
+                                            comparison: "<=",
+                                            limit: 34028234663852886e22
+                                          }
+                                        };
+                                        vErrors.push(err205), errors++;
+                                      } else if (data52 < -34028234663852886e22 || isNaN(data52)) {
+                                        let err206 = {
+                                          instancePath: instancePath + "/backlight/level",
+                                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                                          keyword: "minimum",
+                                          params: {
+                                            comparison: ">=",
+                                            limit: -34028234663852886e22
+                                          }
+                                        };
+                                        vErrors.push(err206), errors++;
+                                      }
+                                    } else {
+                                      let err207 = {
+                                        instancePath: instancePath + "/backlight/level",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "number"
+                                        }
+                                      };
+                                      vErrors.push(err207), errors++;
+                                    }
+                                  }
+                                }
+                              } else {
+                                let err208 = {
+                                  instancePath: instancePath + "/backlight",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "object"
+                                  }
+                                };
+                                vErrors.push(err208), errors++;
+                              }
+                              var _valid13;
+                              if ((_valid13 = _errs196 === errors) && valid77 ? (valid77 = !1, passing12 = [ passing12, 1 ]) : _valid13 && (valid77 = !0,
+                              passing12 = 1), !valid77) {
+                                let err209 = {
+                                  instancePath: instancePath + "/backlight",
+                                  schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+                                  keyword: "oneOf",
+                                  params: {
+                                    passingSchemas: passing12
+                                  }
+                                };
+                                return vErrors.push(err209), errors++, validate197.errors = vErrors, !1;
+                              }
+                              errors = _errs193, vErrors.length = _errs193;
+                              var valid75 = _errs191 === errors;
+                            } else valid75 = !0;
+                            if (valid75) {
+                              if (void 0 !== data.wdr) {
+                                let data53 = data.wdr, _errs203 = errors, _errs205 = errors, valid82 = !1, passing13 = null, _errs206 = errors;
+                                if (errors === _errs206) if ("number" == typeof data53 && isFinite(data53)) {
+                                  if (data53 > 34028234663852886e22 || isNaN(data53)) {
+                                    let err210 = {
+                                      instancePath: instancePath + "/wdr",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 34028234663852886e22
+                                      }
+                                    };
+                                    vErrors.push(err210), errors++;
+                                  } else if (data53 < -34028234663852886e22 || isNaN(data53)) {
+                                    let err211 = {
+                                      instancePath: instancePath + "/wdr",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: -34028234663852886e22
+                                      }
+                                    };
+                                    vErrors.push(err211), errors++;
+                                  }
+                                } else {
+                                  let err212 = {
+                                    instancePath: instancePath + "/wdr",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "number"
+                                    }
+                                  };
+                                  vErrors.push(err212), errors++;
+                                }
+                                _errs206 === errors && (valid82 = !0, passing13 = 0);
+                                let _errs208 = errors;
+                                if (errors === _errs208) if (data53 && "object" == typeof data53 && !Array.isArray(data53)) if (Object.keys(data53).length < 1) {
+                                  let err213 = {
+                                    instancePath: instancePath + "/wdr",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+                                    keyword: "minProperties",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  };
+                                  vErrors.push(err213), errors++;
+                                } else {
+                                  let _errs210 = errors;
+                                  for (let key14 in data53) if ("mode" !== key14 && "level" !== key14) {
+                                    let err214 = {
+                                      instancePath: instancePath + "/wdr",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+                                      keyword: "additionalProperties",
+                                      params: {
+                                        additionalProperty: key14
+                                      }
+                                    };
+                                    vErrors.push(err214), errors++;
+                                    break;
+                                  }
+                                  if (_errs210 === errors) {
+                                    if (void 0 !== data53.mode) {
+                                      let data54 = data53.mode, _errs211 = errors;
+                                      if (errors === _errs211) if ("string" == typeof data54) {
+                                        if (func1(data54) > 31) {
+                                          let err215 = {
+                                            instancePath: instancePath + "/wdr/mode",
+                                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                                            keyword: "maxLength",
+                                            params: {
+                                              limit: 31
+                                            }
+                                          };
+                                          vErrors.push(err215), errors++;
+                                        } else if (func1(data54) < 1) {
+                                          let err216 = {
+                                            instancePath: instancePath + "/wdr/mode",
+                                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                                            keyword: "minLength",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          };
+                                          vErrors.push(err216), errors++;
+                                        }
+                                      } else {
+                                        let err217 = {
+                                          instancePath: instancePath + "/wdr/mode",
+                                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "string"
+                                          }
+                                        };
+                                        vErrors.push(err217), errors++;
+                                      }
+                                      var valid83 = _errs211 === errors;
+                                    } else valid83 = !0;
+                                    if (valid83 && void 0 !== data53.level) {
+                                      let data55 = data53.level;
+                                      if (errors == errors) if ("number" == typeof data55 && isFinite(data55)) {
+                                        if (data55 > 34028234663852886e22 || isNaN(data55)) {
+                                          let err218 = {
+                                            instancePath: instancePath + "/wdr/level",
+                                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                                            keyword: "maximum",
+                                            params: {
+                                              comparison: "<=",
+                                              limit: 34028234663852886e22
+                                            }
+                                          };
+                                          vErrors.push(err218), errors++;
+                                        } else if (data55 < -34028234663852886e22 || isNaN(data55)) {
+                                          let err219 = {
+                                            instancePath: instancePath + "/wdr/level",
+                                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                                            keyword: "minimum",
+                                            params: {
+                                              comparison: ">=",
+                                              limit: -34028234663852886e22
+                                            }
+                                          };
+                                          vErrors.push(err219), errors++;
+                                        }
+                                      } else {
+                                        let err220 = {
+                                          instancePath: instancePath + "/wdr/level",
+                                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "number"
+                                          }
+                                        };
+                                        vErrors.push(err220), errors++;
+                                      }
+                                    }
+                                  }
+                                } else {
+                                  let err221 = {
+                                    instancePath: instancePath + "/wdr",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "object"
+                                    }
+                                  };
+                                  vErrors.push(err221), errors++;
+                                }
+                                var _valid14;
+                                if ((_valid14 = _errs208 === errors) && valid82 ? (valid82 = !1, passing13 = [ passing13, 1 ]) : _valid14 && (valid82 = !0,
+                                passing13 = 1), !valid82) {
+                                  let err222 = {
+                                    instancePath: instancePath + "/wdr",
+                                    schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+                                    keyword: "oneOf",
+                                    params: {
+                                      passingSchemas: passing13
+                                    }
+                                  };
+                                  return vErrors.push(err222), errors++, validate197.errors = vErrors, !1;
+                                }
+                                errors = _errs205, vErrors.length = _errs205;
+                                var valid80 = _errs203 === errors;
+                              } else valid80 = !0;
+                              if (valid80) {
+                                if (void 0 !== data.tone) {
+                                  let data56 = data.tone, _errs215 = errors, _errs217 = errors, valid87 = !1, passing14 = null, _errs218 = errors;
+                                  if (errors === _errs218) if ("number" == typeof data56 && isFinite(data56)) {
+                                    if (data56 > 34028234663852886e22 || isNaN(data56)) {
+                                      let err223 = {
+                                        instancePath: instancePath + "/tone",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 34028234663852886e22
+                                        }
+                                      };
+                                      vErrors.push(err223), errors++;
+                                    } else if (data56 < -34028234663852886e22 || isNaN(data56)) {
+                                      let err224 = {
+                                        instancePath: instancePath + "/tone",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: -34028234663852886e22
+                                        }
+                                      };
+                                      vErrors.push(err224), errors++;
+                                    }
+                                  } else {
+                                    let err225 = {
+                                      instancePath: instancePath + "/tone",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "number"
+                                      }
+                                    };
+                                    vErrors.push(err225), errors++;
+                                  }
+                                  _errs218 === errors && (valid87 = !0, passing14 = 0);
+                                  let _errs220 = errors;
+                                  if (errors === _errs220) if (data56 && "object" == typeof data56 && !Array.isArray(data56)) if (Object.keys(data56).length < 1) {
+                                    let err226 = {
+                                      instancePath: instancePath + "/tone",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+                                      keyword: "minProperties",
+                                      params: {
+                                        limit: 1
+                                      }
+                                    };
+                                    vErrors.push(err226), errors++;
+                                  } else {
+                                    let _errs222 = errors;
+                                    for (let key15 in data56) if ("mode" !== key15 && "level" !== key15) {
+                                      let err227 = {
+                                        instancePath: instancePath + "/tone",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+                                        keyword: "additionalProperties",
+                                        params: {
+                                          additionalProperty: key15
+                                        }
+                                      };
+                                      vErrors.push(err227), errors++;
+                                      break;
+                                    }
+                                    if (_errs222 === errors) {
+                                      if (void 0 !== data56.mode) {
+                                        let data57 = data56.mode, _errs223 = errors;
+                                        if (errors === _errs223) if ("string" == typeof data57) {
+                                          if (func1(data57) > 31) {
+                                            let err228 = {
+                                              instancePath: instancePath + "/tone/mode",
+                                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                                              keyword: "maxLength",
+                                              params: {
+                                                limit: 31
+                                              }
+                                            };
+                                            vErrors.push(err228), errors++;
+                                          } else if (func1(data57) < 1) {
+                                            let err229 = {
+                                              instancePath: instancePath + "/tone/mode",
+                                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                                              keyword: "minLength",
+                                              params: {
+                                                limit: 1
+                                              }
+                                            };
+                                            vErrors.push(err229), errors++;
+                                          }
+                                        } else {
+                                          let err230 = {
+                                            instancePath: instancePath + "/tone/mode",
+                                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "string"
+                                            }
+                                          };
+                                          vErrors.push(err230), errors++;
+                                        }
+                                        var valid88 = _errs223 === errors;
+                                      } else valid88 = !0;
+                                      if (valid88 && void 0 !== data56.level) {
+                                        let data58 = data56.level;
+                                        if (errors == errors) if ("number" == typeof data58 && isFinite(data58)) {
+                                          if (data58 > 34028234663852886e22 || isNaN(data58)) {
+                                            let err231 = {
+                                              instancePath: instancePath + "/tone/level",
+                                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                                              keyword: "maximum",
+                                              params: {
+                                                comparison: "<=",
+                                                limit: 34028234663852886e22
+                                              }
+                                            };
+                                            vErrors.push(err231), errors++;
+                                          } else if (data58 < -34028234663852886e22 || isNaN(data58)) {
+                                            let err232 = {
+                                              instancePath: instancePath + "/tone/level",
+                                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                                              keyword: "minimum",
+                                              params: {
+                                                comparison: ">=",
+                                                limit: -34028234663852886e22
+                                              }
+                                            };
+                                            vErrors.push(err232), errors++;
+                                          }
+                                        } else {
+                                          let err233 = {
+                                            instancePath: instancePath + "/tone/level",
+                                            schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "number"
+                                            }
+                                          };
+                                          vErrors.push(err233), errors++;
+                                        }
+                                      }
+                                    }
+                                  } else {
+                                    let err234 = {
+                                      instancePath: instancePath + "/tone",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "object"
+                                      }
+                                    };
+                                    vErrors.push(err234), errors++;
+                                  }
+                                  var _valid15;
+                                  if ((_valid15 = _errs220 === errors) && valid87 ? (valid87 = !1, passing14 = [ passing14, 1 ]) : _valid15 && (valid87 = !0,
+                                  passing14 = 1), !valid87) {
+                                    let err235 = {
+                                      instancePath: instancePath + "/tone",
+                                      schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+                                      keyword: "oneOf",
+                                      params: {
+                                        passingSchemas: passing14
+                                      }
+                                    };
+                                    return vErrors.push(err235), errors++, validate197.errors = vErrors, !1;
+                                  }
+                                  errors = _errs217, vErrors.length = _errs217;
+                                  var valid85 = _errs215 === errors;
+                                } else valid85 = !0;
+                                if (valid85) {
+                                  if (void 0 !== data.defog) {
+                                    let data59 = data.defog, _errs227 = errors, _errs229 = errors, valid92 = !1, passing15 = null, _errs230 = errors;
+                                    if (errors === _errs230) if ("number" == typeof data59 && isFinite(data59)) {
+                                      if (data59 > 34028234663852886e22 || isNaN(data59)) {
+                                        let err236 = {
+                                          instancePath: instancePath + "/defog",
+                                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/maximum",
+                                          keyword: "maximum",
+                                          params: {
+                                            comparison: "<=",
+                                            limit: 34028234663852886e22
+                                          }
+                                        };
+                                        vErrors.push(err236), errors++;
+                                      } else if (data59 < -34028234663852886e22 || isNaN(data59)) {
+                                        let err237 = {
+                                          instancePath: instancePath + "/defog",
+                                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/minimum",
+                                          keyword: "minimum",
+                                          params: {
+                                            comparison: ">=",
+                                            limit: -34028234663852886e22
+                                          }
+                                        };
+                                        vErrors.push(err237), errors++;
+                                      }
+                                    } else {
+                                      let err238 = {
+                                        instancePath: instancePath + "/defog",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/0/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "number"
+                                        }
+                                      };
+                                      vErrors.push(err238), errors++;
+                                    }
+                                    _errs230 === errors && (valid92 = !0, passing15 = 0);
+                                    let _errs232 = errors;
+                                    if (errors === _errs232) if (data59 && "object" == typeof data59 && !Array.isArray(data59)) if (Object.keys(data59).length < 1) {
+                                      let err239 = {
+                                        instancePath: instancePath + "/defog",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/minProperties",
+                                        keyword: "minProperties",
+                                        params: {
+                                          limit: 1
+                                        }
+                                      };
+                                      vErrors.push(err239), errors++;
+                                    } else {
+                                      let _errs234 = errors;
+                                      for (let key16 in data59) if ("mode" !== key16 && "level" !== key16) {
+                                        let err240 = {
+                                          instancePath: instancePath + "/defog",
+                                          schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/additionalProperties",
+                                          keyword: "additionalProperties",
+                                          params: {
+                                            additionalProperty: key16
+                                          }
+                                        };
+                                        vErrors.push(err240), errors++;
+                                        break;
+                                      }
+                                      if (_errs234 === errors) {
+                                        if (void 0 !== data59.mode) {
+                                          let data60 = data59.mode, _errs235 = errors;
+                                          if (errors === _errs235) if ("string" == typeof data60) {
+                                            if (func1(data60) > 31) {
+                                              let err241 = {
+                                                instancePath: instancePath + "/defog/mode",
+                                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/maxLength",
+                                                keyword: "maxLength",
+                                                params: {
+                                                  limit: 31
+                                                }
+                                              };
+                                              vErrors.push(err241), errors++;
+                                            } else if (func1(data60) < 1) {
+                                              let err242 = {
+                                                instancePath: instancePath + "/defog/mode",
+                                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/minLength",
+                                                keyword: "minLength",
+                                                params: {
+                                                  limit: 1
+                                                }
+                                              };
+                                              vErrors.push(err242), errors++;
+                                            }
+                                          } else {
+                                            let err243 = {
+                                              instancePath: instancePath + "/defog/mode",
+                                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/mode/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "string"
+                                              }
+                                            };
+                                            vErrors.push(err243), errors++;
+                                          }
+                                          var valid93 = _errs235 === errors;
+                                        } else valid93 = !0;
+                                        if (valid93 && void 0 !== data59.level) {
+                                          let data61 = data59.level;
+                                          if (errors == errors) if ("number" == typeof data61 && isFinite(data61)) {
+                                            if (data61 > 34028234663852886e22 || isNaN(data61)) {
+                                              let err244 = {
+                                                instancePath: instancePath + "/defog/level",
+                                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/maximum",
+                                                keyword: "maximum",
+                                                params: {
+                                                  comparison: "<=",
+                                                  limit: 34028234663852886e22
+                                                }
+                                              };
+                                              vErrors.push(err244), errors++;
+                                            } else if (data61 < -34028234663852886e22 || isNaN(data61)) {
+                                              let err245 = {
+                                                instancePath: instancePath + "/defog/level",
+                                                schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/minimum",
+                                                keyword: "minimum",
+                                                params: {
+                                                  comparison: ">=",
+                                                  limit: -34028234663852886e22
+                                                }
+                                              };
+                                              vErrors.push(err245), errors++;
+                                            }
+                                          } else {
+                                            let err246 = {
+                                              instancePath: instancePath + "/defog/level",
+                                              schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/properties/level/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "number"
+                                              }
+                                            };
+                                            vErrors.push(err246), errors++;
+                                          }
+                                        }
+                                      }
+                                    } else {
+                                      let err247 = {
+                                        instancePath: instancePath + "/defog",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf/1/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "object"
+                                        }
+                                      };
+                                      vErrors.push(err247), errors++;
+                                    }
+                                    var _valid16;
+                                    if ((_valid16 = _errs232 === errors) && valid92 ? (valid92 = !1, passing15 = [ passing15, 1 ]) : _valid16 && (valid92 = !0,
+                                    passing15 = 1), !valid92) {
+                                      let err248 = {
+                                        instancePath: instancePath + "/defog",
+                                        schemaPath: "#/$defs/ImagingModeLevelUpdate/oneOf",
+                                        keyword: "oneOf",
+                                        params: {
+                                          passingSchemas: passing15
+                                        }
+                                      };
+                                      return vErrors.push(err248), errors++, validate197.errors = vErrors, !1;
+                                    }
+                                    errors = _errs229, vErrors.length = _errs229;
+                                    var valid90 = _errs227 === errors;
+                                  } else valid90 = !0;
+                                  if (valid90) {
+                                    if (void 0 !== data.ir_cut_filter) {
+                                      let data62 = data.ir_cut_filter, _errs239 = errors;
+                                      if (errors === _errs239) {
+                                        if ("string" != typeof data62) return validate197.errors = [ {
+                                          instancePath: instancePath + "/ir_cut_filter",
+                                          schemaPath: "#/properties/ir_cut_filter/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "string"
+                                          }
+                                        } ], !1;
+                                        if (func1(data62) > 15) return validate197.errors = [ {
+                                          instancePath: instancePath + "/ir_cut_filter",
+                                          schemaPath: "#/properties/ir_cut_filter/maxLength",
+                                          keyword: "maxLength",
+                                          params: {
+                                            limit: 15
+                                          }
+                                        } ], !1;
+                                        if (func1(data62) < 1) return validate197.errors = [ {
+                                          instancePath: instancePath + "/ir_cut_filter",
+                                          schemaPath: "#/properties/ir_cut_filter/minLength",
+                                          keyword: "minLength",
+                                          params: {
+                                            limit: 1
+                                          }
+                                        } ], !1;
+                                      }
+                                      var valid95 = _errs239 === errors;
+                                    } else valid95 = !0;
+                                    if (valid95) {
+                                      if (void 0 !== data.ircut) {
+                                        let data63 = data.ircut, _errs241 = errors;
+                                        if (errors === _errs241) {
+                                          if ("string" != typeof data63) return validate197.errors = [ {
+                                            instancePath: instancePath + "/ircut",
+                                            schemaPath: "#/properties/ircut/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "string"
+                                            }
+                                          } ], !1;
+                                          if (func1(data63) > 15) return validate197.errors = [ {
+                                            instancePath: instancePath + "/ircut",
+                                            schemaPath: "#/properties/ircut/maxLength",
+                                            keyword: "maxLength",
+                                            params: {
+                                              limit: 15
+                                            }
+                                          } ], !1;
+                                          if (func1(data63) < 1) return validate197.errors = [ {
+                                            instancePath: instancePath + "/ircut",
+                                            schemaPath: "#/properties/ircut/minLength",
+                                            keyword: "minLength",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                        }
+                                        var valid96 = _errs241 === errors;
+                                      } else valid96 = !0;
+                                      if (valid96 && void 0 !== data.force_persistence && "boolean" != typeof data.force_persistence) return validate197.errors = [ {
+                                        instancePath: instancePath + "/force_persistence",
+                                        schemaPath: "#/properties/force_persistence/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "boolean"
+                                        }
+                                      } ], !1;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate197.errors = vErrors, 0 === errors;
+}
+
+validate197.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_ImagingSettingsResponse = validate187;
+
+function validate187(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate187.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate187.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.success) return validate187.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "success"
+      }
+    } ], !1;
+    if (void 0 === data.settings) return validate187.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "settings"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("success" !== key0 && "settings" !== key0) return validate187.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.success) {
+          let _errs2 = errors;
+          if (!0 !== data.success) return validate187.errors = [ {
+            instancePath: instancePath + "/success",
+            schemaPath: "#/properties/success/const",
+            keyword: "const",
+            params: {
+              allowedValue: !0
+            }
+          } ], !1;
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        valid0 && void 0 !== data.settings && (validate186(data.settings, {
+          instancePath: instancePath + "/settings",
+          parentData: data,
+          parentDataProperty: "settings",
+          rootData: rootData,
+          dynamicAnchors: dynamicAnchors
+        }) || (vErrors = vErrors.concat(validate186.errors), errors = vErrors.length));
+      }
+    }
+  }
+  return validate187.errors = vErrors, 0 === errors;
+}
+
+validate187.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
 var __contract_LiveStreamSummaryPage = validate52, schema33 = {
   type: "string",
   enum: [ "auto", "webrtc_only", "mse_only", "hls_only", "webrtc_then_mse", "mse_then_hls" ]
@@ -14630,6 +20700,2527 @@ validate55.evaluated = {
   dynamicItems: !1
 };
 
+var __contract_OnvifAddRequest = validate208;
+
+function validate208(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate208.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate208.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.device_url) return validate208.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "device_url"
+    }
+  } ], !1;
+  if (void 0 === data.profile_token) return validate208.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "profile_token"
+    }
+  } ], !1;
+  if (void 0 === data.stream_name) return validate208.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "stream_name"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("device_url" !== key0 && "profile_token" !== key0 && "stream_name" !== key0 && "username" !== key0 && "password" !== key0) return validate208.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.device_url) {
+        let data0 = data.device_url, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate208.errors = [ {
+            instancePath: instancePath + "/device_url",
+            schemaPath: "#/properties/device_url/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 511) return validate208.errors = [ {
+            instancePath: instancePath + "/device_url",
+            schemaPath: "#/properties/device_url/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 511
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate208.errors = [ {
+            instancePath: instancePath + "/device_url",
+            schemaPath: "#/properties/device_url/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.profile_token) {
+          let data1 = data.profile_token, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("string" != typeof data1) return validate208.errors = [ {
+              instancePath: instancePath + "/profile_token",
+              schemaPath: "#/properties/profile_token/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data1) > 63) return validate208.errors = [ {
+              instancePath: instancePath + "/profile_token",
+              schemaPath: "#/properties/profile_token/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 63
+              }
+            } ], !1;
+            if (func1(data1) < 1) return validate208.errors = [ {
+              instancePath: instancePath + "/profile_token",
+              schemaPath: "#/properties/profile_token/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.stream_name) {
+            let data2 = data.stream_name, _errs6 = 0;
+            if (0 === _errs6) {
+              if ("string" != typeof data2) return validate208.errors = [ {
+                instancePath: instancePath + "/stream_name",
+                schemaPath: "#/properties/stream_name/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data2) > 255) return validate208.errors = [ {
+                instancePath: instancePath + "/stream_name",
+                schemaPath: "#/properties/stream_name/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 255
+                }
+              } ], !1;
+              if (func1(data2) < 1) return validate208.errors = [ {
+                instancePath: instancePath + "/stream_name",
+                schemaPath: "#/properties/stream_name/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              } ], !1;
+            }
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.username) {
+              let data3 = data.username, _errs8 = 0;
+              if (0 === _errs8) {
+                if ("string" != typeof data3) return validate208.errors = [ {
+                  instancePath: instancePath + "/username",
+                  schemaPath: "#/properties/username/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                if (func1(data3) > 63) return validate208.errors = [ {
+                  instancePath: instancePath + "/username",
+                  schemaPath: "#/properties/username/maxLength",
+                  keyword: "maxLength",
+                  params: {
+                    limit: 63
+                  }
+                } ], !1;
+              }
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3 && void 0 !== data.password) {
+              let data4 = data.password;
+              if ("string" != typeof data4) return validate208.errors = [ {
+                instancePath: instancePath + "/password",
+                schemaPath: "#/properties/password/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data4) > 63) return validate208.errors = [ {
+                instancePath: instancePath + "/password",
+                schemaPath: "#/properties/password/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 63
+                }
+              } ], !1;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate208.errors = [], !0;
+}
+
+validate208.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_OnvifAddResult = validate209;
+
+function validate209(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate209.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate209.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate209.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  if (void 0 === data.message) return validate209.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "message"
+    }
+  } ], !1;
+  if (void 0 === data.stream_name) return validate209.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "stream_name"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0 && "message" !== key0 && "stream_name" !== key0) return validate209.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.success) {
+        let _errs2 = 0;
+        if (!0 !== data.success) return validate209.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/const",
+          keyword: "const",
+          params: {
+            allowedValue: !0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.message) {
+          let _errs3 = 0;
+          if ("string" != typeof data.message) return validate209.errors = [ {
+            instancePath: instancePath + "/message",
+            schemaPath: "#/properties/message/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs3;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.stream_name && "string" != typeof data.stream_name) return validate209.errors = [ {
+          instancePath: instancePath + "/stream_name",
+          schemaPath: "#/properties/stream_name/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+      }
+    }
+  }
+  return validate209.errors = [], !0;
+}
+
+validate209.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_OnvifClaimRequest = validate210, formats2 = /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+function validate210(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate210.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate210.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.inventory_uuid) return validate210.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "inventory_uuid"
+    }
+  } ], !1;
+  if (void 0 === data.stream_name) return validate210.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "stream_name"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("inventory_uuid" !== key0 && "stream_name" !== key0) return validate210.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.inventory_uuid) {
+        let data0 = data.inventory_uuid, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate210.errors = [ {
+            instancePath: instancePath + "/inventory_uuid",
+            schemaPath: "#/properties/inventory_uuid/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (!formats2.test(data0)) return validate210.errors = [ {
+            instancePath: instancePath + "/inventory_uuid",
+            schemaPath: "#/properties/inventory_uuid/format",
+            keyword: "format",
+            params: {
+              format: "uuid"
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0 && void 0 !== data.stream_name) {
+        let data1 = data.stream_name;
+        if ("string" != typeof data1) return validate210.errors = [ {
+          instancePath: instancePath + "/stream_name",
+          schemaPath: "#/properties/stream_name/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+        if (func1(data1) > 255) return validate210.errors = [ {
+          instancePath: instancePath + "/stream_name",
+          schemaPath: "#/properties/stream_name/maxLength",
+          keyword: "maxLength",
+          params: {
+            limit: 255
+          }
+        } ], !1;
+        if (func1(data1) < 1) return validate210.errors = [ {
+          instancePath: instancePath + "/stream_name",
+          schemaPath: "#/properties/stream_name/minLength",
+          keyword: "minLength",
+          params: {
+            limit: 1
+          }
+        } ], !1;
+      }
+    }
+  }
+  return validate210.errors = [], !0;
+}
+
+validate210.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_OnvifDevice = validate202, schema232 = {
+  type: "object",
+  properties: {
+    endpoint: {
+      type: "string"
+    },
+    device_service: {
+      type: "string"
+    },
+    media_service: {
+      type: "string"
+    },
+    ptz_service: {
+      type: "string"
+    },
+    imaging_service: {
+      type: "string"
+    },
+    manufacturer: {
+      type: "string"
+    },
+    model: {
+      type: "string"
+    },
+    firmware_version: {
+      type: "string"
+    },
+    serial_number: {
+      type: "string"
+    },
+    hardware_id: {
+      type: "string"
+    },
+    ip_address: {
+      type: "string"
+    },
+    mac_address: {
+      type: "string"
+    },
+    inventory_uuid: {
+      type: "string"
+    },
+    last_scan_network: {
+      type: "string"
+    },
+    claim_state: {
+      type: "string"
+    },
+    claimed_camera_uuid: {
+      type: "string"
+    },
+    discovery_time: {
+      type: "integer"
+    },
+    first_seen_at: {
+      type: "integer"
+    },
+    last_seen_at: {
+      type: "integer"
+    },
+    online: {
+      type: "boolean"
+    },
+    duplicate_suspected: {
+      type: "boolean"
+    },
+    addresses: {
+      type: "array",
+      items: {
+        type: "string"
+      }
+    }
+  },
+  required: [ "endpoint", "device_service", "media_service", "ptz_service", "imaging_service", "manufacturer", "model", "firmware_version", "serial_number", "hardware_id", "ip_address", "mac_address", "inventory_uuid", "last_scan_network", "claim_state", "claimed_camera_uuid", "discovery_time", "first_seen_at", "last_seen_at", "online", "duplicate_suspected", "addresses" ],
+  additionalProperties: !1
+};
+
+function validate202(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate202.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.endpoint) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "endpoint"
+    }
+  } ], !1;
+  if (void 0 === data.device_service) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "device_service"
+    }
+  } ], !1;
+  if (void 0 === data.media_service) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "media_service"
+    }
+  } ], !1;
+  if (void 0 === data.ptz_service) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "ptz_service"
+    }
+  } ], !1;
+  if (void 0 === data.imaging_service) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "imaging_service"
+    }
+  } ], !1;
+  if (void 0 === data.manufacturer) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "manufacturer"
+    }
+  } ], !1;
+  if (void 0 === data.model) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "model"
+    }
+  } ], !1;
+  if (void 0 === data.firmware_version) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "firmware_version"
+    }
+  } ], !1;
+  if (void 0 === data.serial_number) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "serial_number"
+    }
+  } ], !1;
+  if (void 0 === data.hardware_id) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "hardware_id"
+    }
+  } ], !1;
+  if (void 0 === data.ip_address) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "ip_address"
+    }
+  } ], !1;
+  if (void 0 === data.mac_address) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "mac_address"
+    }
+  } ], !1;
+  if (void 0 === data.inventory_uuid) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "inventory_uuid"
+    }
+  } ], !1;
+  if (void 0 === data.last_scan_network) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "last_scan_network"
+    }
+  } ], !1;
+  if (void 0 === data.claim_state) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "claim_state"
+    }
+  } ], !1;
+  if (void 0 === data.claimed_camera_uuid) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "claimed_camera_uuid"
+    }
+  } ], !1;
+  if (void 0 === data.discovery_time) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "discovery_time"
+    }
+  } ], !1;
+  if (void 0 === data.first_seen_at) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "first_seen_at"
+    }
+  } ], !1;
+  if (void 0 === data.last_seen_at) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "last_seen_at"
+    }
+  } ], !1;
+  if (void 0 === data.online) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "online"
+    }
+  } ], !1;
+  if (void 0 === data.duplicate_suspected) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "duplicate_suspected"
+    }
+  } ], !1;
+  if (void 0 === data.addresses) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "addresses"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if (!func5.call(schema232.properties, key0)) return validate202.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.endpoint) {
+        let _errs2 = 0;
+        if ("string" != typeof data.endpoint) return validate202.errors = [ {
+          instancePath: instancePath + "/endpoint",
+          schemaPath: "#/properties/endpoint/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.device_service) {
+          let _errs4 = 0;
+          if ("string" != typeof data.device_service) return validate202.errors = [ {
+            instancePath: instancePath + "/device_service",
+            schemaPath: "#/properties/device_service/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.media_service) {
+            let _errs6 = 0;
+            if ("string" != typeof data.media_service) return validate202.errors = [ {
+              instancePath: instancePath + "/media_service",
+              schemaPath: "#/properties/media_service/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.ptz_service) {
+              let _errs8 = 0;
+              if ("string" != typeof data.ptz_service) return validate202.errors = [ {
+                instancePath: instancePath + "/ptz_service",
+                schemaPath: "#/properties/ptz_service/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.imaging_service) {
+                let _errs10 = 0;
+                if ("string" != typeof data.imaging_service) return validate202.errors = [ {
+                  instancePath: instancePath + "/imaging_service",
+                  schemaPath: "#/properties/imaging_service/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.manufacturer) {
+                  let _errs12 = 0;
+                  if ("string" != typeof data.manufacturer) return validate202.errors = [ {
+                    instancePath: instancePath + "/manufacturer",
+                    schemaPath: "#/properties/manufacturer/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  var valid5 = 0 === _errs12;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.model) {
+                    let _errs14 = 0;
+                    if ("string" != typeof data.model) return validate202.errors = [ {
+                      instancePath: instancePath + "/model",
+                      schemaPath: "#/properties/model/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                    var valid6 = 0 === _errs14;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data.firmware_version) {
+                      let _errs16 = 0;
+                      if ("string" != typeof data.firmware_version) return validate202.errors = [ {
+                        instancePath: instancePath + "/firmware_version",
+                        schemaPath: "#/properties/firmware_version/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      var valid7 = 0 === _errs16;
+                    } else valid7 = !0;
+                    if (valid7) {
+                      if (void 0 !== data.serial_number) {
+                        let _errs18 = 0;
+                        if ("string" != typeof data.serial_number) return validate202.errors = [ {
+                          instancePath: instancePath + "/serial_number",
+                          schemaPath: "#/properties/serial_number/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        var valid8 = 0 === _errs18;
+                      } else valid8 = !0;
+                      if (valid8) {
+                        if (void 0 !== data.hardware_id) {
+                          let _errs20 = 0;
+                          if ("string" != typeof data.hardware_id) return validate202.errors = [ {
+                            instancePath: instancePath + "/hardware_id",
+                            schemaPath: "#/properties/hardware_id/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          var valid9 = 0 === _errs20;
+                        } else valid9 = !0;
+                        if (valid9) {
+                          if (void 0 !== data.ip_address) {
+                            let _errs22 = 0;
+                            if ("string" != typeof data.ip_address) return validate202.errors = [ {
+                              instancePath: instancePath + "/ip_address",
+                              schemaPath: "#/properties/ip_address/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            var valid10 = 0 === _errs22;
+                          } else valid10 = !0;
+                          if (valid10) {
+                            if (void 0 !== data.mac_address) {
+                              let _errs24 = 0;
+                              if ("string" != typeof data.mac_address) return validate202.errors = [ {
+                                instancePath: instancePath + "/mac_address",
+                                schemaPath: "#/properties/mac_address/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              var valid11 = 0 === _errs24;
+                            } else valid11 = !0;
+                            if (valid11) {
+                              if (void 0 !== data.inventory_uuid) {
+                                let _errs26 = 0;
+                                if ("string" != typeof data.inventory_uuid) return validate202.errors = [ {
+                                  instancePath: instancePath + "/inventory_uuid",
+                                  schemaPath: "#/properties/inventory_uuid/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                var valid12 = 0 === _errs26;
+                              } else valid12 = !0;
+                              if (valid12) {
+                                if (void 0 !== data.last_scan_network) {
+                                  let _errs28 = 0;
+                                  if ("string" != typeof data.last_scan_network) return validate202.errors = [ {
+                                    instancePath: instancePath + "/last_scan_network",
+                                    schemaPath: "#/properties/last_scan_network/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  } ], !1;
+                                  var valid13 = 0 === _errs28;
+                                } else valid13 = !0;
+                                if (valid13) {
+                                  if (void 0 !== data.claim_state) {
+                                    let _errs30 = 0;
+                                    if ("string" != typeof data.claim_state) return validate202.errors = [ {
+                                      instancePath: instancePath + "/claim_state",
+                                      schemaPath: "#/properties/claim_state/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    var valid14 = 0 === _errs30;
+                                  } else valid14 = !0;
+                                  if (valid14) {
+                                    if (void 0 !== data.claimed_camera_uuid) {
+                                      let _errs32 = 0;
+                                      if ("string" != typeof data.claimed_camera_uuid) return validate202.errors = [ {
+                                        instancePath: instancePath + "/claimed_camera_uuid",
+                                        schemaPath: "#/properties/claimed_camera_uuid/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      } ], !1;
+                                      var valid15 = 0 === _errs32;
+                                    } else valid15 = !0;
+                                    if (valid15) {
+                                      if (void 0 !== data.discovery_time) {
+                                        let data16 = data.discovery_time, _errs34 = 0;
+                                        if ("number" != typeof data16 || data16 % 1 || isNaN(data16) || !isFinite(data16)) return validate202.errors = [ {
+                                          instancePath: instancePath + "/discovery_time",
+                                          schemaPath: "#/properties/discovery_time/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "integer"
+                                          }
+                                        } ], !1;
+                                        var valid16 = 0 === _errs34;
+                                      } else valid16 = !0;
+                                      if (valid16) {
+                                        if (void 0 !== data.first_seen_at) {
+                                          let data17 = data.first_seen_at, _errs36 = 0;
+                                          if ("number" != typeof data17 || data17 % 1 || isNaN(data17) || !isFinite(data17)) return validate202.errors = [ {
+                                            instancePath: instancePath + "/first_seen_at",
+                                            schemaPath: "#/properties/first_seen_at/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "integer"
+                                            }
+                                          } ], !1;
+                                          var valid17 = 0 === _errs36;
+                                        } else valid17 = !0;
+                                        if (valid17) {
+                                          if (void 0 !== data.last_seen_at) {
+                                            let data18 = data.last_seen_at, _errs38 = 0;
+                                            if ("number" != typeof data18 || data18 % 1 || isNaN(data18) || !isFinite(data18)) return validate202.errors = [ {
+                                              instancePath: instancePath + "/last_seen_at",
+                                              schemaPath: "#/properties/last_seen_at/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "integer"
+                                              }
+                                            } ], !1;
+                                            var valid18 = 0 === _errs38;
+                                          } else valid18 = !0;
+                                          if (valid18) {
+                                            if (void 0 !== data.online) {
+                                              let _errs40 = 0;
+                                              if ("boolean" != typeof data.online) return validate202.errors = [ {
+                                                instancePath: instancePath + "/online",
+                                                schemaPath: "#/properties/online/type",
+                                                keyword: "type",
+                                                params: {
+                                                  type: "boolean"
+                                                }
+                                              } ], !1;
+                                              var valid19 = 0 === _errs40;
+                                            } else valid19 = !0;
+                                            if (valid19) {
+                                              if (void 0 !== data.duplicate_suspected) {
+                                                let _errs42 = 0;
+                                                if ("boolean" != typeof data.duplicate_suspected) return validate202.errors = [ {
+                                                  instancePath: instancePath + "/duplicate_suspected",
+                                                  schemaPath: "#/properties/duplicate_suspected/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "boolean"
+                                                  }
+                                                } ], !1;
+                                                var valid20 = 0 === _errs42;
+                                              } else valid20 = !0;
+                                              if (valid20 && void 0 !== data.addresses) {
+                                                let data21 = data.addresses;
+                                                if (!Array.isArray(data21)) return validate202.errors = [ {
+                                                  instancePath: instancePath + "/addresses",
+                                                  schemaPath: "#/properties/addresses/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "array"
+                                                  }
+                                                } ], !1;
+                                                {
+                                                  let len0 = data21.length;
+                                                  for (let i0 = 0; i0 < len0; i0++) {
+                                                    let _errs46 = 0;
+                                                    if ("string" != typeof data21[i0]) return validate202.errors = [ {
+                                                      instancePath: instancePath + "/addresses/" + i0,
+                                                      schemaPath: "#/properties/addresses/items/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "string"
+                                                      }
+                                                    } ], !1;
+                                                    if (0 !== _errs46) break;
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate202.errors = [], !0;
+}
+
+validate202.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_OnvifDevicesResponse = validate203;
+
+function validate203(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate203.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate203.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.devices) return validate203.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "devices"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("devices" !== key0) return validate203.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.devices) {
+      let data0 = data.devices;
+      if (!Array.isArray(data0)) return validate203.errors = [ {
+        instancePath: instancePath + "/devices",
+        schemaPath: "#/properties/devices/type",
+        keyword: "type",
+        params: {
+          type: "array"
+        }
+      } ], !1;
+      {
+        let len0 = data0.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          let data1 = data0[i0], _errs4 = 0;
+          if (!data1 || "object" != typeof data1 || Array.isArray(data1)) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/type",
+            keyword: "type",
+            params: {
+              type: "object"
+            }
+          } ], !1;
+          if (void 0 === data1.endpoint) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "endpoint"
+            }
+          } ], !1;
+          if (void 0 === data1.device_service) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "device_service"
+            }
+          } ], !1;
+          if (void 0 === data1.media_service) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "media_service"
+            }
+          } ], !1;
+          if (void 0 === data1.ptz_service) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "ptz_service"
+            }
+          } ], !1;
+          if (void 0 === data1.imaging_service) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "imaging_service"
+            }
+          } ], !1;
+          if (void 0 === data1.manufacturer) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "manufacturer"
+            }
+          } ], !1;
+          if (void 0 === data1.model) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "model"
+            }
+          } ], !1;
+          if (void 0 === data1.firmware_version) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "firmware_version"
+            }
+          } ], !1;
+          if (void 0 === data1.serial_number) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "serial_number"
+            }
+          } ], !1;
+          if (void 0 === data1.hardware_id) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "hardware_id"
+            }
+          } ], !1;
+          if (void 0 === data1.ip_address) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "ip_address"
+            }
+          } ], !1;
+          if (void 0 === data1.mac_address) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "mac_address"
+            }
+          } ], !1;
+          if (void 0 === data1.inventory_uuid) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "inventory_uuid"
+            }
+          } ], !1;
+          if (void 0 === data1.last_scan_network) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "last_scan_network"
+            }
+          } ], !1;
+          if (void 0 === data1.claim_state) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "claim_state"
+            }
+          } ], !1;
+          if (void 0 === data1.claimed_camera_uuid) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "claimed_camera_uuid"
+            }
+          } ], !1;
+          if (void 0 === data1.discovery_time) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "discovery_time"
+            }
+          } ], !1;
+          if (void 0 === data1.first_seen_at) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "first_seen_at"
+            }
+          } ], !1;
+          if (void 0 === data1.last_seen_at) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "last_seen_at"
+            }
+          } ], !1;
+          if (void 0 === data1.online) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "online"
+            }
+          } ], !1;
+          if (void 0 === data1.duplicate_suspected) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "duplicate_suspected"
+            }
+          } ], !1;
+          if (void 0 === data1.addresses) return validate203.errors = [ {
+            instancePath: instancePath + "/devices/" + i0,
+            schemaPath: "#/$defs/OnvifDevice/required",
+            keyword: "required",
+            params: {
+              missingProperty: "addresses"
+            }
+          } ], !1;
+          {
+            let _errs7 = 0;
+            for (let key1 in data1) if (!func5.call(schema232.properties, key1)) return validate203.errors = [ {
+              instancePath: instancePath + "/devices/" + i0,
+              schemaPath: "#/$defs/OnvifDevice/additionalProperties",
+              keyword: "additionalProperties",
+              params: {
+                additionalProperty: key1
+              }
+            } ], !1;
+            if (0 === _errs7) {
+              if (void 0 !== data1.endpoint) {
+                let _errs8 = 0;
+                if ("string" != typeof data1.endpoint) return validate203.errors = [ {
+                  instancePath: instancePath + "/devices/" + i0 + "/endpoint",
+                  schemaPath: "#/$defs/OnvifDevice/properties/endpoint/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                var valid3 = 0 === _errs8;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data1.device_service) {
+                  let _errs10 = 0;
+                  if ("string" != typeof data1.device_service) return validate203.errors = [ {
+                    instancePath: instancePath + "/devices/" + i0 + "/device_service",
+                    schemaPath: "#/$defs/OnvifDevice/properties/device_service/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  var valid4 = 0 === _errs10;
+                } else valid4 = !0;
+                if (valid4) {
+                  if (void 0 !== data1.media_service) {
+                    let _errs12 = 0;
+                    if ("string" != typeof data1.media_service) return validate203.errors = [ {
+                      instancePath: instancePath + "/devices/" + i0 + "/media_service",
+                      schemaPath: "#/$defs/OnvifDevice/properties/media_service/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                    var valid5 = 0 === _errs12;
+                  } else valid5 = !0;
+                  if (valid5) {
+                    if (void 0 !== data1.ptz_service) {
+                      let _errs14 = 0;
+                      if ("string" != typeof data1.ptz_service) return validate203.errors = [ {
+                        instancePath: instancePath + "/devices/" + i0 + "/ptz_service",
+                        schemaPath: "#/$defs/OnvifDevice/properties/ptz_service/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      var valid6 = 0 === _errs14;
+                    } else valid6 = !0;
+                    if (valid6) {
+                      if (void 0 !== data1.imaging_service) {
+                        let _errs16 = 0;
+                        if ("string" != typeof data1.imaging_service) return validate203.errors = [ {
+                          instancePath: instancePath + "/devices/" + i0 + "/imaging_service",
+                          schemaPath: "#/$defs/OnvifDevice/properties/imaging_service/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        var valid7 = 0 === _errs16;
+                      } else valid7 = !0;
+                      if (valid7) {
+                        if (void 0 !== data1.manufacturer) {
+                          let _errs18 = 0;
+                          if ("string" != typeof data1.manufacturer) return validate203.errors = [ {
+                            instancePath: instancePath + "/devices/" + i0 + "/manufacturer",
+                            schemaPath: "#/$defs/OnvifDevice/properties/manufacturer/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          var valid8 = 0 === _errs18;
+                        } else valid8 = !0;
+                        if (valid8) {
+                          if (void 0 !== data1.model) {
+                            let _errs20 = 0;
+                            if ("string" != typeof data1.model) return validate203.errors = [ {
+                              instancePath: instancePath + "/devices/" + i0 + "/model",
+                              schemaPath: "#/$defs/OnvifDevice/properties/model/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            var valid9 = 0 === _errs20;
+                          } else valid9 = !0;
+                          if (valid9) {
+                            if (void 0 !== data1.firmware_version) {
+                              let _errs22 = 0;
+                              if ("string" != typeof data1.firmware_version) return validate203.errors = [ {
+                                instancePath: instancePath + "/devices/" + i0 + "/firmware_version",
+                                schemaPath: "#/$defs/OnvifDevice/properties/firmware_version/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              var valid10 = 0 === _errs22;
+                            } else valid10 = !0;
+                            if (valid10) {
+                              if (void 0 !== data1.serial_number) {
+                                let _errs24 = 0;
+                                if ("string" != typeof data1.serial_number) return validate203.errors = [ {
+                                  instancePath: instancePath + "/devices/" + i0 + "/serial_number",
+                                  schemaPath: "#/$defs/OnvifDevice/properties/serial_number/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                var valid11 = 0 === _errs24;
+                              } else valid11 = !0;
+                              if (valid11) {
+                                if (void 0 !== data1.hardware_id) {
+                                  let _errs26 = 0;
+                                  if ("string" != typeof data1.hardware_id) return validate203.errors = [ {
+                                    instancePath: instancePath + "/devices/" + i0 + "/hardware_id",
+                                    schemaPath: "#/$defs/OnvifDevice/properties/hardware_id/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  } ], !1;
+                                  var valid12 = 0 === _errs26;
+                                } else valid12 = !0;
+                                if (valid12) {
+                                  if (void 0 !== data1.ip_address) {
+                                    let _errs28 = 0;
+                                    if ("string" != typeof data1.ip_address) return validate203.errors = [ {
+                                      instancePath: instancePath + "/devices/" + i0 + "/ip_address",
+                                      schemaPath: "#/$defs/OnvifDevice/properties/ip_address/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    var valid13 = 0 === _errs28;
+                                  } else valid13 = !0;
+                                  if (valid13) {
+                                    if (void 0 !== data1.mac_address) {
+                                      let _errs30 = 0;
+                                      if ("string" != typeof data1.mac_address) return validate203.errors = [ {
+                                        instancePath: instancePath + "/devices/" + i0 + "/mac_address",
+                                        schemaPath: "#/$defs/OnvifDevice/properties/mac_address/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      } ], !1;
+                                      var valid14 = 0 === _errs30;
+                                    } else valid14 = !0;
+                                    if (valid14) {
+                                      if (void 0 !== data1.inventory_uuid) {
+                                        let _errs32 = 0;
+                                        if ("string" != typeof data1.inventory_uuid) return validate203.errors = [ {
+                                          instancePath: instancePath + "/devices/" + i0 + "/inventory_uuid",
+                                          schemaPath: "#/$defs/OnvifDevice/properties/inventory_uuid/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "string"
+                                          }
+                                        } ], !1;
+                                        var valid15 = 0 === _errs32;
+                                      } else valid15 = !0;
+                                      if (valid15) {
+                                        if (void 0 !== data1.last_scan_network) {
+                                          let _errs34 = 0;
+                                          if ("string" != typeof data1.last_scan_network) return validate203.errors = [ {
+                                            instancePath: instancePath + "/devices/" + i0 + "/last_scan_network",
+                                            schemaPath: "#/$defs/OnvifDevice/properties/last_scan_network/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "string"
+                                            }
+                                          } ], !1;
+                                          var valid16 = 0 === _errs34;
+                                        } else valid16 = !0;
+                                        if (valid16) {
+                                          if (void 0 !== data1.claim_state) {
+                                            let _errs36 = 0;
+                                            if ("string" != typeof data1.claim_state) return validate203.errors = [ {
+                                              instancePath: instancePath + "/devices/" + i0 + "/claim_state",
+                                              schemaPath: "#/$defs/OnvifDevice/properties/claim_state/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "string"
+                                              }
+                                            } ], !1;
+                                            var valid17 = 0 === _errs36;
+                                          } else valid17 = !0;
+                                          if (valid17) {
+                                            if (void 0 !== data1.claimed_camera_uuid) {
+                                              let _errs38 = 0;
+                                              if ("string" != typeof data1.claimed_camera_uuid) return validate203.errors = [ {
+                                                instancePath: instancePath + "/devices/" + i0 + "/claimed_camera_uuid",
+                                                schemaPath: "#/$defs/OnvifDevice/properties/claimed_camera_uuid/type",
+                                                keyword: "type",
+                                                params: {
+                                                  type: "string"
+                                                }
+                                              } ], !1;
+                                              var valid18 = 0 === _errs38;
+                                            } else valid18 = !0;
+                                            if (valid18) {
+                                              if (void 0 !== data1.discovery_time) {
+                                                let data18 = data1.discovery_time, _errs40 = 0;
+                                                if ("number" != typeof data18 || data18 % 1 || isNaN(data18) || !isFinite(data18)) return validate203.errors = [ {
+                                                  instancePath: instancePath + "/devices/" + i0 + "/discovery_time",
+                                                  schemaPath: "#/$defs/OnvifDevice/properties/discovery_time/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "integer"
+                                                  }
+                                                } ], !1;
+                                                var valid19 = 0 === _errs40;
+                                              } else valid19 = !0;
+                                              if (valid19) {
+                                                if (void 0 !== data1.first_seen_at) {
+                                                  let data19 = data1.first_seen_at, _errs42 = 0;
+                                                  if ("number" != typeof data19 || data19 % 1 || isNaN(data19) || !isFinite(data19)) return validate203.errors = [ {
+                                                    instancePath: instancePath + "/devices/" + i0 + "/first_seen_at",
+                                                    schemaPath: "#/$defs/OnvifDevice/properties/first_seen_at/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "integer"
+                                                    }
+                                                  } ], !1;
+                                                  var valid20 = 0 === _errs42;
+                                                } else valid20 = !0;
+                                                if (valid20) {
+                                                  if (void 0 !== data1.last_seen_at) {
+                                                    let data20 = data1.last_seen_at, _errs44 = 0;
+                                                    if ("number" != typeof data20 || data20 % 1 || isNaN(data20) || !isFinite(data20)) return validate203.errors = [ {
+                                                      instancePath: instancePath + "/devices/" + i0 + "/last_seen_at",
+                                                      schemaPath: "#/$defs/OnvifDevice/properties/last_seen_at/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "integer"
+                                                      }
+                                                    } ], !1;
+                                                    var valid21 = 0 === _errs44;
+                                                  } else valid21 = !0;
+                                                  if (valid21) {
+                                                    if (void 0 !== data1.online) {
+                                                      let _errs46 = 0;
+                                                      if ("boolean" != typeof data1.online) return validate203.errors = [ {
+                                                        instancePath: instancePath + "/devices/" + i0 + "/online",
+                                                        schemaPath: "#/$defs/OnvifDevice/properties/online/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: "boolean"
+                                                        }
+                                                      } ], !1;
+                                                      var valid22 = 0 === _errs46;
+                                                    } else valid22 = !0;
+                                                    if (valid22) {
+                                                      if (void 0 !== data1.duplicate_suspected) {
+                                                        let _errs48 = 0;
+                                                        if ("boolean" != typeof data1.duplicate_suspected) return validate203.errors = [ {
+                                                          instancePath: instancePath + "/devices/" + i0 + "/duplicate_suspected",
+                                                          schemaPath: "#/$defs/OnvifDevice/properties/duplicate_suspected/type",
+                                                          keyword: "type",
+                                                          params: {
+                                                            type: "boolean"
+                                                          }
+                                                        } ], !1;
+                                                        var valid23 = 0 === _errs48;
+                                                      } else valid23 = !0;
+                                                      if (valid23 && void 0 !== data1.addresses) {
+                                                        let data23 = data1.addresses;
+                                                        if (!Array.isArray(data23)) return validate203.errors = [ {
+                                                          instancePath: instancePath + "/devices/" + i0 + "/addresses",
+                                                          schemaPath: "#/$defs/OnvifDevice/properties/addresses/type",
+                                                          keyword: "type",
+                                                          params: {
+                                                            type: "array"
+                                                          }
+                                                        } ], !1;
+                                                        {
+                                                          let len1 = data23.length;
+                                                          for (let i1 = 0; i1 < len1; i1++) {
+                                                            let _errs52 = 0;
+                                                            if ("string" != typeof data23[i1]) return validate203.errors = [ {
+                                                              instancePath: instancePath + "/devices/" + i0 + "/addresses/" + i1,
+                                                              schemaPath: "#/$defs/OnvifDevice/properties/addresses/items/type",
+                                                              keyword: "type",
+                                                              params: {
+                                                                type: "string"
+                                                              }
+                                                            } ], !1;
+                                                            if (0 !== _errs52) break;
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          if (0 !== _errs4) break;
+        }
+      }
+    }
+  }
+  return validate203.errors = [], !0;
+}
+
+validate203.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_OnvifDiscoveryRequest = validate204;
+
+function validate204(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate204.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate204.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("network" !== key0) return validate204.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.network) {
+      let data0 = data.network;
+      if ("string" != typeof data0) return validate204.errors = [ {
+        instancePath: instancePath + "/network",
+        schemaPath: "#/properties/network/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      } ], !1;
+      if (func1(data0) > 255) return validate204.errors = [ {
+        instancePath: instancePath + "/network",
+        schemaPath: "#/properties/network/maxLength",
+        keyword: "maxLength",
+        params: {
+          limit: 255
+        }
+      } ], !1;
+    }
+  }
+  return validate204.errors = [], !0;
+}
+
+validate204.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_OnvifDiscoveryStatus = validate201;
+
+function validate201(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate201.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate201.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.enabled) return validate201.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "enabled"
+    }
+  } ], !1;
+  if (void 0 === data.network) return validate201.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "network"
+    }
+  } ], !1;
+  if (void 0 === data.interval) return validate201.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "interval"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("enabled" !== key0 && "network" !== key0 && "interval" !== key0) return validate201.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.enabled) {
+        let _errs2 = 0;
+        if ("boolean" != typeof data.enabled) return validate201.errors = [ {
+          instancePath: instancePath + "/enabled",
+          schemaPath: "#/properties/enabled/type",
+          keyword: "type",
+          params: {
+            type: "boolean"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.network) {
+          let _errs4 = 0;
+          if ("string" != typeof data.network) return validate201.errors = [ {
+            instancePath: instancePath + "/network",
+            schemaPath: "#/properties/network/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.interval) {
+          let data2 = data.interval;
+          if ("number" != typeof data2 || data2 % 1 || isNaN(data2) || !isFinite(data2)) return validate201.errors = [ {
+            instancePath: instancePath + "/interval",
+            schemaPath: "#/properties/interval/type",
+            keyword: "type",
+            params: {
+              type: "integer"
+            }
+          } ], !1;
+        }
+      }
+    }
+  }
+  return validate201.errors = [], !0;
+}
+
+validate201.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_OnvifProfile = validate205, schema236 = {
+  type: "object",
+  properties: {
+    token: {
+      type: "string"
+    },
+    name: {
+      type: "string"
+    },
+    video_source_token: {
+      type: "string"
+    },
+    ptz_configuration_token: {
+      type: "string"
+    },
+    snapshot_uri: {
+      type: "string"
+    },
+    stream_uri: {
+      type: "string"
+    },
+    encoding: {
+      type: "string"
+    },
+    width: {
+      type: "integer"
+    },
+    height: {
+      type: "integer"
+    },
+    fps: {
+      type: "integer"
+    },
+    bitrate: {
+      type: "integer"
+    },
+    ptz_supported: {
+      type: "boolean"
+    }
+  },
+  required: [ "token", "name", "video_source_token", "ptz_configuration_token", "snapshot_uri", "stream_uri", "encoding", "width", "height", "fps", "bitrate", "ptz_supported" ],
+  additionalProperties: !1
+};
+
+function validate205(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate205.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.token) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "token"
+    }
+  } ], !1;
+  if (void 0 === data.name) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "name"
+    }
+  } ], !1;
+  if (void 0 === data.video_source_token) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "video_source_token"
+    }
+  } ], !1;
+  if (void 0 === data.ptz_configuration_token) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "ptz_configuration_token"
+    }
+  } ], !1;
+  if (void 0 === data.snapshot_uri) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "snapshot_uri"
+    }
+  } ], !1;
+  if (void 0 === data.stream_uri) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "stream_uri"
+    }
+  } ], !1;
+  if (void 0 === data.encoding) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "encoding"
+    }
+  } ], !1;
+  if (void 0 === data.width) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "width"
+    }
+  } ], !1;
+  if (void 0 === data.height) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "height"
+    }
+  } ], !1;
+  if (void 0 === data.fps) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "fps"
+    }
+  } ], !1;
+  if (void 0 === data.bitrate) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "bitrate"
+    }
+  } ], !1;
+  if (void 0 === data.ptz_supported) return validate205.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "ptz_supported"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if (!func5.call(schema236.properties, key0)) return validate205.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.token) {
+        let _errs2 = 0;
+        if ("string" != typeof data.token) return validate205.errors = [ {
+          instancePath: instancePath + "/token",
+          schemaPath: "#/properties/token/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.name) {
+          let _errs4 = 0;
+          if ("string" != typeof data.name) return validate205.errors = [ {
+            instancePath: instancePath + "/name",
+            schemaPath: "#/properties/name/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.video_source_token) {
+            let _errs6 = 0;
+            if ("string" != typeof data.video_source_token) return validate205.errors = [ {
+              instancePath: instancePath + "/video_source_token",
+              schemaPath: "#/properties/video_source_token/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.ptz_configuration_token) {
+              let _errs8 = 0;
+              if ("string" != typeof data.ptz_configuration_token) return validate205.errors = [ {
+                instancePath: instancePath + "/ptz_configuration_token",
+                schemaPath: "#/properties/ptz_configuration_token/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.snapshot_uri) {
+                let _errs10 = 0;
+                if ("string" != typeof data.snapshot_uri) return validate205.errors = [ {
+                  instancePath: instancePath + "/snapshot_uri",
+                  schemaPath: "#/properties/snapshot_uri/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.stream_uri) {
+                  let _errs12 = 0;
+                  if ("string" != typeof data.stream_uri) return validate205.errors = [ {
+                    instancePath: instancePath + "/stream_uri",
+                    schemaPath: "#/properties/stream_uri/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  var valid5 = 0 === _errs12;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.encoding) {
+                    let _errs14 = 0;
+                    if ("string" != typeof data.encoding) return validate205.errors = [ {
+                      instancePath: instancePath + "/encoding",
+                      schemaPath: "#/properties/encoding/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                    var valid6 = 0 === _errs14;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data.width) {
+                      let data7 = data.width, _errs16 = 0;
+                      if ("number" != typeof data7 || data7 % 1 || isNaN(data7) || !isFinite(data7)) return validate205.errors = [ {
+                        instancePath: instancePath + "/width",
+                        schemaPath: "#/properties/width/type",
+                        keyword: "type",
+                        params: {
+                          type: "integer"
+                        }
+                      } ], !1;
+                      var valid7 = 0 === _errs16;
+                    } else valid7 = !0;
+                    if (valid7) {
+                      if (void 0 !== data.height) {
+                        let data8 = data.height, _errs18 = 0;
+                        if ("number" != typeof data8 || data8 % 1 || isNaN(data8) || !isFinite(data8)) return validate205.errors = [ {
+                          instancePath: instancePath + "/height",
+                          schemaPath: "#/properties/height/type",
+                          keyword: "type",
+                          params: {
+                            type: "integer"
+                          }
+                        } ], !1;
+                        var valid8 = 0 === _errs18;
+                      } else valid8 = !0;
+                      if (valid8) {
+                        if (void 0 !== data.fps) {
+                          let data9 = data.fps, _errs20 = 0;
+                          if ("number" != typeof data9 || data9 % 1 || isNaN(data9) || !isFinite(data9)) return validate205.errors = [ {
+                            instancePath: instancePath + "/fps",
+                            schemaPath: "#/properties/fps/type",
+                            keyword: "type",
+                            params: {
+                              type: "integer"
+                            }
+                          } ], !1;
+                          var valid9 = 0 === _errs20;
+                        } else valid9 = !0;
+                        if (valid9) {
+                          if (void 0 !== data.bitrate) {
+                            let data10 = data.bitrate, _errs22 = 0;
+                            if ("number" != typeof data10 || data10 % 1 || isNaN(data10) || !isFinite(data10)) return validate205.errors = [ {
+                              instancePath: instancePath + "/bitrate",
+                              schemaPath: "#/properties/bitrate/type",
+                              keyword: "type",
+                              params: {
+                                type: "integer"
+                              }
+                            } ], !1;
+                            var valid10 = 0 === _errs22;
+                          } else valid10 = !0;
+                          if (valid10 && void 0 !== data.ptz_supported && "boolean" != typeof data.ptz_supported) return validate205.errors = [ {
+                            instancePath: instancePath + "/ptz_supported",
+                            schemaPath: "#/properties/ptz_supported/type",
+                            keyword: "type",
+                            params: {
+                              type: "boolean"
+                            }
+                          } ], !1;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate205.errors = [], !0;
+}
+
+validate205.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_OnvifProfilesResponse = validate206;
+
+function validate206(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate206.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate206.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.profiles) return validate206.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "profiles"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("profiles" !== key0) return validate206.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.profiles) {
+      let data0 = data.profiles;
+      if (!Array.isArray(data0)) return validate206.errors = [ {
+        instancePath: instancePath + "/profiles",
+        schemaPath: "#/properties/profiles/type",
+        keyword: "type",
+        params: {
+          type: "array"
+        }
+      } ], !1;
+      if (data0.length > 16) return validate206.errors = [ {
+        instancePath: instancePath + "/profiles",
+        schemaPath: "#/properties/profiles/maxItems",
+        keyword: "maxItems",
+        params: {
+          limit: 16
+        }
+      } ], !1;
+      {
+        let len0 = data0.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          let data1 = data0[i0], _errs4 = 0;
+          if (!data1 || "object" != typeof data1 || Array.isArray(data1)) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/type",
+            keyword: "type",
+            params: {
+              type: "object"
+            }
+          } ], !1;
+          if (void 0 === data1.token) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "token"
+            }
+          } ], !1;
+          if (void 0 === data1.name) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "name"
+            }
+          } ], !1;
+          if (void 0 === data1.video_source_token) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "video_source_token"
+            }
+          } ], !1;
+          if (void 0 === data1.ptz_configuration_token) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "ptz_configuration_token"
+            }
+          } ], !1;
+          if (void 0 === data1.snapshot_uri) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "snapshot_uri"
+            }
+          } ], !1;
+          if (void 0 === data1.stream_uri) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "stream_uri"
+            }
+          } ], !1;
+          if (void 0 === data1.encoding) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "encoding"
+            }
+          } ], !1;
+          if (void 0 === data1.width) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "width"
+            }
+          } ], !1;
+          if (void 0 === data1.height) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "height"
+            }
+          } ], !1;
+          if (void 0 === data1.fps) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "fps"
+            }
+          } ], !1;
+          if (void 0 === data1.bitrate) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "bitrate"
+            }
+          } ], !1;
+          if (void 0 === data1.ptz_supported) return validate206.errors = [ {
+            instancePath: instancePath + "/profiles/" + i0,
+            schemaPath: "#/$defs/OnvifProfile/required",
+            keyword: "required",
+            params: {
+              missingProperty: "ptz_supported"
+            }
+          } ], !1;
+          {
+            let _errs7 = 0;
+            for (let key1 in data1) if (!func5.call(schema236.properties, key1)) return validate206.errors = [ {
+              instancePath: instancePath + "/profiles/" + i0,
+              schemaPath: "#/$defs/OnvifProfile/additionalProperties",
+              keyword: "additionalProperties",
+              params: {
+                additionalProperty: key1
+              }
+            } ], !1;
+            if (0 === _errs7) {
+              if (void 0 !== data1.token) {
+                let _errs8 = 0;
+                if ("string" != typeof data1.token) return validate206.errors = [ {
+                  instancePath: instancePath + "/profiles/" + i0 + "/token",
+                  schemaPath: "#/$defs/OnvifProfile/properties/token/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                var valid3 = 0 === _errs8;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data1.name) {
+                  let _errs10 = 0;
+                  if ("string" != typeof data1.name) return validate206.errors = [ {
+                    instancePath: instancePath + "/profiles/" + i0 + "/name",
+                    schemaPath: "#/$defs/OnvifProfile/properties/name/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  var valid4 = 0 === _errs10;
+                } else valid4 = !0;
+                if (valid4) {
+                  if (void 0 !== data1.video_source_token) {
+                    let _errs12 = 0;
+                    if ("string" != typeof data1.video_source_token) return validate206.errors = [ {
+                      instancePath: instancePath + "/profiles/" + i0 + "/video_source_token",
+                      schemaPath: "#/$defs/OnvifProfile/properties/video_source_token/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                    var valid5 = 0 === _errs12;
+                  } else valid5 = !0;
+                  if (valid5) {
+                    if (void 0 !== data1.ptz_configuration_token) {
+                      let _errs14 = 0;
+                      if ("string" != typeof data1.ptz_configuration_token) return validate206.errors = [ {
+                        instancePath: instancePath + "/profiles/" + i0 + "/ptz_configuration_token",
+                        schemaPath: "#/$defs/OnvifProfile/properties/ptz_configuration_token/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      var valid6 = 0 === _errs14;
+                    } else valid6 = !0;
+                    if (valid6) {
+                      if (void 0 !== data1.snapshot_uri) {
+                        let _errs16 = 0;
+                        if ("string" != typeof data1.snapshot_uri) return validate206.errors = [ {
+                          instancePath: instancePath + "/profiles/" + i0 + "/snapshot_uri",
+                          schemaPath: "#/$defs/OnvifProfile/properties/snapshot_uri/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        var valid7 = 0 === _errs16;
+                      } else valid7 = !0;
+                      if (valid7) {
+                        if (void 0 !== data1.stream_uri) {
+                          let _errs18 = 0;
+                          if ("string" != typeof data1.stream_uri) return validate206.errors = [ {
+                            instancePath: instancePath + "/profiles/" + i0 + "/stream_uri",
+                            schemaPath: "#/$defs/OnvifProfile/properties/stream_uri/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          var valid8 = 0 === _errs18;
+                        } else valid8 = !0;
+                        if (valid8) {
+                          if (void 0 !== data1.encoding) {
+                            let _errs20 = 0;
+                            if ("string" != typeof data1.encoding) return validate206.errors = [ {
+                              instancePath: instancePath + "/profiles/" + i0 + "/encoding",
+                              schemaPath: "#/$defs/OnvifProfile/properties/encoding/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            var valid9 = 0 === _errs20;
+                          } else valid9 = !0;
+                          if (valid9) {
+                            if (void 0 !== data1.width) {
+                              let data9 = data1.width, _errs22 = 0;
+                              if ("number" != typeof data9 || data9 % 1 || isNaN(data9) || !isFinite(data9)) return validate206.errors = [ {
+                                instancePath: instancePath + "/profiles/" + i0 + "/width",
+                                schemaPath: "#/$defs/OnvifProfile/properties/width/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              var valid10 = 0 === _errs22;
+                            } else valid10 = !0;
+                            if (valid10) {
+                              if (void 0 !== data1.height) {
+                                let data10 = data1.height, _errs24 = 0;
+                                if ("number" != typeof data10 || data10 % 1 || isNaN(data10) || !isFinite(data10)) return validate206.errors = [ {
+                                  instancePath: instancePath + "/profiles/" + i0 + "/height",
+                                  schemaPath: "#/$defs/OnvifProfile/properties/height/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                var valid11 = 0 === _errs24;
+                              } else valid11 = !0;
+                              if (valid11) {
+                                if (void 0 !== data1.fps) {
+                                  let data11 = data1.fps, _errs26 = 0;
+                                  if ("number" != typeof data11 || data11 % 1 || isNaN(data11) || !isFinite(data11)) return validate206.errors = [ {
+                                    instancePath: instancePath + "/profiles/" + i0 + "/fps",
+                                    schemaPath: "#/$defs/OnvifProfile/properties/fps/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  var valid12 = 0 === _errs26;
+                                } else valid12 = !0;
+                                if (valid12) {
+                                  if (void 0 !== data1.bitrate) {
+                                    let data12 = data1.bitrate, _errs28 = 0;
+                                    if ("number" != typeof data12 || data12 % 1 || isNaN(data12) || !isFinite(data12)) return validate206.errors = [ {
+                                      instancePath: instancePath + "/profiles/" + i0 + "/bitrate",
+                                      schemaPath: "#/$defs/OnvifProfile/properties/bitrate/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "integer"
+                                      }
+                                    } ], !1;
+                                    var valid13 = 0 === _errs28;
+                                  } else valid13 = !0;
+                                  if (valid13 && void 0 !== data1.ptz_supported && "boolean" != typeof data1.ptz_supported) return validate206.errors = [ {
+                                    instancePath: instancePath + "/profiles/" + i0 + "/ptz_supported",
+                                    schemaPath: "#/$defs/OnvifProfile/properties/ptz_supported/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "boolean"
+                                    }
+                                  } ], !1;
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          if (0 !== _errs4) break;
+        }
+      }
+    }
+  }
+  return validate206.errors = [], !0;
+}
+
+validate206.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_OnvifTestRequest = validate207;
+
+function validate207(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate207.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate207.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.url) return validate207.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "url"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("url" !== key0 && "username" !== key0 && "password" !== key0 && "insecure" !== key0) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.url) {
+        let data0 = data.url, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate207.errors = [ {
+            instancePath: instancePath + "/url",
+            schemaPath: "#/properties/url/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 511) return validate207.errors = [ {
+            instancePath: instancePath + "/url",
+            schemaPath: "#/properties/url/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 511
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate207.errors = [ {
+            instancePath: instancePath + "/url",
+            schemaPath: "#/properties/url/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.username) {
+          let data1 = data.username, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("string" != typeof data1) return validate207.errors = [ {
+              instancePath: instancePath + "/username",
+              schemaPath: "#/properties/username/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data1) > 63) return validate207.errors = [ {
+              instancePath: instancePath + "/username",
+              schemaPath: "#/properties/username/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 63
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.password) {
+            let data2 = data.password, _errs6 = 0;
+            if (0 === _errs6) {
+              if ("string" != typeof data2) return validate207.errors = [ {
+                instancePath: instancePath + "/password",
+                schemaPath: "#/properties/password/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data2) > 63) return validate207.errors = [ {
+                instancePath: instancePath + "/password",
+                schemaPath: "#/properties/password/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 63
+                }
+              } ], !1;
+            }
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2 && void 0 !== data.insecure && "boolean" != typeof data.insecure) return validate207.errors = [ {
+            instancePath: instancePath + "/insecure",
+            schemaPath: "#/properties/insecure/type",
+            keyword: "type",
+            params: {
+              type: "boolean"
+            }
+          } ], !1;
+        }
+      }
+    }
+  }
+  return validate207.errors = [], !0;
+}
+
+validate207.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
 var __contract_OpenApiDocument = validate69;
 
 function validate69(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
@@ -15256,6 +23847,1146 @@ function validate138(data, {instancePath: instancePath = "", parentData: parentD
 }
 
 validate138.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_PtzAxesRequest = validate178;
+
+function validate178(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate178.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate178.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (Object.keys(data).length < 1) return validate178.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/minProperties",
+    keyword: "minProperties",
+    params: {
+      limit: 1
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("pan" !== key0 && "tilt" !== key0 && "zoom" !== key0) return validate178.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.pan) {
+        let data0 = data.pan, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("number" != typeof data0 || !isFinite(data0)) return validate178.errors = [ {
+            instancePath: instancePath + "/pan",
+            schemaPath: "#/properties/pan/type",
+            keyword: "type",
+            params: {
+              type: "number"
+            }
+          } ], !1;
+          if (data0 > 34028234663852886e22 || isNaN(data0)) return validate178.errors = [ {
+            instancePath: instancePath + "/pan",
+            schemaPath: "#/properties/pan/maximum",
+            keyword: "maximum",
+            params: {
+              comparison: "<=",
+              limit: 34028234663852886e22
+            }
+          } ], !1;
+          if (data0 < -34028234663852886e22 || isNaN(data0)) return validate178.errors = [ {
+            instancePath: instancePath + "/pan",
+            schemaPath: "#/properties/pan/minimum",
+            keyword: "minimum",
+            params: {
+              comparison: ">=",
+              limit: -34028234663852886e22
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.tilt) {
+          let data1 = data.tilt, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("number" != typeof data1 || !isFinite(data1)) return validate178.errors = [ {
+              instancePath: instancePath + "/tilt",
+              schemaPath: "#/properties/tilt/type",
+              keyword: "type",
+              params: {
+                type: "number"
+              }
+            } ], !1;
+            if (data1 > 34028234663852886e22 || isNaN(data1)) return validate178.errors = [ {
+              instancePath: instancePath + "/tilt",
+              schemaPath: "#/properties/tilt/maximum",
+              keyword: "maximum",
+              params: {
+                comparison: "<=",
+                limit: 34028234663852886e22
+              }
+            } ], !1;
+            if (data1 < -34028234663852886e22 || isNaN(data1)) return validate178.errors = [ {
+              instancePath: instancePath + "/tilt",
+              schemaPath: "#/properties/tilt/minimum",
+              keyword: "minimum",
+              params: {
+                comparison: ">=",
+                limit: -34028234663852886e22
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.zoom) {
+          let data2 = data.zoom;
+          if ("number" != typeof data2 || !isFinite(data2)) return validate178.errors = [ {
+            instancePath: instancePath + "/zoom",
+            schemaPath: "#/properties/zoom/type",
+            keyword: "type",
+            params: {
+              type: "number"
+            }
+          } ], !1;
+          if (data2 > 34028234663852886e22 || isNaN(data2)) return validate178.errors = [ {
+            instancePath: instancePath + "/zoom",
+            schemaPath: "#/properties/zoom/maximum",
+            keyword: "maximum",
+            params: {
+              comparison: "<=",
+              limit: 34028234663852886e22
+            }
+          } ], !1;
+          if (data2 < -34028234663852886e22 || isNaN(data2)) return validate178.errors = [ {
+            instancePath: instancePath + "/zoom",
+            schemaPath: "#/properties/zoom/minimum",
+            keyword: "minimum",
+            params: {
+              comparison: ">=",
+              limit: -34028234663852886e22
+            }
+          } ], !1;
+        }
+      }
+    }
+  }
+  return validate178.errors = [], !0;
+}
+
+validate178.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_PtzCapabilities = validate183, schema190 = {
+  type: "object",
+  properties: {
+    ptz_enabled: {
+      type: "boolean"
+    },
+    onvif_queried: {
+      type: "boolean"
+    },
+    has_pan_tilt: {
+      type: "boolean"
+    },
+    has_zoom: {
+      type: "boolean"
+    },
+    has_continuous_move: {
+      type: "boolean"
+    },
+    has_absolute_move: {
+      type: "boolean"
+    },
+    has_relative_move: {
+      type: "boolean"
+    },
+    has_home_position: {
+      type: "boolean"
+    },
+    has_presets: {
+      type: "boolean"
+    },
+    has_home: {
+      type: "boolean"
+    },
+    pan_range: {
+      $ref: "#/$defs/DeviceFloatRange"
+    },
+    tilt_range: {
+      $ref: "#/$defs/DeviceFloatRange"
+    },
+    zoom_range: {
+      $ref: "#/$defs/DeviceFloatRange"
+    },
+    max_x: {
+      type: "number"
+    },
+    max_y: {
+      type: "number"
+    },
+    max_z: {
+      type: "number"
+    },
+    max_presets: {
+      type: "integer"
+    },
+    ptz_service_url: {
+      type: "string"
+    }
+  },
+  required: [ "ptz_enabled", "onvif_queried", "has_pan_tilt", "has_zoom", "has_continuous_move", "has_absolute_move", "has_relative_move", "has_home_position", "has_presets", "has_home", "pan_range", "tilt_range", "zoom_range", "max_x", "max_y", "max_z", "max_presets", "ptz_service_url" ],
+  additionalProperties: !1
+};
+
+function validate183(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate183.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.ptz_enabled) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "ptz_enabled"
+    }
+  } ], !1;
+  if (void 0 === data.onvif_queried) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "onvif_queried"
+    }
+  } ], !1;
+  if (void 0 === data.has_pan_tilt) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "has_pan_tilt"
+    }
+  } ], !1;
+  if (void 0 === data.has_zoom) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "has_zoom"
+    }
+  } ], !1;
+  if (void 0 === data.has_continuous_move) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "has_continuous_move"
+    }
+  } ], !1;
+  if (void 0 === data.has_absolute_move) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "has_absolute_move"
+    }
+  } ], !1;
+  if (void 0 === data.has_relative_move) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "has_relative_move"
+    }
+  } ], !1;
+  if (void 0 === data.has_home_position) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "has_home_position"
+    }
+  } ], !1;
+  if (void 0 === data.has_presets) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "has_presets"
+    }
+  } ], !1;
+  if (void 0 === data.has_home) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "has_home"
+    }
+  } ], !1;
+  if (void 0 === data.pan_range) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "pan_range"
+    }
+  } ], !1;
+  if (void 0 === data.tilt_range) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "tilt_range"
+    }
+  } ], !1;
+  if (void 0 === data.zoom_range) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "zoom_range"
+    }
+  } ], !1;
+  if (void 0 === data.max_x) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "max_x"
+    }
+  } ], !1;
+  if (void 0 === data.max_y) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "max_y"
+    }
+  } ], !1;
+  if (void 0 === data.max_z) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "max_z"
+    }
+  } ], !1;
+  if (void 0 === data.max_presets) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "max_presets"
+    }
+  } ], !1;
+  if (void 0 === data.ptz_service_url) return validate183.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "ptz_service_url"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if (!func5.call(schema190.properties, key0)) return validate183.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.ptz_enabled) {
+        let _errs2 = 0;
+        if ("boolean" != typeof data.ptz_enabled) return validate183.errors = [ {
+          instancePath: instancePath + "/ptz_enabled",
+          schemaPath: "#/properties/ptz_enabled/type",
+          keyword: "type",
+          params: {
+            type: "boolean"
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.onvif_queried) {
+          let _errs4 = 0;
+          if ("boolean" != typeof data.onvif_queried) return validate183.errors = [ {
+            instancePath: instancePath + "/onvif_queried",
+            schemaPath: "#/properties/onvif_queried/type",
+            keyword: "type",
+            params: {
+              type: "boolean"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.has_pan_tilt) {
+            let _errs6 = 0;
+            if ("boolean" != typeof data.has_pan_tilt) return validate183.errors = [ {
+              instancePath: instancePath + "/has_pan_tilt",
+              schemaPath: "#/properties/has_pan_tilt/type",
+              keyword: "type",
+              params: {
+                type: "boolean"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.has_zoom) {
+              let _errs8 = 0;
+              if ("boolean" != typeof data.has_zoom) return validate183.errors = [ {
+                instancePath: instancePath + "/has_zoom",
+                schemaPath: "#/properties/has_zoom/type",
+                keyword: "type",
+                params: {
+                  type: "boolean"
+                }
+              } ], !1;
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.has_continuous_move) {
+                let _errs10 = 0;
+                if ("boolean" != typeof data.has_continuous_move) return validate183.errors = [ {
+                  instancePath: instancePath + "/has_continuous_move",
+                  schemaPath: "#/properties/has_continuous_move/type",
+                  keyword: "type",
+                  params: {
+                    type: "boolean"
+                  }
+                } ], !1;
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.has_absolute_move) {
+                  let _errs12 = 0;
+                  if ("boolean" != typeof data.has_absolute_move) return validate183.errors = [ {
+                    instancePath: instancePath + "/has_absolute_move",
+                    schemaPath: "#/properties/has_absolute_move/type",
+                    keyword: "type",
+                    params: {
+                      type: "boolean"
+                    }
+                  } ], !1;
+                  var valid5 = 0 === _errs12;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.has_relative_move) {
+                    let _errs14 = 0;
+                    if ("boolean" != typeof data.has_relative_move) return validate183.errors = [ {
+                      instancePath: instancePath + "/has_relative_move",
+                      schemaPath: "#/properties/has_relative_move/type",
+                      keyword: "type",
+                      params: {
+                        type: "boolean"
+                      }
+                    } ], !1;
+                    var valid6 = 0 === _errs14;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data.has_home_position) {
+                      let _errs16 = 0;
+                      if ("boolean" != typeof data.has_home_position) return validate183.errors = [ {
+                        instancePath: instancePath + "/has_home_position",
+                        schemaPath: "#/properties/has_home_position/type",
+                        keyword: "type",
+                        params: {
+                          type: "boolean"
+                        }
+                      } ], !1;
+                      var valid7 = 0 === _errs16;
+                    } else valid7 = !0;
+                    if (valid7) {
+                      if (void 0 !== data.has_presets) {
+                        let _errs18 = 0;
+                        if ("boolean" != typeof data.has_presets) return validate183.errors = [ {
+                          instancePath: instancePath + "/has_presets",
+                          schemaPath: "#/properties/has_presets/type",
+                          keyword: "type",
+                          params: {
+                            type: "boolean"
+                          }
+                        } ], !1;
+                        var valid8 = 0 === _errs18;
+                      } else valid8 = !0;
+                      if (valid8) {
+                        if (void 0 !== data.has_home) {
+                          let _errs20 = 0;
+                          if ("boolean" != typeof data.has_home) return validate183.errors = [ {
+                            instancePath: instancePath + "/has_home",
+                            schemaPath: "#/properties/has_home/type",
+                            keyword: "type",
+                            params: {
+                              type: "boolean"
+                            }
+                          } ], !1;
+                          var valid9 = 0 === _errs20;
+                        } else valid9 = !0;
+                        if (valid9) {
+                          if (void 0 !== data.pan_range) {
+                            let data10 = data.pan_range, _errs22 = 0;
+                            if (!data10 || "object" != typeof data10 || Array.isArray(data10)) return validate183.errors = [ {
+                              instancePath: instancePath + "/pan_range",
+                              schemaPath: "#/$defs/DeviceFloatRange/type",
+                              keyword: "type",
+                              params: {
+                                type: "object"
+                              }
+                            } ], !1;
+                            if (void 0 === data10.min) return validate183.errors = [ {
+                              instancePath: instancePath + "/pan_range",
+                              schemaPath: "#/$defs/DeviceFloatRange/required",
+                              keyword: "required",
+                              params: {
+                                missingProperty: "min"
+                              }
+                            } ], !1;
+                            if (void 0 === data10.max) return validate183.errors = [ {
+                              instancePath: instancePath + "/pan_range",
+                              schemaPath: "#/$defs/DeviceFloatRange/required",
+                              keyword: "required",
+                              params: {
+                                missingProperty: "max"
+                              }
+                            } ], !1;
+                            {
+                              let _errs25 = 0;
+                              for (let key1 in data10) if ("min" !== key1 && "max" !== key1) return validate183.errors = [ {
+                                instancePath: instancePath + "/pan_range",
+                                schemaPath: "#/$defs/DeviceFloatRange/additionalProperties",
+                                keyword: "additionalProperties",
+                                params: {
+                                  additionalProperty: key1
+                                }
+                              } ], !1;
+                              if (0 === _errs25) {
+                                if (void 0 !== data10.min) {
+                                  let data11 = data10.min, _errs26 = 0;
+                                  if ("number" != typeof data11 || !isFinite(data11)) return validate183.errors = [ {
+                                    instancePath: instancePath + "/pan_range/min",
+                                    schemaPath: "#/$defs/DeviceFloatRange/properties/min/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "number"
+                                    }
+                                  } ], !1;
+                                  var valid12 = 0 === _errs26;
+                                } else valid12 = !0;
+                                if (valid12 && void 0 !== data10.max) {
+                                  let data12 = data10.max;
+                                  if ("number" != typeof data12 || !isFinite(data12)) return validate183.errors = [ {
+                                    instancePath: instancePath + "/pan_range/max",
+                                    schemaPath: "#/$defs/DeviceFloatRange/properties/max/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "number"
+                                    }
+                                  } ], !1;
+                                }
+                              }
+                            }
+                            var valid10 = 0 === _errs22;
+                          } else valid10 = !0;
+                          if (valid10) {
+                            if (void 0 !== data.tilt_range) {
+                              let data13 = data.tilt_range, _errs30 = 0;
+                              if (!data13 || "object" != typeof data13 || Array.isArray(data13)) return validate183.errors = [ {
+                                instancePath: instancePath + "/tilt_range",
+                                schemaPath: "#/$defs/DeviceFloatRange/type",
+                                keyword: "type",
+                                params: {
+                                  type: "object"
+                                }
+                              } ], !1;
+                              if (void 0 === data13.min) return validate183.errors = [ {
+                                instancePath: instancePath + "/tilt_range",
+                                schemaPath: "#/$defs/DeviceFloatRange/required",
+                                keyword: "required",
+                                params: {
+                                  missingProperty: "min"
+                                }
+                              } ], !1;
+                              if (void 0 === data13.max) return validate183.errors = [ {
+                                instancePath: instancePath + "/tilt_range",
+                                schemaPath: "#/$defs/DeviceFloatRange/required",
+                                keyword: "required",
+                                params: {
+                                  missingProperty: "max"
+                                }
+                              } ], !1;
+                              {
+                                let _errs33 = 0;
+                                for (let key2 in data13) if ("min" !== key2 && "max" !== key2) return validate183.errors = [ {
+                                  instancePath: instancePath + "/tilt_range",
+                                  schemaPath: "#/$defs/DeviceFloatRange/additionalProperties",
+                                  keyword: "additionalProperties",
+                                  params: {
+                                    additionalProperty: key2
+                                  }
+                                } ], !1;
+                                if (0 === _errs33) {
+                                  if (void 0 !== data13.min) {
+                                    let data14 = data13.min, _errs34 = 0;
+                                    if ("number" != typeof data14 || !isFinite(data14)) return validate183.errors = [ {
+                                      instancePath: instancePath + "/tilt_range/min",
+                                      schemaPath: "#/$defs/DeviceFloatRange/properties/min/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "number"
+                                      }
+                                    } ], !1;
+                                    var valid16 = 0 === _errs34;
+                                  } else valid16 = !0;
+                                  if (valid16 && void 0 !== data13.max) {
+                                    let data15 = data13.max;
+                                    if ("number" != typeof data15 || !isFinite(data15)) return validate183.errors = [ {
+                                      instancePath: instancePath + "/tilt_range/max",
+                                      schemaPath: "#/$defs/DeviceFloatRange/properties/max/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "number"
+                                      }
+                                    } ], !1;
+                                  }
+                                }
+                              }
+                              var valid14 = 0 === _errs30;
+                            } else valid14 = !0;
+                            if (valid14) {
+                              if (void 0 !== data.zoom_range) {
+                                let data16 = data.zoom_range, _errs38 = 0;
+                                if (!data16 || "object" != typeof data16 || Array.isArray(data16)) return validate183.errors = [ {
+                                  instancePath: instancePath + "/zoom_range",
+                                  schemaPath: "#/$defs/DeviceFloatRange/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "object"
+                                  }
+                                } ], !1;
+                                if (void 0 === data16.min) return validate183.errors = [ {
+                                  instancePath: instancePath + "/zoom_range",
+                                  schemaPath: "#/$defs/DeviceFloatRange/required",
+                                  keyword: "required",
+                                  params: {
+                                    missingProperty: "min"
+                                  }
+                                } ], !1;
+                                if (void 0 === data16.max) return validate183.errors = [ {
+                                  instancePath: instancePath + "/zoom_range",
+                                  schemaPath: "#/$defs/DeviceFloatRange/required",
+                                  keyword: "required",
+                                  params: {
+                                    missingProperty: "max"
+                                  }
+                                } ], !1;
+                                {
+                                  let _errs41 = 0;
+                                  for (let key3 in data16) if ("min" !== key3 && "max" !== key3) return validate183.errors = [ {
+                                    instancePath: instancePath + "/zoom_range",
+                                    schemaPath: "#/$defs/DeviceFloatRange/additionalProperties",
+                                    keyword: "additionalProperties",
+                                    params: {
+                                      additionalProperty: key3
+                                    }
+                                  } ], !1;
+                                  if (0 === _errs41) {
+                                    if (void 0 !== data16.min) {
+                                      let data17 = data16.min, _errs42 = 0;
+                                      if ("number" != typeof data17 || !isFinite(data17)) return validate183.errors = [ {
+                                        instancePath: instancePath + "/zoom_range/min",
+                                        schemaPath: "#/$defs/DeviceFloatRange/properties/min/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "number"
+                                        }
+                                      } ], !1;
+                                      var valid20 = 0 === _errs42;
+                                    } else valid20 = !0;
+                                    if (valid20 && void 0 !== data16.max) {
+                                      let data18 = data16.max;
+                                      if ("number" != typeof data18 || !isFinite(data18)) return validate183.errors = [ {
+                                        instancePath: instancePath + "/zoom_range/max",
+                                        schemaPath: "#/$defs/DeviceFloatRange/properties/max/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "number"
+                                        }
+                                      } ], !1;
+                                    }
+                                  }
+                                }
+                                var valid18 = 0 === _errs38;
+                              } else valid18 = !0;
+                              if (valid18) {
+                                if (void 0 !== data.max_x) {
+                                  let data19 = data.max_x, _errs46 = 0;
+                                  if ("number" != typeof data19 || !isFinite(data19)) return validate183.errors = [ {
+                                    instancePath: instancePath + "/max_x",
+                                    schemaPath: "#/properties/max_x/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "number"
+                                    }
+                                  } ], !1;
+                                  var valid22 = 0 === _errs46;
+                                } else valid22 = !0;
+                                if (valid22) {
+                                  if (void 0 !== data.max_y) {
+                                    let data20 = data.max_y, _errs48 = 0;
+                                    if ("number" != typeof data20 || !isFinite(data20)) return validate183.errors = [ {
+                                      instancePath: instancePath + "/max_y",
+                                      schemaPath: "#/properties/max_y/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "number"
+                                      }
+                                    } ], !1;
+                                    var valid23 = 0 === _errs48;
+                                  } else valid23 = !0;
+                                  if (valid23) {
+                                    if (void 0 !== data.max_z) {
+                                      let data21 = data.max_z, _errs50 = 0;
+                                      if ("number" != typeof data21 || !isFinite(data21)) return validate183.errors = [ {
+                                        instancePath: instancePath + "/max_z",
+                                        schemaPath: "#/properties/max_z/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "number"
+                                        }
+                                      } ], !1;
+                                      var valid24 = 0 === _errs50;
+                                    } else valid24 = !0;
+                                    if (valid24) {
+                                      if (void 0 !== data.max_presets) {
+                                        let data22 = data.max_presets, _errs52 = 0;
+                                        if ("number" != typeof data22 || data22 % 1 || isNaN(data22) || !isFinite(data22)) return validate183.errors = [ {
+                                          instancePath: instancePath + "/max_presets",
+                                          schemaPath: "#/properties/max_presets/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "integer"
+                                          }
+                                        } ], !1;
+                                        var valid25 = 0 === _errs52;
+                                      } else valid25 = !0;
+                                      if (valid25 && void 0 !== data.ptz_service_url && "string" != typeof data.ptz_service_url) return validate183.errors = [ {
+                                        instancePath: instancePath + "/ptz_service_url",
+                                        schemaPath: "#/properties/ptz_service_url/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      } ], !1;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate183.errors = [], !0;
+}
+
+validate183.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_PtzGotoPresetRequest = validate180;
+
+function validate180(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate180.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate180.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.token) return validate180.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "token"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("token" !== key0) return validate180.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.token) {
+      let data0 = data.token;
+      if ("string" != typeof data0) return validate180.errors = [ {
+        instancePath: instancePath + "/token",
+        schemaPath: "#/properties/token/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      } ], !1;
+      if (func1(data0) > 63) return validate180.errors = [ {
+        instancePath: instancePath + "/token",
+        schemaPath: "#/properties/token/maxLength",
+        keyword: "maxLength",
+        params: {
+          limit: 63
+        }
+      } ], !1;
+      if (func1(data0) < 1) return validate180.errors = [ {
+        instancePath: instancePath + "/token",
+        schemaPath: "#/properties/token/minLength",
+        keyword: "minLength",
+        params: {
+          limit: 1
+        }
+      } ], !1;
+    }
+  }
+  return validate180.errors = [], !0;
+}
+
+validate180.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_PtzPresetRequest = validate179;
+
+function validate179(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate179.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate179.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("name" !== key0) return validate179.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.name) {
+      let data0 = data.name;
+      if ("string" != typeof data0) return validate179.errors = [ {
+        instancePath: instancePath + "/name",
+        schemaPath: "#/properties/name/type",
+        keyword: "type",
+        params: {
+          type: "string"
+        }
+      } ], !1;
+      if (func1(data0) > 63) return validate179.errors = [ {
+        instancePath: instancePath + "/name",
+        schemaPath: "#/properties/name/maxLength",
+        keyword: "maxLength",
+        params: {
+          limit: 63
+        }
+      } ], !1;
+    }
+  }
+  return validate179.errors = [], !0;
+}
+
+validate179.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_PtzPresetResult = validate181;
+
+function validate181(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate181.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate181.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate181.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  if (void 0 === data.message) return validate181.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "message"
+    }
+  } ], !1;
+  if (void 0 === data.token) return validate181.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "token"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0 && "message" !== key0 && "token" !== key0) return validate181.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.success) {
+        let _errs2 = 0;
+        if (!0 !== data.success) return validate181.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/const",
+          keyword: "const",
+          params: {
+            allowedValue: !0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.message) {
+          let _errs3 = 0;
+          if ("string" != typeof data.message) return validate181.errors = [ {
+            instancePath: instancePath + "/message",
+            schemaPath: "#/properties/message/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs3;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.token && "string" != typeof data.token) return validate181.errors = [ {
+          instancePath: instancePath + "/token",
+          schemaPath: "#/properties/token/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        } ], !1;
+      }
+    }
+  }
+  return validate181.errors = [], !0;
+}
+
+validate181.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_PtzPresets = validate182;
+
+function validate182(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate182.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate182.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.presets) return validate182.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "presets"
+    }
+  } ], !1;
+  if (void 0 === data.count) return validate182.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "count"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("presets" !== key0 && "count" !== key0) return validate182.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.presets) {
+        let data0 = data.presets, _errs2 = 0;
+        if (0 === _errs2) {
+          if (!Array.isArray(data0)) return validate182.errors = [ {
+            instancePath: instancePath + "/presets",
+            schemaPath: "#/properties/presets/type",
+            keyword: "type",
+            params: {
+              type: "array"
+            }
+          } ], !1;
+          if (data0.length > 32) return validate182.errors = [ {
+            instancePath: instancePath + "/presets",
+            schemaPath: "#/properties/presets/maxItems",
+            keyword: "maxItems",
+            params: {
+              limit: 32
+            }
+          } ], !1;
+          {
+            let len0 = data0.length;
+            for (let i0 = 0; i0 < len0; i0++) {
+              let data1 = data0[i0], _errs4 = 0;
+              if (0 === _errs4) {
+                if (!data1 || "object" != typeof data1 || Array.isArray(data1)) return validate182.errors = [ {
+                  instancePath: instancePath + "/presets/" + i0,
+                  schemaPath: "#/properties/presets/items/type",
+                  keyword: "type",
+                  params: {
+                    type: "object"
+                  }
+                } ], !1;
+                if (void 0 === data1.token) return validate182.errors = [ {
+                  instancePath: instancePath + "/presets/" + i0,
+                  schemaPath: "#/properties/presets/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "token"
+                  }
+                } ], !1;
+                if (void 0 === data1.name) return validate182.errors = [ {
+                  instancePath: instancePath + "/presets/" + i0,
+                  schemaPath: "#/properties/presets/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "name"
+                  }
+                } ], !1;
+                {
+                  let _errs6 = 0;
+                  for (let key1 in data1) if ("token" !== key1 && "name" !== key1) return validate182.errors = [ {
+                    instancePath: instancePath + "/presets/" + i0,
+                    schemaPath: "#/properties/presets/items/additionalProperties",
+                    keyword: "additionalProperties",
+                    params: {
+                      additionalProperty: key1
+                    }
+                  } ], !1;
+                  if (0 === _errs6) {
+                    if (void 0 !== data1.token) {
+                      let _errs7 = 0;
+                      if ("string" != typeof data1.token) return validate182.errors = [ {
+                        instancePath: instancePath + "/presets/" + i0 + "/token",
+                        schemaPath: "#/properties/presets/items/properties/token/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      var valid2 = 0 === _errs7;
+                    } else valid2 = !0;
+                    if (valid2 && void 0 !== data1.name && "string" != typeof data1.name) return validate182.errors = [ {
+                      instancePath: instancePath + "/presets/" + i0 + "/name",
+                      schemaPath: "#/properties/presets/items/properties/name/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                  }
+                }
+              }
+              if (0 !== _errs4) break;
+            }
+          }
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0 && void 0 !== data.count) {
+        let data4 = data.count;
+        if ("number" != typeof data4 || data4 % 1 || isNaN(data4) || !isFinite(data4)) return validate182.errors = [ {
+          instancePath: instancePath + "/count",
+          schemaPath: "#/properties/count/type",
+          keyword: "type",
+          params: {
+            type: "integer"
+          }
+        } ], !1;
+      }
+    }
+  }
+  return validate182.errors = [], !0;
+}
+
+validate182.evaluated = {
   props: !0,
   dynamicProps: !1,
   dynamicItems: !1
@@ -25038,6 +34769,62 @@ function validateCredentialRevoked(value) {
   })), valid;
 }
 
+function validateDaynightRequest(value) {
+  let valid = __contract_DaynightRequest(value);
+  return validateDaynightRequest.errors = valid ? null : (__contract_DaynightRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateDaynightResponse(value) {
+  let valid = __contract_DaynightResponse(value);
+  return validateDaynightResponse.errors = valid ? null : (__contract_DaynightResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateDaynightUpdated(value) {
+  let valid = __contract_DaynightUpdated(value);
+  return validateDaynightUpdated.errors = valid ? null : (__contract_DaynightUpdated.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateDeviceCommandResult(value) {
+  let valid = __contract_DeviceCommandResult(value);
+  return validateDeviceCommandResult.errors = valid ? null : (__contract_DeviceCommandResult.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateDeviceEmptyRequest(value) {
+  let valid = __contract_DeviceEmptyRequest(value);
+  return validateDeviceEmptyRequest.errors = valid ? null : (__contract_DeviceEmptyRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateDeviceFloatRange(value) {
+  let valid = __contract_DeviceFloatRange(value);
+  return validateDeviceFloatRange.errors = valid ? null : (__contract_DeviceFloatRange.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateDeviceSuccess(value) {
+  let valid = __contract_DeviceSuccess(value);
+  return validateDeviceSuccess.errors = valid ? null : (__contract_DeviceSuccess.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateFleetLocation(value) {
   let valid = __contract_FleetLocation(value);
   return validateFleetLocation.errors = valid ? null : (__contract_FleetLocation.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
@@ -25118,6 +34905,70 @@ function validateFleetTagsResponse(value) {
   })), valid;
 }
 
+function validateImagingModeLevel(value) {
+  let valid = __contract_ImagingModeLevel(value);
+  return validateImagingModeLevel.errors = valid ? null : (__contract_ImagingModeLevel.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateImagingModeLevelUpdate(value) {
+  let valid = __contract_ImagingModeLevelUpdate(value);
+  return validateImagingModeLevelUpdate.errors = valid ? null : (__contract_ImagingModeLevelUpdate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateImagingModeOptions(value) {
+  let valid = __contract_ImagingModeOptions(value);
+  return validateImagingModeOptions.errors = valid ? null : (__contract_ImagingModeOptions.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateImagingOptions(value) {
+  let valid = __contract_ImagingOptions(value);
+  return validateImagingOptions.errors = valid ? null : (__contract_ImagingOptions.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateImagingOptionsResponse(value) {
+  let valid = __contract_ImagingOptionsResponse(value);
+  return validateImagingOptionsResponse.errors = valid ? null : (__contract_ImagingOptionsResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateImagingSettings(value) {
+  let valid = __contract_ImagingSettings(value);
+  return validateImagingSettings.errors = valid ? null : (__contract_ImagingSettings.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateImagingSettingsRequest(value) {
+  let valid = __contract_ImagingSettingsRequest(value);
+  return validateImagingSettingsRequest.errors = valid ? null : (__contract_ImagingSettingsRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateImagingSettingsResponse(value) {
+  let valid = __contract_ImagingSettingsResponse(value);
+  return validateImagingSettingsResponse.errors = valid ? null : (__contract_ImagingSettingsResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateLiveStreamSummaryPage(value) {
   let valid = __contract_LiveStreamSummaryPage(value);
   return validateLiveStreamSummaryPage.errors = valid ? null : (__contract_LiveStreamSummaryPage.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
@@ -25182,6 +35033,86 @@ function validateLprStreamSummaryPage(value) {
   })), valid;
 }
 
+function validateOnvifAddRequest(value) {
+  let valid = __contract_OnvifAddRequest(value);
+  return validateOnvifAddRequest.errors = valid ? null : (__contract_OnvifAddRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateOnvifAddResult(value) {
+  let valid = __contract_OnvifAddResult(value);
+  return validateOnvifAddResult.errors = valid ? null : (__contract_OnvifAddResult.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateOnvifClaimRequest(value) {
+  let valid = __contract_OnvifClaimRequest(value);
+  return validateOnvifClaimRequest.errors = valid ? null : (__contract_OnvifClaimRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateOnvifDevice(value) {
+  let valid = __contract_OnvifDevice(value);
+  return validateOnvifDevice.errors = valid ? null : (__contract_OnvifDevice.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateOnvifDevicesResponse(value) {
+  let valid = __contract_OnvifDevicesResponse(value);
+  return validateOnvifDevicesResponse.errors = valid ? null : (__contract_OnvifDevicesResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateOnvifDiscoveryRequest(value) {
+  let valid = __contract_OnvifDiscoveryRequest(value);
+  return validateOnvifDiscoveryRequest.errors = valid ? null : (__contract_OnvifDiscoveryRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateOnvifDiscoveryStatus(value) {
+  let valid = __contract_OnvifDiscoveryStatus(value);
+  return validateOnvifDiscoveryStatus.errors = valid ? null : (__contract_OnvifDiscoveryStatus.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateOnvifProfile(value) {
+  let valid = __contract_OnvifProfile(value);
+  return validateOnvifProfile.errors = valid ? null : (__contract_OnvifProfile.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateOnvifProfilesResponse(value) {
+  let valid = __contract_OnvifProfilesResponse(value);
+  return validateOnvifProfilesResponse.errors = valid ? null : (__contract_OnvifProfilesResponse.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateOnvifTestRequest(value) {
+  let valid = __contract_OnvifTestRequest(value);
+  return validateOnvifTestRequest.errors = valid ? null : (__contract_OnvifTestRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateOpenApiDocument(value) {
   let valid = __contract_OpenApiDocument(value);
   return validateOpenApiDocument.errors = valid ? null : (__contract_OpenApiDocument.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
@@ -25217,6 +35148,54 @@ function validatePasswordChangedResponse(value) {
 function validatePasswordSelfChange(value) {
   let valid = __contract_PasswordSelfChange(value);
   return validatePasswordSelfChange.errors = valid ? null : (__contract_PasswordSelfChange.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validatePtzAxesRequest(value) {
+  let valid = __contract_PtzAxesRequest(value);
+  return validatePtzAxesRequest.errors = valid ? null : (__contract_PtzAxesRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validatePtzCapabilities(value) {
+  let valid = __contract_PtzCapabilities(value);
+  return validatePtzCapabilities.errors = valid ? null : (__contract_PtzCapabilities.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validatePtzGotoPresetRequest(value) {
+  let valid = __contract_PtzGotoPresetRequest(value);
+  return validatePtzGotoPresetRequest.errors = valid ? null : (__contract_PtzGotoPresetRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validatePtzPresetRequest(value) {
+  let valid = __contract_PtzPresetRequest(value);
+  return validatePtzPresetRequest.errors = valid ? null : (__contract_PtzPresetRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validatePtzPresetResult(value) {
+  let valid = __contract_PtzPresetResult(value);
+  return validatePtzPresetResult.errors = valid ? null : (__contract_PtzPresetResult.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validatePtzPresets(value) {
+  let valid = __contract_PtzPresets(value);
+  return validatePtzPresets.errors = valid ? null : (__contract_PtzPresets.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
     keyword: keyword,
     schemaPath: schemaPath
   })), valid;
@@ -25552,16 +35531,30 @@ validateAuthSessionsResponse.errors = null, validateAuthVerifyResponse.errors = 
 validateCameraCollection.errors = null, validateCameraCollectionMembersResponse.errors = null,
 validateCameraCollectionPreview.errors = null, validateCameraCollectionsResponse.errors = null,
 validateCameraTagAssignmentsResponse.errors = null, validateClientConfig.errors = null,
-validateCredentialRevoked.errors = null, validateFleetLocation.errors = null, validateFleetLocationsResponse.errors = null,
+validateCredentialRevoked.errors = null, validateDaynightRequest.errors = null,
+validateDaynightResponse.errors = null, validateDaynightUpdated.errors = null, validateDeviceCommandResult.errors = null,
+validateDeviceEmptyRequest.errors = null, validateDeviceFloatRange.errors = null,
+validateDeviceSuccess.errors = null, validateFleetLocation.errors = null, validateFleetLocationsResponse.errors = null,
 validateFleetPreviewRequest.errors = null, validateFleetPreviewResponse.errors = null,
 validateFleetQueryRequest.errors = null, validateFleetQueryResponse.errors = null,
 validateFleetSavedView.errors = null, validateFleetSavedViewsResponse.errors = null,
-validateFleetTag.errors = null, validateFleetTagsResponse.errors = null, validateLiveStreamSummaryPage.errors = null,
+validateFleetTag.errors = null, validateFleetTagsResponse.errors = null, validateImagingModeLevel.errors = null,
+validateImagingModeLevelUpdate.errors = null, validateImagingModeOptions.errors = null,
+validateImagingOptions.errors = null, validateImagingOptionsResponse.errors = null,
+validateImagingSettings.errors = null, validateImagingSettingsRequest.errors = null,
+validateImagingSettingsResponse.errors = null, validateLiveStreamSummaryPage.errors = null,
 validateLoginConfig.errors = null, validateLoginMfaChallenge.errors = null, validateLoginRequest.errors = null,
 validateLoginResponse.errors = null, validateLoginSuccess.errors = null, validateLogoutResponse.errors = null,
-validateLprStreamSummaryPage.errors = null, validateOpenApiDocument.errors = null,
-validatePasswordAdminReset.errors = null, validatePasswordChangeRequest.errors = null,
-validatePasswordChangedResponse.errors = null, validatePasswordSelfChange.errors = null,
+validateLprStreamSummaryPage.errors = null, validateOnvifAddRequest.errors = null,
+validateOnvifAddResult.errors = null, validateOnvifClaimRequest.errors = null, validateOnvifDevice.errors = null,
+validateOnvifDevicesResponse.errors = null, validateOnvifDiscoveryRequest.errors = null,
+validateOnvifDiscoveryStatus.errors = null, validateOnvifProfile.errors = null,
+validateOnvifProfilesResponse.errors = null, validateOnvifTestRequest.errors = null,
+validateOpenApiDocument.errors = null, validatePasswordAdminReset.errors = null,
+validatePasswordChangeRequest.errors = null, validatePasswordChangedResponse.errors = null,
+validatePasswordSelfChange.errors = null, validatePtzAxesRequest.errors = null,
+validatePtzCapabilities.errors = null, validatePtzGotoPresetRequest.errors = null,
+validatePtzPresetRequest.errors = null, validatePtzPresetResult.errors = null, validatePtzPresets.errors = null,
 validateRecordingBatchProtectionRequest.errors = null, validateRecordingBatchProtectionResult.errors = null,
 validateRecordingBatchTagsRequest.errors = null, validateRecordingBatchTagsResult.errors = null,
 validateRecordingDeletionFilter.errors = null, validateRecordingDeletionJobAccepted.errors = null,
@@ -25583,4 +35576,4 @@ validateTotpLoginRequest.errors = null, validateTotpLoginResponse.errors = null,
 validateTotpSetupResponse.errors = null, validateTotpStatusResponse.errors = null,
 validateTrustedDevicesResponse.errors = null;
 
-export { validateApiError, validateApiTokenCreateRequest, validateApiTokenCreated, validateApiTokenList, validateApiTokenMetadata, validateAuthSessionsResponse, validateAuthVerifyResponse, validateCameraCollection, validateCameraCollectionMembersResponse, validateCameraCollectionPreview, validateCameraCollectionsResponse, validateCameraTagAssignmentsResponse, validateClientConfig, validateCredentialRevoked, validateFleetLocation, validateFleetLocationsResponse, validateFleetPreviewRequest, validateFleetPreviewResponse, validateFleetQueryRequest, validateFleetQueryResponse, validateFleetSavedView, validateFleetSavedViewsResponse, validateFleetTag, validateFleetTagsResponse, validateLiveStreamSummaryPage, validateLoginConfig, validateLoginMfaChallenge, validateLoginRequest, validateLoginResponse, validateLoginSuccess, validateLogoutResponse, validateLprStreamSummaryPage, validateOpenApiDocument, validatePasswordAdminReset, validatePasswordChangeRequest, validatePasswordChangedResponse, validatePasswordSelfChange, validateRecordingBatchProtectionRequest, validateRecordingBatchProtectionResult, validateRecordingBatchTagsRequest, validateRecordingBatchTagsResult, validateRecordingDeletionFilter, validateRecordingDeletionJobAccepted, validateRecordingDeletionProgress, validateRecordingDeletionRequest, validateRecordingDeletionResult, validateRecordingDetail, validateRecordingDetectionLabels, validateRecordingExportAccepted, validateRecordingExportRequest, validateRecordingExportStatus, validateRecordingPlaybackPreparing, validateRecordingPlaybackReady, validateRecordingProtectionRequest, validateRecordingProtectionResult, validateRecordingRetentionRequest, validateRecordingRetentionResult, validateRecordingTags, validateRecordingTagsById, validateRecordingTagsRequest, validateRecordingTimeline, validateRecordingTimelineByIds, validateRecordingsPage, validateStreamCompatibilityList, validateStreamFullResponse, validateStreamPrivacyUpdated, validateStreamSummaryPage, validateStreamUpdateAccepted, validateStreamUpdateRequest, validateSuccessResponse, validateTotpChangedResponse, validateTotpCodeRequest, validateTotpLoginRequest, validateTotpLoginResponse, validateTotpSetupResponse, validateTotpStatusResponse, validateTrustedDevicesResponse };
+export { validateApiError, validateApiTokenCreateRequest, validateApiTokenCreated, validateApiTokenList, validateApiTokenMetadata, validateAuthSessionsResponse, validateAuthVerifyResponse, validateCameraCollection, validateCameraCollectionMembersResponse, validateCameraCollectionPreview, validateCameraCollectionsResponse, validateCameraTagAssignmentsResponse, validateClientConfig, validateCredentialRevoked, validateDaynightRequest, validateDaynightResponse, validateDaynightUpdated, validateDeviceCommandResult, validateDeviceEmptyRequest, validateDeviceFloatRange, validateDeviceSuccess, validateFleetLocation, validateFleetLocationsResponse, validateFleetPreviewRequest, validateFleetPreviewResponse, validateFleetQueryRequest, validateFleetQueryResponse, validateFleetSavedView, validateFleetSavedViewsResponse, validateFleetTag, validateFleetTagsResponse, validateImagingModeLevel, validateImagingModeLevelUpdate, validateImagingModeOptions, validateImagingOptions, validateImagingOptionsResponse, validateImagingSettings, validateImagingSettingsRequest, validateImagingSettingsResponse, validateLiveStreamSummaryPage, validateLoginConfig, validateLoginMfaChallenge, validateLoginRequest, validateLoginResponse, validateLoginSuccess, validateLogoutResponse, validateLprStreamSummaryPage, validateOnvifAddRequest, validateOnvifAddResult, validateOnvifClaimRequest, validateOnvifDevice, validateOnvifDevicesResponse, validateOnvifDiscoveryRequest, validateOnvifDiscoveryStatus, validateOnvifProfile, validateOnvifProfilesResponse, validateOnvifTestRequest, validateOpenApiDocument, validatePasswordAdminReset, validatePasswordChangeRequest, validatePasswordChangedResponse, validatePasswordSelfChange, validatePtzAxesRequest, validatePtzCapabilities, validatePtzGotoPresetRequest, validatePtzPresetRequest, validatePtzPresetResult, validatePtzPresets, validateRecordingBatchProtectionRequest, validateRecordingBatchProtectionResult, validateRecordingBatchTagsRequest, validateRecordingBatchTagsResult, validateRecordingDeletionFilter, validateRecordingDeletionJobAccepted, validateRecordingDeletionProgress, validateRecordingDeletionRequest, validateRecordingDeletionResult, validateRecordingDetail, validateRecordingDetectionLabels, validateRecordingExportAccepted, validateRecordingExportRequest, validateRecordingExportStatus, validateRecordingPlaybackPreparing, validateRecordingPlaybackReady, validateRecordingProtectionRequest, validateRecordingProtectionResult, validateRecordingRetentionRequest, validateRecordingRetentionResult, validateRecordingTags, validateRecordingTagsById, validateRecordingTagsRequest, validateRecordingTimeline, validateRecordingTimelineByIds, validateRecordingsPage, validateStreamCompatibilityList, validateStreamFullResponse, validateStreamPrivacyUpdated, validateStreamSummaryPage, validateStreamUpdateAccepted, validateStreamUpdateRequest, validateSuccessResponse, validateTotpChangedResponse, validateTotpCodeRequest, validateTotpLoginRequest, validateTotpLoginResponse, validateTotpSetupResponse, validateTotpStatusResponse, validateTrustedDevicesResponse };

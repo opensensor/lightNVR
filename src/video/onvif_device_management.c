@@ -348,10 +348,6 @@ static char* get_media_service_url(const char *device_url, const char *username,
                 
                 // Try next sibling
                 service = service->next;
-                if (!service) {
-                    // Try next sibling with different method
-                    service = ezxml_next(get_services_response->child);
-                }
             }
         }
     }
@@ -367,7 +363,7 @@ static char* get_media_service_url(const char *device_url, const char *username,
             // Construct media URL by replacing "/device_service" with "/media_service"
             const char *media_path = strstr(device_path, "/device_service");
             if (media_path) {
-                size_t prefix_len = media_path - device_url;
+                size_t prefix_len = device_path - device_url;
                 media_url = malloc(prefix_len + strlen("/onvif/media_service") + 1);
                 if (media_url) {
                     memcpy(media_url, device_url, prefix_len);

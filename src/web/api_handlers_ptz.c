@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "web/api_handlers_ptz.h"
+#include "web/device_request.h"
 #include "web/api_handlers.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
@@ -132,6 +133,22 @@ static void audit_ptz_operation(const http_request_t *req,
     cJSON_Delete(details);
 }
 
+static bool valid_ptz_body(const cJSON *body, const char *action) {
+    static const char *axes[] = {"pan", "tilt", "zoom"};
+    static const char *token[] = {"token"};
+    static const char *name[] = {"name"};
+    if (!strcmp(action, "goto-preset"))
+        return device_keys(body, token, 1) && device_string(cJSON_GetObjectItemCaseSensitive(body, "token"), 63, false);
+    if (!strcmp(action, "preset")) {
+        const cJSON *field = cJSON_GetObjectItemCaseSensitive(body, "name");
+        return device_keys(body, name, 1) && (!field || device_string(field, 63, true));
+    }
+    if (!device_keys(body, axes, 3) || !body->child) return false;
+    const cJSON *field;
+    cJSON_ArrayForEach(field, body) if (!device_number(field)) return false;
+    return true;
+}
+
 void handle_ptz_move(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
     if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
@@ -162,8 +179,9 @@ void handle_ptz_move(const http_request_t *req, http_response_t *res) {
     }
 
     // Parse request body
-    cJSON *body = httpd_parse_json_body(req);
-    if (!body) {
+    cJSON *body = device_json_body(req);
+    if (!valid_ptz_body(body, "move")) {
+        cJSON_Delete(body);
         audit_ptz_operation(req, &auth, "continuous_move", "failure",
                             "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
@@ -229,6 +247,13 @@ void handle_ptz_stop(const http_request_t *req, http_response_t *res) {
     if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
                               &auth)) {
         return;
+    }
+
+    if (req->body_len) {
+        cJSON *body = device_json_body(req);
+        bool empty = device_keys(body, NULL, 0);
+        cJSON_Delete(body);
+        if (!empty) { http_response_set_json_error(res, 400, "Expected empty device command"); return; }
     }
 
     stream_config_t config;
@@ -304,8 +329,9 @@ void handle_ptz_absolute(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    cJSON *body = httpd_parse_json_body(req);
-    if (!body) {
+    cJSON *body = device_json_body(req);
+    if (!valid_ptz_body(body, "absolute")) {
+        cJSON_Delete(body);
         audit_ptz_operation(req, &auth, "absolute_move", "failure",
                             "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
@@ -403,8 +429,9 @@ void handle_ptz_relative(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    cJSON *body = httpd_parse_json_body(req);
-    if (!body) {
+    cJSON *body = device_json_body(req);
+    if (!valid_ptz_body(body, "relative")) {
+        cJSON_Delete(body);
         audit_ptz_operation(req, &auth, "relative_move", "failure",
                             "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
@@ -488,6 +515,13 @@ void handle_ptz_home(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    if (req->body_len) {
+        cJSON *body = device_json_body(req);
+        bool empty = device_keys(body, NULL, 0);
+        cJSON_Delete(body);
+        if (!empty) { http_response_set_json_error(res, 400, "Expected empty device command"); return; }
+    }
+
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
@@ -546,6 +580,13 @@ void handle_ptz_set_home(const http_request_t *req, http_response_t *res) {
     if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
                               &auth)) {
         return;
+    }
+
+    if (req->body_len) {
+        cJSON *body = device_json_body(req);
+        bool empty = device_keys(body, NULL, 0);
+        cJSON_Delete(body);
+        if (!empty) { http_response_set_json_error(res, 400, "Expected empty device command"); return; }
     }
 
     stream_config_t config;
@@ -680,8 +721,9 @@ void handle_ptz_goto_preset(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    cJSON *body = httpd_parse_json_body(req);
-    if (!body) {
+    cJSON *body = device_json_body(req);
+    if (!valid_ptz_body(body, "goto-preset")) {
+        cJSON_Delete(body);
         audit_ptz_operation(req, &auth, "goto_preset", "failure",
                             "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
@@ -761,8 +803,9 @@ void handle_ptz_set_preset(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    cJSON *body = httpd_parse_json_body(req);
-    if (!body) {
+    cJSON *body = device_json_body(req);
+    if (!valid_ptz_body(body, "preset")) {
+        cJSON_Delete(body);
         audit_ptz_operation(req, &auth, "set_preset", "failure",
                             "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");

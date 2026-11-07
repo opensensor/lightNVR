@@ -611,6 +611,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/onvif/device/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** addOnvifDevice */
+        post: operations["addOnvifDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/device/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** claimOnvifDevice */
+        post: operations["claimOnvifDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/device/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getOnvifProfiles */
+        get: operations["getOnvifProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/device/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** testOnvifDevice */
+        post: operations["testOnvifDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getOnvifDevices */
+        get: operations["getOnvifDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/discovery/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** discoverOnvifDevices */
+        post: operations["discoverOnvifDevices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onvif/discovery/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getOnvifDiscoveryStatus */
+        get: operations["getOnvifDiscoveryStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/openapi.json": {
         parameters: {
             query?: never;
@@ -1045,6 +1164,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/streams/{name}/daynight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getDaynight */
+        get: operations["getDaynight"];
+        /** setDaynight */
+        put: operations["setDaynight"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/streams/{name}/full": {
         parameters: {
             query?: never;
@@ -1062,6 +1201,235 @@ export interface paths {
         get: operations["getStreamFull"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/imaging/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getImagingOptions */
+        get: operations["getImagingOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/imaging/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getImagingSettings */
+        get: operations["getImagingSettings"];
+        /** setImagingSettings */
+        put: operations["setImagingSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/absolute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** absolutePtz */
+        post: operations["absolutePtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getPtzCapabilities */
+        get: operations["getPtzCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/goto-preset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** gotoPtzPreset */
+        post: operations["gotoPtzPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** homePtz */
+        post: operations["homePtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** movePtz */
+        post: operations["movePtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/preset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** setPtzPreset */
+        put: operations["setPtzPreset"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getPtzPresets */
+        get: operations["getPtzPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/relative": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** relativePtz */
+        post: operations["relativePtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/set-home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** setPtzHome */
+        post: operations["setPtzHome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/ptz/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** stopPtz */
+        post: operations["stopPtz"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1402,6 +1770,57 @@ export interface components {
             /** @constant */
             success: true;
         };
+        DaynightRequest: {
+            daynight?: string;
+            force_persistence?: boolean;
+            ir_cut_filter?: string;
+            ircut?: string;
+            mode?: string;
+        } | {
+            mode: string;
+        } | {
+            daynight: string;
+        } | {
+            ir_cut_filter: string;
+        } | {
+            ircut: string;
+        };
+        DaynightResponse: {
+            ir_cut_filter?: string;
+            /** @enum {unknown} */
+            mode: "day" | "night" | "auto" | "unknown";
+            options_available: boolean;
+            /** @constant */
+            source: "onvif-imaging";
+            /** @constant */
+            success: true;
+            supported_modes: ("day" | "night" | "auto")[];
+            video_source_token: string;
+        };
+        DaynightUpdated: {
+            /** @enum {unknown} */
+            ir_cut_filter: "On" | "Off" | "Auto";
+            /** @enum {unknown} */
+            mode: "day" | "night" | "auto";
+            /** @constant */
+            source: "onvif-imaging";
+            /** @constant */
+            success: true;
+        };
+        DeviceCommandResult: {
+            message: string;
+            /** @constant */
+            success: true;
+        };
+        DeviceEmptyRequest: Record<string, never>;
+        DeviceFloatRange: {
+            max: number;
+            min: number;
+        };
+        DeviceSuccess: {
+            /** @constant */
+            success: true;
+        };
         FleetCamera: {
             address: string;
             /** @enum {unknown} */
@@ -1599,6 +2018,106 @@ export interface components {
             count: number;
             tags: components["schemas"]["FleetTag"][];
         };
+        ImagingModeLevel: {
+            level?: number;
+            mode?: string;
+        };
+        ImagingModeLevelUpdate: number | {
+            level?: number;
+            mode?: string;
+        };
+        ImagingModeOptions: {
+            level?: components["schemas"]["DeviceFloatRange"];
+            modes: string[];
+        };
+        ImagingOptions: {
+            backlight_compensation?: components["schemas"]["ImagingModeOptions"];
+            brightness?: components["schemas"]["DeviceFloatRange"];
+            color_saturation?: components["schemas"]["DeviceFloatRange"];
+            contrast?: components["schemas"]["DeviceFloatRange"];
+            defogging?: components["schemas"]["ImagingModeOptions"];
+            ir_cut_filter_modes: string[];
+            noise_reduction?: components["schemas"]["DeviceFloatRange"];
+            sharpness?: components["schemas"]["DeviceFloatRange"];
+            tone_compensation?: components["schemas"]["ImagingModeOptions"];
+            video_source_token: string;
+            wide_dynamic_range?: components["schemas"]["ImagingModeOptions"];
+        };
+        ImagingOptionsResponse: {
+            options: components["schemas"]["ImagingOptions"];
+            /** @constant */
+            success: true;
+        };
+        ImagingSettings: {
+            backlight_compensation?: components["schemas"]["ImagingModeLevel"];
+            brightness?: number;
+            color_saturation?: number;
+            contrast?: number;
+            defogging?: components["schemas"]["ImagingModeLevel"];
+            ir_cut_filter?: string;
+            noise_reduction?: number;
+            sharpness?: number;
+            tone_compensation?: components["schemas"]["ImagingModeLevel"];
+            video_source_token: string;
+            wide_dynamic_range?: components["schemas"]["ImagingModeLevel"];
+        };
+        /** @description Known aliases remain accepted; force_persistence alone is rejected. Numeric limits come from the device options rather than an invented global range. */
+        ImagingSettingsRequest: {
+            backlight?: components["schemas"]["ImagingModeLevelUpdate"];
+            backlight_compensation?: components["schemas"]["ImagingModeLevelUpdate"];
+            brightness?: number;
+            color_saturation?: number;
+            contrast?: number;
+            defog?: components["schemas"]["ImagingModeLevelUpdate"];
+            defogging?: components["schemas"]["ImagingModeLevelUpdate"];
+            force_persistence?: boolean;
+            ir_cut_filter?: string;
+            ircut?: string;
+            noise_reduction?: number;
+            saturation?: number;
+            sharpness?: number;
+            tone?: components["schemas"]["ImagingModeLevelUpdate"];
+            tone_compensation?: components["schemas"]["ImagingModeLevelUpdate"];
+            wdr?: components["schemas"]["ImagingModeLevelUpdate"];
+            wide_dynamic_range?: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            brightness: number;
+        } | {
+            color_saturation: number;
+        } | {
+            contrast: number;
+        } | {
+            sharpness: number;
+        } | {
+            noise_reduction: number;
+        } | {
+            saturation: number;
+        } | {
+            backlight_compensation: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            wide_dynamic_range: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            tone_compensation: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            defogging: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            backlight: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            wdr: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            tone: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            defog: components["schemas"]["ImagingModeLevelUpdate"];
+        } | {
+            ir_cut_filter: string;
+        } | {
+            ircut: string;
+        };
+        ImagingSettingsResponse: {
+            settings: components["schemas"]["ImagingSettings"];
+            /** @constant */
+            success: true;
+        };
         /** @description summary=true, surface=live. Uses the same filtered pagination envelope, with playback-specific row fields. */
         LiveStreamSummaryPage: {
             page: number;
@@ -1736,6 +2255,82 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        OnvifAddRequest: {
+            device_url: string;
+            password?: string;
+            profile_token: string;
+            stream_name: string;
+            username?: string;
+        };
+        OnvifAddResult: {
+            message: string;
+            stream_name: string;
+            /** @constant */
+            success: true;
+        };
+        OnvifClaimRequest: {
+            /** Format: uuid */
+            inventory_uuid: string;
+            stream_name: string;
+        };
+        OnvifDevice: {
+            addresses: string[];
+            claim_state: string;
+            claimed_camera_uuid: string;
+            device_service: string;
+            discovery_time: number;
+            duplicate_suspected: boolean;
+            endpoint: string;
+            firmware_version: string;
+            first_seen_at: number;
+            hardware_id: string;
+            imaging_service: string;
+            inventory_uuid: string;
+            ip_address: string;
+            last_scan_network: string;
+            last_seen_at: number;
+            mac_address: string;
+            manufacturer: string;
+            media_service: string;
+            model: string;
+            online: boolean;
+            ptz_service: string;
+            serial_number: string;
+        };
+        OnvifDevicesResponse: {
+            devices: components["schemas"]["OnvifDevice"][];
+        };
+        OnvifDiscoveryRequest: {
+            network?: string;
+        };
+        OnvifDiscoveryStatus: {
+            enabled: boolean;
+            interval: number;
+            network: string;
+        };
+        OnvifProfile: {
+            bitrate: number;
+            encoding: string;
+            fps: number;
+            height: number;
+            name: string;
+            ptz_configuration_token: string;
+            ptz_supported: boolean;
+            snapshot_uri: string;
+            stream_uri: string;
+            token: string;
+            video_source_token: string;
+            width: number;
+        };
+        OnvifProfilesResponse: {
+            profiles: components["schemas"]["OnvifProfile"][];
+        };
+        OnvifTestRequest: {
+            insecure?: boolean;
+            password?: string;
+            url: string;
+            username?: string;
+        };
         /** @description Describes the canonical pilot coverage, not user or camera identities. Omission of an unspecified API is not a denial of access. */
         OpenApiCoverage: {
             canonical_revision: string;
@@ -1784,6 +2379,51 @@ export interface components {
         };
         /** @enum {string} */
         PlaybackTransport: "auto" | "webrtc_only" | "mse_only" | "hls_only" | "webrtc_then_mse" | "mse_then_hls";
+        /** @description Finite float-representable coordinates in the camera default space. Camera-advertised ranges vary; the server does not assume normalized position units. Omitted axes retain existing native zero/axis-presence semantics. */
+        PtzAxesRequest: {
+            pan?: number;
+            tilt?: number;
+            zoom?: number;
+        };
+        PtzCapabilities: {
+            has_absolute_move: boolean;
+            has_continuous_move: boolean;
+            has_home: boolean;
+            has_home_position: boolean;
+            has_pan_tilt: boolean;
+            has_presets: boolean;
+            has_relative_move: boolean;
+            has_zoom: boolean;
+            max_presets: number;
+            max_x: number;
+            max_y: number;
+            max_z: number;
+            onvif_queried: boolean;
+            pan_range: components["schemas"]["DeviceFloatRange"];
+            ptz_enabled: boolean;
+            ptz_service_url: string;
+            tilt_range: components["schemas"]["DeviceFloatRange"];
+            zoom_range: components["schemas"]["DeviceFloatRange"];
+        };
+        PtzGotoPresetRequest: {
+            token: string;
+        };
+        PtzPresetRequest: {
+            name?: string;
+        };
+        PtzPresetResult: {
+            message: string;
+            /** @constant */
+            success: true;
+            token: string;
+        };
+        PtzPresets: {
+            count: number;
+            presets: {
+                name: string;
+                token: string;
+            }[];
+        };
         /** @description Empty arrays are accepted. Invalid or missing IDs count as failures; an existing forbidden member rejects the entire request before writes. */
         RecordingBatchProtectionRequest: {
             ids: unknown[];
@@ -4622,6 +5262,607 @@ export interface operations {
             };
         };
     };
+    addOnvifDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnvifAddRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifAddResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    claimOnvifDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnvifClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSuccess"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getOnvifProfiles: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Device-URL": string;
+                "X-Password"?: string;
+                "X-Username"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifProfilesResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    testOnvifDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnvifTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getOnvifDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifDevicesResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    discoverOnvifDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnvifDiscoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifDevicesResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getOnvifDiscoveryStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnvifDiscoveryStatus"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getOpenApi: {
         parameters: {
             query?: never;
@@ -6367,6 +7608,180 @@ export interface operations {
             };
         };
     };
+    getDaynight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DaynightResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setDaynight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DaynightRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DaynightUpdated"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getStreamFull: {
         parameters: {
             query?: never;
@@ -6426,6 +7841,1147 @@ export interface operations {
             };
             /** @description Internal, database, policy evaluation, serialization or update scheduling failure. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getImagingOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagingOptionsResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getImagingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagingSettingsResponse"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setImagingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImagingSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    absolutePtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzAxesRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getPtzCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PtzCapabilities"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    gotoPtzPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzGotoPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    homePtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeviceEmptyRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    movePtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzAxesRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setPtzPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PtzPresetResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getPtzPresets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PtzPresets"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    relativePtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzAxesRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setPtzHome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeviceEmptyRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    stopPtz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeviceEmptyRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

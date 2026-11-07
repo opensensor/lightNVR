@@ -611,3 +611,8 @@ target_link_options(test_recording_file PRIVATE "-Wl,--wrap=write" "-Wl,--wrap=c
 add_layer1_test(test_uuid CI_UNIT CI_SANITIZER)
 target_sources(test_uuid PRIVATE ${CMAKE_SOURCE_DIR}/src/utils/uuid.c)
 target_link_options(test_uuid PRIVATE "-Wl,--wrap=getrandom" "-Wl,--wrap=fread")
+
+add_layer2_test(test_api_handlers_device CI_UNIT CI_SANITIZER)
+target_link_options(test_api_handlers_device PRIVATE
+    "-Wl,--wrap=discover_onvif_devices" "-Wl,--wrap=get_onvif_device_profiles"
+    "-Wl,--wrap=add_onvif_device_as_stream")

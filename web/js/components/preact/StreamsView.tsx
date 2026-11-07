@@ -1,3 +1,4 @@
+import {deviceRequest} from '../../api/device.ts';
 /**
  * LightNVR Web Interface StreamsView Component
  * React component for the streams page
@@ -961,7 +962,7 @@ export function StreamsView() {
     setCustomStreamName('');
     // Reopen the durable staging inbox before the operator starts another scan.
     try {
-      const inventory = await fetchJSON<OnvifDevicesResponse>('/api/onvif/devices', { timeout: 5000 });
+      const inventory = await deviceRequest('getOnvifDevices', { timeout: 5000 });
       if (generation !== onvifGeneration.current) return;
       setDiscoveredDevices(inventory?.devices || []);
     } catch (e) {
@@ -1063,6 +1064,7 @@ export function StreamsView() {
       retries: 0
     },
     {
+      mutationFn: body => deviceRequest('discoverOnvifDevices', {body, timeout:120000}),
       onMutate: () => {
         setIsDiscovering(true);
         return onvifGeneration.current;
@@ -1142,19 +1144,7 @@ export function StreamsView() {
       const httpFallbackUrl = buildDeviceServiceUrl('http', ipAddress);
 
       const attemptFetch = (deviceUrl: string): Promise<OnvifProfilesResponse> => {
-        return fetch('/api/onvif/device/profiles', {
-          method: 'GET',
-          headers: {
-            'X-Device-URL': deviceUrl,
-            'X-Username': credentials.username,
-            'X-Password': credentials.password
-          }
-        }).then(response => {
-          if (!response.ok) {
-            throw new Error(`HTTP error ${response.status}`);
-          }
-          return response.json();
-        });
+        return deviceRequest('getOnvifProfiles', {headers:{'X-Device-URL':deviceUrl,'X-Username':credentials.username,'X-Password':credentials.password}});
       };
 
       if (discoveredUrl) {
@@ -1204,6 +1194,7 @@ export function StreamsView() {
       retries: 0
     },
     {
+      mutationFn: body => deviceRequest('testOnvifDevice', {body, timeout:15000}),
       onMutate: () => {
         setIsLoadingProfiles(true);
         return { generation: onvifGeneration.current, selection: onvifSelection.current, device: selectedDeviceRef.current };
@@ -1253,8 +1244,8 @@ export function StreamsView() {
       streaming_enabled: true,
       // Note: width, height, fps, and codec are auto-detected from the stream
       // (ONVIF discovery on the backend will also populate these from the camera profile)
-      protocol: '0', // TCP
-      priority: '5', // Medium
+      protocol: 0, // TCP
+      priority: 5, // Medium
       segment_duration: 30,
       record: true,
       record_audio: !clientConfig.audio_disabled,
@@ -1273,13 +1264,11 @@ export function StreamsView() {
       onSuccess: async () => {
         if (selectedDevice.inventory_uuid) {
           try {
-            await fetchJSON('/api/onvif/device/claim', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+            await deviceRequest('claimOnvifDevice', {
+              body: {
                 inventory_uuid: selectedDevice.inventory_uuid,
                 stream_name: streamData.name
-              }),
+              },
               timeout: 5000
             });
             if (generation !== onvifGeneration.current) return;
