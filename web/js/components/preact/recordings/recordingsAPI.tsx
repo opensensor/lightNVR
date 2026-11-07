@@ -441,7 +441,7 @@ export const recordingsAPI = {
    * @param {Object} selectedRecordings Object with recording IDs as keys
    * @returns {Promise<Object>} Result with success and error counts
    */
-  deleteSelectedRecordings: async (selectedRecordings: RecordingSelection): Promise<BatchDeleteCounts> => {
+  deleteSelectedRecordings: async (selectedRecordings: RecordingSelection): Promise<BatchDeleteProgressResponse> => {
     const selectedIds = Object.entries(selectedRecordings)
       .filter(([id, isSelected]) => isSelected)
       .map(([id]) => id);
@@ -560,7 +560,7 @@ export const recordingsAPI = {
    * @param {Object} filters Current filters
    * @returns {Promise<Object>} Result with success and error counts
    */
-  deleteAllFilteredRecordings: async (filters: RecordingFilters): Promise<BatchDeleteCounts> => {
+  deleteAllFilteredRecordings: async (filters: RecordingFilters): Promise<BatchDeleteProgressResponse> => {
     try {
       const filter = buildFilterObject(filters);
 

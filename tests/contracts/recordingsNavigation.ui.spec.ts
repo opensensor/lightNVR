@@ -72,7 +72,9 @@ test('recordings failure keeps filters and retry reachable, then recovers',async
  }finally{await context.close();}
 });
 
-test('thumbnail-free selection is explicit, cancel clears it, and deletion remains confirmed',async({server,browser})=>{
+for (const action of ['Delete Selected', 'Delete All Filtered']) {
+for (const dismissal of ['button', 'escape']) {
+test(`thumbnail-free selection survives cancelling ${action} via ${dismissal}`,async({server,browser})=>{
  seedRecordings(server);
  const config=await ok(server,'/api/client-config');
  const context=await server.browserContext(browser),page=await context.newPage();
@@ -83,17 +85,28 @@ test('thumbnail-free selection is explicit, cancel clears it, and deletion remai
   await page.getByRole('button',{name:'Select',exact:true}).click();
   await page.locator('.recording-card').first().getByRole('checkbox').check();
   await expect(page.getByText('1 recordings selected',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Delete Selected',exact:true}).click();
+  const deleteRequests:string[]=[];
+  page.on('request',request=>{if(request.method()==='POST'&&request.url().includes('/api/recordings/batch-delete'))deleteRequests.push(request.url());});
+  const trigger=page.getByRole('button',{name:action,exact:true});
+  await trigger.click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true})).toBeFocused();
-  await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Delete Selected',exact:true})).toBeFocused();
+  if(dismissal==='escape')await page.keyboard.press('Escape');
+  else await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('1 recordings selected',{exact:true})).toBeVisible();
+  await expect(page.locator('.recording-card').first().getByRole('checkbox')).toBeChecked();
+  await expect(trigger).toBeFocused();
+  await expect(page.getByRole('button',{name:'Delete Selected',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Cancel',exact:true}).click();
   await expect(page.locator('.recording-card input[type="checkbox"]')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Select',exact:true})).toBeVisible();
   expect((await ok(server,'/api/recordings?stream=A')).recordings.length).toBeGreaterThan(0);
+  expect(deleteRequests).toEqual([]);
  }finally{await context.close();}
 });
+}
+}
 
 test('scoped phone viewer only sees allowed cameras and cannot delete footage',async({server,browser})=>{
  seedRecordings(server);
