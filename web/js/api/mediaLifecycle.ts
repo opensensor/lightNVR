@@ -30,6 +30,10 @@ async function call<T>(url:string,operation:string,guard:ContractValidator<T>,op
     throw new MediaContractError(operation,'transport',status,mutation);
   }
   if(response.status!==status)throw new MediaContractError(operation,'response',response.status,mutation);
+  if(!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type')??'')){
+    await response.body?.cancel().catch(()=>{});
+    throw new MediaContractError(operation,'response',response.status,mutation);
+  }
   let value:unknown;
   try{value=await response.json();}catch{throw new MediaContractError(operation,'response',response.status,mutation);}
   if(options.signal?.aborted)throw new DOMException('Request cancelled','AbortError');

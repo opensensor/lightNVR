@@ -43,3 +43,11 @@ test.each([307,308] as const)('credential-bearing creation refuses HTTP %s befor
   expect(spy.mock.calls[0]?.[1]).toMatchObject({redirect:'error',credentials:'same-origin'});
  });
 });
+
+test.each(['text/html','application/jsonp'])('rejects a %s acknowledgment before parsing JSON and closes the body',async contentType=>{
+ const response=new Response(JSON.stringify({success:true,camera_uuid:'fixture',location_uuid:''}),{status:201,headers:{'Content-Type':contentType}});
+ const json=jest.spyOn(response,'json');
+ const fetch=jest.spyOn(global,'fetch').mockResolvedValue(response);
+ await expect(createStream({name:'Owned',url:'rtsp://127.0.0.1:9/source'})).rejects.toMatchObject({phase:'response',status:201,mayHaveApplied:true});
+ expect(json).not.toHaveBeenCalled();expect(fetch).toHaveBeenCalledTimes(1);expect(response.bodyUsed).toBe(true);
+});
