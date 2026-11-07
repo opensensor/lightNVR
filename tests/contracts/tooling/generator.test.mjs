@@ -137,3 +137,27 @@ for (const kind of ['non_scoped_global','non_scoped_camera','global_or_camera'])
     await assert.rejects(generateArtifacts(candidate));
   }
 });
+
+test('native generator rejects malformed validator names with validation errors', async () => {
+  const original = JSON.parse(await readFile(source, 'utf8'));
+  for (const selected of [{}, [null], [1], [[]], [{}], ['Fixture', 'Fixture'], ['missing'], ['bad-name']]) {
+    const candidate = path.join(directory, 'invalid-native-validators.json');
+    await writeFile(candidate, JSON.stringify({...original, 'x-lightnvr-validators': selected}));
+    const result = spawnSync('python3', [path.join(root, 'scripts/contracts/generate_native.py'),
+      '--source', candidate, '--validate-only'], {encoding: 'utf8'});
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /ValueError: (Validator names|x-lightnvr-validators)/);
+    assert.doesNotMatch(result.stderr, /TypeError/);
+  }
+});
+
+test('native generator reads UTF-8 schemas even under an ASCII locale', async () => {
+  const doc = JSON.parse(await readFile(source, 'utf8'));
+  doc.info.description = 'Camera café 🐱';
+  const candidate = path.join(directory, 'unicode-native.json');
+  await writeFile(candidate, JSON.stringify(doc), 'utf8');
+  const result = spawnSync('python3', ['-X', 'utf8=0', path.join(root, 'scripts/contracts/generate_native.py'),
+    '--source', candidate, '--validate-only'], {encoding: 'utf8',
+    env: {...process.env, LC_ALL: 'C', PYTHONCOERCECLOCALE: '0'}});
+  assert.equal(result.status, 0, result.stderr);
+});
