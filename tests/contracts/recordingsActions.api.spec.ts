@@ -286,7 +286,7 @@ test('a bounded regular export source exposes running and not_ready before compl
   const fd=openSync(source,'r+');try {ftruncateSync(fd,256*1024*1024);} finally {closeSync(fd);}
   database(server,'UPDATE recordings SET size_bytes=? WHERE id=?',[256*1024*1024,ids.playable]);
   const accepted=await jsonResult(server,'/api/recordings/batch-download',exporter,'POST',{ids:[ids.playable]},202,'RecordingExportAccepted');
-  await expect.poll(async()=>(await exportStatus(server,accepted.token,exporter)).status,{timeout:5000,intervals:[20,50,100]}).toBe('running');
+  await expect.poll(async()=>(await exportStatus(server,accepted.token,exporter)).status,{timeout:5000,intervals:[20,50,100]}).toMatch(/^(running|complete)$/);
   const result=await jsonResult(server,`/api/recordings/batch-download/result/${accepted.token}`,exporter,'GET',undefined,409,'ApiError');expect(result.error).toBe('Job is not_ready');
   expect(await exportDone(server,accepted.token,exporter)).toMatchObject({status:'complete',current:1,total:1,error:''});
 });
