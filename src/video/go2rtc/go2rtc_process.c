@@ -253,6 +253,7 @@ static bool process_owns_tcp_listen_port(pid_t pid, int port) {
             char remote[80] = {0};
             char state[8] = {0};
             unsigned long inode = 0;
+            /* After state: tx/rx queues, timer, retransmits, uid, timeout, inode. */
             int matched = sscanf(line,
                                  " %*d: %79s %79s %7s %*s %*s %*s %*u %*u %lu",
                                  local, remote, state, &inode);
@@ -365,30 +366,8 @@ static bool g_initialized = false;
 static bool g_using_external_service = false; // true when init detected a live service
 /* Exact final --config argument of the last successfully launched child. */
 static char g_managed_listener_policy[512];
-static bool g_created_config_symlink = false;
 static int g_rtsp_port = 8554; // Default RTSP port
 static int g_api_port = 1984;  // Configured API port (updated during init)
-
-static void remove_owned_config_symlink(void) {
-    if (!g_created_config_symlink || !g_config_path) return;
-
-    struct stat st;
-    if (lstat("/dev/shm/go2rtc.yaml", &st) != 0 || !S_ISLNK(st.st_mode)) {
-        return;
-    }
-
-    char target[PATH_MAX];
-    ssize_t length = readlink("/dev/shm/go2rtc.yaml", target,
-                              sizeof(target) - 1);
-    if (length <= 0) return;
-    target[length] = '\0';
-    if (strcmp(target, g_config_path) == 0 &&
-        unlink("/dev/shm/go2rtc.yaml") != 0 && errno != ENOENT) {
-        log_warn("Failed to remove managed /dev/shm/go2rtc.yaml symlink: %s",
-                 strerror(errno));
-    }
-    g_created_config_symlink = false;
-}
 
 /* T4b — crash-loop quarantine bookkeeping.
  *
@@ -2358,21 +2337,8 @@ static bool go2rtc_process_start_locked(int api_port) {
     // silently using the hardcoded default.
     g_rtsp_port = (g_config.go2rtc_rtsp_port > 0) ? g_config.go2rtc_rtsp_port : 8554;
 
-    // Create a symbolic link from /dev/shm/go2rtc.yaml to our config file
-    // This ensures that even if something tries to use the /dev/shm path, it will use our config
-    struct stat shared_config_stat;
-    if (lstat("/dev/shm/go2rtc.yaml", &shared_config_stat) == 0 &&
-        unlink("/dev/shm/go2rtc.yaml") != 0) {
-        log_warn("Failed to replace /dev/shm/go2rtc.yaml: %s", strerror(errno));
-    }
-    g_created_config_symlink = false;
-    if (symlink(g_config_path, "/dev/shm/go2rtc.yaml") != 0) {
-        log_warn("Failed to create symlink from /dev/shm/go2rtc.yaml to %s: %s",
-                g_config_path, strerror(errno));
-        // Continue anyway, this is not critical
-    } else {
-        g_created_config_symlink = true;
-    }
+    // The child receives its private configuration via --config. Do not
+    // create or remove a shared /dev/shm alias owned by another instance.
 
     // Prepare everything the child needs BEFORE forking.
     //
@@ -2790,7 +2756,6 @@ static void go2rtc_process_cleanup_locked(void) {
         log_info("Not stopping go2rtc during cleanup as we're using an existing service");
     }
 
-    remove_owned_config_symlink();
 
     // Free allocated memory
     free(g_binary_path);
@@ -2808,7 +2773,6 @@ static void go2rtc_process_cleanup_locked(void) {
     g_process_start_ticks = 0;
     g_using_external_service = false;
     g_managed_listener_policy[0] = '\0';
-    g_created_config_symlink = false;
     g_api_port = 1984;
     g_initialized = false;
     /* Reset T4b crash-loop bookkeeping so a fresh init starts clean. */
