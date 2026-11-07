@@ -27,14 +27,20 @@ on:
 permissions:
   contents: read
 
+# A generated Rust follow-up queues behind its source run instead of cancelling
+# work that just passed. Other pushes and PR updates still supersede older runs.
+# Match commit metadata: deploy-key pushes are attributed to the key owner.
 concurrency:
   group: lightnvr-rs-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: >-
+    ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.author.email == '41898282+github-actions[bot]@users.noreply.github.com' && startsWith(github.event.head_commit.message, 'lightnvr-rs: regenerate from C')) }}
 
 env:
   BOT_NAME: github-actions[bot]
   BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
   IMAGE: lightnvr-rs-transpile:ci
+  VERIFY_ONLY: >-
+    ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.author.email == '41898282+github-actions[bot]@users.noreply.github.com' && startsWith(github.event.head_commit.message, 'lightnvr-rs: regenerate from C') }}
 
 jobs:
   transpile:
@@ -95,6 +101,7 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/cargo-home"
 
       - name: Regenerate rust/ from C
+        if: env.VERIFY_ONLY != 'true'
         run: &in_image >-
           docker run --rm --user "$(id -u):$(id -g)" --tmpfs /tmp:exec,size=4g,mode=1777
           -e HOME=/tmp -e CARGO_HOME=/cargo-home -e npm_config_cache=/tmp/npm-cache
@@ -103,10 +110,18 @@ jobs:
         env:
           STEP: python3 tools/rust-transpile/generate.py --native
 
+      # A bot follow-up must be a fixed point. If generation is unstable, fail
+      # here instead of pushing another generated commit and triggering CI again.
+      - name: Verify generated rust/ without changing it
+        if: env.VERIFY_ONLY == 'true'
+        run: *in_image
+        env:
+          STEP: python3 tools/rust-transpile/generate.py --native --check
+
       - name: Build lightnvr-rs
         run: *in_image
         env:
-          STEP: cd rust && cargo build --release && cd .. && python3 tools/rust-transpile/abi-audit.py
+          STEP: cd rust && cargo build --release ${{ env.VERIFY_ONLY == 'true' && '--locked' || '' }} && cd .. && python3 tools/rust-transpile/abi-audit.py
 
       - name: Smoke and API contract tests against lightnvr-rs
         # /tmp is tmpfs: overlay storage trips storage placement for C and Rust alike.
@@ -142,6 +157,10 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
             git diff --cached --stat -- rust/ | tail -n 20
             git diff --cached --binary -- rust/ > "$RUNNER_TEMP/lightnvr-rs-regenerate.patch"
+            if [ "$VERIFY_ONLY" = true ]; then
+              echo "::error::Verification changed rust/. Fix generation stability; no follow-up commit will be pushed."
+              exit 1
+            fi
           fi
 
       # The release coordinator checks this step on the exact candidate SHA.
@@ -164,7 +183,7 @@ jobs:
         # Drift on main means a fork PR (or a direct push) changed C. The output is
         # deterministic, so the bot commits it directly. If main moved meanwhile,
         # the push is rejected and the run for the newer commit regenerates instead.
-        if: steps.diff.outputs.changed == 'true' && github.event_name == 'push'
+        if: steps.diff.outputs.changed == 'true' && github.event_name == 'push' && env.VERIFY_ONLY != 'true'
         run: |
           git -c user.name="$BOT_NAME" -c user.email="$BOT_EMAIL" \
             commit -m "lightnvr-rs: regenerate from C" -m "Sync rust/ with ${GITHUB_SHA::7}."

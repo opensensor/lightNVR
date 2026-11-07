@@ -15,10 +15,13 @@ permissions:
   checks: write
   pull-requests: write
 
-# Superseded commits do not need to finish the same workflow.
+# A generated Rust follow-up queues behind its source run instead of cancelling
+# work that just passed. Other pushes and PR updates still supersede older runs.
+# Match commit metadata: deploy-key pushes are attributed to the key owner.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: >-
+    ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.author.email == '41898282+github-actions[bot]@users.noreply.github.com' && startsWith(github.event.head_commit.message, 'lightnvr-rs: regenerate from C')) }}
 
 jobs:
   unity-tests:
