@@ -2,7 +2,7 @@
 /** Bounded synthetic active-recording measurements on an owned loopback fixture. */
 import {startFixture} from '../contracts/fixture-server.mjs';
 import {trackedDiffSha256} from './git-provenance.mjs';
-import {pipeRecordingSource,validateRecordingDurations} from './active-recording-utils.mjs';
+import {listAllRecordings,pipeRecordingSource,validateRecordingDurations} from './active-recording-utils.mjs';
 import {createServer} from 'node:http';
 import {spawn,execFileSync} from 'node:child_process';
 import {mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
@@ -69,13 +69,7 @@ try {
   await save();await new Promise(resolve=>setTimeout(resolve,1000));
  }
  for(let i=0;i<count;i++)await server.json(`/api/streams/Load${i}/recording`,{method:'POST',body:{action:'stop'}});
- const rows=[];
- const pageLimit=1000;
- for(let offset=0;;offset+=pageLimit){
-  const page=(await server.json(`/api/recordings?limit=${pageLimit}&offset=${offset}`)).recordings || [];
-  rows.push(...page);
-  if(page.length<pageLimit)break;
- }
+ const rows=await listAllRecordings(server);
  for(const row of rows){
   const detail=await server.json(`/api/recordings/${row.id}`);
   const filename=detail.file_path||detail.recording?.file_path;
