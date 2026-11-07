@@ -18,6 +18,7 @@ interface TagChipProps {
   tag: string;
   onRemove?: (tag: string) => unknown;
   readOnly?: boolean;
+  disabled?: boolean;
 }
 
 export interface TagsOverlayProps<Id extends number | string = number | string> {
@@ -51,7 +52,7 @@ export function TagIcon({ className = 'w-4 h-4' }: TagIconProps) {
 /**
  * Small tag chip for displaying a tag
  */
-function TagChip({ tag, onRemove, readOnly = false }: TagChipProps) {
+function TagChip({ tag, onRemove, readOnly = false, disabled = false }: TagChipProps) {
   return (
     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary border border-primary/20">
       {tag}
@@ -61,6 +62,7 @@ function TagChip({ tag, onRemove, readOnly = false }: TagChipProps) {
           class="hover:text-destructive ms-0.5"
           onClick={(e) => { e.stopPropagation(); onRemove(tag); }}
           title={`Remove tag "${tag}"`}
+          disabled={disabled}
         >
           ×
         </button>
@@ -79,6 +81,7 @@ export function TagsOverlay<Id extends number | string>({ recording, onClose, on
   const [allTags, setAllTags] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -107,7 +110,9 @@ export function TagsOverlay<Id extends number | string>({ recording, onClose, on
 
   const addTag = useCallback(async (tag: string) => {
     const trimmed = tag.trim();
-    if (!trimmed || tags.includes(trimmed)) return;
+    if (savingRef.current || !trimmed || tags.includes(trimmed)) return;
+    savingRef.current = true;
+    const previousTags = tags;
     const newTags = [...tags, trimmed];
     setTags(newTags);
     setInputValue('');
@@ -115,23 +120,39 @@ export function TagsOverlay<Id extends number | string>({ recording, onClose, on
     setSaving(true);
     try {
       await recordingsAPI.setRecordingTags(recording.id, newTags);
-      if (onTagsChanged) onTagsChanged(recording.id, newTags);
-      showStatusMessage(t('recordings.tagAdded', { tag: trimmed }));
-    } catch { /* error shown by API */ }
-    setSaving(false);
-  }, [tags, recording.id, onTagsChanged]);
+    } catch {
+      // The API reports the error; restore the last confirmed tag set.
+      setTags(previousTags);
+      setInputValue(trimmed);
+      return;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+    if (onTagsChanged) onTagsChanged(recording.id, newTags);
+    showStatusMessage(t('recordings.tagAdded', { tag: trimmed }));
+  }, [tags, recording.id, onTagsChanged, t]);
 
   const removeTag = useCallback(async (tag: string) => {
+    if (savingRef.current || !tags.includes(tag)) return;
+    savingRef.current = true;
+    const previousTags = tags;
     const newTags = tags.filter(t => t !== tag);
     setTags(newTags);
     setSaving(true);
     try {
       await recordingsAPI.setRecordingTags(recording.id, newTags);
-      if (onTagsChanged) onTagsChanged(recording.id, newTags);
-      showStatusMessage(t('recordings.tagRemoved', { tag }));
-    } catch { /* error shown by API */ }
-    setSaving(false);
-  }, [tags, recording.id, onTagsChanged]);
+    } catch {
+      // The API reports the error; restore the last confirmed tag set.
+      setTags(previousTags);
+      return;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+    if (onTagsChanged) onTagsChanged(recording.id, newTags);
+    showStatusMessage(t('recordings.tagRemoved', { tag }));
+  }, [tags, recording.id, onTagsChanged, t]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && inputValue.trim()) {
@@ -158,7 +179,7 @@ export function TagsOverlay<Id extends number | string>({ recording, onClose, on
       {/* Current tags */}
       <div class="flex flex-wrap gap-1 mb-2 min-h-[24px]">
         {tags.length === 0 && <span class="text-xs text-muted-foreground italic">{t('recordings.noTags')}</span>}
-        {tags.map(tag => <TagChip key={tag} tag={tag} onRemove={removeTag} />)}
+        {tags.map(tag => <TagChip key={tag} tag={tag} onRemove={removeTag} disabled={saving} />)}
       </div>
 
       {/* Input with autocomplete */}
@@ -181,6 +202,7 @@ export function TagsOverlay<Id extends number | string>({ recording, onClose, on
                 key={tag}
                 type="button"
                 class="w-full text-start px-2 py-1 text-sm hover:bg-muted/70 transition-colors"
+                disabled={saving}
                 onClick={() => addTag(tag)}
               >
                 {tag}
