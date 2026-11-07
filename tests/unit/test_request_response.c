@@ -421,6 +421,76 @@ void test_response_set_json_error(void) {
     http_response_free(&res);
 }
 
+
+void test_header_helpers_bound_invalid_counts(void) {
+    http_request_t req;
+    http_request_init(&req);
+    safe_strcpy(req.headers[MAX_HEADERS - 1].name, "X-Last", sizeof(req.headers[0].name), 0);
+    safe_strcpy(req.headers[MAX_HEADERS - 1].value, "last", sizeof(req.headers[0].value), 0);
+    req.num_headers = MAX_HEADERS + 1;
+    TEST_ASSERT_EQUAL_STRING("last", http_request_get_header(&req, "x-last"));
+    TEST_ASSERT_NULL(http_request_get_header(&req, "X-Missing"));
+    req.num_headers = -1;
+    TEST_ASSERT_NULL(http_request_get_header(&req, "X-Last"));
+
+    http_response_t res;
+    http_response_init(&res);
+    const int counts[] = {-1, MAX_HEADERS, MAX_HEADERS + 1};
+    for (size_t i = 0; i < sizeof(counts) / sizeof(counts[0]); i++) {
+        res.num_headers = counts[i];
+        http_response_t before = res;
+        TEST_ASSERT_EQUAL_INT(-1, http_response_add_header(&res, "X-New", "value"));
+        TEST_ASSERT_EQUAL_MEMORY(&before, &res, sizeof(res));
+    }
+}
+
+void test_json_replaces_standard_headers_at_full_capacity(void) {
+    http_response_t res;
+    http_response_init(&res);
+    while (res.num_headers < MAX_HEADERS - 8) {
+        TEST_ASSERT_EQUAL_INT(0, http_response_add_header(&res, "Set-Cookie", "session=keep"));
+    }
+    TEST_ASSERT_EQUAL_INT(0, http_response_set_json(&res, 200, "{}"));
+    TEST_ASSERT_EQUAL_INT(MAX_HEADERS, res.num_headers);
+
+    // A failed replacement must not compact headers or alter body/metadata.
+    http_response_t before = res;
+    fail_next_allocation = true;
+    int result = http_response_set_json(&res, 500, "{}");
+    fail_next_allocation = false;
+    TEST_ASSERT_EQUAL_INT(-1, result);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &res, sizeof(res));
+
+    for (int repeat = 0; repeat < 3; repeat++) {
+        TEST_ASSERT_EQUAL_INT(0, http_response_set_json(&res, 201, res.body));
+        TEST_ASSERT_EQUAL_INT(MAX_HEADERS, res.num_headers);
+        TEST_ASSERT_EQUAL_STRING("{}", res.body);
+        for (int i = 0; i < MAX_HEADERS - 8; i++) {
+            TEST_ASSERT_EQUAL_STRING("Set-Cookie", res.headers[i].name);
+            TEST_ASSERT_EQUAL_STRING("session=keep", res.headers[i].value);
+        }
+    }
+    http_response_free(&res);
+}
+
+void test_json_replaces_mixed_case_duplicate_standard_headers(void) {
+    http_response_t res;
+    http_response_init(&res);
+    TEST_ASSERT_EQUAL_INT(0, http_response_add_header(&res, "cache-control", "public"));
+    TEST_ASSERT_EQUAL_INT(0, http_response_add_header(&res, "X-Keep", "yes"));
+    TEST_ASSERT_EQUAL_INT(0, http_response_add_header(&res, "CACHE-CONTROL", "max-age=99"));
+    TEST_ASSERT_EQUAL_INT(0, http_response_add_header(&res, "access-control-allow-origin", "old"));
+    TEST_ASSERT_EQUAL_INT(0, http_response_set_json(&res, 200, "{}"));
+    TEST_ASSERT_EQUAL_INT(9, res.num_headers);
+    TEST_ASSERT_EQUAL_STRING("X-Keep", res.headers[0].name);
+    TEST_ASSERT_EQUAL_STRING("yes", res.headers[0].value);
+    TEST_ASSERT_EQUAL_STRING("Access-Control-Allow-Origin", res.headers[1].name);
+    TEST_ASSERT_EQUAL_STRING("*", res.headers[1].value);
+    TEST_ASSERT_EQUAL_STRING("Cache-Control", res.headers[6].name);
+    TEST_ASSERT_EQUAL_STRING("no-cache, no-store, must-revalidate", res.headers[6].value);
+    http_response_free(&res);
+}
+
 void test_response_add_header(void) {
     http_response_t res;
     http_response_init(&res);
@@ -521,6 +591,9 @@ int main(void) {
     RUN_TEST(test_response_init_and_free);
     RUN_TEST(test_response_set_json);
     RUN_TEST(test_response_set_json_error);
+    RUN_TEST(test_header_helpers_bound_invalid_counts);
+    RUN_TEST(test_json_replaces_standard_headers_at_full_capacity);
+    RUN_TEST(test_json_replaces_mixed_case_duplicate_standard_headers);
     RUN_TEST(test_response_add_header);
     RUN_TEST(test_response_add_cors_headers);
     RUN_TEST(test_libuv_connection_reset_preserves_client_ip);

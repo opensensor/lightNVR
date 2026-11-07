@@ -141,7 +141,11 @@ void http_response_free(http_response_t *res) {
 const char* http_request_get_header(const http_request_t *req, const char *name) {
     if (!req || !name) return NULL;
 
-    for (int i = 0; i < req->num_headers; i++) {
+    int header_count = req->num_headers;
+    if (header_count < 0) return NULL;
+    if (header_count > MAX_HEADERS) header_count = MAX_HEADERS;
+
+    for (int i = 0; i < header_count; i++) {
         if (strcasecmp(req->headers[i].name, name) == 0) {
             return req->headers[i].value;
         }
@@ -218,7 +222,7 @@ int http_request_extract_path_param(const http_request_t *req, const char *prefi
 
 int http_response_add_header(http_response_t *res, const char *name, const char *value) {
     if (!res || !name || !value) return -1;
-    if (res->num_headers >= MAX_HEADERS) return -1;
+    if (res->num_headers < 0 || res->num_headers >= MAX_HEADERS) return -1;
 
     safe_strcpy(res->headers[res->num_headers].name, name,
             sizeof(res->headers[res->num_headers].name), 0);
@@ -248,6 +252,33 @@ int http_response_set_body(http_response_t *res, const char *body) {
     return 0;
 }
 
+static bool is_standard_json_header_name(const char *name) {
+    if (!name) return false;
+    return strcasecmp(name, "Access-Control-Allow-Origin") == 0 ||
+           strcasecmp(name, "Access-Control-Allow-Methods") == 0 ||
+           strcasecmp(name, "Access-Control-Allow-Headers") == 0 ||
+           strcasecmp(name, "Access-Control-Expose-Headers") == 0 ||
+           strcasecmp(name, "Access-Control-Max-Age") == 0 ||
+           strcasecmp(name, "Cache-Control") == 0 ||
+           strcasecmp(name, "Pragma") == 0 ||
+           strcasecmp(name, "Expires") == 0;
+}
+
+static void http_response_remove_standard_json_headers(http_response_t *res) {
+    if (!res || res->num_headers <= 0) return;
+
+    int write_idx = 0;
+    for (int read_idx = 0; read_idx < res->num_headers; read_idx++) {
+        if (!is_standard_json_header_name(res->headers[read_idx].name)) {
+            if (write_idx != read_idx) {
+                res->headers[write_idx] = res->headers[read_idx];
+            }
+            write_idx++;
+        }
+    }
+    res->num_headers = write_idx;
+}
+
 void http_response_add_cors_headers(http_response_t *res) {
     if (!res) return;
     http_response_add_header(res, "Access-Control-Allow-Origin", "*");
@@ -264,8 +295,14 @@ void http_response_add_cors_headers(http_response_t *res) {
 int http_response_set_json(http_response_t *res, int status_code, const char *json_str) {
     if (!res || !json_str) return -1;
 
-    // Five CORS headers and three cache-control headers must all fit.
-    if (res->num_headers < 0 || res->num_headers > MAX_HEADERS - 8) return -1;
+    if (res->num_headers < 0 || res->num_headers > MAX_HEADERS) return -1;
+    // Existing helper-managed headers will be replaced, so only retained
+    // headers need room alongside the five CORS and three cache headers.
+    int retained_headers = 0;
+    for (int i = 0; i < res->num_headers; i++) {
+        if (!is_standard_json_header_name(res->headers[i].name)) retained_headers++;
+    }
+    if (retained_headers > MAX_HEADERS - 8) return -1;
     // Copy first: failure must preserve the complete previous response, and
     // json_str may alias the existing body.
     if (http_response_set_body(res, json_str) != 0) return -1;
@@ -273,7 +310,10 @@ int http_response_set_json(http_response_t *res, int status_code, const char *js
     res->status_code = status_code;
     safe_strcpy(res->content_type, "application/json", sizeof(res->content_type), 0);
 
-    // Header insertions are now guaranteed to fit due to capacity check above.
+    // Replace helper-managed standard headers while preserving caller-provided headers.
+    http_response_remove_standard_json_headers(res);
+
+    // Add one canonical set of standard headers.
     http_response_add_cors_headers(res);
     http_response_add_header(res, "Cache-Control", "no-cache, no-store, must-revalidate");
     http_response_add_header(res, "Pragma", "no-cache");
