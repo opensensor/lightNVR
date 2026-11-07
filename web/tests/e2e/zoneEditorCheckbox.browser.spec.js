@@ -5,6 +5,9 @@ const fixtureZones = [{
   name: 'Entry',
   enabled: true,
   color: '#3b82f6',
+  filter_classes: '',
+  min_confidence: 0,
+  stream_name: 'Entry',
   polygon: [{
     x: .1,
     y: .1
@@ -16,6 +19,8 @@ const fixtureZones = [{
     y: .4
   }]
 }];
+const {validateStreamZones}=require('../../generated/api/validators.js');
+if(!validateStreamZones({zones:fixtureZones}))throw new Error('Invalid complete zones fixture');
 const t = key => 'translated:' + key;
 // Run with: npm --prefix web run test:e2e -- --testPathPatterns='\.browser\.spec\.js$'
 const browserTest = it;
@@ -39,7 +44,18 @@ async function openZoneBrowser(deferred = false) {
   window.pendingZones=[];
   window.pendingSnapshots=[];
   window.calls={saved:[],closed:0,events:[],requests:[]};
-  window.fetch=async(url,options={})=>{if(options.method==='POST'){window.calls.requests.push({url,method:options.method,body:JSON.parse(options.body)});return{ok:true,json:async()=>({})};}if(${deferred})return new Promise(resolve=>window.pendingZones.push({url,resolve}));return{ok:true,json:async()=>{window.zonesLoaded=true;return{zones};}};};
+  window.jsonResponse=value=>new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
+  window.fetch=async(url,options={})=>{
+    if(options.method==='POST'){
+      const body=JSON.parse(options.body);
+      window.calls.requests.push({url,method:options.method,body});
+      return window.jsonResponse({success:true,message:'Zones saved successfully',count:body.zones.length});
+    }
+    if(${deferred})return new Promise(resolve=>window.pendingZones.push({url,resolve}));
+    window.zonesLoaded=true;
+    return window.jsonResponse({zones});
+  };
+
   window.mount=(streamName='Entry')=>render(h(ZoneEditor,{streamName,streamWidth:640,streamHeight:360,zones,onClose:()=>window.calls.closed++,onZonesChange:value=>window.calls.saved.push(value)}),document.getElementById('root'));
   for(const capture of[true,false])for(const type of['click','input','change'])document.addEventListener(type,event=>{if(event.target.type==='checkbox')window.calls.events.push({type,capture,checked:event.target.checked,selected:String(document.querySelector('input[type=checkbox]')?.closest('div.mb-3.p-3.rounded.border')?.classList.contains('border-primary'))});},capture);
  `
@@ -243,13 +259,13 @@ it('ignores late zone and snapshot loads after switching cameras', async () => {
     await page.evaluate(() => window.mount('Second'));
     await page.waitForFunction(() => window.pendingZones.length === 2 && window.pendingSnapshots.length === 2);
     await page.evaluate(() => {
-      window.pendingZones[1].resolve({ok:true,json:async()=>({zones:[{...window.originalZones[0],name:'Second zone'}]})});
+      window.pendingZones[1].resolve(window.jsonResponse({zones:[{...window.originalZones[0],name:'Second zone',stream_name:'Second'}]}));
       window.pendingSnapshots[1]('/second');
     });
     await page.waitForFunction(() => document.querySelector('input[type=text]')?.value === 'Second zone');
     await page.locator('img').waitFor({state:'attached'});
     await page.evaluate(() => {
-      window.pendingZones[0].resolve({ok:true,json:async()=>({zones:[{...window.originalZones[0],name:'Stale zone'}]})});
+      window.pendingZones[0].resolve(window.jsonResponse({zones:[{...window.originalZones[0],name:'Stale zone'}]}));
       window.pendingSnapshots[0]('/stale');
     });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
