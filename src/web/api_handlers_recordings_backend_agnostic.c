@@ -45,6 +45,34 @@
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "storage/storage_manager_streams_cache.h"
 
+static int hex_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    c = (char)tolower((unsigned char)c);
+    if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+    return -1;
+}
+
+static int contains_encoded_nul_before_query(const char *path) {
+    if (!path) {
+        return 0;
+    }
+
+    for (const char *p = path; *p && *p != '?'; ++p) {
+        if (*p == '%' && p[1] && p[2]) {
+            int hi = hex_value(p[1]);
+            int lo = hex_value(p[2]);
+            if (hi >= 0 && lo >= 0) {
+                if (((hi << 4) | lo) == 0x00) {
+                    return 1;
+                }
+                p += 2;
+            }
+        }
+    }
+
+    return 0;
+}
+
 static void audit_recording_delete_operation(
     const http_request_t *req, const user_t *user,
     const fleet_camera_t *camera, uint64_t recording_id,
@@ -87,10 +115,8 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     }
 
     // Check the raw path too: a decoded NUL can hide a suffix from validation.
-    const char *encoded_nul = strstr(req->path, "%00");
-    const char *query = strchr(req->path, '?');
     uint64_t id;
-    if ((encoded_nul && (!query || encoded_nul < query)) ||
+    if (contains_encoded_nul_before_query(req->path) ||
         !recording_id_parse_decimal(id_str, &id)) {
         log_error("Invalid recording ID: %s", id_str);
         http_response_set_json_error(res, 400, "Invalid recording ID");
