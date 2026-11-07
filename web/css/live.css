@@ -1800,3 +1800,129 @@ body.pseudo-native-fullscreen-active {
     font-size: 0.82rem;
 }
 .live-plan-location-callout p { margin: 0; }
+
+/* Phone live view: put cameras before secondary viewing preferences. The same
+ * controls remain mounted, so expanding options never reconnects a player. */
+.live-mobile-options,
+.live-mobile-label,
+.live-mobile-layout { display: none; }
+
+@media (max-width: 768px) {
+    body.live-view-page > .container {
+        padding-inline: max(0.5rem, env(safe-area-inset-left)) max(0.5rem, env(safe-area-inset-right));
+    }
+
+    #live-page:not(.fullscreen-mode) {
+        padding: 0;
+        box-shadow: none;
+        background: transparent;
+    }
+
+    #live-page:not(.fullscreen-mode) > .live-toolbar {
+        padding: 0.5rem;
+        margin-bottom: 0.5rem;
+        gap: 0.5rem;
+        align-items: stretch;
+    }
+
+    .live-toolbar-heading {
+        width: 100%;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .live-toolbar-heading h2 { font-size: 1.125rem; }
+
+    .live-mobile-options {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        min-height: 44px;
+        padding: 0.5rem 0.65rem;
+        border: 1px solid hsl(var(--border));
+        border-radius: 0.6rem;
+        font-size: 0.875rem;
+        background: hsl(var(--background));
+    }
+
+    .live-filter-dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: hsl(var(--primary));
+    }
+
+    .live-toolbar:not(.mobile-options-open) .live-transport-options,
+    .live-toolbar:not(.mobile-options-open) .live-view-options > :not(.live-quick-action) {
+        display: none;
+    }
+
+    .live-transport-options {
+        width: 100%;
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 1fr;
+        text-align: center;
+    }
+
+    .live-transport-options > * {
+        display: flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: center;
+        padding-inline: 0.25rem;
+    }
+
+    #live-view-options {
+        display: flex;
+        width: 100%;
+        gap: 0.5rem;
+        margin: 0;
+        min-width: 0;
+    }
+
+    #live-view-options > * { margin: 0; max-width: 100%; }
+    #live-view-options select { min-width: 0; max-width: 100%; font-size: 1rem; }
+    #live-view-options button { min-height: 44px; }
+    .live-layout-control > .live-desktop-label, .live-desktop-layout { display: none; }
+    .live-mobile-layout { display: block; }
+    .live-fullscreen-action { margin-inline-start: auto !important; }
+
+    .mobile-options-open #live-view-options > button:not(.live-fullscreen-action),
+    .mobile-options-open #live-view-options [data-testid="live-slideshow"] button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 0.75rem;
+        border-radius: 0.6rem;
+        font-size: 0.875rem;
+    }
+
+    .live-mobile-label { display: inline; }
+    .live-view-options svg { flex-shrink: 0; }
+
+    .live-operator-navigator.is-collapsed {
+        height: auto;
+        min-height: 44px;
+        margin-bottom: 0.5rem;
+    }
+
+    .live-navigator-expand {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        gap: 0.6rem;
+        min-height: 44px;
+        margin: 0;
+        padding: 0.5rem 0.75rem;
+        text-align: start;
+        font-size: 0.875rem;
+    }
+
+    .live-camera-count { margin-inline-start: auto; color: hsl(var(--muted-foreground)); }
+    .live-navigator-heading button, .live-navigator-tabs button { min-height: 44px; min-width: 44px; }
+    .live-navigator-search input, .live-navigator-availability { font-size: 1rem; }
+    #live-page:not(.fullscreen-mode) .video-container { padding: 0; gap: 0.5rem; }
+    #live-page:not(.fullscreen-mode) .video-cell { margin-bottom: 0; }
+}

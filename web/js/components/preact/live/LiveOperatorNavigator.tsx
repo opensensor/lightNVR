@@ -116,8 +116,12 @@ export function LiveOperatorNavigator({
 }: LiveOperatorNavigatorProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [collapsed, setCollapsed] = useState(() =>
-    localStorage.getItem('lightnvr-live-navigator-collapsed') === 'true');
+  const [navigatorPreference] = useState(() => window.matchMedia('(max-width: 768px)').matches
+    ? 'lightnvr-live-navigator-mobile-collapsed' : 'lightnvr-live-navigator-collapsed');
+  const [collapsed, setCollapsed] = useState(() => {
+    const stored = localStorage.getItem(navigatorPreference);
+    return stored === null ? navigatorPreference.includes('-mobile-') : stored === 'true';
+  });
   const [tab, setTab] = useState('cameras');
   const [selectedLocation, setSelectedLocation] = useState(() =>
     new URLSearchParams(window.location.search).get('location') || '');
@@ -278,7 +282,7 @@ export function LiveOperatorNavigator({
   const toggleCollapsed = () => {
     const next = !collapsed;
     setCollapsed(next);
-    localStorage.setItem('lightnvr-live-navigator-collapsed', String(next));
+    localStorage.setItem(navigatorPreference, String(next));
   };
   const toggleExpanded = (uuid: string) => {
     setExpanded((current) => {
@@ -434,7 +438,11 @@ export function LiveOperatorNavigator({
     return (
       <aside className="live-operator-navigator is-collapsed">
         <button type="button" className="live-navigator-expand" onClick={toggleCollapsed}
-          title={t('live.navigator.expand')} aria-label={t('live.navigator.expand')}>☰</button>
+          title={t('live.navigator.expand')} aria-label={t('live.navigator.expand')} aria-expanded={false}>
+          <span aria-hidden="true">☰</span>
+          <span className="live-mobile-label">{t('live.browseCameras')}</span>
+          <span className="live-mobile-label live-camera-count">{orderedStreams.length}</span>
+        </button>
       </aside>
     );
   }
@@ -444,7 +452,7 @@ export function LiveOperatorNavigator({
     <aside className="live-operator-navigator" aria-label={t('live.navigator.title')}>
       <div className="live-navigator-heading">
         <div><strong>{t('live.navigator.title')}</strong><small>{t('live.navigator.subtitle')}</small></div>
-        <button type="button" onClick={toggleCollapsed} title={t('live.navigator.collapse')} aria-label={t('live.navigator.collapse')}><span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">‹</span></button>
+        <button type="button" onClick={toggleCollapsed} title={t('live.navigator.collapse')} aria-label={t('live.navigator.collapse')} aria-expanded={true}><span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">‹</span></button>
       </div>
       <div className="live-navigator-tabs" role="tablist">
         {['cameras', 'plans', 'views', ...(investigationVisible ? ['events'] : [])].map((value) => (

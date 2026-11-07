@@ -23,6 +23,7 @@ export function AlwaysFullscreenToggle({ enabled, onChange }: AlwaysFullscreenTo
         <rect x="6" y="2.5" width="12" height="19" rx="2" />
         <path d="M9 8V6h2M15 8V6h-2M9 14v2h2M15 14v2h-2" />
       </svg>
+      <span className="live-mobile-label">{t('live.tapToExpand')}</span>
     </button>
   );
 }
