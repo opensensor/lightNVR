@@ -40,8 +40,11 @@ int store_external_motion_detections(const char *stream_name,
                                      time_t timestamp,
                                      uint64_t recording_id);
 
-/** Close every currently-open external-motion interval for a stream. */
-int close_external_motion_detections(const char *stream_name, time_t end_time);
+/** Close open external-motion intervals for the captured camera identity.
+ * Only legacy rows without a UUID fall back to stream_name. Returns the number
+ * closed, or -1 on error. Both identity arguments must be nonempty. */
+int close_external_motion_detections(const char *camera_uuid,
+                                     const char *stream_name, time_t end_time);
 
 typedef struct {
     time_t start_time;

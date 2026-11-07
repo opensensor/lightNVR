@@ -128,6 +128,7 @@ static uint64_t pulse_gen_increment(const char *stream_name) {
 
 typedef struct {
     char     stream_name[MAX_STREAM_NAME];
+    char     camera_uuid[CAMERA_UUID_STRING_SIZE];
     int      duration_ms;
     /* Generation counter snapshot taken when this pulse was scheduled.
      * 0 is the reserved sentinel meaning "generation tracking disabled":
@@ -169,7 +170,7 @@ static void *motion_pulse_worker(void *arg) {
 
     if (still_current) {
         time_t now = time(NULL);
-        close_external_motion_detections(task->stream_name, now);
+        close_external_motion_detections(task->camera_uuid, task->stream_name, now);
         if (task->trigger_recording) {
             unified_detection_notify_motion(task->stream_name, false);
         }
@@ -466,7 +467,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
         /* A new leading edge supersedes an unclosed prior session. This keeps
          * repeated Home Assistant "start" messages from leaving overlapping
          * open intervals. */
-        close_external_motion_detections(stream_name, now);
+        close_external_motion_detections(cfg.camera_uuid, stream_name, now);
 
         bool caller_supplied_objects = detections.count > 0;
         /* Honour zone filtering so an external trigger respects the same zone
@@ -505,7 +506,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             }
         }
     } else {
-        close_external_motion_detections(stream_name, now);
+        close_external_motion_detections(cfg.camera_uuid, stream_name, now);
     }
 
     /* Tags attach to whatever recording is currently open for the stream. With
@@ -543,12 +544,15 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             if (can_trigger_recording) {
                 unified_detection_notify_motion(stream_name, false);
             }
-            close_external_motion_detections(stream_name, now);
+            close_external_motion_detections(cfg.camera_uuid, stream_name, now);
             process_motion_event(stream_name, false, now, false);
             http_response_set_json_error(res, 500, "Out of memory");
             return;
         }
         safe_strcpy(task->stream_name, stream_name, sizeof(task->stream_name), 0);
+        /* Preserve the identity even if the camera is renamed or its old name
+         * is reused before the deferred stop runs. */
+        safe_strcpy(task->camera_uuid, cfg.camera_uuid, sizeof(task->camera_uuid), 0);
         task->duration_ms       = duration_ms;
         task->generation        = new_gen;
         task->trigger_recording = can_trigger_recording;
@@ -564,7 +568,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             if (can_trigger_recording) {
                 unified_detection_notify_motion(stream_name, false);
             }
-            close_external_motion_detections(stream_name, now);
+            close_external_motion_detections(cfg.camera_uuid, stream_name, now);
             process_motion_event(stream_name, false, now, false);
             free(task);
             http_response_set_json_error(res, 500,

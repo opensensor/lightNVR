@@ -3173,7 +3173,7 @@ void test_timeline_uuid_link_survives_rename_and_enforces_replay_scope(void) {
     detection.detections[0].confidence = 1.0f;
     TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
         camera.name, &detection, 1787920100, recording_id));
-    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(camera.name, 1787920200));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(camera.camera_uuid, camera.name, 1787920200));
     safe_strcpy(camera.name, "new_lpr_camera", sizeof(camera.name), 0);
     TEST_ASSERT_EQUAL_INT(0, update_stream_config("old_lpr_camera", &camera));
 
@@ -3185,7 +3185,7 @@ void test_timeline_uuid_link_survives_rename_and_enforces_replay_scope(void) {
     TEST_ASSERT_NOT_EQUAL(0, other_id);
     TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
         other.name, &detection, 1787920300, other_id));
-    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(other.name, 1787920400));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(other.camera_uuid, other.name, 1787920400));
 
     char api_key[128] = {0};
     create_camera_action_user("timeline_uuid_user", camera.camera_uuid,

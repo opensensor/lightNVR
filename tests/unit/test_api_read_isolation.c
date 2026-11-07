@@ -193,12 +193,14 @@ void test_detection_snapshot_does_not_wait_for_busy_writer(void) {
 }
 
 void test_detection_snapshot_only_sees_committed_rows_and_preserves_event_ranges(void) {
+    stream_config_t camera;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_a", &camera));
     time_t now = time(NULL);
     detection_result_t motion = { .count = 1 };
     strcpy(motion.detections[0].label, "motion");
     motion.detections[0].confidence = 1.0f;
     TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections("cam_a", &motion, now - 120, 0));
-    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections("cam_a", now - 10));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(camera.camera_uuid, "cam_a", now - 10));
     detection_result_t person = { .count = 1 };
     strcpy(person.detections[0].label, "person");
     person.detections[0].confidence = .9f;
@@ -259,7 +261,7 @@ void test_captured_detection_read_preserves_committed_motion_ranges(void) {
     strcpy(motion.detections[0].label, "motion");
     motion.detections[0].confidence = 1;
     TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections("cam_a", &motion, now - 120, 0));
-    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections("cam_a", now - 10));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(camera.camera_uuid, "cam_a", now - 10));
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
         "BEGIN IMMEDIATE; UPDATE detections SET label='uncommitted';", NULL, NULL, NULL));
     detection_result_t result;
