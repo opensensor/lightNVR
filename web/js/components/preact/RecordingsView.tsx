@@ -754,7 +754,12 @@ export function RecordingsView() {
       return;
     }
     // Store current URL for "Refine Selections" back-link
-    sessionStorage.setItem(RECORDINGS_RETURN_URL_KEY, window.location.href);
+    const currentPath = window.location.pathname.split('/').pop() || 'recordings.html';
+    const recordingsReturnUrl = `recordings.html${window.location.search}`;
+    sessionStorage.setItem(
+      RECORDINGS_RETURN_URL_KEY,
+      currentPath === 'recordings.html' ? recordingsReturnUrl : `recordings.html${window.location.search}`
+    );
     sessionStorage.setItem(RECORDINGS_SELECTED_IDS_KEY, JSON.stringify(selectedIds));
     sessionStorage.setItem(RECORDINGS_RESTORE_SELECTION_KEY, 'true');
     window.location.href = `timeline.html?ids=${selectedIds.join(',')}`;
