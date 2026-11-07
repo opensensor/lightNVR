@@ -3286,11 +3286,38 @@ void test_timeline_segments_reject_unparseable_time_bounds(void) {
         cJSON_Delete(json);
     }
 
+    const char *invalid_bounds[] = {
+        "2026-02-30", "2025-02-29", "2026-04-31T12:00:00Z",
+        "2026-08-28junk", "2026-08-28T00:00:00Zjunk",
+        "2026-08-28T00:00:00.123Zjunk", "2026-08-28T00:00:00.Z",
+        "2026-08-28T00:00:00.", "2026-08-28T00:00:60Z",
+        "2026-08-28T00:00:00.00000000000000000000000000000000000000000000000000000Z"
+    };
+    for (size_t i = 0; i < sizeof(invalid_bounds) / sizeof(invalid_bounds[0]); i++) {
+        for (int is_end = 0; is_end < 2; is_end++) {
+            char path[512];
+            snprintf(path, sizeof(path), "/api/timeline/segments?camera_uuid=%s&%s=%s",
+                     camera.camera_uuid, is_end ? "end" : "start", invalid_bounds[i]);
+            cJSON *json = call_handler_path(handle_get_timeline_segments, HTTP_METHOD_GET,
+                                            path, NULL, api_key, 400);
+            const cJSON *error = cJSON_GetObjectItemCaseSensitive(json, "error");
+            TEST_ASSERT_TRUE(cJSON_IsString(error));
+            TEST_ASSERT_EQUAL_STRING(is_end ? "Invalid end parameter" : "Invalid start parameter",
+                                     error->valuestring);
+            cJSON_Delete(json);
+        }
+    }
+
     /* Optional bounds keep their defaults; date-only and browser ISO strings
      * remain accepted through the same authenticated endpoint. */
     const char *valid_queries[] = {
         "", "&start=2026-08-28&end=2026-08-29",
-        "&start=2026-08-28T00:00:00.000Z&end=2026-08-29T00:00:00.000Z"
+        "&start=2026-08-28T00:00:00.000Z&end=2026-08-29T00:00:00.000Z",
+        "&start=2026-08-28T00:00:00.123Z&end=2026-08-28T23:59:59.999Z",
+        "&start=2026-08-28T00:00:00.1&end=2026-08-28T23:59:59.123456Z",
+        "&start=2026-08-28T00:00:00&end=2026-08-28T23:59:59Z",
+        "&start=2026-08-28T00%3A00%3A00.123Z&end=2026-08-28T23%3A59%3A59.999Z",
+        "&start=2024-02-29&end=2024-03-01"
     };
     for (size_t i = 0; i < sizeof(valid_queries) / sizeof(valid_queries[0]); i++) {
         char path[512];
