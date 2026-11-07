@@ -454,10 +454,36 @@ export function LiveOperatorNavigator({
         <div><strong>{t('live.navigator.title')}</strong><small>{t('live.navigator.subtitle')}</small></div>
         <button type="button" onClick={toggleCollapsed} title={t('live.navigator.collapse')} aria-label={t('live.navigator.collapse')} aria-expanded={true}><span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">‹</span></button>
       </div>
-      <div className="live-navigator-tabs" role="tablist">
+      <div
+        className="live-navigator-tabs"
+        role="tablist"
+        aria-label={t('live.navigator.title')}
+        onKeyDown={(event) => {
+          const tabValues = ['cameras', 'plans', 'views', ...(investigationVisible ? ['events'] : [])];
+          const currentIndex = tabValues.indexOf(tab);
+          if (currentIndex < 0) return;
+          let nextIndex = currentIndex;
+          if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabValues.length;
+          else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabValues.length) % tabValues.length;
+          else if (event.key === 'Home') nextIndex = 0;
+          else if (event.key === 'End') nextIndex = tabValues.length - 1;
+          else return;
+          event.preventDefault();
+          const nextTab = tabValues[nextIndex];
+          setTab(nextTab);
+          onSurfaceChange(nextTab === 'plans' ? 'plan' : 'grid');
+        }}>
         {['cameras', 'plans', 'views', ...(investigationVisible ? ['events'] : [])].map((value) => (
-          <button key={value} type="button" role="tab" aria-selected={tab === value}
-            className={tab === value ? 'is-active' : ''} onClick={() => {
+          <button
+            key={value}
+            type="button"
+            id={`live-navigator-tab-${value}`}
+            role="tab"
+            aria-selected={tab === value}
+            aria-controls={`live-navigator-panel-${value}`}
+            tabIndex={tab === value ? 0 : -1}
+            className={tab === value ? 'is-active' : ''}
+            onClick={() => {
               setTab(value);
               onSurfaceChange(value === 'plans' ? 'plan' : 'grid');
             }}>
@@ -467,7 +493,11 @@ export function LiveOperatorNavigator({
       </div>
 
       {tab === 'cameras' && (
-        <div className="live-navigator-panel">
+        <div
+          className="live-navigator-panel"
+          role="tabpanel"
+          id="live-navigator-panel-cameras"
+          aria-labelledby="live-navigator-tab-cameras">
           <label className="live-navigator-search">
             <span className="sr-only">{t('live.navigator.search')}</span>
             <input type="search" value={search} placeholder={t('live.navigator.search')}
