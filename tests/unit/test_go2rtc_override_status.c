@@ -8,6 +8,11 @@ static enum fault_kind fault;
 static unsigned read_calls;
 static char path[128];
 static const char *diagnostic_path;
+static const char *db_value;
+static size_t db_length;
+static int db_status;
+static bool process_available;
+static int process_pid;
 static const char secret[] = "fixture-secret";
 
 int __real_fstat(int fd, struct stat *st);
@@ -55,9 +60,25 @@ cJSON *__wrap_cJSON_AddNumberToObject(cJSON *object, const char *name, double va
     return item;
 }
 const char *__wrap_go2rtc_process_get_override_path(void) { return diagnostic_path; }
-bool __wrap_go2rtc_process_try_get_pid(int *pid) { *pid = -1; return true; }
+bool __wrap_go2rtc_process_try_get_pid(int *pid) { *pid = process_pid; return process_available; }
 int __wrap_db_get_system_setting_alloc(const char *key, char **value, size_t *length) {
-    (void)key; *value = NULL; *length = 0; errno = EDOM; return 1;
+    (void)key;
+    if (db_status != 0) {
+        *value = NULL;
+        *length = 0;
+        errno = EDOM;
+        return db_status;
+    }
+    *length = db_length;
+    *value = malloc(db_length + 1);
+    if (*value == NULL) {
+        *length = 0;
+        errno = ENOMEM;
+        return -1;
+    }
+    if (db_value != NULL && db_length > 0) memcpy(*value, db_value, db_length);
+    (*value)[db_length] = '\0';
+    return 0;
 }
 int __wrap_httpd_authorize_global_action(const http_request_t *req, http_response_t *res,
                                          authorization_action_t action) {
@@ -67,6 +88,11 @@ int __wrap_httpd_authorize_global_action(const http_request_t *req, http_respons
 void setUp(void) {
     fault = NONE;
     read_calls = 0;
+    db_value = NULL;
+    db_length = 0;
+    db_status = 1;
+    process_available = true;
+    process_pid = -1;
     strcpy(path, "/tmp/lightnvr-override-read-XXXXXX");
     int fd = mkstemp(path);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, fd);
@@ -76,6 +102,11 @@ void setUp(void) {
 }
 void tearDown(void) {
     fault = NONE;
+    db_value = NULL;
+    db_length = 0;
+    db_status = 1;
+    process_available = true;
+    process_pid = -1;
     unlink(path);
     rmdir(path);
 }
