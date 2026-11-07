@@ -608,13 +608,8 @@ set_tests_properties(test_udt_recording PROPERTIES TIMEOUT 60)
 
 # Health tasks register their tests in independent fragments so parallel work
 # never needs to modify this shared list.
-if(CMAKE_VERSION VERSION_LESS "3.12")
-    file(GLOB SYSTEM_HEALTH_TEST_FRAGMENTS
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/system_health/*.cmake")
-else()
-    file(GLOB SYSTEM_HEALTH_TEST_FRAGMENTS CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/system_health/*.cmake")
-endif()
+file(GLOB SYSTEM_HEALTH_TEST_FRAGMENTS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/system_health/*.cmake")
 list(SORT SYSTEM_HEALTH_TEST_FRAGMENTS)
 foreach(SYSTEM_HEALTH_TEST_FRAGMENT IN LISTS SYSTEM_HEALTH_TEST_FRAGMENTS)
     include("${SYSTEM_HEALTH_TEST_FRAGMENT}")
