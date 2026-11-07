@@ -85,12 +85,18 @@ test.each(['button','escape','global','unmount'])('confirmation cancellation via
 
 test('duplicate starts are guarded and slow progress requests never overlap',async()=>{
   const {browser,page}=await fixture();
+  const browserErrors=[];
+  page.on('pageerror',error=>browserErrors.push(error.message));
   try {
     await open(page);
     // A second global request cannot replace the first promise or its IDs.
     await page.evaluate(()=>window.openDelete(['different']));
     expect((await outcome(page,1)).status).toBe('rejected');
-    await page.evaluate(()=>window.openViaWrapper().catch(()=>{})); // Rejection must not close the original dialog.
+    // The public wrapper returns void and handles rejection internally.
+    expect(await page.evaluate(()=>typeof window.openViaWrapper())).toBe('undefined');
+    expect(await page.getByRole('dialog').count()).toBe(1);
+    expect(await page.evaluate(()=>window.calls.outcomes[0].status)).toBe('pending');
+    expect(await page.evaluate(()=>window.calls.requests.length)).toBe(0);
     await page.evaluate(()=>{
       const button=[...document.querySelectorAll('button')].find(el=>el.textContent==='recordings.deleteDescription');
       button.click();button.click();
@@ -116,6 +122,7 @@ test('duplicate starts are guarded and slow progress requests never overlap',asy
     await page.getByRole('button',{name:'common.done',exact:true}).click();
     await open(page);await page.getByRole('button',{name:'common.cancel',exact:true}).click();
     expect((await outcome(page,2)).value.status).toBe('cancelled');
+    expect(browserErrors).toEqual([]);
   }finally{await browser.close();}
 },30000);
 
