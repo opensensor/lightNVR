@@ -2,6 +2,7 @@
 const path = require('node:path');
 const {build} = require('esbuild');
 const {chromium} = require('../../../node_modules/playwright');
+const english = require('../../public/locales/en.json');
 
 let bundle;
 beforeAll(async()=>{
@@ -18,7 +19,7 @@ beforeAll(async()=>{
       });
       window.openDelete=(ids=['9007199254740993'])=>{
         const index=window.calls.outcomes.push({status:'pending'})-1;
-        window.batchDeleteRecordingsByHttpRequest({ids}).then(
+        window.batchDeleteRecordingsByHttpRequest(ids===null?{filter:{stream:'A'}}:{ids}).then(
           value=>window.calls.outcomes[index]={status:'resolved',value},
           error=>window.calls.outcomes[index]={status:'rejected',message:error.message});
       };
@@ -30,7 +31,7 @@ beforeAll(async()=>{
     plugins:[{name:'fixture',setup(build){
       build.onResolve({filter:/(?:i18n\.ts|query-client\.ts|ToastContainer\.tsx)$/},args=>({path:args.path,namespace:'fixture'}));
       build.onLoad({filter:/.*/,namespace:'fixture'},args=>({loader:'js',contents:
-        args.path.endsWith('i18n.ts')?'export const t=key=>key; export const useI18n=()=>({t});':
+        args.path.endsWith('i18n.ts')?`export const t=key=>key==='recordings.batchDeleteProgress'?${JSON.stringify(english['recordings.batchDeleteProgress'])}:key; export const useI18n=()=>({t});`:
         args.path.endsWith('query-client.ts')?'const client={invalidateQueries:async args=>window.calls.invalidations.push(args)};export const useQueryClient=()=>client;':
         'export const showStatusMessage=(...args)=>window.calls.messages.push(args);'
       }));
@@ -48,8 +49,8 @@ async function fixture() {
     return {browser,page};
   }catch(error){await browser.close();throw error;}
 }
-async function open(page) {
-  await page.evaluate(()=>window.openDelete());
+async function open(page,filtered=false) {
+  await page.evaluate(filtered=>window.openDelete(filtered?null:undefined),filtered);
   await page.getByRole('button',{name:'recordings.deleteDescription',exact:true}).waitFor();
 }
 async function proceed(page) {
@@ -155,6 +156,9 @@ test.each(['start-http','missing-job','poll-network','job-error'])('%s rejects o
       else await respond(page,1,{status:'error',complete:true,error_message:'Database unavailable',total:0,current:0});
     }
     expect((await outcome(page)).status).toBe('rejected');
+    const bar=page.getByRole('progressbar',{name:'Recording deletion progress'});
+    expect(await bar.getAttribute('aria-valuenow')).toBeNull();
+    expect(await bar.getAttribute('aria-valuetext')).toMatch(/^Error:/);
     await page.waitForTimeout(600);
     expect(await page.evaluate(()=>window.calls.requests.length)).toBe(mode.startsWith('start')||mode==='missing-job'?1:2);
     expect(await page.evaluate(()=>window.calls.messages.map(m=>m[1]))).toEqual(['error']);
@@ -174,5 +178,41 @@ test('unmount clears an already scheduled poll timer',async()=>{
     expect((await outcome(page)).status).toBe('rejected');
     await page.waitForTimeout(700);
     expect(await page.evaluate(()=>window.calls.requests.length)).toBe(2);
+  }finally{await browser.close();}
+},30000);
+
+
+test('accessible progress stays indeterminate until a total is known and reports bounded percentages',async()=>{
+  const {browser,page}=await fixture();
+  try {
+    await open(page,true);await proceed(page);await requestCount(page,1);
+    const bar=page.getByRole('progressbar',{name:'Recording deletion progress'});
+    expect(await bar.getAttribute('aria-valuenow')).toBeNull();
+    expect(await bar.getAttribute('aria-valuetext')).toBe('recordings.inProgress');
+    expect(await bar.getAttribute('aria-valuemin')).toBe('0');
+    expect(await bar.getAttribute('aria-valuemax')).toBe('100');
+    await respond(page,0,{job_id:'accessible-job'});await requestCount(page,2);
+    await respond(page,1,{status:'running',complete:false,total:4,current:1,succeeded:1});
+    await page.waitForFunction(()=>document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow')==='25');
+    expect(await bar.getAttribute('aria-valuetext')).toBe('25%');
+    await requestCount(page,3);
+    await respond(page,2,{status:'running',complete:false,total:4,current:5,succeeded:4});
+    await page.waitForFunction(()=>document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow')==='100');
+    expect(await bar.getAttribute('aria-valuetext')).toBe('100%');
+    await requestCount(page,4);
+    await respond(page,3,{...completed,total:4,current:4,succeeded:4});await outcome(page);
+    expect(await bar.getAttribute('aria-valuenow')).toBe('100');
+  }finally{await browser.close();}
+},30000);
+
+test('an empty successful job announces completion rather than remaining indeterminate',async()=>{
+  const {browser,page}=await fixture();
+  try {
+    await open(page,true);await proceed(page);await requestCount(page,1);
+    await respond(page,0,{job_id:'empty-job'});await requestCount(page,2);
+    await respond(page,1,{...completed,total:0,current:0,succeeded:0});await outcome(page);
+    const bar=page.getByRole('progressbar',{name:'Recording deletion progress'});
+    expect(await bar.getAttribute('aria-valuenow')).toBe('100');
+    expect(await bar.getAttribute('aria-valuetext')).toBe('100%');
   }finally{await browser.close();}
 },30000);

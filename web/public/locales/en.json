@@ -2792,6 +2792,7 @@
   "streamsConfig.zonesLoadFailed": "Failed to load detection zones (HTTP {statusCode}{statusText}). Please try again or contact an administrator.",
   "streamsConfig.zonesLoadError": "An error occurred while loading detection zones. Details: {errorMessage}",
   "recordings.inProgress": "In progress",
+  "recordings.batchDeleteProgress": "Recording deletion progress",
   "recordings.noSelectionForDeletion": "No recordings selected for deletion",
   "recordings.batchDeleteStartFailed": "Failed to start batch delete operation",
   "recordings.batchDeleteUnavailable": "Batch delete function not available",
