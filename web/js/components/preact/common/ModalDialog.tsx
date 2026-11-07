@@ -1,6 +1,8 @@
 import type { ComponentChildren, RefObject } from 'preact';
 import { createPortal } from 'preact/compat';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useAsyncAction } from '../../../hooks/useAsyncAction.ts';
+import { useI18n } from '../../../i18n.ts';
 
 const FOCUSABLE_SELECTOR = [
   'button:not([disabled])',
@@ -33,6 +35,8 @@ export function ModalShell({
   initialFocusRef,
 }: ModalShellProps) {
   const dialogRef = useRef<HTMLElement>(null);
+  const closeState = useRef({ onClose, closeDisabled });
+  closeState.current = { onClose, closeDisabled };
   const idRef = useRef<string>(null);
   if (!idRef.current) {
     nextDialogId += 1;
@@ -53,7 +57,7 @@ export function ModalShell({
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        if (!closeDisabled) onClose();
+        if (!closeState.current.closeDisabled) closeState.current.onClose();
         return;
       }
       if (event.key !== 'Tab' || !dialogRef.current) return;
@@ -83,7 +87,12 @@ export function ModalShell({
         previouslyFocused.focus();
       }
     };
-  }, [closeDisabled, initialFocusRef, isOpen, onClose]);
+  }, [initialFocusRef, isOpen]);
+
+  useLayoutEffect(() => {
+    // Disabling the focused action must not leave keyboard focus outside the modal.
+    if (isOpen && closeDisabled) dialogRef.current?.focus();
+  }, [closeDisabled, isOpen]);
 
   if (!isOpen) return null;
 
@@ -128,6 +137,7 @@ export function ModalShell({
 export interface ConfirmDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Resolving to exactly `false` keeps the dialog open. */
   onConfirm: () => unknown;
   title: ComponentChildren;
   message: ComponentChildren;
@@ -138,7 +148,12 @@ export interface ConfirmDialogProps {
 }
 
 /** A reusable confirmation modal for warning and destructive actions. */
-export function ConfirmDialog({
+export function ConfirmDialog(props: ConfirmDialogProps) {
+  // A newly opened dialog owns a fresh action; an old completion cannot close it.
+  return props.isOpen ? <ConfirmDialogContent {...props} /> : null;
+}
+
+function ConfirmDialogContent({
   isOpen,
   onClose,
   onConfirm,
@@ -151,17 +166,20 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const danger = variant === 'danger';
-
-  const handleConfirm = () => {
-    onConfirm();
-    onClose();
-  };
+  const { t } = useI18n();
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  const confirmation = useAsyncAction(async () => {
+    const result = await onConfirm();
+    if (mounted.current && result !== false) onClose();
+  });
 
   return (
     <ModalShell
       isOpen={isOpen}
       onClose={onClose}
       title={title}
+      closeDisabled={confirmation.pending}
       initialFocusRef={cancelRef}
     >
       <div className="px-5 py-4">
@@ -179,15 +197,17 @@ export function ConfirmDialog({
           <p className="pt-1.5 text-sm text-muted-foreground">{message}</p>
         </div>
       </div>
+      {confirmation.error && <p role="alert" className="px-5 pb-4 text-sm text-destructive">{t('common.actionFailed')}</p>}
       <footer className="flex justify-end gap-3 border-t border-border px-5 py-4">
-        <button ref={cancelRef} type="button" className="btn-secondary" onClick={onClose}>
+        <button ref={cancelRef} type="button" className="btn-secondary" disabled={confirmation.pending} onClick={onClose}>
           {cancelLabel}
         </button>
         <button
           type="button"
           className={danger ? 'btn-danger' : 'btn-primary'}
-          disabled={confirmDisabled}
-          onClick={handleConfirm}
+          disabled={confirmDisabled || confirmation.pending}
+          aria-busy={confirmation.pending}
+          onClick={() => { void confirmation.run(); }}
         >
           {confirmLabel}
         </button>
