@@ -456,7 +456,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     uint64_t new_gen = pulse_gen_increment(stream_name);
     pthread_mutex_unlock(&g_pulse_gen_mutex);
     if (new_gen == 0) {
-        http_response_set_json_error(res, 503, "Motion trigger tracking capacity exhausted");
+        http_response_set_json_error(res, 500, "Motion trigger tracking capacity exhausted");
         return;
     }
 

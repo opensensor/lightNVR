@@ -156,7 +156,7 @@ static void test_full_table_rejects_request_before_motion_side_effects(void) {
     handle_post_motion_trigger(&req, &res);
     int status = res.status_code;
     http_response_free(&res);
-    TEST_ASSERT_EQUAL_INT(503, status);
+    TEST_ASSERT_EQUAL_INT(500, status);
     TEST_ASSERT_EQUAL_INT(0, close_calls + notify_calls + fanout_calls);
     TEST_ASSERT_EQUAL_INT(0, concurrent_attempts);
 }
