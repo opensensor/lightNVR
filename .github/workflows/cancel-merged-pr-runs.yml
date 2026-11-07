@@ -1,0 +1,53 @@
+name: Cancel merged PR runs
+
+# Once a pull request is merged, its branch's CI no longer gates anything:
+# the merge commit gets its own runs on main. Cancel whatever is still queued
+# or running for the PR head so runners free up immediately.
+#
+# pull_request_target is used so the token can cancel runs for PRs from forks
+# too. This workflow never checks out or executes PR code, and the branch name
+# reaches the shell only through an environment variable.
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  cancel:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel queued and in-progress runs for the PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SELF_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Match on branch *and* source repository: a fork's "main" must
+          # never cancel this repository's main.
+          ids=$(gh api -X GET "repos/$REPO/actions/runs" \
+                  -f branch="$HEAD_REF" -F per_page=100 --paginate \
+                  --jq ".workflow_runs[]
+                        | select(.status != \"completed\")
+                        | select(.head_repository.full_name == \"$HEAD_REPO\")
+                        | select(.id != $SELF_RUN_ID)
+                        | .id")
+          if [ -z "$ids" ]; then
+            echo "No active runs for $HEAD_REPO:$HEAD_REF."
+            exit 0
+          fi
+          for id in $ids; do
+            # A run can finish between listing and cancelling; that is fine.
+            if gh api -X POST "repos/$REPO/actions/runs/$id/cancel" --silent; then
+              echo "Cancelled run $id"
+            else
+              echo "Could not cancel run $id (probably already finished)"
+            fi
+          done
