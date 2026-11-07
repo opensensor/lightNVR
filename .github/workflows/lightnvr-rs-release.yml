@@ -23,6 +23,11 @@ env:
   C_REGISTRY_IMAGE: ghcr.io/opensensor/lightnvr
   TRANSPILE_IMAGE: lightnvr-rs-transpile:release
 
+# Superseded commits do not need to finish the same workflow.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build lightnvr-rs (sid/amd64)
