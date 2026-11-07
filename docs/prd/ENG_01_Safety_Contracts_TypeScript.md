@@ -18,10 +18,10 @@ acceptance remains open. These are not gates for Rust exploration.
 focused correctness fixes, operational regression coverage, and measured resource costs.
 
 The current execution and evidence index is
-[engineering-hardening-four-pr-plan.md](../../engineering-hardening-four-pr-plan.md).
-The [expansion plan](../../engineering-api-expansion-plan.md) records the family
-roadmap; [the original execution plan](../../engineering-api-contracts-plan.md)
-and [identity plan](../../engineering-identity-contracts-plan.md) retain historical
+[engineering-hardening-four-pr-plan.md](../internal/plans/engineering-hardening-four-pr-plan.md).
+The [expansion plan](../internal/plans/engineering-api-expansion-plan.md) records the family
+roadmap; [the original execution plan](../internal/plans/engineering-api-contracts-plan.md)
+and [identity plan](../internal/plans/engineering-identity-contracts-plan.md) retain historical
 receipts. Main accounts for all 241 registrations: 232 OpenAPI operations across
 168 paths, eight media-protocol dispositions and one internal lease callback.
 The nine explicit exclusions keep discovery's `partial=true`; they are not
@@ -339,7 +339,7 @@ The executed plan accepts 33 operations across 30 paths, with all 240 literal
 method/route/handler registrations reconciled and 207 explicitly left for later.
 E1–E3, the bounded E4 identity/recording increment and E5 workstation scenarios
 are implemented. This does not mean the entire API has contracts. The
-[next plan](../../engineering-api-expansion-plan.md) separates remaining domains,
+[next plan](../internal/plans/engineering-api-expansion-plan.md) separates remaining domains,
 recording pathname collisions, export I/O handling and target capacity. Rust
 remains deferred.
 
@@ -414,7 +414,7 @@ high water drops 476.72 to 264.22 MiB in the declared workload. See
 remaining metrics-buffer cost and device-sizing limits.
 
 That T21 receipt accepts E1–E3 only. Later task receipts track E4/E5 expansion
-and final integrated reruns. The proposed [follow-on plan](../../engineering-api-expansion-plan.md)
+and final integrated reruns. The proposed [follow-on plan](../internal/plans/engineering-api-expansion-plan.md)
 separates remaining API domains, pathname collision safety and target capacity.
 Rust remains deferred.
 
@@ -453,7 +453,7 @@ TOTP uses durable account throttling and single-use time steps across inline and
 challenge login, with bounded pending enrollment and strict user-ID parsing.
 Basic and legacy-key compatibility is intentionally preserved. Migration 0094
 retains enabled secrets and authenticated sessions; unfinished enrollment restarts.
-See the [identity plan](../../engineering-identity-contracts-plan.md) for policy,
+See the [identity plan](../internal/plans/engineering-identity-contracts-plan.md) for policy,
 validation and the remaining seven schemas/typed consumers. This behavior increment
 does not increase the 37 accepted operations or claim automated finding closure.
 

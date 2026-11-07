@@ -346,7 +346,7 @@ list position or expiry. Pending MFA rows are excluded. Strict decimal safe-
 integer IDs keep native routing and generated JavaScript callers consistent.
 The Settings consumer validates redacted lists and exact success acknowledgments,
 never automatically retries DELETE, and refetches after ambiguous failures.
-See the [identity acceptance receipt](../../../engineering-identity-contracts-plan.md)
+See the [identity acceptance receipt](../../internal/plans/engineering-identity-contracts-plan.md)
 for validation, credential-class decisions and remaining MFA/password scope.
 
 

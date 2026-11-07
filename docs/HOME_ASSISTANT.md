@@ -45,7 +45,7 @@ compilation — a minute or two depending on your connection.
 
 > ⚠️ **The default credentials are `admin` / `admin`, and the add-on runs with host
 > networking**, so the web UI is reachable from anywhere on your LAN the moment it starts.
-> Change the password under **Settings → Users** before you do anything else.
+> LightNVR makes you replace the password on first login; do that before anything else.
 
 ## What the add-on does differently
 

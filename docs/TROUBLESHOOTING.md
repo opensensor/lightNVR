@@ -182,7 +182,7 @@ webrtc_connection_timeout_ms = 45000
 webrtc_ice_recovery_timeout_ms = 8000
 ```
 
-Environment-variable equivalents (useful for Docker): `WEBRTC_CONNECTION_TIMEOUT_MS` and `WEBRTC_ICE_RECOVERY_TIMEOUT_MS`. The web client reads these from the authenticated `/api/client-config` bootstrap endpoint, so a plain container restart applies them.
+Environment-variable equivalents (useful for Docker): `LIGHTNVR_WEBRTC_CONNECTION_TIMEOUT_MS` and `LIGHTNVR_WEBRTC_ICE_RECOVERY_TIMEOUT_MS`. They apply only while the ini file leaves the setting at its default; see [configuration overrides](DOCKER.md#configuration-overrides). The web client reads these from the authenticated `/api/client-config` bootstrap endpoint, so a plain container restart applies them.
 
 **HLS live view** — the following buffer/timeout tuning currently still requires a source rebuild:
 
@@ -209,35 +209,17 @@ Environment-variable equivalents (useful for Docker): `WEBRTC_CONNECTION_TIMEOUT
 
 ### Stale Stream Data in Live View
 
-If you notice the live stream showing outdated video (stale data):
+If a live tile keeps showing old video:
 
-1. **Prevent browser caching**:
-   - Add cache control headers to HLS responses in `src/web/api_handlers_streaming.c`:
-     ```c
-     set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
-     set_response_header(response, "Pragma", "no-cache");
-     set_response_header(response, "Expires", "0");
-     ```
-
-2. **Add cache-busting to HLS URLs** in `web/js/components/preact/HLSVideoCell.tsx`:
-   ```javascript
-   const timestamp = Date.now();
-   const hlsStreamUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${timestamp}`;
-   ```
-
-3. **Implement periodic stream refresh**:
-   ```javascript
-   const refreshInterval = 60000; // 60 seconds
-   const refreshTimer = setInterval(() => {
-       if (videoCell && videoCell.hlsPlayer) {
-           const newTimestamp = Date.now();
-           const newUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${newTimestamp}`;
-           videoCell.hlsPlayer.loadSource(newUrl);
-       }
-   }, refreshInterval);
-   ```
-
-4. **Manual refresh**: If you still see stale data, refreshing the browser page will force a complete reload of the stream.
+1. HLS playlists are already served with `Cache-Control: no-cache, no-store`, and the
+   player starts a new go2rtc session when playback stalls, so a stale tile usually means
+   the camera itself stopped sending. Check the stream's status on the **Streams** page
+   and the LightNVR log for reconnect messages.
+2. If something between the browser and LightNVR caches responses (a CDN, or a reverse
+   proxy with caching enabled), exclude `/hls/` and `/go2rtc/` from caching; see
+   [Reverse Proxy & HTTPS](REVERSE_PROXY.md).
+3. Switch the tile to WebRTC or MSE, which have no playlist to go stale.
+4. Reload the page to force a fresh session for every tile.
 
 ## Recording Problems
 

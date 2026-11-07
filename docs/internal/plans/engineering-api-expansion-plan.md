@@ -11,7 +11,7 @@ workflows (#859), and follow-up dialog/cache fixes (#860–#861). The supporting
 is merged; main pins its published `ba99c7e` commit.
 
 The [four-PR execution plan](engineering-hardening-four-pr-plan.md) and
-[integration receipt](docs/api/contracts/integration-evidence.md) retain the
+[integration receipt](../../../docs/api/contracts/integration-evidence.md) retain the
 original local validation. Main hosted workflows were queued/pending when
 reviewed; merge status is not a claim that final hosted checks passed.
 Decision (2026-11-07): defer the remaining F13 capacity measurements and F14
@@ -24,11 +24,11 @@ Current inventory: 241 registrations, comprising 232 OpenAPI operations across
 Discovery remains `partial=true` for the nine explicitly excluded routes.
 Historical receipts below retain their original revisions and counts. Continue
 from [the original hardening plan](engineering-api-contracts-plan.md) and
-[the PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
+[the PRD](../../../docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
 TS/TSX conversion is complete. Rust conversion and synchronization are under
 discussion, with no implementation commitment. The candidate model keeps C as
 the source of truth and uses C changes to propose curated Rust updates, reusing
-the frontend and compatibility tests; see the [decision frame](docs/prd/ENG_01_Safety_Contracts_TypeScript.md#rust-exploration-decision-frame).
+the frontend and compatibility tests; see the [decision frame](../../../docs/prd/ENG_01_Safety_Contracts_TypeScript.md#rust-exploration-decision-frame).
 A second backend is not an approved deliverable. At-rest encryption remains deferred. Preserve Basic/key
 compatibility, HTTP cameras and `/etc/lightnvr` defaults.
 
@@ -181,7 +181,7 @@ F1..F14,F16 -> F15
 - **ownership**: Reliability harnesses/release evidence; device/network/storage fixtures separately owned.
 - **description**: Extend bounded crash/reconnect/storage/upgrade runs to declared longer durations, network/object-store faults and selected hardware. Preserve exact prior-release/submodule provenance; upgrade a copied installation.
 - **validation**: Decode/DTS/gaps, protected hashes, integrity, resources and cleanup; predeclare durations/tolerances and retain failures. Distinguish hosted observations from local checks.
-- **status**: Local qualification merged in #858: post-#857 ten-cycle lifecycle, storage faults, immediate crash recovery and copied 0.45.3 upgrade all passed; [receipt](docs/validation/recovery-qualification-2026-11-07.md). Remaining named-device/provider and longer-duration qualification is deferred by product decision on 2026-11-07, without blocking Rust exploration.
+- **status**: Local qualification merged in #858: post-#857 ten-cycle lifecycle, storage faults, immediate crash recovery and copied 0.45.3 upgrade all passed; [receipt](../../../docs/validation/recovery-qualification-2026-11-07.md). Remaining named-device/provider and longer-duration qualification is deferred by product decision on 2026-11-07, without blocking Rust exploration.
 
 ### F15: Reconcile coverage and the next decision
 - **depends_on**: [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F16]
@@ -214,20 +214,20 @@ F1..F14,F16 -> F15
 ## Next execution sequence after #840
 
 These remain acceptance gates; the initial local measurements below do not
-close target qualification. The mobile [M1 footage-finding slice](docs/prd/UXD_Mobile_Viewing.md)
+close target qualification. The mobile [M1 footage-finding slice](../../../docs/prd/UXD_Mobile_Viewing.md)
 and shared five-view navigation are merged in #855, with return-scope and
 asynchronous confirmation corrections merged in #856/#857.
 
 | Slice | Work and evidence | Completion gate |
 | --- | --- | --- |
-| F13a — Reproducible capacity harness | Extend the existing [projection benchmark](tests/contracts/projection-benchmark.mjs) with populated locations/tags/collections and realistic principal scopes. Record source/binary/fork hashes, build flags, CPU/RAM/storage, workload, warmup and sample counts. Keep disabled-camera controls separate from active recording/live workloads. | Repeated serial/concurrent samples report latency, peak/steady memory, CPU, descriptors and recording continuity; failed runs are retained. Harness completion alone is not target qualification. |
+| F13a — Reproducible capacity harness | Extend the existing [projection benchmark](../../../tests/contracts/projection-benchmark.mjs) with populated locations/tags/collections and realistic principal scopes. Record source/binary/fork hashes, build flags, CPU/RAM/storage, workload, warmup and sample counts. Keep disabled-camera controls separate from active recording/live workloads. | Repeated serial/concurrent samples report latency, peak/steady memory, CPU, descriptors and recording continuity; failed runs are retained. Harness completion alone is not target qualification. |
 | F13b — Browser loading and validators | Measure current Live, Recordings, Settings and explorer loads: transferred bytes, validator parse/evaluation, time to usable controls/first media and memory, with cold/warm caches and named clients. Use the integrated artifact sizes, not the historical pilot numbers. | A measured baseline identifies whether validator splitting is justified. Any optimization keeps canonical validation and exact diagnostic behavior, with independent Ajv equivalence and consumer regression checks. |
 | F13c — Named target acceptance | Run the harness on explicitly identified representative hardware and storage with declared camera/codec/bitrate/viewer mixes. Include the 1,024-configured-stream metrics allocation separately from supported active-stream capacity. | Record sustainable load and headroom; derive budgets from measurements. Workstation results cannot close this gate for embedded targets. |
-| F14a — Extended recovery and storage | Extend the [existing reliability harnesses](tests/reliability/README.md), using the F13 load envelope. Predeclare duration, fault cadence and gap/recovery tolerances; cover recorder/go2rtc restart, source loss, unavailable/read-only/full storage and provider faults where an owned provider exists. | Decode/DTS/gap evidence, protected-file hashes, catalog integrity and stable resources after recovery. Unsupported remote providers remain explicitly unqualified. |
+| F14a — Extended recovery and storage | Extend the [existing reliability harnesses](../../../tests/reliability/README.md), using the F13 load envelope. Predeclare duration, fault cadence and gap/recovery tolerances; cover recorder/go2rtc restart, source loss, unavailable/read-only/full storage and provider faults where an owned provider exists. | Decode/DTS/gap evidence, protected-file hashes, catalog integrity and stable resources after recovery. Unsupported remote providers remain explicitly unqualified. |
 | F14b — Upgrade and device qualification | Upgrade copied installations with exact prior-release and submodule provenance. Qualify selected camera vendors/backchannels, multicast discovery and real iPhone/Android viewing; reuse the mobile M3 matrix. | Retained before/after data, playable media, authorization/revocation checks and cleanup; name every qualified device/browser/version and every untested combination. |
 | F15 — Production acceptance | Reconcile inventory, device/provider limits, fork publication and exact-revision hosted/local checks after F13/F14. | Evidence supports the declared deployment envelope; no remaining qualification task is relabeled complete merely because its implementation merged. |
 
-The [2026-11-07 mobile/browser receipt](docs/validation/mobile-recordings-2026-11-07.md)
+The [2026-11-07 mobile/browser receipt](../../../docs/validation/mobile-recordings-2026-11-07.md)
 records production-page measurements and automated phone/desktop coverage.
 [#854](https://github.com/opensensor/lightNVR/pull/854) adds the active-recording
 harness and fixes a reproduced corrupt final packet on manual stop; a serial
@@ -324,7 +324,7 @@ Reproduce native checks with BUILD_TESTS enabled, SOD/LiteRT/MQTT disabled,
 SSL enabled, and coherent system FFmpeg headers/libraries. Use Release coverage
 flags --coverage and -fprofile-update=atomic; Debug enables sanitizers. Run
 `ctest -L ci-unit --output-on-failure` and the Debug ci-sanitizer label. The
-[recovery harness](tests/reliability/README.md) documents managed go2rtc setup;
+[recovery harness](../../../tests/reliability/README.md) documents managed go2rtc setup;
 this run uses the fork pin's freshly built binary. Logs and build trees are under
 build/recording-integrity*. Hosted results belong to the PR checks, separately
 from this local receipt. No hardware, long-duration soak or power-loss

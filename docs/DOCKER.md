@@ -323,6 +323,40 @@ services:
 | `LIGHTNVR_ONVIF_NETWORK` | (none) | Override ONVIF discovery network (e.g., `192.168.1.0/24`) |
 | `LIGHTNVR_MIGRATIONS_DIR` | (none) | Override where database migrations are read from. Falls back to `./db/migrations`, then `/usr/share/lightnvr/migrations`, then a path relative to the binary. |
 
+Archive, recovery and licence-plate variables (`LIGHTNVR_ARCHIVE_*`,
+`LIGHTNVR_STORAGE_READ_ONLY`, `LIGHTNVR_LPR_MASTER_KEY_HEX`) are described with their
+features in [STORAGE_ARCHIVE.md](STORAGE_ARCHIVE.md) and [ONVIF_DETECTION.md](ONVIF_DETECTION.md).
+
+### Configuration overrides
+
+These `LIGHTNVR_*` variables set `lightnvr.ini` values, which is convenient for
+provisioning containers. **An override applies only while the setting is still at its
+built-in default**: if `lightnvr.ini` sets the key to anything else, the file wins and
+the variable is ignored (the log says so at debug level). Booleans accept
+`true`/`1`/`yes`/`on`.
+
+| Variable | `lightnvr.ini` setting |
+|----------|------------------------|
+| `LIGHTNVR_WEB_PORT` | `[web] port` |
+| `LIGHTNVR_WEB_BIND_IP` | `[web] bind_ip` |
+| `LIGHTNVR_WEB_SSL_ENABLED`, `LIGHTNVR_WEB_SSL_CERT_PATH`, `LIGHTNVR_WEB_SSL_KEY_PATH` | `[web] ssl_enabled`, `ssl_cert_path`, `ssl_key_path` |
+| `LIGHTNVR_WEB_AUTH_ENABLED` | `[web] auth_enabled` |
+| `LIGHTNVR_WEB_USERNAME` | `[web] username` |
+| `LIGHTNVR_WEB_TRUSTED_PROXY_CIDRS` | `[web] trusted_proxy_cidrs` |
+| `LIGHTNVR_DEMO_MODE` | `[web] demo_mode` — grants unauthenticated viewer access |
+| `LIGHTNVR_AUDIO_DISABLED` | `[web] audio_disabled` |
+| `LIGHTNVR_LOG_LEVEL` | `[general] log_level` (`0` error, `1` warn, `2` info, `3` debug) |
+| `LIGHTNVR_STORAGE_PATH` | `[storage] path` |
+| `LIGHTNVR_RETENTION_DAYS` | `[storage] retention_days` |
+| `LIGHTNVR_DB_PATH` | `[database] path` |
+| `LIGHTNVR_DB_BACKUP_INTERVAL_MINUTES`, `LIGHTNVR_DB_BACKUP_RETENTION_COUNT`, `LIGHTNVR_DB_POST_BACKUP_SCRIPT` | `[database] backup_interval_minutes`, `backup_retention_count`, `post_backup_script` |
+| `LIGHTNVR_DB_STARTUP_CHECK`, `LIGHTNVR_DB_BACKUP_VERIFY` | `[database] startup_check`, `backup_verify`, as numbers: `0` off, `1` quick, `2` full |
+| `LIGHTNVR_GO2RTC_ENABLED`, `LIGHTNVR_GO2RTC_WEBRTC_ENABLED`, `LIGHTNVR_GO2RTC_STUN_ENABLED` | `[go2rtc] enabled`, `webrtc_enabled`, `stun_enabled` |
+| `LIGHTNVR_GO2RTC_STUN_SERVER`, `LIGHTNVR_GO2RTC_EXTERNAL_IP`, `LIGHTNVR_GO2RTC_ICE_SERVERS` | `[go2rtc] stun_server`, `external_ip`, `ice_servers` |
+| `LIGHTNVR_GO2RTC_WEBRTC_LISTEN_PORT` | `[go2rtc] webrtc_listen_port` |
+| `LIGHTNVR_WEBRTC_CONNECTION_TIMEOUT_MS`, `LIGHTNVR_WEBRTC_ICE_RECOVERY_TIMEOUT_MS` | `[go2rtc] webrtc_connection_timeout_ms`, `webrtc_ice_recovery_timeout_ms` |
+| `LIGHTNVR_TURN_ENABLED`, `LIGHTNVR_TURN_SERVER_URL`, `LIGHTNVR_TURN_USERNAME`, `LIGHTNVR_TURN_PASSWORD` | `[go2rtc] turn_enabled`, `turn_server_url`, `turn_username`, `turn_password` |
+
 > `LIGHTNVR_AUTO_INIT` and `LIGHTNVR_WEB_ROOT` are set by the image and by
 > `docker-compose.yml`, but nothing reads them — neither the entrypoint nor LightNVR
 > itself. Setting them has no effect. They are left in place because removing them from

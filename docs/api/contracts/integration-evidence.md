@@ -9,7 +9,7 @@ slice. The validation counts below remain the original stack's local evidence,
 not a fresh run on that merge commit. Main's hosted workflows were queued/pending
 when reviewed; final hosted acceptance is still outstanding. The supporting
 go2rtc #4 remains open, while main already pins its `ba99c7e` commit. See the
-[expansion plan](../../../engineering-api-expansion-plan.md) for current next steps.
+[expansion plan](../../internal/plans/engineering-api-expansion-plan.md) for current next steps.
 
 ## Review order
 

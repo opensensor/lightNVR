@@ -168,9 +168,10 @@ Key files:
 - `src/video/sod_integration.c`: SOD library integration
 - `src/video/sod_realnet.c`: SOD RealNet face detection
 - `src/video/onvif_detection.c`: ONVIF event-based detection
-- `src/video/onvif_motion_recording.c`: ONVIF motion-triggered recording
+- `src/video/onvif_event.c`: Parsing ONVIF event notifications, including licence-plate reads
+- `src/video/unified_detection_thread.c`: Per-stream detection thread: reads the camera, buffers, runs detection, and records (detection- and ONVIF-triggered recording both run here)
 - `src/video/motion_detection.c`: Motion detection processing
-- `src/video/motion_storage_manager.c`: Motion recording storage management
+- `src/video/cross_stream_motion_trigger.c`: Lets motion on one stream trigger recording on others
 - `src/video/packet_buffer.c`: Pre-detection packet ring buffer, flushed into the recording when a detection starts
 - `src/database/db_detections.c`: Detection storage with optional recording_id linkage
 

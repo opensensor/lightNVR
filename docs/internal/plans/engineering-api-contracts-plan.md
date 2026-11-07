@@ -3,7 +3,7 @@
 **Generated**: 2026-11-05
 **Mode**: Swarm-ready dependency plan
 **Baseline**: `main` at `8455d00577e122b82bd128427b3ed402da66b3e9`
-**Source**: [ENG 01 PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md)
+**Source**: [ENG 01 PRD](../../../docs/prd/ENG_01_Safety_Contracts_TypeScript.md)
 **Execution**: Started 2026-11-05 at `dea6094a` (only a version bump since the planning baseline). No commits, pushes, or PRs are required by this plan.
 
 **Current follow-up (2026-11-07)**: This file preserves the original execution

@@ -55,9 +55,12 @@ helps small devices survive spikes, but do not plan to run detection out of swap
 
 ## Installation Methods
 
-### Building from Source
+Most installations should use the [container image](#docker-installation), a
+[pre-built `.deb` package](#pre-built-packages), or the [Home Assistant add-on](#home-assistant).
+Build from source for development, for embedded targets, or for an OS release without a
+package.
 
-Building from source is the recommended method for most installations, as it ensures compatibility with your specific system.
+### Building from Source
 
 #### 1. Clone the Repository
 
@@ -241,22 +244,26 @@ download the package matching **both** your architecture and your Debian suite. 
 named `lightnvr_<version>_<suite>_<arch>.deb`, for example:
 
 ```
-lightnvr_0.37.2_trixie_arm64.deb    # Debian 13 / Raspberry Pi OS (trixie), 64-bit
-lightnvr_0.37.2_sid_amd64.deb       # Debian unstable, x86-64
-lightnvr_0.37.2_trixie_armhf.deb    # 32-bit ARM
+lightnvr_0.47.2_trixie_arm64.deb    # Debian 13 / Raspberry Pi OS (trixie), 64-bit
+lightnvr_0.47.2_sid_amd64.deb       # Debian unstable, x86-64
+lightnvr_0.47.2_trixie_armhf.deb    # 32-bit ARM
 ```
 
 The suite matters: the packages link against that release's system libraries, so a `sid`
 package on a `trixie` system will fail to satisfy its dependencies.
 
+From 0.47.3, each release also carries `lightnvr-rs_<version>_sid_amd64.deb`, the build
+generated from the same C sources as Rust (see [rust/README.md](../rust/README.md)). Install
+one package or the other, not both.
+
 #### Debian/Ubuntu
 
 ```bash
 # Substitute the version, suite and architecture you need
-wget https://github.com/opensensor/lightNVR/releases/download/0.37.2/lightnvr_0.37.2_trixie_arm64.deb
+wget https://github.com/opensensor/lightNVR/releases/download/0.47.2/lightnvr_0.47.2_trixie_arm64.deb
 
 # Install the package
-sudo dpkg -i lightnvr_0.37.2_trixie_arm64.deb
+sudo dpkg -i lightnvr_0.47.2_trixie_arm64.deb
 
 # Install any missing dependencies
 sudo apt-get install -f

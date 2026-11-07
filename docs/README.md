@@ -74,6 +74,7 @@ covers a blank or broken web UI specifically.
 | [CAMERAS.md](CAMERAS.md) | Camera compatibility, finding RTSP URLs, vendor interop notes |
 | [ONVIF_DETECTION.md](ONVIF_DETECTION.md) | ONVIF discovery and camera-side motion events |
 | [GO2RTC_INTEGRATION.md](GO2RTC_INTEGRATION.md) | How LightNVR drives go2rtc |
+| [DETECTION_ENGINES.md](DETECTION_ENGINES.md) | Running several detection engines per stream |
 | [SOD_INTEGRATION.md](SOD_INTEGRATION.md) | Embedded detection with SOD |
 | [MOTION_BUFFER.md](MOTION_BUFFER.md) | Pre-detection buffering, so events include what led up to them |
 
@@ -83,13 +84,19 @@ covers a blank or broken web UI specifically.
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the whole system fits together |
 | [FRONTEND.md](FRONTEND.md) | The Preact/Tailwind web UI |
+| [rust/README.md](../rust/README.md) | lightnvr-rs: the Rust build generated from the C sources ([announcement](https://github.com/opensensor/lightNVR/discussions/874)) |
+| [api/README.md](api/README.md) | API contracts: design, coverage, and qualification evidence |
+| [validation/](validation/) | Dated validation reports for UI workflows |
 | [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | Cutting a release |
+| [agent-issues.md](agent-issues.md) | How maintainers hand a bounded issue to the managed agent |
 | [prd/](prd/) | Product requirement documents for larger pieces of work |
 | [internal/](internal/) | Design notes and historical implementation writeups |
 
 ## Other
 
 - [COMMERCIAL.md](COMMERCIAL.md) — commercial licensing and professional support
+- [SPONSORSHIP.md](SPONSORSHIP.md) — the sustainability drive and how to sponsor
+- [SECURITY.md](../SECURITY.md) — reporting vulnerabilities, and the media-access security model
 
 ---
 
