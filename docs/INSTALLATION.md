@@ -106,6 +106,30 @@ sudo ./scripts/install.sh --prefix=/opt --config-dir=/etc/custom/lightnvr
 
 See `./scripts/install.sh --help` for all available options.
 
+Direct CMake installs also default to `/etc/lightnvr`, matching the runtime
+config search path and service configuration. This default is independent of
+`CMAKE_INSTALL_PREFIX` and `cmake --install --prefix`. Packagers can stage the
+layout without writing to the host's `/etc`:
+
+```bash
+DESTDIR="$PWD/package-root" cmake --install build
+```
+
+To opt into a relocatable layout, set `CMAKE_INSTALL_SYSCONFDIR` to a relative
+directory. For example:
+
+```bash
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/opt/lightnvr -DCMAKE_INSTALL_SYSCONFDIR=etc
+cmake --build build
+sudo cmake --install build
+```
+
+This installs configuration to `/opt/lightnvr/etc/lightnvr`; start LightNVR with
+`-c /opt/lightnvr/etc/lightnvr/lightnvr.ini`. Relative sysconf directories follow
+`cmake --install --prefix`; absolute overrides such as `/etc/custom` do not.
+CMake installs binaries, configuration files and migrations; it does not perform
+the service/data-directory setup provided by `scripts/install.sh`.
+
 ### Docker Installation
 
 Docker provides an easy way to run LightNVR without installing dependencies directly on your system.

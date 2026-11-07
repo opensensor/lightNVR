@@ -949,12 +949,19 @@ if(ENABLE_SOD)
     endif()
 endif()
 
+# Keep the runtime and service configuration path as the installation default.
+# Packagers may opt into a prefix-relative layout with -DCMAKE_INSTALL_SYSCONFDIR=etc.
+if(NOT DEFINED CMAKE_INSTALL_SYSCONFDIR)
+    set(CMAKE_INSTALL_SYSCONFDIR "/etc" CACHE PATH "System configuration directory")
+endif()
+
 # Install targets
+include(GNUInstallDirs)
 install(TARGETS lightnvr rebuild_recordings DESTINATION bin)
 if(TARGET lightnvr-ffmpeg-guard)
     install(TARGETS lightnvr-ffmpeg-guard DESTINATION bin)
 endif()
-install(DIRECTORY config/ DESTINATION etc/lightnvr)
+install(DIRECTORY config/ DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/lightnvr")
 install(DIRECTORY db/migrations/ DESTINATION share/lightnvr/migrations
         FILES_MATCHING PATTERN "*.sql")
 
