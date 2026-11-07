@@ -3352,6 +3352,53 @@ void test_timeline_ids_batch_only_authorized_recordings_and_keep_open_detection_
     cJSON_Delete(json);
 }
 
+void test_timeline_ids_preserve_duplicates_at_query_size_limit(void) {
+    stream_config_t camera = create_camera("timeline_query_limit", "");
+    recording_metadata_t rec = {0};
+    safe_strcpy(rec.stream_name, camera.name, sizeof(rec.stream_name), 0);
+    safe_strcpy(rec.camera_uuid, camera.camera_uuid, sizeof(rec.camera_uuid), 0);
+    safe_strcpy(rec.file_path, "/tmp/timeline-query-limit.mp4", sizeof(rec.file_path), 0);
+    rec.start_time = time(NULL) - 100;
+    rec.end_time = rec.start_time + 60;
+    rec.is_complete = true;
+    uint64_t id = add_recording_metadata(&rec);
+    TEST_ASSERT_NOT_EQUAL(0, id);
+    char api_key[128] = {0};
+    create_camera_action_user("timeline_query_limit_user", camera.camera_uuid,
+        authorization_action_bit(AUTHZ_RECORDINGS_REPLAY), api_key);
+    g_config.web_auth_enabled = true;
+
+    /* Fill the actual transport buffer, not the larger handler-local buffer.
+     * Padding with commas exercises the existing empty-token semantics. */
+    char query[sizeof(((http_request_t *)0)->query_string)] = "ids=";
+    char token[32];
+    snprintf(token, sizeof(token), "%llu,", (unsigned long long)id);
+    size_t used = strlen(query), token_length = strlen(token);
+    int count = 0;
+    while (used + token_length < sizeof(query)) {
+        memcpy(query + used, token, token_length);
+        used += token_length;
+        count++;
+    }
+    memset(query + used, ',', sizeof(query) - 1 - used);
+    query[sizeof(query) - 1] = '\0';
+    char path[sizeof(query) + 64];
+    snprintf(path, sizeof(path), "/api/timeline/segments-by-ids?%s", query);
+    timeline_summary_calls = timeline_summary_count = 0;
+    cJSON *json = call_handler_path(handle_get_timeline_segments_by_ids, HTTP_METHOD_GET,
+                                   path, NULL, api_key, 200);
+    const cJSON *segments = cJSON_GetObjectItemCaseSensitive(json, "segments");
+    TEST_ASSERT_EQUAL_INT(count, cJSON_GetArraySize(segments));
+    TEST_ASSERT_EQUAL_INT(count, cJSON_GetObjectItemCaseSensitive(json, "segment_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(1, timeline_summary_calls);
+    TEST_ASSERT_EQUAL_INT(count, timeline_summary_count);
+    for (int i = 0; i < count; i++) {
+        TEST_ASSERT_EQUAL_UINT64(id, (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetArrayItem(segments, i), "id")->valuedouble);
+    }
+    cJSON_Delete(json);
+}
+
 void test_timeline_manifest_rejects_invalid_bounds_before_querying_recordings(void) {
     stream_config_t camera = create_camera("manifest_bounds", "");
     char api_key[128] = {0};
@@ -3477,6 +3524,7 @@ int main(void) {
     RUN_TEST(test_timeline_uuid_link_survives_rename_and_enforces_replay_scope);
     RUN_TEST(test_timeline_segments_reject_unparseable_time_bounds);
     RUN_TEST(test_timeline_ids_batch_only_authorized_recordings_and_keep_open_detection_bounds);
+    RUN_TEST(test_timeline_ids_preserve_duplicates_at_query_size_limit);
     RUN_TEST(test_timeline_manifest_rejects_invalid_bounds_before_querying_recordings);
     RUN_TEST(test_legacy_role_compatibility_has_no_runtime_allowed_tags_path);
     RUN_TEST(test_legacy_principals_migrate_to_idempotent_selector_grants);
