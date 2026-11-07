@@ -72,7 +72,7 @@ const DEFAULT_RETRY_DELAY = 1000;    // 1 second between retries
 const BATCH_DELETE_TIMEOUT = 60000;          // 60 second timeout for batch operations
 const BATCH_DELETE_RETRIES = 1;              // Retry once
 const BATCH_DELETE_RETRY_DELAY = 2000;       // 2 seconds between retries
-const BATCH_DELETE_POLL_MAX_ATTEMPTS = 120;  // 2 minutes max (120 * 1 second)
+const BATCH_DELETE_POLL_TIMEOUT_MS = 120000; // Includes requests, retries and backoff
 
 /**
  * Parse a recording timestamp to Unix seconds.
@@ -500,59 +500,74 @@ export const recordingsAPI = {
    * @returns {Promise<Object>} Final result with success and error counts
    */
   pollBatchDeleteProgress: async (jobId: string): Promise<BatchDeleteCounts> => {
-    const maxAttempts = BATCH_DELETE_POLL_MAX_ATTEMPTS;
-    const baseDelayMs = 1000;    // 1 second base delay between polls
-    const maxDelayMs = 10000;    // Cap delay at 10 seconds
+    const deadline = performance.now() + BATCH_DELETE_POLL_TIMEOUT_MS;
+    const controller = new AbortController();
+    const timeoutError = new Error('Batch delete operation timed out');
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let delayId: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        reject(timeoutError);
+      }, BATCH_DELETE_POLL_TIMEOUT_MS);
+    });
     let attempts = 0;
 
-    while (attempts < maxAttempts) {
-      // Calculate exponential backoff delay for this attempt,
-      // capped to avoid excessively long waits.
-      const currentDelayMs = Math.min(baseDelayMs * (2 ** attempts), maxDelayMs);
-      try {
-        const progress = await fetchJSON<BatchDeleteProgressResponse>(`/api/recordings/batch-delete/progress/${jobId}`, {
-          method: 'GET',
-          // Ensure each polling request has bounded duration and internal retries
-          timeout: 10000,       // 10 seconds per request
-          retries: 2,           // retry a couple of times on failure
-          retryDelay: 1000      // 1 second between internal retries
-        });
+    try {
+      while (performance.now() < deadline) {
+        try {
+          // One deadline covers fetch's internal retries and response body too.
+          const progress = await Promise.race([
+            fetchJSON<BatchDeleteProgressResponse>(`/api/recordings/batch-delete/progress/${jobId}`, {
+              method: 'GET',
+              timeout: Math.min(10000, deadline - performance.now()),
+              retries: 2,
+              retryDelay: 1000,
+              signal: controller.signal
+            }),
+            timedOut
+          ]);
+          // Do not publish a late result after a suspended tab resumes.
+          if (performance.now() >= deadline) throw timeoutError;
 
-        // Update progress UI if available
-        if (typeof window.updateBatchDeleteProgress === 'function') {
-          window.updateBatchDeleteProgress({
-            current: progress.current || 0,
-            total: progress.total || 0,
-            succeeded: progress.succeeded || 0,
-            pending_deletions: progress.pending_deletions || 0,
-            failed: progress.failed || 0,
-            status: progress.status_message || 'Processing...',
-            complete: progress.complete || false
-          });
+          if (typeof window.updateBatchDeleteProgress === 'function') {
+            window.updateBatchDeleteProgress({
+              current: progress.current || 0,
+              total: progress.total || 0,
+              succeeded: progress.succeeded || 0,
+              pending_deletions: progress.pending_deletions || 0,
+              failed: progress.failed || 0,
+              status: progress.status_message || 'Processing...',
+              complete: progress.complete || false
+            });
+          }
+
+          if (progress.complete) {
+            return {
+              succeeded: progress.succeeded || 0,
+              pending_deletions: progress.pending_deletions || 0,
+              failed: progress.failed || 0
+            };
+          }
+        } catch (error) {
+          if (controller.signal.aborted || performance.now() >= deadline) throw timeoutError;
+          console.error('Error polling batch delete progress:', error);
         }
 
-        // Check if complete
-        if (progress.complete) {
-          return {
-            succeeded: progress.succeeded || 0,
-            pending_deletions: progress.pending_deletions || 0,
-            failed: progress.failed || 0
-          };
-        }
-
-        // Wait with exponential backoff before next poll
-        await new Promise(resolve => setTimeout(resolve, currentDelayMs));
-        attempts++;
-      } catch (error) {
-        console.error('Error polling batch delete progress:', error);
-        // Continue polling on error with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, currentDelayMs));
-        attempts++;
+        const remaining = deadline - performance.now();
+        if (remaining <= 0) break;
+        const delay = Math.min(1000 * (2 ** attempts++), 10000, remaining);
+        await Promise.race([
+          new Promise<void>(resolve => { delayId = setTimeout(resolve, delay); }),
+          timedOut
+        ]);
       }
+      throw timeoutError;
+    } finally {
+      clearTimeout(timeoutId!);
+      clearTimeout(delayId);
+      controller.abort();
     }
-
-    // Timeout
-    throw new Error('Batch delete operation timed out');
   },
 
   /**
@@ -668,7 +683,7 @@ export const recordingsAPI = {
         return false;
       }
 
-      const data = await evidenceJSON<DetectionResultsResponse>(`/api/detection/results/${recording.stream}?${params.toString()}`, {
+      const data = await evidenceJSON<DetectionResultsResponse>(`/api/detection/results/${encodeURIComponent(recording.stream)}?${params.toString()}`, {
         timeout: 10000, // 10 second timeout
         retries: 1,     // Retry once
         retryDelay: 500 // 0.5 second between retries
@@ -699,7 +714,7 @@ export const recordingsAPI = {
         return [];
       }
 
-      const data = await evidenceJSON<DetectionResultsResponse>(`/api/detection/results/${recording.stream}?${params.toString()}`, {
+      const data = await evidenceJSON<DetectionResultsResponse>(`/api/detection/results/${encodeURIComponent(recording.stream)}?${params.toString()}`, {
         timeout: 15000, // 15 second timeout
         retries: 1,     // Retry once
         retryDelay: 1000 // 1 second between retries
