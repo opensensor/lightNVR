@@ -597,6 +597,9 @@ cd lightnvr
 # Pull the latest changes
 git pull
 
+# Update submodules to the revisions required by the new commit
+git submodule update --init --recursive
+
 # Rebuild
 ./scripts/build.sh --release
 
