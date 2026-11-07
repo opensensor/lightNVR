@@ -211,9 +211,13 @@ int http_request_extract_path_param(const http_request_t *req, const char *prefi
     // Strip trailing slashes
     while (param_len > 0 && param[param_len - 1] == '/') param_len--;
 
-    if (param_len == 0 || param_len >= buf_size) return -1;
+    if (param_len == 0) return -1;
 
     url_decode_span(param, param_len, param_buf, buf_size);
+
+    if (param_buf[0] == '\0') return -1;
+    if (strlen(param_buf) >= buf_size - 1) return -1;
+
     return 0;
 }
 
