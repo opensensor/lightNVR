@@ -543,13 +543,18 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
                 if (event_producer_publish_detection(
                         cfg.camera_uuid, stream_name, &detections, now,
                         event_error, sizeof(event_error)) != 0) {
-                    log_debug("Detection event enqueue failed for stream '%s': %s",
-                              stream_name, event_error);
+            /* We already armed motion-start; unwind only if this request is
+             * still current, so we don't stop a newer trigger. */
+            pthread_mutex_lock(&g_pulse_gen_mutex);
+            bool rollback_allowed = (pulse_generation_get_locked(stream_name) == new_gen);
+            if (rollback_allowed) {
+                if (can_trigger_recording) {
+                    unified_detection_notify_motion(stream_name, false);
                 }
-            }
+                close_external_motion_detections(cfg.camera_uuid, stream_name, now);
+                process_motion_event(stream_name, false, now, false);
         }
-    } else {
-        close_external_motion_detections(cfg.camera_uuid, stream_name, now);
+            pthread_mutex_unlock(&g_pulse_gen_mutex);
     }
 
     /* Tags attach to whatever recording is currently open for the stream. With
@@ -569,11 +574,16 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
                      stream_name, tag_count);
         }
     }
-
-    if (can_trigger_recording) {
+            pthread_mutex_lock(&g_pulse_gen_mutex);
+            bool rollback_allowed = (pulse_generation_get_locked(stream_name) == new_gen);
+            if (rollback_allowed) {
+                if (can_trigger_recording) {
+                    unified_detection_notify_motion(stream_name, false);
+                }
+                close_external_motion_detections(cfg.camera_uuid, stream_name, now);
+                process_motion_event(stream_name, false, now, false);
         unified_detection_notify_motion(stream_name, active);
-    }
-    process_motion_event(stream_name, active, now, false);
+            pthread_mutex_unlock(&g_pulse_gen_mutex);
 
     const char *action_str =
         (action == MOTION_ACTION_START) ? "start" :
