@@ -597,6 +597,9 @@ cd lightnvr
 # Pull the latest changes
 git pull
 
+# Update submodules to the revisions required by the new commit
+git submodule update --init --recursive
+
 # Rebuild
 ./scripts/build.sh --release
 
@@ -621,9 +624,8 @@ cd lightNVR
 # Pull the latest changes
 git pull
 
-# Rebuild and restart
-docker compose down
-docker compose build
+# Pull latest image and restart
+docker compose pull
 docker compose up -d
 ```
 
@@ -665,14 +667,16 @@ sudo systemctl disable lightnvr
 sudo rm /etc/systemd/system/lightnvr.service
 sudo systemctl daemon-reload
 
-# Remove the binary
+# Remove the binary (default install path)
 sudo rm /usr/local/bin/lightnvr
 
-# Remove configuration and data (optional)
+# Remove configuration and data (optional, default paths)
 sudo rm -rf /etc/lightnvr
 sudo rm -rf /var/lib/lightnvr
 sudo rm -rf /var/log/lightnvr
 ```
+
+**Note:** If you installed with a custom `--prefix` or custom config/data/log directories, replace the paths above with the exact paths you chose during installation.
 
 ### Uninstalling Docker Installation
 
