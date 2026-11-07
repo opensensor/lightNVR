@@ -24,13 +24,15 @@ async function request<T>(url: string, operation: IdentityOperation, schema: str
   let response: Response;
   try {
     response = await enhancedFetch(url, { timeout: 10000, ...options, method: mutation ? 'DELETE' : 'GET',
-      sensitive: true, retries: mutation ? 0 : (options.retries ?? 1) });
+      credentials: 'same-origin', redirect: 'error', cache: 'no-store', sensitive: true, retries: mutation ? 0 : (options.retries ?? 1) });
   } catch (error: unknown) {
     if (options.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) throw new DOMException('Request was cancelled', 'AbortError');
     const status = typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number' ? error.status : undefined;
     throw new IdentityRequestError(operation, status, mutation && (status === undefined || status >= 500));
   }
   if (response.status !== 200) throw new ContractValidationError(operation, 'response', schema, response.status, 'status');
+  if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? ''))
+    throw new ContractValidationError(operation, 'response', schema, response.status, 'json');
   let value: unknown;
   try { value = await response.json(); }
   catch (error: unknown) {

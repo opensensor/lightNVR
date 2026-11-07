@@ -42,3 +42,22 @@ test('an aborted read remains a cancellation with no sensitive error contents',a
   const controller=new AbortController();controller.abort(secret);
   const fetch=respond({sessions:[]});await expect(listAuthSessions({signal:controller.signal})).rejects.toMatchObject({name:'AbortError'});expect(fetch).not.toHaveBeenCalled();noLogs();
 });
+
+import {withRedirectFixture} from './redirectHarness';
+test.each([307,308] as const)('HTTP %i cannot redirect a credential revocation or retry it',async status=>{
+ for(const revoke of [revokeAuthSession,revokeTrustedDevice])await withRedirectFixture(status,async fixture=>{
+  const fetch=jest.spyOn(global,'fetch').mockImplementation(fixture.fetch);
+  const failure=await revoke(1,{headers:{'X-API-Key':secret},redirect:'follow',credentials:'include',cache:'force-cache',retries:7}).then(()=>null,error=>error);
+  expect(fixture.sourceBodies).toHaveLength(1);expect(fixture.forwardedBodies).toHaveLength(0);
+  expect(failure).toMatchObject({name:'IdentityRequestError',mayHaveApplied:true});expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0]?.[1]).toMatchObject({redirect:'error',credentials:'same-origin',cache:'no-store'});
+  expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('X-API-Key')).toBe(secret);noLogs();
+  fetch.mockRestore();
+ });
+});
+test.each(['text/html','text/plain',''])('a %s response cannot expose session metadata or acknowledge revocation',async contentType=>{
+ jest.spyOn(global,'fetch').mockImplementation(async()=>new Response('{"sessions":[]}',{headers:{'Content-Type':contentType}}));
+ await expect(listAuthSessions()).rejects.toMatchObject({phase:'response',issue:'json',mayHaveApplied:false});
+ jest.spyOn(global,'fetch').mockImplementation(async()=>new Response('{"success":true}',{headers:{'Content-Type':contentType}}));
+ await expect(revokeAuthSession(1)).rejects.toMatchObject({phase:'response',issue:'json',mayHaveApplied:true});noLogs();
+});
