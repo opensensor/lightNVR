@@ -5,7 +5,7 @@ recording integrity and fleet reads are merged. The four-workstream follow-up is
 in review: [media authority #835](https://github.com/opensensor/lightNVR/pull/835),
 [identity administration #836](https://github.com/opensensor/lightNVR/pull/836),
 and [fleet writes #837](https://github.com/opensensor/lightNVR/pull/837); remaining
-API families are being integrated in the fourth PR. These review branches are
+API families are implemented in the fourth PR and undergoing combined validation. These review branches are
 not yet claims about released main.
 **Created**: 2026-10-31
 **Reconciled**: 2026-11-07 against main at `84ed0174` and the current review stack.
@@ -22,6 +22,8 @@ receipts. Main at the current baseline has 57 accepted operations and 183 residu
 registrations out of 240. The media review adds one internal lease callback;
 its fork pin is published in [go2rtc #4](https://github.com/opensensor/go2rtc/pull/4).
 The canonical contract and coverage map on each branch describe that branch.
+The combined review branch accounts for all 241 registrations: 232 OpenAPI
+operations, eight media-protocol dispositions and one internal callback.
 
 Basic and legacy-key compatibility, HTTP-only cameras, and `/etc/lightnvr`
 defaults remain supported. At-rest encryption, automated Rust conversion,

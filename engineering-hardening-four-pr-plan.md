@@ -52,7 +52,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Enumerate every corresponding residual route. Separate reads from backup/process-control/log-clear writes, public/bootstrap behavior from authenticated policy, and acknowledgement from completion. Exercise process control in isolated child processes.
 - **acceptance_criteria**: Preserve zeros/credentials/revisions and deployment feature variants; validate backup bytes, process outcomes and consumer failure handling. No tests affect an operator instance.
 - **validation**: Real-server principal matrix, owned backup/process fixtures, native regressions and schema/consumer checks.
-- **status**: Complete locally; publication pending.
+- **status**: Integrated locally; final combined validation and publication in progress.
 - **log**: 23 operations; actual restart/re-exec and shutdown, isolated backup bytes, 23-operation credential matrix, settings/system browser rejection and recovery, snapshot-bound bootstrap discovery, optimized+ASan snapshot/projection tests. See `docs/api/contracts/system-evidence.md`.
 
 ### P4b: Stream lifecycle, ONVIF and device/protocol contracts (F9/F10)
@@ -61,7 +61,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Enumerate all residual stream/device/media registrations. Use owned SOAP/media fixtures for create/test/delete/refresh/recording controls, discovery/device operations, PTZ/imaging/daynight and protocol response variants. Preserve captured identities and create/edit intent.
 - **acceptance_criteria**: Invalid/denied requests have no configuration or device effects; actual protocol bodies/ranges/signaling align with the contract. Physical multicast/vendor interoperability remains separately qualified.
 - **validation**: Independent SOAP/media bytes, real-server negative mutations, typed consumer tests, native/sanitizer checks.
-- **status**: In progress
+- **status**: Integrated — device `dd490a9d`, media lifecycle `3deff6c1`, with redirect/fixture follow-ups; final validation in progress.
 
 - **decomposition**: P4b-media owns 23 registrations (15 typed JSON operations and eight explicit media-protocol dispositions); P4b-device owns 22 PTZ, imaging/daynight and ONVIF operations. Each worker uses an isolated worktree and shared outputs are reconciled serially.
 
@@ -71,7 +71,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Cover every residual storage registration using owned destinations. Preserve current global storage.configure policy for migration operations; do not invent job-owner/cancellation semantics. Test asynchronous completion independently of acknowledgements.
 - **acceptance_criteria**: Credential redaction, revisions, reference integrity, protected media, denial no-job/no-file effects and retry/cancel catalog consistency. Remote-provider qualification remains explicit.
 - **validation**: Real-server schemas/principals, owned local storage fault/recovery fixtures, UI adapters, native sanitizers.
-- **status**: Integrated — `fe32298a` via `6a30f30b`; publication pending.
+- **status**: Integrated — `fe32298a` via `6a30f30b`; final validation in progress.
 - **log**: 28 operations; cleanup rejects malformed/trailing JSON before scheduling; owned target/policy/migration/archive bytes and lifecycle, browser and sanitizer checks pass. See storage evidence receipt.
 
 ### P4d: Event routing contracts (F8)
@@ -80,7 +80,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Cover all residual event operations. Reuse selector and settings semantics; observe actual delivery with an owned local sink.
 - **acceptance_criteria**: Secret redaction, stale revisions/private collection references, suppression/retry and denied no-delivery behavior; validate actual consumer boundaries.
 - **validation**: Real delivery and negative-effect fixtures, schema projection, domain/native/browser tests.
-- **status**: Complete locally; publication pending.
+- **status**: Integrated locally; final combined validation and publication in progress.
 - **log**: 13 operations; real MQTT bytes/PUBACK retry/cooldown; native no-effects and browser malformed-ack/revision-preview cases; 12 optimized +3 sanitizer suites. See events evidence receipt.
 
 ### P4e: Investigations and residual recordings/detections (F11)
@@ -89,7 +89,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Enumerate each residual operation; preserve captured UUID and legacy fallback across aggregation/enrichment. Validate concrete media/image/export bytes and ranges beside JSON.
 - **acceptance_criteria**: Hidden rows/counts/facets remain hidden, name reuse cannot widen authority, invalid/denied writes have no durable effects, file and streaming responses are independently verified.
 - **validation**: Real-server principal/no-effects tests, media/image/export fixtures, typed consumers, native sanitizers.
-- **status**: In progress
+- **status**: Integrated — `e106f7f8` and snapshot capture revalidation `54f8fdce`; final validation in progress.
 
 ### P4f: Final integration and four-PR publication
 - **depends_on**: [P1, P2, P3, P4a, P4b, P4c, P4d, P4e]
@@ -98,3 +98,24 @@ do not pass unsupported skill-template sandbox parameters.
 - **acceptance_criteria**: Four workstreams published separately, no missing/duplicate/stale inventory entries, drift and full suites pass, evidence distinguishes local/hosted/device limits, no PRs merged.
 - **validation**: Canonical/projected lint, generation/drift, native optimized/sanitizer, frontend/root/contract typing, API/browser/asset checks and relevant recovery/media suites. Inspect hosted failures and correct reproducible issues.
 - **status**: In progress — first three PRs published; remaining family integration and hosted follow-up continue.
+
+## Integrated review inventory
+
+All 241 literal route registrations have current source lines and handlers:
+232 OpenAPI operations across 168 paths, eight media-protocol dispositions and
+one internal lease callback. `coverage-inventory.test.mjs` checks registration,
+source digest, unique operation identity, canonical mapping and explicit exclusions.
+`partial=true` remains because those nine routes are outside projected OpenAPI.
+
+The local combined checkpoint passed 117 pre-device/evidence API cases, then
+14 device/evidence cases; 98 Release native suites and 75 sanitizer suites passed.
+The final run includes the remaining stream lifecycle changes and review fixes.
+Evidence is indexed in `docs/api/contracts/*-evidence.md`. Hosted results belong
+to their exact PR revisions; earlier failures and their fixes are recorded there.
+
+Remaining beyond this wave: representative active-media capacity measurements
+(F13), longer recovery/storage/upgrade and physical-device qualification (F14),
+then production-level F15 reconciliation. Legacy name-only snapshot/history data
+retains documented compatibility limits; before/after identity checks are not a
+new transaction coordinator across every concurrent device/source mutation.
+Encryption and Rust remain deferred. No PR has been merged by this execution.

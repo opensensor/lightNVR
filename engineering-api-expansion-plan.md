@@ -4,7 +4,7 @@ Status (2026-11-07): F1 authentication/MFA and F2 fleet reads are merged;
 F12/F16 recording integrity and the later security corrections are merged.
 S1, F3 and F4 are in review as [#835](https://github.com/opensensor/lightNVR/pull/835),
 [#836](https://github.com/opensensor/lightNVR/pull/836), and
-[#837](https://github.com/opensensor/lightNVR/pull/837). F5–F11 are being integrated
+[#837](https://github.com/opensensor/lightNVR/pull/837). F5–F11 are implemented locally
 as the fourth PR in [the current execution plan](engineering-hardening-four-pr-plan.md).
 F13 capacity measurements and F14 extended qualification remain outstanding;
 F15's final production-level acceptance depends on those measurements.
@@ -130,21 +130,21 @@ F1..F14,F16 -> F15
 - **ownership**: Stream/ONVIF discovery handlers; sole StreamsView owner.
 - **description**: Stream single read/create/test/delete/refresh/recording controls; zones GET/POST/DELETE, retention GET/PUT and detection-engines GET/PUT; seven ONVIF discovery/device operations. Preserve captured UUIDs, create-after-edit intent and pending-state guards.
 - **validation**: Owned SOAP/discovery fixtures, invalid/denied configuration no-effects; multicast/vendor behavior remains unqualified until observed on identified hardware.
-- **status**: In progress in the fourth PR; stream/media and device workers use separate owned fixtures.
+- **status**: Implemented locally in the fourth PR; 15 stream JSON operations and seven ONVIF operations use owned fixtures.
 
 ### F10: Device control and streaming protocols
 - **depends_on**: [F9]
 - **ownership**: PTZ/imaging and HLS/go2rtc boundaries as separately reviewed sub-slices.
 - **description**: PTZ capabilities/presets/movement, imaging/daynight, GET `/api/ice-servers`, HLS and direct signaling/proxy routes. Address the documented direct go2rtc audio authorization gap before claiming action isolation.
 - **validation**: SOAP fixtures plus authorized device checks; media bytes, signaling permissions and reconnect behavior alongside JSON schemas.
-- **status**: In progress with F9 and S1; physical-device/vendor qualification remains outside this wave.
+- **status**: Implemented locally with F9 and S1; 15 device controls and eight explicit protocol dispositions. Physical-device/vendor qualification remains outside this wave.
 
 ### F11: Investigations, detections and residual recording routes
 - **depends_on**: [F2]
 - **ownership**: Investigation/bookmark, detection/model/snapshot and LPR sub-slices; residual recording work coordinated with storage.
 - **description**: Investigation timeline/segment-at/search/preview/thumbnails/bookmarks; detection results/models/snapshots; LPR search/export/delete; recording files/check/delete, protected-list/sync and timeline manifest/play excluded from the current UI contract slice.
 - **validation**: Captured UUID/name-reuse/legacy fallback through every aggregate/enrichment route; hidden counts/facets remain hidden. Independently validate actual images, ZIP/media bytes and ranges.
-- **status**: In progress in the fourth PR; captured-identity authorization and concrete media/export evidence required.
+- **status**: Implemented locally in the fourth PR; 23 operations with captured-identity authorization and concrete media/export evidence.
 
 ### F12: Recording pathname collision safety
 - **depends_on**: [F0]
