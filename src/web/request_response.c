@@ -248,6 +248,33 @@ int http_response_set_body(http_response_t *res, const char *body) {
     return 0;
 }
 
+static bool is_standard_json_header_name(const char *name) {
+    if (!name) return false;
+    return strcasecmp(name, "Access-Control-Allow-Origin") == 0 ||
+           strcasecmp(name, "Access-Control-Allow-Methods") == 0 ||
+           strcasecmp(name, "Access-Control-Allow-Headers") == 0 ||
+           strcasecmp(name, "Access-Control-Expose-Headers") == 0 ||
+           strcasecmp(name, "Access-Control-Max-Age") == 0 ||
+           strcasecmp(name, "Cache-Control") == 0 ||
+           strcasecmp(name, "Pragma") == 0 ||
+           strcasecmp(name, "Expires") == 0;
+}
+
+static void http_response_remove_standard_json_headers(http_response_t *res) {
+    if (!res || res->num_headers <= 0) return;
+
+    int write_idx = 0;
+    for (int read_idx = 0; read_idx < res->num_headers; read_idx++) {
+        if (!is_standard_json_header_name(res->headers[read_idx].name)) {
+            if (write_idx != read_idx) {
+                res->headers[write_idx] = res->headers[read_idx];
+            }
+            write_idx++;
+        }
+    }
+    res->num_headers = write_idx;
+}
+
 void http_response_add_cors_headers(http_response_t *res) {
     if (!res) return;
     http_response_add_header(res, "Access-Control-Allow-Origin", "*");
@@ -273,7 +300,10 @@ int http_response_set_json(http_response_t *res, int status_code, const char *js
     res->status_code = status_code;
     safe_strcpy(res->content_type, "application/json", sizeof(res->content_type), 0);
 
-    // Header insertions are now guaranteed to fit due to capacity check above.
+    // Replace helper-managed standard headers while preserving caller-provided headers.
+    http_response_remove_standard_json_headers(res);
+
+    // Add one canonical set of standard headers.
     http_response_add_cors_headers(res);
     http_response_add_header(res, "Cache-Control", "no-cache, no-store, must-revalidate");
     http_response_add_header(res, "Pragma", "no-cache");
