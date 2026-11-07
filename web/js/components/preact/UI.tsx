@@ -358,16 +358,28 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
   useEffect(() => {
     if (!isOpen || !videoUrl) return;
 
+    // Reset recording-specific state so stale detections/status are not shown while loading a new URL.
+    setDetections([]);
+    setDetectionStatus('');
+
+    const abortController = new AbortController();
+    let isStale = false;
+
     // Extract recording ID from URL
     const recordingIdMatch = videoUrl.match(/\/play\/(\d+)/);
-    if (!recordingIdMatch || !recordingIdMatch[1]) return;
+    if (!recordingIdMatch || !recordingIdMatch[1]) {
+      return () => {
+        isStale = true;
+        abortController.abort();
+      };
+    }
 
     const recordingId = parseInt(recordingIdMatch[1], 10);
 
     // Fetch recording data
     const fetchRecordingData = async () => {
       try {
-        const response = await fetch(`/api/recordings/${recordingId}`);
+        const response = await fetch(`/api/recordings/${recordingId}`, { signal: abortController.signal });
         if (!response.ok) throw new Error('Failed to fetch recording data');
 
         const data = await response.json() as RecordingDetails;
@@ -410,12 +422,18 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
           }
         }
       } catch (error) {
+        if (isStale || (error instanceof DOMException && error.name === 'AbortError')) return;
         console.error('Error fetching data:', error);
         setDetectionStatus(t('recordings.errorLoadingDetections'));
       }
     };
 
     fetchRecordingData();
+
+    return () => {
+      isStale = true;
+      abortController.abort();
+    };
   }, [isOpen, videoUrl]);
 
   useEffect(() => {
