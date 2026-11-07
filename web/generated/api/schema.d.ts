@@ -26875,7 +26875,7 @@ export interface operations {
     getTimelineSegmentsByIds: {
         parameters: {
             query: {
-                /** @description Required comma-separated positive recording IDs; parses up to8640 IDs from an8192-byte buffer. Invalid/zero tokens are ignored; no valid IDs gives400. Numeric-prefix parsing remains permissive. */
+                /** @description Required comma-separated positive decimal uint64 recording IDs. Surrounding whitespace and leading zeros are accepted; empty comma-separated fields are skipped. Signed, zero, overflowing, or partially numeric tokens reject the entire request with HTTP 400. Order and duplicates are preserved; missing or unauthorized IDs are omitted. The HTTP query string is limited to 1023 bytes; an additional handler bound rejects more than 8640 IDs. */
                 ids: string;
             };
             header?: never;
