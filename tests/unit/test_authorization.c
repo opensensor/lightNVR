@@ -3259,6 +3259,50 @@ void test_timeline_uuid_link_survives_rename_and_enforces_replay_scope(void) {
     cJSON_Delete(json);
 }
 
+void test_timeline_segments_reject_unparseable_time_bounds(void) {
+    stream_config_t camera = create_camera("timeline_bounds", "");
+    char api_key[128] = {0};
+    create_camera_action_user("timeline_bounds_user", camera.camera_uuid,
+        authorization_action_bit(AUTHZ_RECORDINGS_REPLAY), api_key);
+    g_config.web_auth_enabled = true;
+
+    const char *queries[] = {
+        "&start=not-a-date",
+        "&start=2026-99-99&end=2026-08-29T00:00:00Z",
+        "&end=not-a-date",
+        "&start=2026-08-28T00:00:00Z&end=2026-99-99"
+    };
+    for (size_t i = 0; i < sizeof(queries) / sizeof(queries[0]); i++) {
+        char path[512];
+        snprintf(path, sizeof(path), "/api/timeline/segments?camera_uuid=%s%s",
+                 camera.camera_uuid, queries[i]);
+        cJSON *json = call_handler_path(handle_get_timeline_segments, HTTP_METHOD_GET,
+                                        path, NULL, api_key, 400);
+        const cJSON *error = cJSON_GetObjectItemCaseSensitive(json, "error");
+        TEST_ASSERT_TRUE(cJSON_IsString(error));
+        TEST_ASSERT_EQUAL_STRING(i < 2 ? "Invalid start parameter" : "Invalid end parameter",
+                                 error->valuestring);
+        TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(json, "segments"));
+        cJSON_Delete(json);
+    }
+
+    /* Optional bounds keep their defaults; date-only and browser ISO strings
+     * remain accepted through the same authenticated endpoint. */
+    const char *valid_queries[] = {
+        "", "&start=2026-08-28&end=2026-08-29",
+        "&start=2026-08-28T00:00:00.000Z&end=2026-08-29T00:00:00.000Z"
+    };
+    for (size_t i = 0; i < sizeof(valid_queries) / sizeof(valid_queries[0]); i++) {
+        char path[512];
+        snprintf(path, sizeof(path), "/api/timeline/segments?stream=%s%s",
+                 camera.name, valid_queries[i]);
+        cJSON *json = call_handler_path(handle_get_timeline_segments, HTTP_METHOD_GET,
+                                        path, NULL, api_key, 200);
+        TEST_ASSERT_TRUE(cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(json, "segments")));
+        cJSON_Delete(json);
+    }
+}
+
 int main(void) {
     if (initialize_test_db_path() != 0) {
         fprintf(stderr, "FATAL: temporary database directory setup failed\n");
@@ -3284,6 +3328,7 @@ int main(void) {
     RUN_TEST(test_action_catalog_is_stable_and_complete);
     RUN_TEST(test_lpr_camera_summary_uses_lpr_permissions_and_scope);
     RUN_TEST(test_timeline_uuid_link_survives_rename_and_enforces_replay_scope);
+    RUN_TEST(test_timeline_segments_reject_unparseable_time_bounds);
     RUN_TEST(test_legacy_role_compatibility_has_no_runtime_allowed_tags_path);
     RUN_TEST(test_legacy_principals_migrate_to_idempotent_selector_grants);
     RUN_TEST(test_policy_mode_defaults_deny_and_matches_selector_grant);
