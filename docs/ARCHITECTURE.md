@@ -340,12 +340,12 @@ Camera (RTSP/ONVIF)
 2. Web server authenticates the user (session token or Basic Auth)
 3. Web server serves the SPA (Single Page Application)
 4. Client-side Preact app makes API requests
-5. **Live viewing**: Browser connects directly to go2rtc for WebRTC/HLS
+5. **Live viewing**: Browser connects to LightNVR's authenticated media endpoints, which proxy WebRTC/MSE/HLS/snapshot requests to loopback-bound go2rtc
 6. **Recording playback**: Browser requests MP4/HLS from LightNVR API
 
 ## Database Schema
 
-LightNVR uses SQLite for data storage. The schema is managed via numbered migration files in `db/migrations/` (0001 through 0022). Below is the cumulative schema after all migrations.
+LightNVR uses SQLite for data storage. The schema is managed via numbered migration files in `db/migrations/` (currently 0001 through 0094). The migration files are the source of truth for the exact current schema; the SQL excerpts below are representative for architectural context.
 
 ### Streams Table
 
