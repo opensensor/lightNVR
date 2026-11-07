@@ -1246,7 +1246,9 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         else
             snprintf(size_str, sizeof(size_str), "%.1f GB", (double)rec.size_bytes / (1024.0 * 1024.0 * 1024.0));
 
-        cJSON_AddNumberToObject(segment, "id", (double)rec.id);
+        char id_str[32] = {0};
+        snprintf(id_str, sizeof(id_str), "%llu", (unsigned long long)rec.id);
+        cJSON_AddStringToObject(segment, "id", id_str);
         cJSON_AddStringToObject(segment, "stream", rec.stream_name);
         if (rec.camera_uuid[0] != '\0') {
             cJSON_AddStringToObject(segment, "camera_uuid", rec.camera_uuid);
