@@ -162,3 +162,14 @@ Physical multicast discovery, vendor-specific coordinate spaces and real camera
 motor/imaging behavior remain qualification work. The local evidence proves
 native authorization, request validation, SOAP bytes, response contracts and UI
 handling; it does not claim that every vendor accepts every advertised command.
+
+## Redirect transport follow-up
+
+The device adapter now forces `redirect: 'error'` and `credentials: 'same-origin'`
+after caller options. Owned two-origin HTTP tests reproduced ONVIF username and
+password forwarding through both 307 and 308 before the correction. Afterward,
+the source sees one request and the redirect destination receives none, even
+with explicit caller `redirect: 'follow'`/`credentials: 'include'` options. The
+shared `redirectHarness.ts` runs real HTTP without contacting any external host;
+`deviceRedirect.spec.ts` supplies the regressions. Focused device/PTZ tests:
+23 passed; frontend type checks passed.
