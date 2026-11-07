@@ -52,6 +52,9 @@ We verified the runtime merge behavior with the actual go2rtc binary in `tests/u
 ## Supported sections
 
 go2rtc settings can be overridden except for the managed listener fields above.
+LightNVR passes its private configuration paths explicitly and no longer creates
+or removes the legacy `/dev/shm/go2rtc.yaml` alias. Existing shared files and
+symlinks are left untouched; external tools should use the configured paths.
 These are the top-level keys we know about; an unknown key is allowed
 (forward-compat) but produces a warning:
 

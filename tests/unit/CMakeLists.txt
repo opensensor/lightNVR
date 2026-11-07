@@ -408,6 +408,7 @@ if(ENABLE_GO2RTC)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
     add_layer2_test_with_curl(test_go2rtc_process_lifecycle)
+    add_layer3_test(test_go2rtc_process_ownership CI_UNIT CI_SANITIZER)
     target_compile_definitions(test_go2rtc_process_lifecycle PRIVATE
         FAKE_GO2RTC_PATH="$<TARGET_FILE:fake_go2rtc_server>"
     )
