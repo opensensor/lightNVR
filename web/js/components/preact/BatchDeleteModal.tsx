@@ -27,6 +27,19 @@ declare global {
 
 type BatchDeletePhase = 'hidden' | 'confirm' | 'progress';
 
+interface PendingBatchDelete {
+  params: BatchDeleteParams;
+  resolve: (result: BatchDeleteProgressResponse) => void;
+  reject: (reason: unknown) => void;
+  running: boolean;
+  controller: AbortController;
+}
+
+function cancelledResult(): BatchDeleteProgressResponse {
+  return {status: 'cancelled', complete: true, current: 0, total: 0,
+    succeeded: 0, failed: 0, pending_deletions: 0};
+}
+
 interface BatchDeleteProgressState {
   current: number;
   total: number;
@@ -55,266 +68,139 @@ export function BatchDeleteModal() {
   const [phase, setPhase] = useState<BatchDeletePhase>('hidden');
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Pending delete params (stored during confirm phase, used when user clicks Proceed)
-  const pendingParamsRef = useRef<BatchDeleteParams | null>(null);
-  const pendingResolveRef = useRef<((result: BatchDeleteProgressResponse) => void) | null>(null);
-  const pendingRejectRef = useRef<((reason: unknown) => void) | null>(null);
-
-  // Progress state
+  // Each invocation owns its promise and requests; stale callbacks cannot touch a later one.
+  const pendingRef = useRef<PendingBatchDelete | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [progress, setProgress] = useState<BatchDeleteProgressState>({
-    current: 0,
-    total: 0,
-    succeeded: 0,
-    failed: 0,
-    status: 'Preparing to delete recordings...',
-    complete: false,
-    error: false
+    current: 0, total: 0, succeeded: 0, failed: 0,
+    status: 'Preparing to delete recordings...', complete: false, error: false
   });
 
-  // Poll timer ref
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isRunningRef = useRef(false);
+  const clearPollTimer = useCallback(() => {
+    if (pollTimerRef.current !== null) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
 
-  /** Derive a human-readable description for the confirm dialog */
   const getConfirmDescription = () => {
-    const params = pendingParamsRef.current;
+    const params = pendingRef.current?.params;
     if (!params) return '';
     if (params.ids) return t(params.ids.length === 1 ? 'recordings.selectedRecordingOne' : 'recordings.selectedRecordingMany', { count: params.ids.length });
     if (params.totalCount) return t(params.totalCount === 1 ? 'recordings.filteredRecordingOne' : 'recordings.filteredRecordingMany', { count: params.totalCount });
     return t('recordings.allMatchingRecordings');
   };
 
-  /**
-   * Close/reset the modal (only allowed when not running, or when complete)
-   */
+  // Closing confirmation settles its caller; a running server job cannot be cancelled.
   const closeModal = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
+    const pending = pendingRef.current;
+    if (pending?.running) return;
+    pendingRef.current = null;
+    pending?.resolve(cancelledResult());
+    clearPollTimer();
     setPhase('hidden');
-    pendingParamsRef.current = null;
-    pendingResolveRef.current = null;
-    pendingRejectRef.current = null;
-  }, []);
+  }, [clearPollTimer]);
 
-  /**
-   * Cancel during the confirmation phase (before delete starts)
-   */
   const cancelConfirm = useCallback(() => {
+    if (!pendingRef.current || pendingRef.current.running) return;
     closeModal();
     showStatusMessage(t('recordings.batchDeleteCancelled'), 'info', 3000);
-  }, [closeModal]);
+  }, [closeModal, t]);
 
-  /**
-   * Open the modal in confirmation phase. The actual HTTP request is only
-   * fired when the user clicks "Proceed".
-   *
-   * @param {Object} params - Delete parameters (ids or filter)
-   * @returns {Promise<Object>} Resolves when the operation completes
-   */
+  // Dismissed confirmations resolve with status "cancelled" and zero deletion counts.
   const batchDeleteRecordingsByHttpRequest = useCallback((params: BatchDeleteParams) => {
-    console.log('Batch delete requested with params:', params);
-
+    // Do not replace another caller's pending confirmation or active operation.
+    if (pendingRef.current) return Promise.reject(new Error('A batch deletion is already pending'));
     return new Promise<BatchDeleteProgressResponse>((resolve, reject) => {
-      pendingParamsRef.current = params;
-      pendingResolveRef.current = resolve;
-      pendingRejectRef.current = reject;
+      pendingRef.current = {params, resolve, reject, running: false, controller: new AbortController()};
       setPhase('confirm');
     });
   }, []);
 
-  /**
-   * User confirmed — start the actual delete operation.
-   */
-  const proceedWithDelete = useCallback(() => {
-    const params = pendingParamsRef.current;
-    // batchDeleteRecordingsByHttpRequest sets these three together and closeModal clears them together.
-    const resolve = pendingResolveRef.current!;
-    const reject = pendingRejectRef.current!;
-    if (!params) return;
-
-    // Switch to progress phase
-    setProgress({
-      current: 0,
-      total: 0,
-      succeeded: 0,
-      failed: 0,
-      status: 'Preparing to delete recordings...',
-      complete: false,
-      error: false
-    });
+  const proceedWithDelete = useCallback(async () => {
+    const pending = pendingRef.current;
+    if (!pending || pending.running) return;
+    pending.running = true; // Guard a second click before the progress view renders.
+    const {params, controller} = pending;
+    const totalCount = params.ids?.length ?? params.totalCount ?? 0;
+    const isCurrent = () => pendingRef.current === pending;
+    setProgress({current: 0, total: totalCount, succeeded: 0, failed: 0,
+      status: 'Starting batch delete operation...', complete: false, error: false});
     setPhase('progress');
-    isRunningRef.current = true;
 
-    // Calculate total count for progress bar
-    let totalCount = 0;
-    if (params.ids) {
-      totalCount = params.ids.length;
-    } else if (params.filter && params.totalCount) {
-      totalCount = params.totalCount;
-    }
+    const fail = (reason: unknown) => {
+      if (!isCurrent()) return;
+      const error = reason instanceof Error ? reason : new Error(String(reason));
+      pendingRef.current = null;
+      clearPollTimer();
+      setProgress({current: 0, total: 0, succeeded: 0, failed: 0,
+        status: `Error: ${error.message}`, complete: true, error: true});
+      showStatusMessage(t('recordings.errorMessage', {message: error.message}), 'error', 5000);
+      pending.reject(error);
+    };
 
-    setProgress(prev => ({
-      ...prev,
-      total: totalCount,
-      status: 'Starting batch delete operation...'
-    }));
-
-    // Send HTTP request to start the batch delete job
-    fetch('/api/recordings/batch-delete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(params)
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
-        }
-        return response.json();
-      })
-      .then((result: BatchDeleteStartResponse) => {
-        console.log('Batch delete job started:', result);
-
-        if (!result.job_id) {
-          throw new Error('No job_id received from server');
-        }
-
-        const jobId = result.job_id;
-
-        // Start polling for progress
-        const pollInterval = 500; // Poll every 500ms
-
-        const pollProgress = () => {
-          // Check if we've been cancelled
-          if (!isRunningRef.current) {
-            if (pollTimerRef.current) {
-              clearInterval(pollTimerRef.current);
-              pollTimerRef.current = null;
-            }
-            return;
-          }
-
-          fetch(`/api/recordings/batch-delete/progress/${jobId}`)
-            .then(response => {
-              if (!response.ok) {
-                throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
-              }
-              return response.json();
-            })
-            .then((progressData: BatchDeleteProgressResponse) => {
-              console.log('Progress update:', progressData);
-
-              // Update progress UI
-              setProgress(prev => ({
-                ...prev,
-                current: progressData.current || 0,
-                total: progressData.total || totalCount,
-                succeeded: progressData.succeeded || 0,
-                failed: progressData.failed || 0,
-                pending_deletions: progressData.pending_deletions || 0,
-                status: progressData.status_message || 'Processing...',
-                complete: progressData.complete || false
-              }));
-
-              // Check if complete
-              if (progressData.complete) {
-                // Stop polling
-                if (pollTimerRef.current) {
-                  clearInterval(pollTimerRef.current);
-                  pollTimerRef.current = null;
-                }
-
-                isRunningRef.current = false;
-
-                // Show status message
-                const failed = progressData.failed || 0;
-                const message = batchDeleteStatus(progressData);
-
-                showStatusMessage(message, failed === 0 ? 'success' : 'warning', 5000);
-
-                // Invalidate the recordings query cache so the list re-fetches immediately
-                queryClient.invalidateQueries({ queryKey: ['recordings'] });
-
-                resolve(progressData);
-              }
-            })
-            .catch(error => {
-              console.error('Progress polling error:', error);
-
-              // Stop polling
-              if (pollTimerRef.current) {
-                clearInterval(pollTimerRef.current);
-                pollTimerRef.current = null;
-              }
-
-              isRunningRef.current = false;
-
-              // Update progress UI to show error
-              setProgress({
-                current: 0,
-                total: 0,
-                succeeded: 0,
-                failed: 0,
-                status: `Error: ${error.message || 'Unknown error'}`,
-                complete: true,
-                error: true
-              });
-
-              // Show error message
-              showStatusMessage(t('recordings.errorMessage', { message: error.message || t('recordings.unknownError') }), 'error', 5000);
-
-              reject(error);
-            });
-        };
-
-        // Start polling immediately and then at intervals
-        pollProgress();
-        pollTimerRef.current = setInterval(pollProgress, pollInterval);
-      })
-      .catch(error => {
-        console.error('Batch delete start error:', error);
-
-        isRunningRef.current = false;
-
-        // Update progress UI to show error
-        setProgress({
-          current: 0,
-          total: 0,
-          succeeded: 0,
-          failed: 0,
-          status: `Error: ${error.message || 'Unknown error'}`,
-          complete: true,
-          error: true
-        });
-
-        // Show error message
-        showStatusMessage(t('recordings.errorMessage', { message: error.message || t('recordings.unknownError') }), 'error', 5000);
-
-        reject(error);
+    try {
+      const response = await fetch('/api/recordings/batch-delete', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params), signal: controller.signal,
       });
-  }, []);
+      if (!response.ok) throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+      const result: BatchDeleteStartResponse = await response.json();
+      if (!isCurrent()) return;
+      if (!result.job_id) throw new Error('No job_id received from server');
+      const jobId = result.job_id;
 
-  // Component initialization - register global functions
+      const pollProgress = async () => {
+        if (!isCurrent()) return;
+        pollTimerRef.current = null;
+        try {
+          const response = await fetch(`/api/recordings/batch-delete/progress/${jobId}`, {signal: controller.signal});
+          if (!response.ok) throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+          const data: BatchDeleteProgressResponse = await response.json();
+          if (!isCurrent()) return;
+          if (data.status === 'error') throw new Error(data.error_message || 'Batch deletion failed');
+          setProgress({current: data.current ?? 0, total: data.total ?? totalCount,
+            succeeded: data.succeeded ?? 0, failed: data.failed ?? 0,
+            pending_deletions: data.pending_deletions ?? 0,
+            status: data.status_message || 'Processing...', complete: data.complete ?? false});
+          if (data.complete) {
+            pendingRef.current = null;
+            pending.resolve(data);
+            showStatusMessage(batchDeleteStatus(data), (data.failed ?? 0) === 0 ? 'success' : 'warning', 5000);
+            void queryClient.invalidateQueries({queryKey: ['recordings']});
+          } else {
+            // Wait after each response, keeping at most one progress request in flight.
+            pollTimerRef.current = setTimeout(pollProgress, 500);
+          }
+        } catch (error) {
+          fail(error);
+        }
+      };
+      await pollProgress();
+    } catch (error) {
+      fail(error);
+    }
+  }, [clearPollTimer, queryClient, t]);
+
   useEffect(() => {
-    console.log('BatchDeleteModal initialized');
-
-    // Make functions globally available
     window.closeBatchDeleteModal = closeModal;
     window.batchDeleteRecordingsByHttpRequest = batchDeleteRecordingsByHttpRequest;
-
-    // Cleanup on unmount
     return () => {
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      clearPollTimer();
+      if (pending) {
+        // Abort client monitoring only; deletion may already be running on the server.
+        pending.controller.abort();
+        if (pending.running) pending.reject(new Error('Deletion monitoring stopped; the server job may continue'));
+        else pending.resolve(cancelledResult());
       }
-      delete window.closeBatchDeleteModal;
-      delete window.batchDeleteRecordingsByHttpRequest;
+      if (window.closeBatchDeleteModal === closeModal) delete window.closeBatchDeleteModal;
+      if (window.batchDeleteRecordingsByHttpRequest === batchDeleteRecordingsByHttpRequest) {
+        delete window.batchDeleteRecordingsByHttpRequest;
+      }
     };
-  }, [closeModal, batchDeleteRecordingsByHttpRequest]);
+  }, [closeModal, batchDeleteRecordingsByHttpRequest, clearPollTimer]);
 
   // Calculate progress percentage
   const getProgressPercentage = () => {
@@ -463,7 +349,7 @@ export function BatchDeleteModal() {
 /**
  * Delete multiple recordings by IDs.
  * Opens the confirmation modal — no browser confirm() used.
- * @param {Array<number>} ids - Recording IDs to delete
+ * @param {Array<number | string>} ids - Recording IDs to delete
  */
 export function batchDeleteRecordings(ids: Array<number | string>) {
   if (!ids || ids.length === 0) {
@@ -475,10 +361,6 @@ export function batchDeleteRecordings(ids: Array<number | string>) {
     window.batchDeleteRecordingsByHttpRequest({ ids })
       .catch(error => {
         console.error('Error in batch delete:', error);
-        showStatusMessage(translate('recordings.errorMessage', { message: error.message || translate('recordings.batchDeleteStartFailed') }), 'error', 5000);
-        if (typeof window.closeBatchDeleteModal === 'function') {
-          window.closeBatchDeleteModal();
-        }
       });
   } else {
     showStatusMessage(translate('recordings.batchDeleteUnavailable'), 'error', 5000);
@@ -500,10 +382,6 @@ export function batchDeleteRecordingsByFilter(filter: BatchDeleteFilter) {
     window.batchDeleteRecordingsByHttpRequest({ filter })
       .catch(error => {
         console.error('Error in batch delete:', error);
-        showStatusMessage(translate('recordings.errorMessage', { message: error.message || translate('recordings.batchDeleteStartFailed') }), 'error', 5000);
-        if (typeof window.closeBatchDeleteModal === 'function') {
-          window.closeBatchDeleteModal();
-        }
       });
   } else {
     showStatusMessage(translate('recordings.batchDeleteUnavailable'), 'error', 5000);
