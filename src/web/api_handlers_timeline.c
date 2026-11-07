@@ -1062,8 +1062,9 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
  * @brief Handle GET /api/timeline/segments-by-ids?ids=1,2,3,...
  *
  * Fetches recording metadata for the given IDs and returns them as timeline
- * segments sorted by start_time.  The response format matches that of
- * handle_get_timeline_segments so the TimelinePage can consume it directly.
+ * segments in the same order as the requested IDs (duplicates are preserved).
+ * The response format matches that of handle_get_timeline_segments so the
+ * TimelinePage can consume it directly.
  */
 void handle_get_timeline_segments_by_ids(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/timeline/segments-by-ids request");
