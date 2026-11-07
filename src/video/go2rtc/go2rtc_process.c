@@ -2358,20 +2358,49 @@ static bool go2rtc_process_start_locked(int api_port) {
     // silently using the hardcoded default.
     g_rtsp_port = (g_config.go2rtc_rtsp_port > 0) ? g_config.go2rtc_rtsp_port : 8554;
 
-    // Create a symbolic link from /dev/shm/go2rtc.yaml to our config file
-    // This ensures that even if something tries to use the /dev/shm path, it will use our config
+    // Create a symbolic link from /dev/shm/go2rtc.yaml to our config file.
+    // Only replace an existing entry when it is already a symlink to our
+    // current config path; otherwise leave it untouched.
     struct stat shared_config_stat;
-    if (lstat("/dev/shm/go2rtc.yaml", &shared_config_stat) == 0 &&
-        unlink("/dev/shm/go2rtc.yaml") != 0) {
-        log_warn("Failed to replace /dev/shm/go2rtc.yaml: %s", strerror(errno));
-    }
     g_created_config_symlink = false;
-    if (symlink(g_config_path, "/dev/shm/go2rtc.yaml") != 0) {
-        log_warn("Failed to create symlink from /dev/shm/go2rtc.yaml to %s: %s",
-                g_config_path, strerror(errno));
-        // Continue anyway, this is not critical
-    } else {
-        g_created_config_symlink = true;
+    bool can_create_shared_symlink = true;
+
+    if (lstat("/dev/shm/go2rtc.yaml", &shared_config_stat) == 0) {
+        if (S_ISLNK(shared_config_stat.st_mode)) {
+            char link_target[PATH_MAX];
+            ssize_t target_len = readlink("/dev/shm/go2rtc.yaml", link_target, sizeof(link_target) - 1);
+            if (target_len < 0) {
+                log_warn("Failed to inspect existing /dev/shm/go2rtc.yaml symlink: %s", strerror(errno));
+                can_create_shared_symlink = false;
+            } else {
+                link_target[target_len] = '\0';
+                if (strcmp(link_target, g_config_path) == 0) {
+                    if (unlink("/dev/shm/go2rtc.yaml") != 0) {
+                        log_warn("Failed to replace /dev/shm/go2rtc.yaml: %s", strerror(errno));
+                        can_create_shared_symlink = false;
+                    }
+                } else {
+                    log_warn("Leaving existing /dev/shm/go2rtc.yaml symlink untouched (target=%s)", link_target);
+                    can_create_shared_symlink = false;
+                }
+            }
+        } else {
+            log_warn("Leaving existing /dev/shm/go2rtc.yaml untouched (not a symlink)");
+            can_create_shared_symlink = false;
+        }
+    } else if (errno != ENOENT) {
+        log_warn("Failed to check /dev/shm/go2rtc.yaml: %s", strerror(errno));
+        can_create_shared_symlink = false;
+    }
+
+    if (can_create_shared_symlink) {
+        if (symlink(g_config_path, "/dev/shm/go2rtc.yaml") != 0) {
+            log_warn("Failed to create symlink from /dev/shm/go2rtc.yaml to %s: %s",
+                    g_config_path, strerror(errno));
+            // Continue anyway, this is not critical
+        } else {
+            g_created_config_symlink = true;
+        }
     }
 
     // Prepare everything the child needs BEFORE forking.
