@@ -231,8 +231,7 @@ main() {
     print_info "  2. Stage version files: git add -- CMakeLists.txt web/package.json"
     print_info "  3. Review staged changes: git diff --cached --submodule=log"
     print_info "  4. Commit the changes: git commit -m 'Bump version to $new_version'"
-    print_info "  5. Create a tag: git tag -a v$new_version -m 'Release v$new_version'"
-    print_info "  6. Push changes: git push && git push --tags"
+    print_info "  5. Wait for generated Rust and CI, then publish: ./scripts/release.sh $new_version --publish-only"
     echo
     print_info "Or use the release script: ./scripts/release.sh $new_version"
 }
