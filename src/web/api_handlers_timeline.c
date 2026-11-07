@@ -1110,13 +1110,25 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
     time_t overall_start = 0, overall_end = 0;
     int seg_count = 0;
 
-    for (int i = 0; i < id_count; i++) {
-        recording_metadata_t rec;
-        memset(&rec, 0, sizeof(rec));
-        if (get_recording_metadata_by_id(ids[i], &rec) != 0) {
-            log_warn("Recording ID %llu not found, skipping", (unsigned long long)ids[i]);
-            continue;
-        }
+    recording_metadata_t *records = NULL;
+    int record_count = 0;
+    if (get_recording_metadata_by_ids(ids, id_count, &records, &record_count) != 0) {
+        cJSON_Delete(response);
+        http_response_set_json_error(res, 500, "Failed to fetch recording metadata");
+        return;
+    }
+
+    recording_detection_summary_t *summaries = NULL;
+    if (record_count > 0 &&
+        get_recording_detection_summaries_for_cameras(records, record_count, &summaries) != 0) {
+        free(records);
+        cJSON_Delete(response);
+        http_response_set_json_error(res, 500, "Failed to get recording detections");
+        return;
+    }
+
+    for (int i = 0; i < record_count; i++) {
+        const recording_metadata_t rec = records[i];
         // Authorize against capture identity, not a historical name that may
         // have been renamed or reassigned to a different camera.
         authorization_evaluation_t replay_evaluation;
@@ -1124,6 +1136,8 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
             AUTHZ_RECORDINGS_REPLAY, rec.camera_uuid, rec.stream_name, &replay_evaluation);
         if (evaluation_result > 0) continue;
         if (evaluation_result < 0) {
+            free(summaries);
+            free(records);
             cJSON_Delete(response);
             http_response_set_json_error(res, 500, "Authorization policy evaluation failed");
             return;
@@ -1136,14 +1150,7 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         const time_t effective_end =
             (in_progress && rec.end_time <= 0) ? time(NULL) : rec.end_time;
 
-        recording_metadata_t observed = rec;
-        observed.end_time = effective_end;
-        recording_detection_summary_t summary;
-        if (get_recording_detection_summaries_for_cameras(&observed, 1, &summary) != 0) {
-            cJSON_Delete(response);
-            http_response_set_json_error(res, 500, "Failed to get recording detections");
-            return;
-        }
+        const recording_detection_summary_t summary = summaries ? summaries[i] : (recording_detection_summary_t){0};
         bool has_det = strcmp(rec.trigger_type, "detection") == 0 || summary.has_detection;
 
         /* Track overall time range */
