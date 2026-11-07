@@ -1,6 +1,6 @@
 import {test as base,expect,type Browser,type Page,type BrowserContext} from '@playwright/test';
 import {startFixture,type ContractFixture} from './fixture-server.mjs';
-import {createUser,role,policy,cameraScope,ok,identityOps,fleetOps,recordingCommonOps,recordingReplayOps,recordingActionOps,recordingJobOps,recordingExportOps,type Identity} from './permissionCases';
+import {createUser,role,policy,cameraScope,ok,operationIds,identityOps,fleetOps,recordingCommonOps,recordingReplayOps,recordingActionOps,recordingJobOps,recordingExportOps,type Identity} from './permissionCases';
 import {startProxy} from './proxy-fixture.mjs';
 const test=base.extend<{server:ContractFixture}>({server:async({},use,info)=>{
   const server=await startFixture({webRoot:process.env.LIGHTNVR_CONTRACT_WEB_ROOT});
@@ -29,9 +29,17 @@ async function session(browser:Browser,server:ContractFixture,identity='admin',b
   return context;
 }
 async function rendered(page:Page,ops:string[]) {
+  // The original families retain their independent permission oracle. New
+  // families have separate native/principal matrices; this browser test also
+  // proves the explorer renders every operation in the current served document.
+  const response=await page.request.get(new URL('api/openapi.json',page.url()).href);
+  expect(response.status()).toBe(200);
+  const current=operationIds(await response.json());
+  const historical=new Set([...all,...read,...configured]);
+  expect(current.filter(id=>historical.has(id)).sort()).toEqual([...ops].sort());
   await expect(page.locator('#docs-status')).toContainText('covers selected APIs');
-  await expect(page.locator('.opblock')).toHaveCount(ops.length);
-  await expect.poll(()=>page.evaluate(()=>window.contractExplorerProbe.renders.at(-1)?.ops)).toEqual([...ops].sort());
+  await expect(page.locator('.opblock')).toHaveCount(current.length);
+  await expect.poll(()=>page.evaluate(()=>window.contractExplorerProbe.renders.at(-1)?.ops)).toEqual([...current].sort());
 }
 const pilotRead=['getOpenApi','getStreamFull','listStreams'];
 const read=[...identityOps,...fleetOps,...recordingCommonOps,...recordingReplayOps,...recordingJobOps,...recordingExportOps,...pilotRead];
