@@ -72,7 +72,7 @@ const DEFAULT_RETRY_DELAY = 1000;    // 1 second between retries
 const BATCH_DELETE_TIMEOUT = 60000;          // 60 second timeout for batch operations
 const BATCH_DELETE_RETRIES = 1;              // Retry once
 const BATCH_DELETE_RETRY_DELAY = 2000;       // 2 seconds between retries
-const BATCH_DELETE_POLL_MAX_ATTEMPTS = 120;  // 2 minutes max (120 * 1 second)
+const BATCH_DELETE_POLL_MAX_ATTEMPTS = 15;   // ~2 minutes max with exponential backoff (capped at 10s)
 
 /**
  * Parse a recording timestamp to Unix seconds.
