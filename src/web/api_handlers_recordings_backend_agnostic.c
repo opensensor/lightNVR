@@ -902,8 +902,16 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
             cJSON_Delete(json);
             return;
         }
-        if (!parse_delete_time_bound(cJSON_GetObjectItem(filter, "start"), &start_time) ||
-            !parse_delete_time_bound(cJSON_GetObjectItem(filter, "end"), &end_time) ||
+        cJSON *start_item = cJSON_GetObjectItem(filter, "start");
+        if (!start_item) start_item = cJSON_GetObjectItem(filter, "Start");
+        if (!start_item) start_item = cJSON_GetObjectItem(filter, "START");
+
+        cJSON *end_item = cJSON_GetObjectItem(filter, "end");
+        if (!end_item) end_item = cJSON_GetObjectItem(filter, "End");
+        if (!end_item) end_item = cJSON_GetObjectItem(filter, "END");
+
+        if (!parse_delete_time_bound(start_item, &start_time) ||
+            !parse_delete_time_bound(end_item, &end_time) ||
             (start_time && end_time && start_time > end_time)) {
             cJSON_Delete(json);
             http_response_set_json_error(res, 400, "Invalid deletion date range");
