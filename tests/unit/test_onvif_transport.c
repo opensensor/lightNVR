@@ -12,6 +12,29 @@ static unsigned short destination_port;
 static char advertised_endpoint[256];
 static int fallback_requests;
 
+/* Force the fixture through short-write and EINTR paths during real HTTP
+ * exchanges. Shared libcurl's own socket I/O is not linker-wrapped. */
+static bool interrupt_send, zero_send;
+static unsigned send_calls;
+ssize_t __real_send(int fd, const void *buffer, size_t length, int flags);
+ssize_t __wrap_send(int fd, const void *buffer, size_t length, int flags) {
+    send_calls++;
+    if (interrupt_send) { interrupt_send = false; errno = EINTR; return -1; }
+    if (zero_send) return 0;
+    if (length > 7) length = 7;
+    return __real_send(fd, buffer, length, flags);
+}
+static bool fixture_send_all(int fd, const char *response, size_t length) {
+    size_t sent = 0;
+    while (sent < length) {
+        ssize_t n = send(fd, response + sent, length - sent, MSG_NOSIGNAL);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return false;
+        sent += (size_t)n;
+    }
+    return true;
+}
+
 void __wrap__log_message_ctx(log_level_t level, const char *component, const char *stream,
                             const char *format, ...) {
     (void)level; (void)component; (void)stream;
@@ -26,6 +49,9 @@ void setUp(void) {
     initialized = true;
     origin = destination = -1;
     server_failed = 0;
+    interrupt_send = true;
+    zero_send = false;
+    send_calls = 0;
     log_capture[0] = '\0';
 }
 void tearDown(void) {
@@ -57,9 +83,11 @@ static void *redirect_server(void *unused) {
     if (client < 0) { server_failed = 2; return NULL; }
     struct timeval timeout = {.tv_sec = 3};
     setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
     char body[8192] = {0}; size_t used = 0;
     while (used < sizeof(body) - 1 && !strstr(body, "</s:Envelope>")) {
         ssize_t n = recv(client, body + used, sizeof(body) - 1 - used, 0);
+        if (n < 0 && errno == EINTR) continue;
         if (n <= 0) { server_failed = 3; break; }
         used += (size_t)n; body[used] = '\0';
     }
@@ -68,7 +96,7 @@ static void *redirect_server(void *unused) {
     int length = snprintf(response, sizeof(response),
         "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1:%u/stolen\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
         destination_port);
-    if (send(client, response, (size_t)length, MSG_NOSIGNAL) != length) server_failed = 5;
+    if (!fixture_send_all(client, response, (size_t)length)) server_failed = 5;
     close(client);
     return NULL;
 }
@@ -132,9 +160,11 @@ static void *fallback_server(void *unused) {
         if (client < 0) { server_failed = 2; return NULL; }
         struct timeval timeout = {.tv_sec = 3};
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
         char request[8192] = {0}; size_t used = 0;
         while (used < sizeof(request) - 1 && !strstr(request, "</s:Envelope>")) {
             ssize_t n = recv(client, request + used, sizeof(request) - 1 - used, 0);
+            if (n < 0 && errno == EINTR) continue;
             if (n <= 0) { server_failed = 3; break; }
             used += (size_t)n; request[used] = '\0';
         }
@@ -151,12 +181,7 @@ static void *fallback_server(void *unused) {
         int length = snprintf(response, sizeof(response),
             "HTTP/1.1 %s\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
             i == 0 ? "200 OK" : "500 Failed", strlen(body), body);
-        size_t sent = 0;
-        while (sent < (size_t)length) {
-            ssize_t n = send(client, response + sent, (size_t)length - sent, MSG_NOSIGNAL);
-            if (n <= 0) { server_failed = 5; break; }
-            sent += (size_t)n;
-        }
+        if (!fixture_send_all(client, response, (size_t)length)) server_failed = 5;
         close(client);
     }
     return NULL;
@@ -206,9 +231,11 @@ static void *operation_server(void *unused) {
         if (client < 0) { server_failed = 2; return NULL; }
         struct timeval timeout = {.tv_sec = 3};
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
         char request[8192] = {0}; size_t used = 0;
         while (used < sizeof(request) - 1 && !strstr(request, "</s:Envelope>")) {
             ssize_t n = recv(client, request + used, sizeof(request) - 1 - used, 0);
+            if (n < 0 && errno == EINTR) continue;
             if (n <= 0) { server_failed = 3; break; }
             used += (size_t)n; request[used] = '\0';
         }
@@ -221,7 +248,7 @@ static void *operation_server(void *unused) {
             !strstr(request, header) || !strstr(request, element) ||
             !strstr(request, destination_element) || !strstr(request, "<Fixture/>")) server_failed = 4;
         const char response[] = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\n<Envelope/>";
-        if (send(client, response, sizeof(response) - 1, MSG_NOSIGNAL) != (ssize_t)(sizeof(response) - 1)) server_failed = 5;
+        if (!fixture_send_all(client, response, sizeof(response) - 1)) server_failed = 5;
         close(client);
     }
     return NULL;
@@ -365,6 +392,23 @@ static void test_relative_subscription_preserves_camera_local_fallback(void) {
     assert_subscription_request_target(true);
 }
 
+static void test_fixture_send_stops_on_zero_progress_or_closed_peer(void) {
+    int pair[2];
+    TEST_ASSERT_EQUAL_INT(0, socketpair(AF_UNIX, SOCK_STREAM, 0, pair));
+    interrupt_send = false;
+    zero_send = true;
+    bool zero_result = fixture_send_all(pair[0], "response", 8);
+    unsigned zero_calls = send_calls;
+    zero_send = false;
+    close(pair[1]);
+    bool closed_result = fixture_send_all(pair[0], "response", 8);
+    close(pair[0]);
+    TEST_ASSERT_FALSE(zero_result);
+    TEST_ASSERT_EQUAL_UINT(1, zero_calls);
+    TEST_ASSERT_FALSE(closed_result);
+    TEST_ASSERT_EQUAL_UINT(2, send_calls);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_every_operation_preserves_action_headers_and_transport_destination);
@@ -378,5 +422,6 @@ int main(void) {
     RUN_TEST(test_rejected_subscription_never_contacts_target_or_legacy_fallback);
     RUN_TEST(test_same_origin_subscription_keeps_full_request_target);
     RUN_TEST(test_relative_subscription_preserves_camera_local_fallback);
+    RUN_TEST(test_fixture_send_stops_on_zero_progress_or_closed_peer);
     return UNITY_END();
 }
