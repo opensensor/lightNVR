@@ -617,6 +617,8 @@ sudo systemctl start lightnvr
 
 #### Using Docker Compose
 
+The default Compose file uses the published image:
+
 ```bash
 # Navigate to the repository
 cd lightNVR
@@ -626,6 +628,16 @@ git pull
 
 # Pull latest image and restart
 docker compose pull
+docker compose up -d
+```
+
+If you enabled the commented `build:` configuration instead of `image:`, update
+the source and submodules, then rebuild before recreating the service:
+
+```bash
+git pull
+git submodule update --init --recursive
+docker compose build --pull
 docker compose up -d
 ```
 
@@ -667,8 +679,9 @@ sudo systemctl disable lightnvr
 sudo rm /etc/systemd/system/lightnvr.service
 sudo systemctl daemon-reload
 
-# Remove the binary (default install path)
-sudo rm /usr/local/bin/lightnvr
+# Remove the binaries and migrations (default install paths)
+sudo rm -f /usr/local/bin/lightnvr /usr/local/bin/lightnvr-ffmpeg-guard
+sudo rm -rf /usr/local/share/lightnvr/migrations
 
 # Remove configuration and data (optional, default paths)
 sudo rm -rf /etc/lightnvr
@@ -676,7 +689,12 @@ sudo rm -rf /var/lib/lightnvr
 sudo rm -rf /var/log/lightnvr
 ```
 
-**Note:** If you installed with a custom `--prefix` or custom config/data/log directories, replace the paths above with the exact paths you chose during installation.
+**Note:** If you installed with a custom `--prefix` or custom config/data/log
+directories, replace the paths above with the exact paths you chose during
+installation. The optional data removal also removes the installed web assets
+under the data directory. Separately installed go2rtc binaries and shared SOD
+libraries may have other consumers; remove them only if no other installation
+uses them.
 
 ### Uninstalling Docker Installation
 

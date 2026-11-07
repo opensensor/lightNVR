@@ -7968,9 +7968,7 @@ function validate206(data, {instancePath: instancePath = "", parentData: parentD
     }
   }
   var _valid0 = _errs2 === errors;
-  if (valid0 = valid0 || _valid0, _valid0) var props0 = {
-    retention_days: !0
-  };
+  valid0 = valid0 || _valid0;
   let _errs5 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.allowed_decision_modes) {
     let err4 = {
@@ -8063,8 +8061,7 @@ function validate206(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err10), errors++;
     }
   }
-  if (_valid0 = _errs5 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).allowed_decision_modes = !0),
-  !valid0) {
+  if (_valid0 = _errs5 === errors, valid0 = valid0 || _valid0, !valid0) {
     let err11 = {
       instancePath: instancePath,
       schemaPath: "#/anyOf",
@@ -12445,9 +12442,7 @@ function validate426(data, {instancePath: instancePath = "", parentData: parentD
     }
   }
   var _valid0 = _errs2 === errors;
-  if (valid0 = valid0 || _valid0, _valid0) var props0 = {
-    mode: !0
-  };
+  valid0 = valid0 || _valid0;
   let _errs5 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.daynight) {
     let err4 = {
@@ -12495,7 +12490,7 @@ function validate426(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err7), errors++;
     }
   }
-  _valid0 = _errs5 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).daynight = !0);
+  _valid0 = _errs5 === errors, valid0 = valid0 || _valid0;
   let _errs8 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.ir_cut_filter) {
     let err8 = {
@@ -12543,7 +12538,7 @@ function validate426(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err11), errors++;
     }
   }
-  _valid0 = _errs8 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).ir_cut_filter = !0);
+  _valid0 = _errs8 === errors, valid0 = valid0 || _valid0;
   let _errs11 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.ircut) {
     let err12 = {
@@ -12591,8 +12586,7 @@ function validate426(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err15), errors++;
     }
   }
-  if (_valid0 = _errs11 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).ircut = !0),
-  !valid0) {
+  if (_valid0 = _errs11 === errors, valid0 = valid0 || _valid0, !valid0) {
     let err16 = {
       instancePath: instancePath,
       schemaPath: "#/anyOf",
@@ -14185,9 +14179,9 @@ function validate290(data, {instancePath: instancePath = "", parentData: parentD
     };
     vErrors.push(err10), errors++;
   }
-  var _valid0;
-  if ((_valid0 = _errs6 === errors) && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid0 = !0,
-  passing0 = 1, !0 !== props0 && (props0 = !0)), !valid0) {
+  var _valid1 = _errs6 === errors;
+  if (_valid1 && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid0 = !0,
+  passing0 = 1, props0 = !0), !valid0) {
     let err11 = {
       instancePath: instancePath,
       schemaPath: "#/oneOf",
@@ -29016,9 +29010,9 @@ function validate368(data, {instancePath: instancePath = "", parentData: parentD
     };
     vErrors.push(err12), errors++;
   }
-  var _valid0;
-  if ((_valid0 = _errs5 === errors) && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid0 = !0,
-  passing0 = 1, !0 !== props0 && (props0 = !0)), !valid0) {
+  var _valid1 = _errs5 === errors;
+  if (_valid1 && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid0 = !0,
+  passing0 = 1, props0 = !0), !valid0) {
     let err13 = {
       instancePath: instancePath,
       schemaPath: "#/oneOf",
@@ -34930,10 +34924,7 @@ function validate385(data, {instancePath: instancePath = "", parentData: parentD
                                                     };
                                                     vErrors.push(err27), errors++;
                                                   }
-                                                  if (_errs82 === errors) {
-                                                    valid36 = !0, passing0 = 0;
-                                                    var props1 = !0;
-                                                  }
+                                                  _errs82 === errors && (valid36 = !0, passing0 = 0);
                                                   let _errs88 = errors;
                                                   if (errors === _errs88) if (data31 && "object" == typeof data31 && !Array.isArray(data31)) if (void 0 === data31.status) {
                                                     let err28 = {
@@ -34995,9 +34986,9 @@ function validate385(data, {instancePath: instancePath = "", parentData: parentD
                                                     };
                                                     vErrors.push(err32), errors++;
                                                   }
-                                                  var _valid3;
-                                                  if ((_valid3 = _errs88 === errors) && valid36 ? (valid36 = !1, passing0 = [ passing0, 1 ]) : _valid3 && (valid36 = !0,
-                                                  passing0 = 1, !0 !== props1 && (props1 = !0)), !valid36) {
+                                                  var _valid4 = _errs88 === errors;
+                                                  if (_valid4 && valid36 ? (valid36 = !1, passing0 = [ passing0, 1 ]) : _valid4 && (valid36 = !0,
+                                                  passing0 = 1), !valid36) {
                                                     let err33 = {
                                                       instancePath: instancePath + "/results/" + i0 + "/thumbnail",
                                                       schemaPath: "#/$defs/EvidenceSearchResult/properties/thumbnail/oneOf",
@@ -35074,8 +35065,8 @@ function validate385(data, {instancePath: instancePath = "", parentData: parentD
                                                             };
                                                             vErrors.push(err34), errors++;
                                                           }
-                                                          var _valid4 = _errs100 === errors;
-                                                          valid43 = valid43 || _valid4;
+                                                          var _valid5 = _errs100 === errors;
+                                                          valid43 = valid43 || _valid5;
                                                           let _errs102 = errors;
                                                           if (null !== data37) {
                                                             let err35 = {
@@ -35088,7 +35079,7 @@ function validate385(data, {instancePath: instancePath = "", parentData: parentD
                                                             };
                                                             vErrors.push(err35), errors++;
                                                           }
-                                                          if (_valid4 = _errs102 === errors, valid43 = valid43 || _valid4, !valid43) {
+                                                          if (_valid5 = _errs102 === errors, valid43 = valid43 || _valid5, !valid43) {
                                                             let err36 = {
                                                               instancePath: instancePath + "/results/" + i0 + "/recording/protected",
                                                               schemaPath: "#/$defs/EvidenceSearchResult/properties/recording/properties/protected/anyOf",
@@ -36793,10 +36784,7 @@ function validate385(data, {instancePath: instancePath = "", parentData: parentD
                                           };
                                           vErrors.push(err40), errors++;
                                         }
-                                        if (_errs252 === errors) {
-                                          valid111 = !0, passing1 = 0;
-                                          var props2 = !0;
-                                        }
+                                        _errs252 === errors && (valid111 = !0, passing1 = 0);
                                         let _errs256 = errors;
                                         if (errors === _errs256) if (data104 && "object" == typeof data104 && !Array.isArray(data104)) if (void 0 === data104.requested) {
                                           let err41 = {
@@ -37339,9 +37327,9 @@ function validate385(data, {instancePath: instancePath = "", parentData: parentD
                                           };
                                           vErrors.push(err82), errors++;
                                         }
-                                        var _valid5;
-                                        if ((_valid5 = _errs256 === errors) && valid111 ? (valid111 = !1, passing1 = [ passing1, 1 ]) : _valid5 && (valid111 = !0,
-                                        passing1 = 1, !0 !== props2 && (props2 = !0)), !valid111) {
+                                        var _valid7 = _errs256 === errors;
+                                        if (_valid7 && valid111 ? (valid111 = !1, passing1 = [ passing1, 1 ]) : _valid7 && (valid111 = !0,
+                                        passing1 = 1), !valid111) {
                                           let err83 = {
                                             instancePath: instancePath + "/coverage/spatial_metadata",
                                             schemaPath: "#/properties/coverage/properties/spatial_metadata/oneOf",
@@ -39161,8 +39149,8 @@ function validate386(data, {instancePath: instancePath = "", parentData: parentD
                   };
                   vErrors.push(err104), errors++;
                 }
-                var _valid2 = _errs90 === errors;
-                valid44 = valid44 || _valid2;
+                var _valid3 = _errs90 === errors;
+                valid44 = valid44 || _valid3;
                 let _errs92 = errors;
                 if (null !== data40) {
                   let err105 = {
@@ -39175,7 +39163,7 @@ function validate386(data, {instancePath: instancePath = "", parentData: parentD
                   };
                   vErrors.push(err105), errors++;
                 }
-                if (_valid2 = _errs92 === errors, valid44 = valid44 || _valid2, valid44) errors = _errs89,
+                if (_valid3 = _errs92 === errors, valid44 = valid44 || _valid3, valid44) errors = _errs89,
                 vErrors.length = _errs89; else {
                   let err106 = {
                     instancePath: instancePath + "/cursor",
@@ -40133,9 +40121,9 @@ function validate386(data, {instancePath: instancePath = "", parentData: parentD
     };
     vErrors.push(err177), errors++;
   }
-  var _valid0;
-  if ((_valid0 = _errs78 === errors) && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid0 = !0,
-  passing0 = 1, !0 !== props0 && (props0 = !0)), !valid0) {
+  var _valid2 = _errs78 === errors;
+  if (_valid2 && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid2 && (valid0 = !0,
+  passing0 = 1, props0 = !0), !valid0) {
     let err178 = {
       instancePath: instancePath,
       schemaPath: "#/oneOf",
@@ -41018,10 +41006,7 @@ function validate384(data, {instancePath: instancePath = "", parentData: parentD
                                 };
                                 vErrors.push(err27), errors++;
                               }
-                              if (_errs70 === errors) {
-                                valid30 = !0, passing0 = 0;
-                                var props1 = !0;
-                              }
+                              _errs70 === errors && (valid30 = !0, passing0 = 0);
                               let _errs76 = errors;
                               if (errors === _errs76) if (data26 && "object" == typeof data26 && !Array.isArray(data26)) if (void 0 === data26.status) {
                                 let err28 = {
@@ -41083,9 +41068,9 @@ function validate384(data, {instancePath: instancePath = "", parentData: parentD
                                 };
                                 vErrors.push(err32), errors++;
                               }
-                              var _valid3;
-                              if ((_valid3 = _errs76 === errors) && valid30 ? (valid30 = !1, passing0 = [ passing0, 1 ]) : _valid3 && (valid30 = !0,
-                              passing0 = 1, !0 !== props1 && (props1 = !0)), !valid30) {
+                              var _valid4 = _errs76 === errors;
+                              if (_valid4 && valid30 ? (valid30 = !1, passing0 = [ passing0, 1 ]) : _valid4 && (valid30 = !0,
+                              passing0 = 1), !valid30) {
                                 let err33 = {
                                   instancePath: instancePath + "/thumbnail",
                                   schemaPath: "#/properties/thumbnail/oneOf",
@@ -41162,8 +41147,8 @@ function validate384(data, {instancePath: instancePath = "", parentData: parentD
                                         };
                                         vErrors.push(err34), errors++;
                                       }
-                                      var _valid4 = _errs88 === errors;
-                                      valid37 = valid37 || _valid4;
+                                      var _valid5 = _errs88 === errors;
+                                      valid37 = valid37 || _valid5;
                                       let _errs90 = errors;
                                       if (null !== data32) {
                                         let err35 = {
@@ -41176,7 +41161,7 @@ function validate384(data, {instancePath: instancePath = "", parentData: parentD
                                         };
                                         vErrors.push(err35), errors++;
                                       }
-                                      if (_valid4 = _errs90 === errors, valid37 = valid37 || _valid4, !valid37) {
+                                      if (_valid5 = _errs90 === errors, valid37 = valid37 || _valid5, !valid37) {
                                         let err36 = {
                                           instancePath: instancePath + "/recording/protected",
                                           schemaPath: "#/properties/recording/properties/protected/anyOf",
@@ -41911,9 +41896,9 @@ function validate372(data, {instancePath: instancePath = "", parentData: parentD
     };
     vErrors.push(err46), errors++;
   }
-  var _valid0;
-  if ((_valid0 = _errs21 === errors) && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid0 = !0,
-  passing0 = 1, !0 !== props0 && (props0 = !0)), !valid0) {
+  var _valid1 = _errs21 === errors;
+  if (_valid1 && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid0 = !0,
+  passing0 = 1, props0 = !0), !valid0) {
     let err47 = {
       instancePath: instancePath,
       schemaPath: "#/oneOf",
@@ -42253,10 +42238,7 @@ function validate376(data, {instancePath: instancePath = "", parentData: parentD
           };
           vErrors.push(err21), errors++;
         }
-        if (_errs7 === errors) {
-          valid3 = !0, passing0 = 0;
-          var props0 = !0;
-        }
+        _errs7 === errors && (valid3 = !0, passing0 = 0);
         let _errs27 = errors;
         if (errors === _errs27) if (data0 && "object" == typeof data0 && !Array.isArray(data0)) if (void 0 === data0.id) {
           let err22 = {
@@ -42583,9 +42565,9 @@ function validate376(data, {instancePath: instancePath = "", parentData: parentD
           };
           vErrors.push(err46), errors++;
         }
-        var _valid1;
-        if ((_valid1 = _errs27 === errors) && valid3 ? (valid3 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid3 = !0,
-        passing0 = 1, !0 !== props0 && (props0 = !0)), valid3) errors = _errs6, vErrors.length = _errs6; else {
+        var _valid2 = _errs27 === errors;
+        if (_valid2 && valid3 ? (valid3 = !1, passing0 = [ passing0, 1 ]) : _valid2 && (valid3 = !0,
+        passing0 = 1), valid3) errors = _errs6, vErrors.length = _errs6; else {
           let err47 = {
             instancePath: instancePath + "/segment",
             schemaPath: "#/$defs/EvidenceSegment/oneOf",
@@ -43468,10 +43450,7 @@ function validate382(data, {instancePath: instancePath = "", parentData: parentD
               };
               vErrors.push(err28), errors++;
             }
-            if (_errs19 === errors) {
-              valid8 = !0, passing1 = 0;
-              var props1 = !0;
-            }
+            _errs19 === errors && (valid8 = !0, passing1 = 0);
             let _errs25 = errors;
             if (errors === _errs25) if (data6 && "object" == typeof data6 && !Array.isArray(data6)) if (void 0 === data6.status) {
               let err29 = {
@@ -43533,9 +43512,9 @@ function validate382(data, {instancePath: instancePath = "", parentData: parentD
               };
               vErrors.push(err33), errors++;
             }
-            var _valid1;
-            if ((_valid1 = _errs25 === errors) && valid8 ? (valid8 = !1, passing1 = [ passing1, 1 ]) : _valid1 && (valid8 = !0,
-            passing1 = 1, !0 !== props1 && (props1 = !0)), valid8) errors = _errs18, vErrors.length = _errs18; else {
+            var _valid3 = _errs25 === errors;
+            if (_valid3 && valid8 ? (valid8 = !1, passing1 = [ passing1, 1 ]) : _valid3 && (valid8 = !0,
+            passing1 = 1), valid8) errors = _errs18, vErrors.length = _errs18; else {
               let err34 = {
                 instancePath: instancePath + "/thumbnail",
                 schemaPath: "#/oneOf/1/properties/thumbnail/oneOf",
@@ -43651,9 +43630,9 @@ function validate382(data, {instancePath: instancePath = "", parentData: parentD
     };
     vErrors.push(err41), errors++;
   }
-  var _valid0;
-  if ((_valid0 = _errs11 === errors) && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid0 = !0,
-  passing0 = 1, !0 !== props0 && (props0 = !0)), !valid0) {
+  var _valid1 = _errs11 === errors;
+  if (_valid1 && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid0 = !0,
+  passing0 = 1, props0 = !0), !valid0) {
     let err42 = {
       instancePath: instancePath,
       schemaPath: "#/oneOf",
@@ -44059,10 +44038,7 @@ function validate383(data, {instancePath: instancePath = "", parentData: parentD
                           };
                           vErrors.push(err11), errors++;
                         }
-                        if (_errs20 === errors) {
-                          valid9 = !0, passing0 = 0;
-                          var props0 = !0;
-                        }
+                        _errs20 === errors && (valid9 = !0, passing0 = 0);
                         let _errs30 = errors;
                         if (errors === _errs30) if (data7 && "object" == typeof data7 && !Array.isArray(data7)) if (void 0 === data7.timestamp) {
                           let err12 = {
@@ -44268,10 +44244,7 @@ function validate383(data, {instancePath: instancePath = "", parentData: parentD
                                     };
                                     vErrors.push(err28), errors++;
                                   }
-                                  if (_errs38 === errors) {
-                                    valid17 = !0, passing1 = 0;
-                                    var props1 = !0;
-                                  }
+                                  _errs38 === errors && (valid17 = !0, passing1 = 0);
                                   let _errs44 = errors;
                                   if (errors === _errs44) if (data14 && "object" == typeof data14 && !Array.isArray(data14)) if (void 0 === data14.status) {
                                     let err29 = {
@@ -44333,9 +44306,9 @@ function validate383(data, {instancePath: instancePath = "", parentData: parentD
                                     };
                                     vErrors.push(err33), errors++;
                                   }
-                                  var _valid1;
-                                  if ((_valid1 = _errs44 === errors) && valid17 ? (valid17 = !1, passing1 = [ passing1, 1 ]) : _valid1 && (valid17 = !0,
-                                  passing1 = 1, !0 !== props1 && (props1 = !0)), valid17) errors = _errs37, vErrors.length = _errs37; else {
+                                  var _valid3 = _errs44 === errors;
+                                  if (_valid3 && valid17 ? (valid17 = !1, passing1 = [ passing1, 1 ]) : _valid3 && (valid17 = !0,
+                                  passing1 = 1), valid17) errors = _errs37, vErrors.length = _errs37; else {
                                     let err34 = {
                                       instancePath: instancePath + "/samples/" + i0 + "/thumbnail",
                                       schemaPath: "#/$defs/EvidenceThumbnailSample/oneOf/1/properties/thumbnail/oneOf",
@@ -44451,9 +44424,9 @@ function validate383(data, {instancePath: instancePath = "", parentData: parentD
                           };
                           vErrors.push(err41), errors++;
                         }
-                        var _valid0;
-                        if ((_valid0 = _errs30 === errors) && valid9 ? (valid9 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid9 = !0,
-                        passing0 = 1, !0 !== props0 && (props0 = !0)), !valid9) {
+                        var _valid1 = _errs30 === errors;
+                        if (_valid1 && valid9 ? (valid9 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid9 = !0,
+                        passing0 = 1), !valid9) {
                           let err42 = {
                             instancePath: instancePath + "/samples/" + i0,
                             schemaPath: "#/$defs/EvidenceThumbnailSample/oneOf",
@@ -45302,10 +45275,7 @@ function validate373(data, {instancePath: instancePath = "", parentData: parentD
                                   };
                                   vErrors.push(err21), errors++;
                                 }
-                                if (_errs30 === errors) {
-                                  valid15 = !0, passing0 = 0;
-                                  var props0 = !0;
-                                }
+                                _errs30 === errors && (valid15 = !0, passing0 = 0);
                                 let _errs50 = errors;
                                 if (errors === _errs50) if (data13 && "object" == typeof data13 && !Array.isArray(data13)) if (void 0 === data13.id) {
                                   let err22 = {
@@ -45632,9 +45602,9 @@ function validate373(data, {instancePath: instancePath = "", parentData: parentD
                                   };
                                   vErrors.push(err46), errors++;
                                 }
-                                var _valid0;
-                                if ((_valid0 = _errs50 === errors) && valid15 ? (valid15 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid15 = !0,
-                                passing0 = 1, !0 !== props0 && (props0 = !0)), !valid15) {
+                                var _valid1 = _errs50 === errors;
+                                if (_valid1 && valid15 ? (valid15 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid15 = !0,
+                                passing0 = 1), !valid15) {
                                   let err47 = {
                                     instancePath: instancePath + "/segments/" + i0,
                                     schemaPath: "#/$defs/EvidenceSegment/oneOf",
@@ -53844,10 +53814,7 @@ function validate244(data, {instancePath: instancePath = "", parentData: parentD
                   };
                   vErrors.push(err29), errors++;
                 }
-                if (_valid0 = _errs8 === errors) {
-                  valid3 = !0, passing0 = 0;
-                  var props0 = !0;
-                }
+                _errs8 === errors && (valid3 = !0, passing0 = 0);
                 let _errs30 = errors;
                 if (errors == errors) if (data2 && "object" == typeof data2 && !Array.isArray(data2)) if (void 0 === data2.id) {
                   let err30 = {
@@ -54192,8 +54159,9 @@ function validate244(data, {instancePath: instancePath = "", parentData: parentD
                   };
                   vErrors.push(err56), errors++;
                 }
-                if ((_valid0 = _errs30 === errors) && valid3) valid3 = !1, passing0 = [ passing0, 1 ]; else {
-                  _valid0 && (valid3 = !0, passing0 = 1, !0 !== props0 && (props0 = !0));
+                var _valid1 = _errs30 === errors;
+                if (_valid1 && valid3) valid3 = !1, passing0 = [ passing0, 1 ]; else {
+                  _valid1 && (valid3 = !0, passing0 = 1);
                   let _errs50 = errors;
                   if (errors == errors) if (data2 && "object" == typeof data2 && !Array.isArray(data2)) if (void 0 === data2.id) {
                     let err57 = {
@@ -54538,8 +54506,9 @@ function validate244(data, {instancePath: instancePath = "", parentData: parentD
                     };
                     vErrors.push(err83), errors++;
                   }
-                  if ((_valid0 = _errs50 === errors) && valid3) valid3 = !1, passing0 = [ passing0, 2 ]; else {
-                    _valid0 && (valid3 = !0, passing0 = 2, !0 !== props0 && (props0 = !0));
+                  var _valid2 = _errs50 === errors;
+                  if (_valid2 && valid3) valid3 = !1, passing0 = [ passing0, 2 ]; else {
+                    _valid2 && (valid3 = !0, passing0 = 2);
                     let _errs70 = errors;
                     if (errors == errors) if (data2 && "object" == typeof data2 && !Array.isArray(data2)) if (void 0 === data2.id) {
                       let err84 = {
@@ -54857,9 +54826,9 @@ function validate244(data, {instancePath: instancePath = "", parentData: parentD
                       };
                       vErrors.push(err108), errors++;
                     }
-                    var _valid0;
-                    (_valid0 = _errs70 === errors) && valid3 ? (valid3 = !1, passing0 = [ passing0, 3 ]) : _valid0 && (valid3 = !0,
-                    passing0 = 3, !0 !== props0 && (props0 = !0));
+                    var _valid3 = _errs70 === errors;
+                    _valid3 && valid3 ? (valid3 = !1, passing0 = [ passing0, 3 ]) : _valid3 && (valid3 = !0,
+                    passing0 = 3);
                   }
                 }
                 if (!valid3) {
@@ -62353,8 +62322,8 @@ function validate413(data, {instancePath: instancePath = "", parentData: parentD
     };
     vErrors.push(err11), errors++;
   }
-  var _valid0;
-  if ((_valid0 = _errs3 === errors) && valid0) valid0 = !1, passing0 = [ passing0, 1 ]; else if (_valid0) {
+  var _valid1 = _errs3 === errors;
+  if (_valid1 && valid0) valid0 = !1, passing0 = [ passing0, 1 ]; else if (_valid1) {
     valid0 = !0, passing0 = 1;
     var props0 = !0;
   }
@@ -63743,9 +63712,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
     }
   }
   var _valid0 = _errs2 === errors;
-  if (valid0 = valid0 || _valid0, _valid0) var props0 = {
-    brightness: !0
-  };
+  valid0 = valid0 || _valid0;
   let _errs5 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.color_saturation) {
     let err4 = {
@@ -63795,7 +63762,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err7), errors++;
     }
   }
-  _valid0 = _errs5 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).color_saturation = !0);
+  _valid0 = _errs5 === errors, valid0 = valid0 || _valid0;
   let _errs8 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.contrast) {
     let err8 = {
@@ -63845,7 +63812,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err11), errors++;
     }
   }
-  _valid0 = _errs8 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).contrast = !0);
+  _valid0 = _errs8 === errors, valid0 = valid0 || _valid0;
   let _errs11 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.sharpness) {
     let err12 = {
@@ -63895,7 +63862,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err15), errors++;
     }
   }
-  _valid0 = _errs11 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).sharpness = !0);
+  _valid0 = _errs11 === errors, valid0 = valid0 || _valid0;
   let _errs14 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.noise_reduction) {
     let err16 = {
@@ -63945,7 +63912,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err19), errors++;
     }
   }
-  _valid0 = _errs14 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).noise_reduction = !0);
+  _valid0 = _errs14 === errors, valid0 = valid0 || _valid0;
   let _errs17 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.saturation) {
     let err20 = {
@@ -63995,7 +63962,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err23), errors++;
     }
   }
-  _valid0 = _errs17 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).saturation = !0);
+  _valid0 = _errs17 === errors, valid0 = valid0 || _valid0;
   let _errs20 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.backlight_compensation) {
     let err24 = {
@@ -64158,8 +64125,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       };
       vErrors.push(err36), errors++;
     }
-    var _valid1;
-    if ((_valid1 = _errs26 === errors) && valid9 ? (valid9 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid9 = !0,
+    var _valid2 = _errs26 === errors;
+    if (_valid2 && valid9 ? (valid9 = !1, passing0 = [ passing0, 1 ]) : _valid2 && (valid9 = !0,
     passing0 = 1), valid9) errors = _errs23, vErrors.length = _errs23; else {
       let err37 = {
         instancePath: instancePath + "/backlight_compensation",
@@ -64172,7 +64139,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err37), errors++;
     }
   }
-  _valid0 = _errs20 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).backlight_compensation = !0);
+  _valid0 = _errs20 === errors, valid0 = valid0 || _valid0;
   let _errs33 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.wide_dynamic_range) {
     let err38 = {
@@ -64335,8 +64302,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       };
       vErrors.push(err50), errors++;
     }
-    var _valid2;
-    if ((_valid2 = _errs39 === errors) && valid14 ? (valid14 = !1, passing1 = [ passing1, 1 ]) : _valid2 && (valid14 = !0,
+    var _valid4 = _errs39 === errors;
+    if (_valid4 && valid14 ? (valid14 = !1, passing1 = [ passing1, 1 ]) : _valid4 && (valid14 = !0,
     passing1 = 1), valid14) errors = _errs36, vErrors.length = _errs36; else {
       let err51 = {
         instancePath: instancePath + "/wide_dynamic_range",
@@ -64349,7 +64316,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err51), errors++;
     }
   }
-  _valid0 = _errs33 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).wide_dynamic_range = !0);
+  _valid0 = _errs33 === errors, valid0 = valid0 || _valid0;
   let _errs46 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.tone_compensation) {
     let err52 = {
@@ -64512,8 +64479,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       };
       vErrors.push(err64), errors++;
     }
-    var _valid3;
-    if ((_valid3 = _errs52 === errors) && valid19 ? (valid19 = !1, passing2 = [ passing2, 1 ]) : _valid3 && (valid19 = !0,
+    var _valid6 = _errs52 === errors;
+    if (_valid6 && valid19 ? (valid19 = !1, passing2 = [ passing2, 1 ]) : _valid6 && (valid19 = !0,
     passing2 = 1), valid19) errors = _errs49, vErrors.length = _errs49; else {
       let err65 = {
         instancePath: instancePath + "/tone_compensation",
@@ -64526,7 +64493,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err65), errors++;
     }
   }
-  _valid0 = _errs46 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).tone_compensation = !0);
+  _valid0 = _errs46 === errors, valid0 = valid0 || _valid0;
   let _errs59 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.defogging) {
     let err66 = {
@@ -64689,8 +64656,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       };
       vErrors.push(err78), errors++;
     }
-    var _valid4;
-    if ((_valid4 = _errs65 === errors) && valid24 ? (valid24 = !1, passing3 = [ passing3, 1 ]) : _valid4 && (valid24 = !0,
+    var _valid8 = _errs65 === errors;
+    if (_valid8 && valid24 ? (valid24 = !1, passing3 = [ passing3, 1 ]) : _valid8 && (valid24 = !0,
     passing3 = 1), valid24) errors = _errs62, vErrors.length = _errs62; else {
       let err79 = {
         instancePath: instancePath + "/defogging",
@@ -64703,7 +64670,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err79), errors++;
     }
   }
-  _valid0 = _errs59 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).defogging = !0);
+  _valid0 = _errs59 === errors, valid0 = valid0 || _valid0;
   let _errs72 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.backlight) {
     let err80 = {
@@ -64866,8 +64833,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       };
       vErrors.push(err92), errors++;
     }
-    var _valid5;
-    if ((_valid5 = _errs78 === errors) && valid29 ? (valid29 = !1, passing4 = [ passing4, 1 ]) : _valid5 && (valid29 = !0,
+    var _valid10 = _errs78 === errors;
+    if (_valid10 && valid29 ? (valid29 = !1, passing4 = [ passing4, 1 ]) : _valid10 && (valid29 = !0,
     passing4 = 1), valid29) errors = _errs75, vErrors.length = _errs75; else {
       let err93 = {
         instancePath: instancePath + "/backlight",
@@ -64880,7 +64847,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err93), errors++;
     }
   }
-  _valid0 = _errs72 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).backlight = !0);
+  _valid0 = _errs72 === errors, valid0 = valid0 || _valid0;
   let _errs85 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.wdr) {
     let err94 = {
@@ -65043,8 +65010,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       };
       vErrors.push(err106), errors++;
     }
-    var _valid6;
-    if ((_valid6 = _errs91 === errors) && valid34 ? (valid34 = !1, passing5 = [ passing5, 1 ]) : _valid6 && (valid34 = !0,
+    var _valid12 = _errs91 === errors;
+    if (_valid12 && valid34 ? (valid34 = !1, passing5 = [ passing5, 1 ]) : _valid12 && (valid34 = !0,
     passing5 = 1), valid34) errors = _errs88, vErrors.length = _errs88; else {
       let err107 = {
         instancePath: instancePath + "/wdr",
@@ -65057,7 +65024,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err107), errors++;
     }
   }
-  _valid0 = _errs85 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).wdr = !0);
+  _valid0 = _errs85 === errors, valid0 = valid0 || _valid0;
   let _errs98 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.tone) {
     let err108 = {
@@ -65220,8 +65187,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       };
       vErrors.push(err120), errors++;
     }
-    var _valid7;
-    if ((_valid7 = _errs104 === errors) && valid39 ? (valid39 = !1, passing6 = [ passing6, 1 ]) : _valid7 && (valid39 = !0,
+    var _valid14 = _errs104 === errors;
+    if (_valid14 && valid39 ? (valid39 = !1, passing6 = [ passing6, 1 ]) : _valid14 && (valid39 = !0,
     passing6 = 1), valid39) errors = _errs101, vErrors.length = _errs101; else {
       let err121 = {
         instancePath: instancePath + "/tone",
@@ -65234,7 +65201,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err121), errors++;
     }
   }
-  _valid0 = _errs98 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).tone = !0);
+  _valid0 = _errs98 === errors, valid0 = valid0 || _valid0;
   let _errs111 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.defog) {
     let err122 = {
@@ -65397,8 +65364,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       };
       vErrors.push(err134), errors++;
     }
-    var _valid8;
-    if ((_valid8 = _errs117 === errors) && valid44 ? (valid44 = !1, passing7 = [ passing7, 1 ]) : _valid8 && (valid44 = !0,
+    var _valid16 = _errs117 === errors;
+    if (_valid16 && valid44 ? (valid44 = !1, passing7 = [ passing7, 1 ]) : _valid16 && (valid44 = !0,
     passing7 = 1), valid44) errors = _errs114, vErrors.length = _errs114; else {
       let err135 = {
         instancePath: instancePath + "/defog",
@@ -65411,7 +65378,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err135), errors++;
     }
   }
-  _valid0 = _errs111 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).defog = !0);
+  _valid0 = _errs111 === errors, valid0 = valid0 || _valid0;
   let _errs124 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.ir_cut_filter) {
     let err136 = {
@@ -65459,7 +65426,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err139), errors++;
     }
   }
-  _valid0 = _errs124 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).ir_cut_filter = !0);
+  _valid0 = _errs124 === errors, valid0 = valid0 || _valid0;
   let _errs127 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.ircut) {
     let err140 = {
@@ -65507,8 +65474,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err143), errors++;
     }
   }
-  if (_valid0 = _errs127 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).ircut = !0),
-  !valid0) {
+  if (_valid0 = _errs127 === errors, valid0 = valid0 || _valid0, !valid0) {
     let err144 = {
       instancePath: instancePath,
       schemaPath: "#/anyOf",
@@ -65894,8 +65860,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
                         };
                         vErrors.push(err156), errors++;
                       }
-                      var _valid9;
-                      if ((_valid9 = _errs148 === errors) && valid57 ? (valid57 = !1, passing8 = [ passing8, 1 ]) : _valid9 && (valid57 = !0,
+                      var _valid18 = _errs148 === errors;
+                      if (_valid18 && valid57 ? (valid57 = !1, passing8 = [ passing8, 1 ]) : _valid18 && (valid57 = !0,
                       passing8 = 1), !valid57) {
                         let err157 = {
                           instancePath: instancePath + "/backlight_compensation",
@@ -66062,8 +66028,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
                           };
                           vErrors.push(err169), errors++;
                         }
-                        var _valid10;
-                        if ((_valid10 = _errs160 === errors) && valid62 ? (valid62 = !1, passing9 = [ passing9, 1 ]) : _valid10 && (valid62 = !0,
+                        var _valid20 = _errs160 === errors;
+                        if (_valid20 && valid62 ? (valid62 = !1, passing9 = [ passing9, 1 ]) : _valid20 && (valid62 = !0,
                         passing9 = 1), !valid62) {
                           let err170 = {
                             instancePath: instancePath + "/wide_dynamic_range",
@@ -66230,8 +66196,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
                             };
                             vErrors.push(err182), errors++;
                           }
-                          var _valid11;
-                          if ((_valid11 = _errs172 === errors) && valid67 ? (valid67 = !1, passing10 = [ passing10, 1 ]) : _valid11 && (valid67 = !0,
+                          var _valid22 = _errs172 === errors;
+                          if (_valid22 && valid67 ? (valid67 = !1, passing10 = [ passing10, 1 ]) : _valid22 && (valid67 = !0,
                           passing10 = 1), !valid67) {
                             let err183 = {
                               instancePath: instancePath + "/tone_compensation",
@@ -66398,8 +66364,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
                               };
                               vErrors.push(err195), errors++;
                             }
-                            var _valid12;
-                            if ((_valid12 = _errs184 === errors) && valid72 ? (valid72 = !1, passing11 = [ passing11, 1 ]) : _valid12 && (valid72 = !0,
+                            var _valid24 = _errs184 === errors;
+                            if (_valid24 && valid72 ? (valid72 = !1, passing11 = [ passing11, 1 ]) : _valid24 && (valid72 = !0,
                             passing11 = 1), !valid72) {
                               let err196 = {
                                 instancePath: instancePath + "/defogging",
@@ -66566,8 +66532,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
                                 };
                                 vErrors.push(err208), errors++;
                               }
-                              var _valid13;
-                              if ((_valid13 = _errs196 === errors) && valid77 ? (valid77 = !1, passing12 = [ passing12, 1 ]) : _valid13 && (valid77 = !0,
+                              var _valid26 = _errs196 === errors;
+                              if (_valid26 && valid77 ? (valid77 = !1, passing12 = [ passing12, 1 ]) : _valid26 && (valid77 = !0,
                               passing12 = 1), !valid77) {
                                 let err209 = {
                                   instancePath: instancePath + "/backlight",
@@ -66734,8 +66700,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
                                   };
                                   vErrors.push(err221), errors++;
                                 }
-                                var _valid14;
-                                if ((_valid14 = _errs208 === errors) && valid82 ? (valid82 = !1, passing13 = [ passing13, 1 ]) : _valid14 && (valid82 = !0,
+                                var _valid28 = _errs208 === errors;
+                                if (_valid28 && valid82 ? (valid82 = !1, passing13 = [ passing13, 1 ]) : _valid28 && (valid82 = !0,
                                 passing13 = 1), !valid82) {
                                   let err222 = {
                                     instancePath: instancePath + "/wdr",
@@ -66902,8 +66868,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
                                     };
                                     vErrors.push(err234), errors++;
                                   }
-                                  var _valid15;
-                                  if ((_valid15 = _errs220 === errors) && valid87 ? (valid87 = !1, passing14 = [ passing14, 1 ]) : _valid15 && (valid87 = !0,
+                                  var _valid30 = _errs220 === errors;
+                                  if (_valid30 && valid87 ? (valid87 = !1, passing14 = [ passing14, 1 ]) : _valid30 && (valid87 = !0,
                                   passing14 = 1), !valid87) {
                                     let err235 = {
                                       instancePath: instancePath + "/tone",
@@ -67070,8 +67036,8 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
                                       };
                                       vErrors.push(err247), errors++;
                                     }
-                                    var _valid16;
-                                    if ((_valid16 = _errs232 === errors) && valid92 ? (valid92 = !1, passing15 = [ passing15, 1 ]) : _valid16 && (valid92 = !0,
+                                    var _valid32 = _errs232 === errors;
+                                    if (_valid32 && valid92 ? (valid92 = !1, passing15 = [ passing15, 1 ]) : _valid32 && (valid92 = !0,
                                     passing15 = 1), !valid92) {
                                       let err248 = {
                                         instancePath: instancePath + "/defog",
@@ -71989,8 +71955,8 @@ function validate306(data, {instancePath: instancePath = "", parentData: parentD
                             };
                             vErrors.push(err9), errors++;
                           }
-                          var _valid0;
-                          if ((_valid0 = _errs18 === errors) && valid7 ? (valid7 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid7 = !0,
+                          var _valid1 = _errs18 === errors;
+                          if (_valid1 && valid7 ? (valid7 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid7 = !0,
                           passing0 = 1), !valid7) {
                             let err10 = {
                               instancePath: instancePath + "/objects/" + i0,
@@ -88023,9 +87989,7 @@ function validate328(data, {instancePath: instancePath = "", parentData: parentD
     }
   }
   var _valid0 = _errs2 === errors;
-  if (valid0 = valid0 || _valid0, _valid0) var props0 = {
-    primary_target_uuid: !0
-  };
+  valid0 = valid0 || _valid0;
   let _errs6 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.primary_pool_uuid) {
     let err3 = {
@@ -88087,8 +88051,7 @@ function validate328(data, {instancePath: instancePath = "", parentData: parentD
       vErrors.push(err7), errors++;
     }
   }
-  if (_valid0 = _errs6 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).primary_pool_uuid = !0),
-  !valid0) {
+  if (_valid0 = _errs6 === errors, valid0 = valid0 || _valid0, !valid0) {
     let err8 = {
       instancePath: instancePath,
       schemaPath: "#/anyOf",
@@ -89947,10 +89910,7 @@ function validate332(data, {instancePath: instancePath = "", parentData: parentD
     }
   }
   var _valid0 = _errs2 === errors;
-  if (valid0 = valid0 || _valid0, _valid0) var props0 = {
-    uuid: !0,
-    revision: !0
-  };
+  valid0 = valid0 || _valid0;
   let _errs8 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.name) {
     let err7 = {
@@ -90060,8 +90020,7 @@ function validate332(data, {instancePath: instancePath = "", parentData: parentD
       }
     }
   }
-  _valid0 = _errs8 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).name = !0,
-  props0.selector = !0, props0.primary_target_uuid = !0);
+  _valid0 = _errs8 === errors, valid0 = valid0 || _valid0;
   let _errs15 = errors;
   if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.name) {
     let err15 = {
@@ -90195,8 +90154,7 @@ function validate332(data, {instancePath: instancePath = "", parentData: parentD
       }
     }
   }
-  if (_valid0 = _errs15 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && ((props0 = props0 || {}).name = !0,
-  props0.selector = !0, props0.primary_pool_uuid = !0), !valid0) {
+  if (_valid0 = _errs15 === errors, valid0 = valid0 || _valid0, !valid0) {
     let err25 = {
       instancePath: instancePath,
       schemaPath: "#/anyOf",
@@ -102361,9 +102319,9 @@ function validate445(data, {instancePath: instancePath = "", parentData: parentD
     };
     vErrors.push(err19), errors++;
   }
-  var _valid0;
-  if ((_valid0 = _errs17 === errors) && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid0 = !0,
-  passing0 = 1, !0 !== props0 && (props0 = !0)), !valid0) {
+  var _valid1 = _errs17 === errors;
+  if (_valid1 && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid0 = !0,
+  passing0 = 1, props0 = !0), !valid0) {
     let err20 = {
       instancePath: instancePath,
       schemaPath: "#/oneOf",

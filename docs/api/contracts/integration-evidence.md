@@ -3,6 +3,14 @@
 Date: 2026-11-07. Main baseline: `84ed0174`. This receipt describes the
 review stack, not released main or production hardware qualification.
 
+Post-merge checkpoint (2026-11-07): #835–#838 are now merged; main `c9bb7b0b`
+also includes the #839 fixture/documentation correction and #840 mobile viewing
+slice. The validation counts below remain the original stack's local evidence,
+not a fresh run on that merge commit. Main's hosted workflows were queued/pending
+when reviewed; final hosted acceptance is still outstanding. The supporting
+go2rtc #4 remains open, while main already pins its `ba99c7e` commit. See the
+[expansion plan](../../../engineering-api-expansion-plan.md) for current next steps.
+
 ## Review order
 
 1. [Media authority #835](https://github.com/opensensor/lightNVR/pull/835),

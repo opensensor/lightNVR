@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {seedRecordings,recordingIds} from './fixtures/recordings/seed';
 /** Owned local storage fixture; independent policy and filesystem assertions. */
-import {test,expect,admin,viewer,anonymous,wire,ok,token,operationIds,valid,projectedResponse,database,createUser,role,policy,type Server,type Identity} from './permissionCases';
+import {test,expect,admin,viewer,wire,ok,token,operationIds,valid,projectedResponse,database,createUser,role,policy,type Server,type Identity} from './permissionCases';
 const operations=['getStorageHealth','triggerStorageCleanup','getStorageArchive','retryStorageArchive','applyStoragePolicy','listStorageTargets','createStorageTarget','probeStorageTarget','getStorageTarget','updateStorageTarget','deleteStorageTarget','listStorageMigrations','createStorageMigration','cancelStorageMigration','retryStorageMigration','getStorageMigration','listStoragePools','createStoragePool','getStoragePool','updateStoragePool','deleteStoragePool','getStorageCompliance','listStoragePolicies','createStoragePolicy','previewStoragePolicy','getStoragePolicy','updateStoragePolicy','deleteStoragePolicy'];
 test('all storage routes are explicitly covered in administrator discovery',async({server})=>{
  expect(operationIds(await ok(server,'/api/openapi.json')).filter(id=>operations.includes(id))).toEqual([...operations].sort());

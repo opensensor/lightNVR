@@ -75,6 +75,8 @@ test('floor plans enforce revisions and scope and preserve actual background byt
   expect(visible.partially_authorized).toBe(true);
   expect((await wire(server,route,viewer,'PUT',{...payload,revision:plan.revision})).response.status).toBe(403);
   const changed=await accepted(server,route,'PUT',{...payload,name:'Revised',revision:plan.revision},'FloorPlan');
+  expect(changed.revision).toBe(plan.revision+1);
+  expect(changed.name).toBe('Revised');
   expect((await wire(server,route,admin,'DELETE',{revision:plan.revision})).response.status).toBe(409);
   // A valid 1x1 PNG, checked as bytes rather than through a JSON acknowledgement.
   const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=','base64');

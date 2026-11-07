@@ -58,7 +58,7 @@ export async function storageJSON<T=unknown>(url:string,options:EnhancedFetchOpt
  let response:Response;
  try{response=await enhancedFetch(url,{timeout:20000,...options,headers,method,retries:method==='GET'?(options.retries??1):0,cache:'no-store',sensitive:true,credentials:'same-origin',redirect:'error'});}
  catch(error:unknown){
-  if(options.signal?.aborted||(error instanceof Error&&error.name==='AbortError'))throw new DOMException('Request cancelled','AbortError');
+  if (options.signal?.aborted || (error instanceof Error && error.name === 'AbortError'))throw new DOMException('Request cancelled','AbortError');
   const status=typeof error==='object'&&error!==null&&'status'in error&&typeof error.status==='number'?error.status:undefined;
   throw new StorageRequestError(op.id,status,method!=='GET');
  }

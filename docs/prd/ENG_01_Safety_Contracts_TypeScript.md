@@ -2,15 +2,16 @@
 
 **Status**: TS/TSX migration, permission-aware discovery, authentication/MFA,
 recording integrity and fleet reads are merged. The four-workstream follow-up is
-in review: [media authority #835](https://github.com/opensensor/lightNVR/pull/835),
+also merged: [media authority #835](https://github.com/opensensor/lightNVR/pull/835),
 [identity administration #836](https://github.com/opensensor/lightNVR/pull/836),
 [fleet writes #837](https://github.com/opensensor/lightNVR/pull/837), and
 [remaining API families #838](https://github.com/opensensor/lightNVR/pull/838).
 The [integration receipt](../api/contracts/integration-evidence.md) records local
-validation and qualification limits. These review branches are not yet claims
-about released main.
+validation and qualification limits. F13 capacity measurements and F14 extended
+recovery/device qualification remain open; F15 production acceptance depends on
+them. Merged implementation does not establish production qualification.
 **Created**: 2026-10-31
-**Reconciled**: 2026-11-07 against main at `84ed0174` and the current review stack.
+**Reconciled**: 2026-11-07 against main at `c9bb7b0b` after #835–#840.
 **Owner**: LightNVR maintainers; name an owner when starting each implementation slice.
 **Scope**: API contracts, permission-aware discovery, runtime boundary validation,
 focused correctness fixes, operational regression coverage, and measured resource costs.
@@ -20,12 +21,13 @@ The current execution and evidence index is
 The [expansion plan](../../engineering-api-expansion-plan.md) records the family
 roadmap; [the original execution plan](../../engineering-api-contracts-plan.md)
 and [identity plan](../../engineering-identity-contracts-plan.md) retain historical
-receipts. Main at the current baseline has 57 accepted operations and 183 residual
-registrations out of 240. The media review adds one internal lease callback;
-its fork pin is published in [go2rtc #4](https://github.com/opensensor/go2rtc/pull/4).
-The canonical contract and coverage map on each branch describe that branch.
-The combined review branch accounts for all 241 registrations: 232 OpenAPI
-operations, eight media-protocol dispositions and one internal callback.
+receipts. Main accounts for all 241 registrations: 232 OpenAPI operations across
+168 paths, eight media-protocol dispositions and one internal lease callback.
+The nine explicit exclusions keep discovery's `partial=true`; they are not
+unassigned JSON contract work. Main pins go2rtc `ba99c7e`, whose supporting
+[fork PR #4](https://github.com/opensensor/go2rtc/pull/4) is still open at this
+checkpoint. The compatible fork is required for media-authority enforcement;
+independently managed go2rtc deployments retain the documented configuration limits.
 
 Basic and legacy-key compatibility, HTTP-only cameras, and `/etc/lightnvr`
 defaults remain supported. At-rest encryption, automated Rust conversion,
@@ -43,11 +45,11 @@ claims are not the current plan or evidence that work landed on `main`.
 This revision restores the PRD to `main`'s documentation and replaces its stale
 migration sequence with the state of the released code and the next work.
 
-The TypeScript conversion is complete as an application migration. The next
-large investment is to make the C API's behavior executable and discoverable:
-one canonical OpenAPI contract, an authenticated JSON projection for the current
-user or scoped token, and a Swagger-style explorer using that projection.
-This serves operators, integrations, and the existing Preact UI immediately.
+The TypeScript conversion and API-family expansion are implemented. One canonical
+OpenAPI contract, an authenticated projection and the read-only explorer now serve
+operators, integrations and the Preact UI. The next investment is measuring this
+expanded surface under active media, then qualifying recovery, upgrades and real
+devices. The expansion plan defines the next bounded work and acceptance gates.
 
 Delivery remains small, focused PRs based on current `main`. There is no plan to
 revive the foundation branch, impose required status checks/branch-protection

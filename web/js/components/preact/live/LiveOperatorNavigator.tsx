@@ -3,7 +3,7 @@ import { fleetWriteJSON } from '../../../api/fleetWrites.ts';
 import { evidenceJSON } from '../../../api/evidence.ts';
 import { listFleetLocations } from '../../../api/fleet.ts';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.ts';
+import { useQuery, useQueryClient } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog, TextInputDialog } from '../common/ModalDialog.tsx';
 import { useI18n } from '../../../i18n.ts';
