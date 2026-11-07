@@ -217,7 +217,7 @@ int http_request_extract_path_param(const http_request_t *req, const char *prefi
 
     if (param_len == 0) return -1;
 
-    return url_decode_span(param, param_len, param_buf, buf_size, true);
+    return url_decode_span(param, param_len, param_buf, buf_size, false);
 }
 
 int http_response_add_header(http_response_t *res, const char *name, const char *value) {
@@ -295,8 +295,14 @@ void http_response_add_cors_headers(http_response_t *res) {
 int http_response_set_json(http_response_t *res, int status_code, const char *json_str) {
     if (!res || !json_str) return -1;
 
-    // Five CORS headers and three cache-control headers must all fit.
-    if (res->num_headers < 0 || res->num_headers > MAX_HEADERS - 8) return -1;
+    if (res->num_headers < 0 || res->num_headers > MAX_HEADERS) return -1;
+    // Existing helper-managed headers will be replaced, so only retained
+    // headers need room alongside the five CORS and three cache headers.
+    int retained_headers = 0;
+    for (int i = 0; i < res->num_headers; i++) {
+        if (!is_standard_json_header_name(res->headers[i].name)) retained_headers++;
+    }
+    if (retained_headers > MAX_HEADERS - 8) return -1;
     // Copy first: failure must preserve the complete previous response, and
     // json_str may alias the existing body.
     if (http_response_set_body(res, json_str) != 0) return -1;
