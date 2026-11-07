@@ -176,7 +176,7 @@ F1..F14,F16 -> F15
 - **ownership**: Reliability harnesses/release evidence; device/network/storage fixtures separately owned.
 - **description**: Extend bounded crash/reconnect/storage/upgrade runs to declared longer durations, network/object-store faults and selected hardware. Preserve exact prior-release/submodule provenance; upgrade a copied installation.
 - **validation**: Decode/DTS/gaps, protected hashes, integrity, resources and cleanup; predeclare durations/tolerances and retain failures. Distinguish hosted observations from local checks.
-- **status**: Recording-stop regression fixed and bounded crash recovery repeated in [#854](https://github.com/opensensor/lightNVR/pull/854); extended storage/upgrade/device qualification remains open
+- **status**: Fresh post-#857 local ten-cycle lifecycle, storage faults, immediate crash recovery and copied 0.45.3 upgrade all passed; [receipt](docs/validation/recovery-qualification-2026-11-07.md). Named-device/provider and longer-duration qualification remains open
 
 ### F15: Reconcile coverage and the next decision
 - **depends_on**: [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F16]
@@ -210,8 +210,8 @@ F1..F14,F16 -> F15
 
 These remain acceptance gates; the initial local measurements below do not
 close target qualification. The mobile [M1 footage-finding slice](docs/prd/UXD_Mobile_Viewing.md)
-and shared five-view navigation are implemented for review independently of
-the native qualification work.
+and shared five-view navigation are merged in #855, with return-scope and
+asynchronous confirmation corrections merged in #856/#857.
 
 | Slice | Work and evidence | Completion gate |
 | --- | --- | --- |
@@ -232,7 +232,7 @@ These are initial local observations, not 2024+ device or NVR capacity acceptanc
 Next: complete the populated/busy-day M2 workflow audit, isolate validator costs
 and first-live-frame timing where measured need warrants it, then run F13/F14 on
 named hardware/storage with a declared load envelope. Populated authorization
-metadata, longer fault/upgrade runs, physical iPhone/Android checks, supporting
+metadata, multi-day fault/upgrade runs, physical iPhone/Android checks, supporting
 go2rtc publication and final hosted main results remain open. The product's
 2024+ target-generation requirement does not identify particular test devices.
 

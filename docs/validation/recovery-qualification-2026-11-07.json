@@ -1,0 +1,267 @@
+{
+  "revision": "6b346f40d90cf526aaaa1385cdd8341196bfcfdb",
+  "binary_sha256": "fca3a9b6accc403ef4c82aea0c06f45f6c5eb606089267a3e6e3f6a7f3db65d4",
+  "go2rtc_revision": "ba99c7e76365b4b69cbbc155925616ac867c9760",
+  "go2rtc_sha256": "1784534bdaf809a11eb0bb4e38cbc354cccf0273c6e3f7e86faf41f5ceabab0b",
+  "build_flags": {
+    "BUILD_TESTS": "ON",
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_CXX_FLAGS": "",
+    "CMAKE_C_FLAGS": "-isystem /usr/include/x86_64-linux-gnu",
+    "ENABLE_GO2RTC": "ON",
+    "ENABLE_LITERT": "OFF",
+    "ENABLE_MQTT": "OFF",
+    "ENABLE_SOD": "OFF",
+    "ENABLE_SSL": "ON",
+    "GO2RTC_BINARY_PATH": "/usr/local/bin/go2rtc",
+    "YAML_VERSION": ""
+  },
+  "environment": {
+    "python": "3.14.4",
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "ffmpeg": "ffmpeg version 8.0.1-3ubuntu2 Copyright (c) 2000-2025 the FFmpeg developers",
+    "go": "go version go1.27.3 linux/amd64"
+  },
+  "lifecycle": {
+    "bounds": {
+      "cycles": 10,
+      "disconnect_seconds": 5,
+      "recovery_seconds": 60,
+      "shutdown_seconds": 30,
+      "request_seconds": 10,
+      "max_media_gap_seconds": 72.2,
+      "gop_seconds": 1,
+      "fd_jitter": 8,
+      "thread_jitter": 4
+    },
+    "reconnect_cycles": 10,
+    "manual_race_cycles": 10,
+    "shutdown_cycles": 10,
+    "max_completed_media_recovery_seconds": 6.53541459099506,
+    "max_catalog_gap_seconds": 7,
+    "max_shutdown_seconds": 4.521105802006787,
+    "final_recording_count": 43,
+    "database_integrity": "ok",
+    "reconnect_resource_trends": {
+      "recorder_fds": [
+        21,
+        21,
+        21,
+        21,
+        21,
+        21,
+        21,
+        21,
+        21,
+        21,
+        21
+      ],
+      "recorder_threads": [
+        83,
+        83,
+        83,
+        83,
+        83,
+        83,
+        83,
+        83,
+        83,
+        83,
+        83
+      ],
+      "go2rtc_fds": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ],
+      "go2rtc_threads": [
+        16,
+        16,
+        17,
+        18,
+        18,
+        18,
+        18,
+        18,
+        19,
+        19,
+        19
+      ]
+    },
+    "manual_resource_trends": {
+      "recorder_fds": [
+        18,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "recorder_threads": [
+        81,
+        81,
+        81,
+        81,
+        81,
+        81,
+        81,
+        81,
+        81,
+        81,
+        81
+      ],
+      "go2rtc_fds": [
+        23,
+        23,
+        23,
+        23,
+        23,
+        23,
+        23,
+        23,
+        23,
+        23,
+        23
+      ],
+      "go2rtc_threads": [
+        19,
+        19,
+        19,
+        19,
+        19,
+        19,
+        19,
+        19,
+        19,
+        19,
+        19
+      ]
+    },
+    "restart_resource_trends": {
+      "recorder_fds": [
+        19,
+        19,
+        19,
+        19,
+        19,
+        19,
+        18,
+        19,
+        19,
+        19
+      ],
+      "recorder_threads": [
+        81,
+        81,
+        81,
+        81,
+        81,
+        81,
+        81,
+        81,
+        81,
+        81
+      ],
+      "go2rtc_fds": [
+        22,
+        22,
+        22,
+        22,
+        22,
+        22,
+        22,
+        22,
+        22,
+        22
+      ],
+      "go2rtc_threads": [
+        15,
+        14,
+        14,
+        15,
+        14,
+        14,
+        14,
+        14,
+        15,
+        14
+      ]
+    }
+  },
+  "storage": {
+    "cases": [
+      {
+        "mode": "full",
+        "kind": "injected-libc",
+        "status": "passed"
+      },
+      {
+        "mode": "readonly",
+        "kind": "injected-libc",
+        "status": "passed"
+      },
+      {
+        "mode": "permission",
+        "kind": "kernel",
+        "status": "passed"
+      },
+      {
+        "mode": "unavailable",
+        "kind": "kernel",
+        "status": "passed"
+      }
+    ]
+  },
+  "upgrade": {
+    "prior_revision": "c82d6ed17c7e8ec9038bf4ebcdaa96d3b8cd8163",
+    "prior_submodules": {
+      "go2rtc": "6986a1b3f122651b318a957534da44bb4c65e271",
+      "third_party/faac": "eb4928a76fd075f9bab20e8195df84f937da289b"
+    },
+    "prior_binary_sha256": "feed66a05564b12e38857510578202f72c2bc3471245839ed2344c0292e7112e",
+    "prior_go2rtc_sha256": "fd1f7b8b783f837e9fa701ec0f29173cb2cee18c581a1353dbd6507e4cf9bed9",
+    "original_untouched_after_cleanup": true,
+    "preparation": "verified-existing-build"
+  },
+  "reports": {
+    "lifecycle": {
+      "path": "/tmp/lightnvr-lifecycle-mecywwt0/result.json",
+      "sha256": "c9306785819ec683f2f666f7623fe5729cce7735d97f154cc0d9abf42aac2e17",
+      "status": "passed"
+    },
+    "storage": {
+      "path": "/tmp/lightnvr-storage-fault-wma1zmjj/result.json",
+      "sha256": "be3702fcf81fd65530c5fbfa26d205a66670fa4eb270b1165cf67449f9fc7457",
+      "status": "passed"
+    },
+    "interrupted": {
+      "path": "/tmp/lightnvr-recovery-qualification/build/recovery-interrupted/result.json",
+      "sha256": "3ea08d05189facc26dcc38fbcf363de86dcc1a5f693485717ab8bc507514caa6",
+      "status": "passed"
+    },
+    "upgrade": {
+      "path": "/tmp/lightnvr-recovery-qualification/build/recovery-upgrade/result.json",
+      "sha256": "e81eddba89c315aa3194789083582b5a610e15ecf451f75a0e220fae128d4a91",
+      "status": "passed"
+    }
+  },
+  "limitations": [
+    "Owned loopback source and local storage; not target hardware capacity",
+    "Ten cycles per lifecycle phase, not a long-duration soak",
+    "Concurrent UI tests; timings are bounded qualification observations, not performance baselines",
+    "No external object store, physical-device, network-appliance or power-loss qualification"
+  ]
+}
