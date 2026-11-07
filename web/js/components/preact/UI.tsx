@@ -356,21 +356,35 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
 
   // Fetch recording data and detections
   useEffect(() => {
+    // Clear all data owned by the previous recording before loading another.
+    setRecordingData(null);
+    setIsProtected(false);
+    setDetections([]);
+    setDetectionStatus('');
     if (!isOpen || !videoUrl) return;
+
+    const abortController = new AbortController();
+    let isStale = false;
 
     // Extract recording ID from URL
     const recordingIdMatch = videoUrl.match(/\/play\/(\d+)/);
-    if (!recordingIdMatch || !recordingIdMatch[1]) return;
+    if (!recordingIdMatch || !recordingIdMatch[1]) {
+      return () => {
+        isStale = true;
+        abortController.abort();
+      };
+    }
 
     const recordingId = parseInt(recordingIdMatch[1], 10);
 
     // Fetch recording data
     const fetchRecordingData = async () => {
       try {
-        const response = await fetch(`/api/recordings/${recordingId}`);
+        const response = await fetch(`/api/recordings/${recordingId}`, { signal: abortController.signal });
         if (!response.ok) throw new Error('Failed to fetch recording data');
 
         const data = await response.json() as RecordingDetails;
+        if (isStale) return;
         setRecordingData(data);
         setIsProtected(!!data.protected);
 
@@ -398,7 +412,8 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
           const detectionsUrl = `/api/detection/results/${data.stream}?start=${startTime}&end=${endTime}`;
           console.log('[VideoModal] Fetching detections from:', detectionsUrl);
 
-          const detectionsData = await evidenceJSON<{detections:DetectionResult[]}>(detectionsUrl);
+          const detectionsData = await evidenceJSON<{detections:DetectionResult[]}>(detectionsUrl, { signal: abortController.signal });
+          if (isStale) return;
           console.log('[VideoModal] Detections response:', detectionsData);
           const fetchedDetections = detectionsData.detections || [];
           setDetections(fetchedDetections);
@@ -410,12 +425,18 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
           }
         }
       } catch (error) {
+        if (isStale || (error instanceof DOMException && error.name === 'AbortError')) return;
         console.error('Error fetching data:', error);
         setDetectionStatus(t('recordings.errorLoadingDetections'));
       }
     };
 
     fetchRecordingData();
+
+    return () => {
+      isStale = true;
+      abortController.abort();
+    };
   }, [isOpen, videoUrl]);
 
   useEffect(() => {
@@ -1068,6 +1089,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
                       : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                   }`}
                   onClick={handleToggleProtection}
+                  disabled={!recordingData}
                   title={t(isProtected ? 'recordings.unprotect' : 'recordings.protect')}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 me-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
