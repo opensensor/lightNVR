@@ -437,6 +437,9 @@ static time_t parse_iso8601_time(const char *time_str) {
 
     // URL-decode the time string (replace %3A with :)
     char decoded_time[64];
+    // Query extraction truncates to 63 bytes; reject a full buffer rather than
+    // validating a prefix whose original suffix may have been lost.
+    if (strlen(time_str) >= sizeof(decoded_time) - 1) return 0;
     safe_strcpy(decoded_time, time_str, sizeof(decoded_time), 0);
 
     // Replace %3A with :
@@ -448,31 +451,56 @@ static time_t parse_iso8601_time(const char *time_str) {
 
     log_info("Parsing time string (decoded): %s", decoded_time);
 
-    struct tm tm = {0};
-    // Try different time formats
-    if (strptime(decoded_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
-        strptime(decoded_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
-        strptime(decoded_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
-        strptime(decoded_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-        // Convert to UTC timestamp - assume input is already in UTC
+    const char *formats[] = {
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d"
+    };
+
+    for (size_t i = 0; i < sizeof(formats) / sizeof(formats[0]); i++) {
+        struct tm tm = {0};
+        char *end = strptime(decoded_time, formats[i], &tm);
+        if (end == NULL) continue;
+
+        if (i == 0) {
+            // Browser ISO strings may contain any fractional second, including
+            // .999Z day-end bounds. Storage uses whole seconds, so discard the
+            // fraction after validating it rather than accepting arbitrary tails.
+            if (*end == '.') {
+                end++;
+                if (*end < '0' || *end > '9') continue;
+                while (*end >= '0' && *end <= '9') end++;
+            }
+            if (*end == 'Z') end++;
+        }
+        if (*end != '\0') continue;
         tm.tm_isdst = 0; // No DST for UTC
+
+        struct tm parsed_tm = tm;
         time_t result = timegm(&tm);
+        if (result == (time_t)-1) {
+            continue;
+        }
+
+        struct tm normalized_tm = {0};
+        if (gmtime_r(&result, &normalized_tm) == NULL) {
+            continue;
+        }
+
+        if (normalized_tm.tm_year != parsed_tm.tm_year ||
+            normalized_tm.tm_mon != parsed_tm.tm_mon ||
+            normalized_tm.tm_mday != parsed_tm.tm_mday ||
+            normalized_tm.tm_hour != parsed_tm.tm_hour ||
+            normalized_tm.tm_min != parsed_tm.tm_min ||
+            normalized_tm.tm_sec != parsed_tm.tm_sec) {
+            continue;
+        }
+
         log_info("Parsed time: %ld", (long)result);
         return result;
-    } else if (strptime(decoded_time, "%Y-%m-%d", &tm) != NULL) {
-        // Handle date-only format (YYYY-MM-DD)
-        // Set time to 00:00:00
-        tm.tm_hour = 0;
-        tm.tm_min = 0;
-        tm.tm_sec = 0;
-        tm.tm_isdst = 0; // No DST for UTC
-        time_t result = timegm(&tm);
-        log_info("Parsed date-only time: %ld", (long)result);
-        return result;
-    } else {
-        log_error("Failed to parse time string: %s", decoded_time);
-        return 0;
     }
+
+    log_error("Failed to parse time string: %s", decoded_time);
+    return 0;
 }
 
 /**
