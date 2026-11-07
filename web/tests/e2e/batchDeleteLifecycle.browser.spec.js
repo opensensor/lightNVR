@@ -90,7 +90,7 @@ test('duplicate starts are guarded and slow progress requests never overlap',asy
     // A second global request cannot replace the first promise or its IDs.
     await page.evaluate(()=>window.openDelete(['different']));
     expect((await outcome(page,1)).status).toBe('rejected');
-    await page.evaluate(()=>window.openViaWrapper()); // Rejection must not close the original dialog.
+    await page.evaluate(()=>window.openViaWrapper().catch(()=>{})); // Rejection must not close the original dialog.
     await page.evaluate(()=>{
       const button=[...document.querySelectorAll('button')].find(el=>el.textContent==='recordings.deleteDescription');
       button.click();button.click();
