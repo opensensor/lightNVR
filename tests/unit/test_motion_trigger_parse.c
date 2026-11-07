@@ -6,10 +6,8 @@
  * `label` / `objects` / `confidence` / `tags` fields that let an external
  * detector say *what* it saw rather than just that something moved.
  *
- * These are the parts of the endpoint with real branching — mixed array forms,
- * confidence bounds, per-entry overrides, overflow caps — so they are tested
- * directly instead of through the HTTP handler, which would need a live server,
- * a configured stream and a database.
+ * Also checks stream-name bounds through the handler before authorization or
+ * stream lookup, without needing a live server or a configured stream.
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -20,6 +18,7 @@
 #include <cjson/cJSON.h>
 
 #include "unity.h"
+#include "core/config.h"
 #include "web/api_handlers_motion.h"
 
 static char g_err[160];
@@ -261,8 +260,43 @@ void test_empty_tag_is_rejected(void) {
     TEST_ASSERT_EQUAL_INT(-1, parse_tags_str("{\"tags\":[\"\"]}", tags));
 }
 
+void test_handler_rejects_overlong_stream_names_before_authorization(void) {
+    const size_t lengths[] = {MAX_STREAM_NAME - 1, MAX_STREAM_NAME, MAX_STREAM_NAME + 20};
+    for (size_t i = 0; i < sizeof(lengths) / sizeof(lengths[0]); i++) {
+        char name[MAX_STREAM_NAME + 21];
+        memset(name, 'a', lengths[i]);
+        name[lengths[i]] = '\0';
+        char body[MAX_STREAM_NAME + 80];
+        snprintf(body, sizeof(body), "{\"stream\":\"%s\",\"action\":\"pulse\"}", name);
+        http_request_t req;
+        http_response_t res;
+        http_request_init(&req);
+        http_response_init(&res);
+        req.method = HTTP_METHOD_POST;
+        req.body = body;
+        req.body_len = strlen(body);
+        bool saved_auth = g_config.web_auth_enabled;
+        g_config.web_auth_enabled = true;
+        handle_post_motion_trigger(&req, &res);
+        g_config.web_auth_enabled = saved_auth;
+        int status = res.status_code;
+        cJSON *json = cJSON_Parse((const char *)res.body);
+        http_response_free(&res);
+        // A maximum-length valid name proceeds to the normal auth check.
+        TEST_ASSERT_EQUAL_INT(i == 0 ? 401 : 400, status);
+        TEST_ASSERT_NOT_NULL(json);
+        if (i != 0) {
+            const cJSON *error = cJSON_GetObjectItemCaseSensitive(json, "error");
+            TEST_ASSERT_TRUE(cJSON_IsString(error));
+            TEST_ASSERT_EQUAL_STRING("Invalid stream name", error->valuestring);
+        }
+        cJSON_Delete(json);
+    }
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_handler_rejects_overlong_stream_names_before_authorization);
 
     RUN_TEST(test_no_metadata_yields_no_detections);
     RUN_TEST(test_label_only_defaults_to_full_confidence);
