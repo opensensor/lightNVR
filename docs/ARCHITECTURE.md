@@ -560,7 +560,7 @@ See [API.md](API.md) for detailed API documentation.
 
 ## Frontend Architecture
 
-The frontend is a multi-page application with Preact components, built with Vite:
+The frontend is a single-page application (SPA) with Preact components, built with Vite, where the files under `web/js/pages/` represent route views/feature entry modules rather than separate HTML documents:
 
 - **Preact** for component-based UI development
 - **Tailwind CSS** for styling and responsive design with theme customization
