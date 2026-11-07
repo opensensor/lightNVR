@@ -5,7 +5,7 @@
 import { render, Component, createContext } from 'preact';
 import type { ComponentChildren, CSSProperties } from 'preact';
 import { useState, useEffect, useContext } from 'preact/hooks';
-import { formatLocalTime, nowMilliseconds } from '../../utils/date-utils.ts';
+import { formatLocalTime } from '../../utils/date-utils.ts';
 
 interface ToastEntry {
   id: number;
@@ -13,14 +13,6 @@ interface ToastEntry {
   type: string;
   duration: number;
   exiting?: boolean;
-}
-
-interface ToastContainerApi {
-  addToast: (message: string, type?: string, duration?: number) => number;
-}
-
-interface ToastContainerProps {
-  onReady?: (api: ToastContainerApi) => void;
 }
 
 interface ToastItemProps {
@@ -194,13 +186,39 @@ const Toast = ({ id, message, type, onRemove }: ToastItemProps) => {
 /**
  * Toast Container Component
  */
-class ToastContainer extends Component<object, ToastContainerState> {
+let toastIdCounter = 0;
+
+interface ToastContainerProps {
+  onReady: (instance: ToastContainer | null) => void;
+}
+
+class ToastContainer extends Component<ToastContainerProps, ToastContainerState> {
+  private timers = new Set<ReturnType<typeof setTimeout>>();
+
+  private schedule(callback: () => void, delay: number) {
+    const timer = setTimeout(() => {
+      this.timers.delete(timer);
+      callback();
+    }, delay);
+    this.timers.add(timer);
+  }
+
+  componentDidMount() {
+    this.props.onReady(this);
+  }
+
+  componentWillUnmount() {
+    this.props.onReady(null);
+    this.timers.forEach(clearTimeout);
+    this.timers.clear();
+  }
+
   state: ToastContainerState = {
     toasts: []
   };
   
   addToast = (message: string, type: string, duration: number) => {
-    const id = nowMilliseconds();
+    const id = ++toastIdCounter;
     const newToast = { id, message, type, duration };
     
     this.setState(prevState => ({
@@ -209,7 +227,7 @@ class ToastContainer extends Component<object, ToastContainerState> {
     
     // Set timeout to auto-remove the toast after duration
     if (duration > 0) {
-      setTimeout(() => {
+      this.schedule(() => {
         // Find the toast in the current state
         const toast = this.state.toasts.find(t => t.id === id);
         if (toast) {
@@ -221,7 +239,7 @@ class ToastContainer extends Component<object, ToastContainerState> {
           }));
           
           // Remove after animation completes
-          setTimeout(() => this.removeToast(id), 300);
+          this.schedule(() => this.removeToast(id), 300);
         }
       }, duration - 300); // Start animation before duration ends
     }
@@ -261,58 +279,12 @@ class ToastContainer extends Component<object, ToastContainerState> {
  * This component provides the toast functionality to the entire app
  */
 export class ToastProvider extends Component<ToastProviderProps> {
-  declare toastContainerRef: ToastContainerApi | null;
-
-  constructor(props: ToastProviderProps) {
-    super(props);
-    this.toastContainerRef = null;
-  }
-  
-  componentDidMount() {
-    // Initialize the toast container when the provider mounts
-    if (!this.toastContainerRef) {
-      // Create a container element for the toast container
-      const containerElement = document.createElement('div');
-      containerElement.id = 'toast-container-root';
-      document.body.appendChild(containerElement);
-      
-      // Render the ToastContainer into the DOM and capture its API via callback
-      render(
-        <ToastContainer
-          onReady={(api) => {
-            this.toastContainerRef = api;
-          }}
-        />,
-        containerElement
-      );
-      
-      console.log('Toast container initialized');
-    }
-  }
-  
-  componentWillUnmount() {
-    // Clean up the toast container when the provider unmounts
-    if (this.toastContainerRef) {
-      // Remove the container element from the DOM
-      const containerElement = document.getElementById('toast-container-root');
-      if (containerElement) {
-        document.body.removeChild(containerElement);
-      }
-      
-      this.toastContainerRef = null;
-      console.log('Toast container cleaned up');
-    }
-  }
-  
-  // Methods to show different types of toasts
+  // Providers and imperative callers share one app-lifetime container. Lazy
+  // initialization also lets children show a toast during their mount hooks.
   showToast = (message: string, type: string = 'info', duration: number = 4000) => {
-    if (this.toastContainerRef) {
-      return this.toastContainerRef.addToast(message, type, duration);
-    }
-    console.error('Toast container not initialized');
-    return null;
+    return showToast(message, type, duration);
   };
-  
+
   showSuccessToast = (message: string, duration: number = 4000) => {
     return this.showToast(message, 'success', duration);
   };
@@ -357,73 +329,37 @@ export function useToast() {
   return context;
 }
 
-// Imperative bridge for use outside React components
-let enqueueToast: ((message: string, type: string, duration: number) => number) | null = null;
-let toastIdCounter = 0;
-
-function setToastEnqueuer(fn: (message: string, type: string, duration: number) => number) {
-  enqueueToast = fn;
-}
-
-function clearToastEnqueuer(fn: (message: string, type: string, duration: number) => number) {
-  if (enqueueToast === fn) {
-    enqueueToast = null;
-  }
-}
-
-function ToastBridge() {
-  const { addToast } = useToast();
-
-  useEffect(() => {
-    const enqueuer = (message: string, type: string, duration: number) => {
-      addToast({
-        id: ++toastIdCounter,
-        message,
-        type,
-        duration,
-      });
-      return toastIdCounter;
-    };
-
-    setToastEnqueuer(enqueuer);
-    return () => clearToastEnqueuer(enqueuer);
-  }, [addToast]);
-
-  return null;
-}
+// Singleton instance for use outside of React components
+let toastInstance: ToastContainer | null = null;
+let toastRoot: HTMLElement | null = null;
 
 /**
  * Initialize the toast system
  * This should be called once at app startup
  */
-export function initToasts() {
-  let containerElement = document.getElementById('toast-container-root');
-  if (!containerElement) {
-    containerElement = document.createElement('div');
-    containerElement.id = 'toast-container-root';
-    document.body.appendChild(containerElement);
+export function initToasts(): ToastContainer {
+  if (toastInstance && toastRoot?.isConnected) return toastInstance;
 
-    render(
-      <ToastProvider>
-        <ToastBridge />
-        <ToastContainer />
-      </ToastProvider>,
-      containerElement
-    );
-
-    console.log('Toast system initialized');
+  // Unmount a detached root through Preact so refs and timers are cleaned up.
+  if (toastRoot) render(null, toastRoot);
+  toastRoot = document.getElementById('toast-container-root');
+  if (!toastRoot) {
+    toastRoot = document.createElement('div');
+    toastRoot.id = 'toast-container-root';
+    document.body.appendChild(toastRoot);
   }
+
+  // Preact render() returns void. Capture the instance in componentDidMount,
+  // which runs synchronously, so callers need not wait for a hook effect.
+  render(<ToastContainer onReady={(instance) => { toastInstance = instance; }} />, toastRoot);
+  if (!toastInstance) throw new Error('Toast container failed to initialize');
+  return toastInstance;
 }
 
 // Export functions for use outside of React components
 export function showToast(message: string, type: string = 'info', duration: number = 4000) {
-  if (!enqueueToast) {
-    initToasts();
-  }
-  if (!enqueueToast) {
-    throw new Error('Toast system is not ready. Ensure ToastProvider is mounted before calling showToast.');
-  }
-  return enqueueToast(message, type, duration);
+  const instance = initToasts();
+  return instance.addToast(message, type, duration);
 }
 
 export function showSuccessToast(message: string, duration: number = 4000) {
