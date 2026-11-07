@@ -558,6 +558,12 @@ add_layer1_test(test_external_motion_trigger)    # Layer 1: external_motion_trig
 add_layer2_test(test_motion_trigger_parse CI_UNIT)       # Layer 2: motion trigger body parsing (#466)
 add_layer2_test(test_motion_max_area CI_UNIT)            # Layer 2: motion detector max-area sanity cap
 add_layer3_test(test_cross_stream_motion_trigger)
+add_layer3_test(test_motion_pulse_worker CI_UNIT CI_SANITIZER)
+target_link_options(test_motion_pulse_worker PRIVATE
+    "-Wl,--wrap=close_external_motion_detections"
+    "-Wl,--wrap=unified_detection_notify_motion"
+    "-Wl,--wrap=process_motion_event")
+set_tests_properties(test_motion_pulse_worker PROPERTIES TIMEOUT 10)
 add_layer3_test(test_annotation_writer_registry)  # Layer 3: continuous-writer probe behind annotation mode (#547)
 add_layer3_test(test_detection_current_frame CI_UNIT CI_SANITIZER)
 target_compile_definitions(test_detection_current_frame PRIVATE
