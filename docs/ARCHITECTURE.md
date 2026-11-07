@@ -340,7 +340,7 @@ Camera (RTSP/ONVIF)
 2. Web server authenticates the user (session token or Basic Auth)
 3. Web server serves the SPA (Single Page Application)
 4. Client-side Preact app makes API requests
-5. **Live viewing**: Browser connects directly to go2rtc for WebRTC/HLS
+5. **Live viewing**: Browser connects to LightNVR's authenticated media endpoints, which proxy WebRTC/MSE/HLS/snapshot requests to loopback-bound go2rtc
 6. **Recording playback**: Browser requests MP4/HLS from LightNVR API
 
 ## Database Schema
