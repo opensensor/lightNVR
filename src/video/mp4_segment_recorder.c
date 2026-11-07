@@ -1115,6 +1115,15 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 			av_usleep(10000);  // Sleep 10ms to avoid busy waiting
 			continue;
 		}
+        // A demuxer can flush a partial packet with a successful read after its
+        // underlying I/O is interrupted. Do not append that truncated tail to
+        // the recording when the operator has already requested a stop.
+        if (!carried_keyframe && interrupt_callback(shutdown_flag)) {
+            av_packet_unref(pkt);
+            shutdown_detected = true;
+            reuse_input_context = false;
+            break;
+        }
         notify_recording_activity(activity_cb, cb_ctx);
 
         // Process video packets

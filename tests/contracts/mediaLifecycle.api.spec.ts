@@ -120,3 +120,16 @@ test('manual recording accepts, records owned media, stops, and exposes finalize
   expect(Number(probe.streams.find((s:any)=>s.codec_type==='video').nb_read_packets)).toBeGreaterThan(0);
  }finally{source.closeAllConnections();await new Promise<void>(resolve=>source.close(()=>resolve()));}
 });
+
+// The high-resolution stream makes an interrupted read end inside an encoded
+// frame. The retained harness requires a strict full decode, not ffmpeg's default
+// successful exit after reporting corrupt frames.
+test('manual stop leaves strictly decodable footage after interrupted input @api',async({},info)=>{
+ const output=info.outputPath('manual-stop-evidence');
+ execFileSync(process.execPath,['tests/performance/active-recording.mjs','--output',output,'--streams','1','--seconds','10'],{
+  cwd:process.cwd(),env:process.env,timeout:120000,maxBuffer:4*1024*1024,
+ });
+ const result=JSON.parse(readFileSync(path.join(output,'results.json'),'utf8'));
+ expect(result.status).toBe('passed');
+ expect(result.recordings.length).toBeGreaterThan(0);
+});
