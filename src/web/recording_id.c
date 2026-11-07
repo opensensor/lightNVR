@@ -9,13 +9,16 @@ bool recording_id_parse_json(const cJSON *item, uint64_t *id) {
         *id = (uint64_t)value;
         return (double)*id == value;
     }
-    if (!cJSON_IsString(item) || !item->valuestring || !item->valuestring[0]) return false;
+    return cJSON_IsString(item) && recording_id_parse_decimal(item->valuestring, id);
+}
+
+bool recording_id_parse_decimal(const char *text, uint64_t *id) {
+    if (!text || !text[0]) return false;
     uint64_t value = 0;
-    for (const char *p = item->valuestring; *p; p++) {
+    for (const char *p = text; *p; p++) {
         if (*p < '0' || *p > '9' || value > (UINT64_MAX - (unsigned)(*p - '0')) / 10) return false;
         value = value * 10 + (unsigned)(*p - '0');
     }
     *id = value;
     return value != 0;
 }
-
