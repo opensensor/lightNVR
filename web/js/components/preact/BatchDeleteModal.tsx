@@ -202,18 +202,10 @@ export function BatchDeleteModal() {
     };
   }, [closeModal, batchDeleteRecordingsByHttpRequest, clearPollTimer]);
 
-  // Calculate progress percentage
-  const getProgressPercentage = () => {
-    if (progress.total > 0) {
-      return Math.round((progress.current / progress.total) * 100);
-    } else if (progress.complete) {
-      return 100;
-    } else if (progress.current > 0) {
-      return Math.min(90, progress.current / 10);
-    } else {
-      return 50; // Indeterminate
-    }
-  };
+  // Unknown totals are indeterminate. A failed job must not announce 100% completion.
+  const progressPercentage = progress.error ? undefined : progress.complete ? 100
+    : progress.total > 0 ? Math.max(0, Math.min(100, Math.round(progress.current / progress.total * 100)))
+    : undefined;
 
   // Get progress bar classes
   const getProgressBarClasses = () => {
@@ -244,15 +236,8 @@ export function BatchDeleteModal() {
   };
 
   // Get percentage text
-  const getPercentageText = () => {
-    if (progress.total > 0) {
-      return `${Math.round((progress.current / progress.total) * 100)}%`;
-    } else if (progress.complete) {
-      return '100%';
-    } else {
-      return t('recordings.inProgress');
-    }
-  };
+  const getPercentageText = () => progress.error ? progress.status
+    : progressPercentage === undefined ? t('recordings.inProgress') : `${progressPercentage}%`;
 
   return (
     <ModalShell isOpen={phase !== 'hidden'}
@@ -304,7 +289,13 @@ export function BatchDeleteModal() {
               <div className="progress-container bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-4">
                 <div
                   className={getProgressBarClasses()}
-                  style={{ width: `${getProgressPercentage()}%` }}
+                  style={{ width: `${progressPercentage ?? (progress.error ? 0 : 50)}%` }}
+                  role="progressbar"
+                  aria-label={t('recordings.batchDeleteProgress')}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progressPercentage}
+                  aria-valuetext={getPercentageText()}
                 ></div>
               </div>
 
