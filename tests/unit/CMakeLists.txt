@@ -167,7 +167,8 @@ add_layer2_test_with_curl(test_detection_model_motion CI_UNIT CI_SANITIZER)
 add_layer2_test_with_curl(test_detection_system_onvif)
 add_layer3_test(test_onvif_poll_recovery)
 add_layer3_test(test_health_probe_transport CI_UNIT CI_SANITIZER)
-target_link_options(test_health_probe_transport PRIVATE "-Wl,--wrap=httpd_secure_cookies")
+target_link_options(test_health_probe_transport PRIVATE "-Wl,--wrap=httpd_secure_cookies"
+    "-Wl,--wrap=malloc" "-Wl,--wrap=curl_easy_init" "-Wl,--wrap=_log_message_ctx")
 add_layer3_test(test_go2rtc_override_status CI_UNIT CI_SANITIZER)
 set_tests_properties(test_go2rtc_override_status PROPERTIES TIMEOUT 15)
 target_link_options(test_go2rtc_override_status PRIVATE
