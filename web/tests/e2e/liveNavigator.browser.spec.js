@@ -42,7 +42,7 @@ const search = fixture(validateEvidenceSearch, {
     spatial_metadata: {requested: false}, incomplete_reasons: [], complete: true},
 });
 
-async function openNavigator() {
+async function openNavigator({ investigation = true } = {}) {
   const { chromium } = require('../../../node_modules/playwright');
   const { build } = require('esbuild');
   const webRoot = path.resolve(__dirname, '../..');
@@ -59,7 +59,7 @@ async function openNavigator() {
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   window.fetch = async (url, options = {}) => {
     const target = String(url);
-    if (target === '/api/ui/workspaces') return json(${JSON.stringify(workspaces)});
+    if (target === '/api/ui/workspaces') return json(${JSON.stringify({...workspaces,workspaces:workspaces.workspaces.map(workspace=>workspace.key==='investigation'?{...workspace,visible:investigation}:workspace)})});
     if (target === '/api/locations') return json(${JSON.stringify(fleetLocations([{ uuid: '00000000-0000-4000-8000-000000000001', name: 'Orchard' }]))});
     if (target === '/api/live/plans') return json({can_modify:true,plans:[${JSON.stringify(floorPlan({name:'orchard48',location_uuid:'00000000-0000-4000-8000-000000000001',cameras:streams.slice(0,3).map((stream,index)=>({camera_uuid:stream.camera_uuid,x:0.2*(index+1),y:0.2*(index+1)}))}))}]});
     const layout=${JSON.stringify(liveLayout({name:'Yard',revision:3,camera_slots:[{camera_uuid:streams[0].camera_uuid}]}))};
@@ -91,7 +91,7 @@ async function openNavigator() {
   };
   window.mount = () => render(h(QueryClientProvider, { client }, h(LiveOperatorNavigator, {
     streams, orderedStreams: streams.slice(0, 2), columns: 2, rows: 1, operatorSurface: 'grid',
-    selectedPlanUuid: '', onFilterChange: () => {}, onSurfaceChange: () => {}, onSelectPlan: () => {},
+    selectedPlanUuid: '', onFilterChange: () => {}, onSurfaceChange: value => {window.surface=value;}, onSelectPlan: () => {},
     onApplyLayout: (layout) => window.calls.applied.push(layout),
   })), document.getElementById('root'));
  `,
@@ -191,3 +191,39 @@ it('counts plan cameras from all streams and refreshes when availability changes
     await browser.close();
   }
 }, 30000);
+
+it.each([true,false])('tab focus, panel relationships and wrapping with investigation=%s', async investigation => {
+  const {browser,page}=await openNavigator({investigation});
+  try {
+    const tabs=page.getByRole('tablist');
+    const cameras=tab(page,'cameras'), plans=tab(page,'plans');
+    const last=tab(page,investigation?'events':'views');
+    await cameras.waitFor();await cameras.focus();
+    expect(await tabs.getAttribute('aria-label')).toBe('live.navigator.title');
+    for (const button of await tabs.getByRole('tab').all()) {
+      const panelId=await button.getAttribute('aria-controls');
+      expect(await page.locator('#'+panelId).getAttribute('aria-labelledby')).toBe(await button.getAttribute('id'));
+    }
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(()=>document.activeElement?.id==='live-navigator-tab-plans');
+    expect(await plans.getAttribute('aria-selected')).toBe('true');
+    expect(await page.evaluate(()=>window.surface)).toBe('plan');
+    expect(await cameras.getAttribute('tabindex')).toBe('-1');
+    await page.keyboard.press('Tab');
+    expect(await page.getByRole('tabpanel').evaluate(el=>el===document.activeElement)).toBe(true);
+    await plans.focus();await page.keyboard.press('End');
+    expect(await last.evaluate(el=>el===document.activeElement)).toBe(true);
+    await page.keyboard.press('ArrowRight');
+    expect(await cameras.evaluate(el=>el===document.activeElement)).toBe(true);
+    await page.keyboard.press('ArrowLeft');
+    expect(await last.evaluate(el=>el===document.activeElement)).toBe(true);
+    await page.keyboard.press('Home');
+    expect(await cameras.evaluate(el=>el===document.activeElement)).toBe(true);
+    await page.evaluate(()=>{document.documentElement.dir='rtl';});
+    await page.keyboard.press('ArrowLeft');
+    expect(await plans.evaluate(el=>el===document.activeElement)).toBe(true);
+    await page.keyboard.press('ArrowRight');
+    expect(await cameras.evaluate(el=>el===document.activeElement)).toBe(true);
+    expect(await tabs.locator('[tabindex="0"]').count()).toBe(1);
+  } finally {await browser.close();}
+},30000);

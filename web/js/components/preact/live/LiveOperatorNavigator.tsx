@@ -454,10 +454,39 @@ export function LiveOperatorNavigator({
         <div><strong>{t('live.navigator.title')}</strong><small>{t('live.navigator.subtitle')}</small></div>
         <button type="button" onClick={toggleCollapsed} title={t('live.navigator.collapse')} aria-label={t('live.navigator.collapse')} aria-expanded={true}><span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">‹</span></button>
       </div>
-      <div className="live-navigator-tabs" role="tablist">
+      <div
+        className="live-navigator-tabs"
+        role="tablist"
+        aria-label={t('live.navigator.title')}>
         {['cameras', 'plans', 'views', ...(investigationVisible ? ['events'] : [])].map((value) => (
-          <button key={value} type="button" role="tab" aria-selected={tab === value}
-            className={tab === value ? 'is-active' : ''} onClick={() => {
+          <button
+            key={value}
+            type="button"
+            id={`live-navigator-tab-${value}`}
+            role="tab"
+            aria-selected={tab === value}
+            aria-controls={`live-navigator-panel-${value}`}
+            tabIndex={tab === value ? 0 : -1}
+            className={tab === value ? 'is-active' : ''}
+            onKeyDown={(event) => {
+              const tabValues = ['cameras', 'plans', 'views', ...(investigationVisible ? ['events'] : [])];
+              const currentIndex = tabValues.indexOf(tab);
+              if (currentIndex < 0) return;
+              let nextIndex = currentIndex;
+              const side = inlineSideOfArrow(event.key);
+              if (side === 'end') nextIndex = (currentIndex + 1) % tabValues.length;
+              else if (side === 'start') nextIndex = (currentIndex - 1 + tabValues.length) % tabValues.length;
+              else if (event.key === 'Home') nextIndex = 0;
+              else if (event.key === 'End') nextIndex = tabValues.length - 1;
+              else return;
+              event.preventDefault();
+              const nextTab = tabValues[nextIndex];
+              if (!nextTab) return;
+              setTab(nextTab);
+              onSurfaceChange(nextTab === 'plans' ? 'plan' : 'grid');
+              event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
+            }}
+            onClick={() => {
               setTab(value);
               onSurfaceChange(value === 'plans' ? 'plan' : 'grid');
             }}>
@@ -466,8 +495,10 @@ export function LiveOperatorNavigator({
         ))}
       </div>
 
-      {tab === 'cameras' && (
-        <div className="live-navigator-panel">
+      <div className="live-navigator-panel" role="tabpanel" id="live-navigator-panel-cameras"
+        aria-labelledby="live-navigator-tab-cameras" hidden={tab !== 'cameras'} tabIndex={0}>
+        {tab === 'cameras' && <>
+
           <label className="live-navigator-search">
             <span className="sr-only">{t('live.navigator.search')}</span>
             <input type="search" value={search} placeholder={t('live.navigator.search')}
@@ -562,11 +593,13 @@ export function LiveOperatorNavigator({
             ))}
             {visibleCameras.length === 0 && <p className="live-navigator-empty">{t('live.navigator.noCameras')}</p>}
           </div>
-        </div>
-      )}
+        </>}
+      </div>
 
-      {tab === 'views' && (
-        <div className="live-navigator-panel">
+      <div className="live-navigator-panel" role="tabpanel" id="live-navigator-panel-views"
+        aria-labelledby="live-navigator-tab-views" hidden={tab !== 'views'} tabIndex={0}>
+        {tab === 'views' && <>
+
           <p className="live-plan-navigator-help">{t('live.navigator.viewsHelp')}</p>
           <button type="button" className="btn-primary live-layout-save" disabled={busy || !layoutsQuery.data?.can_modify}
             onClick={() => setSaveLayoutOpen(true)}>{t('live.navigator.saveCurrent')}</button>
@@ -611,11 +644,13 @@ export function LiveOperatorNavigator({
           })}
           {!layoutsQuery.isLoading && !layoutsQuery.error && (layoutsQuery.data?.layouts || []).length === 0 &&
             <p className="live-navigator-empty">{t('live.navigator.noLayouts')}</p>}
-        </div>
-      )}
+        </>}
+      </div>
 
-      {tab === 'plans' && (
-        <div className="live-navigator-panel">
+      <div className="live-navigator-panel" role="tabpanel" id="live-navigator-panel-plans"
+        aria-labelledby="live-navigator-tab-plans" hidden={tab !== 'plans'} tabIndex={0}>
+        {tab === 'plans' && <>
+
           <p className="live-plan-navigator-help">{t('live.plan.navigatorHelp')}</p>
           {(plansQuery.data?.plans || []).map((plan) => {
             const liveCount = (plan.cameras || []).filter((camera) =>
@@ -639,11 +674,14 @@ export function LiveOperatorNavigator({
           })}
           {!plansQuery.isLoading && (plansQuery.data?.plans || []).length === 0 &&
             <p className="live-navigator-empty">{t('live.plan.noPlans')}</p>}
-        </div>
-      )}
+        </>}
+      </div>
 
-      {tab === 'events' && (
-        <div className="live-navigator-panel live-event-list">
+      {investigationVisible && (
+      <div className="live-navigator-panel live-event-list" role="tabpanel" id="live-navigator-panel-events"
+        aria-labelledby="live-navigator-tab-events" hidden={tab !== 'events'} tabIndex={0}>
+        {tab === 'events' && <>
+
           <div className="live-camera-list-heading">
             <span>{t('live.navigator.eventsScope', { count: effectiveCameraUuids.size })}</span>
             <button type="button" className="live-navigator-refresh"
@@ -673,8 +711,10 @@ export function LiveOperatorNavigator({
               </a>
             ))
           )}
-        </div>
+        </>}
+      </div>
       )}
+
     </aside>
     <TextInputDialog
       isOpen={saveLayoutOpen}
