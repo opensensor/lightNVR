@@ -29,6 +29,7 @@ case "${cmd[0]}" in
 esac
 
 # Separate build dirs keep host and container CMake caches apart.
-exec docker run --rm ${LIGHTNVR_RS_TTY:+-it} --user "$(id -u):$(id -g)" \
+# /tmp on tmpfs: overlay storage trips LightNVR's storage placement checks.
+exec docker run --rm ${LIGHTNVR_RS_TTY:+-it} --user "$(id -u):$(id -g)" --tmpfs /tmp:exec,size=4g,mode=1777 \
   -e HOME=/tmp -e CARGO_HOME=/tmp/cargo-home -e npm_config_cache=/tmp/npm-cache \
   -v "$repo:/work" -w /work "$image" "${cmd[@]}"
