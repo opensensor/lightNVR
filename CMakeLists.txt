@@ -910,8 +910,9 @@ endif()
 
 # Link SOD library if enabled
 if(ENABLE_SOD)
-    # Always link to the sod target, whether it's built as static or shared
-    target_link_libraries(lightnvr sod)
+    # SOD symbols are used by objects in this static library. Publish the
+    # dependency so the main executable, tests and utilities all inherit it.
+    target_link_libraries(lightnvr_lib PUBLIC sod)
 
     # Log the linking method for clarity
     if(SOD_DYNAMIC_LINK)
