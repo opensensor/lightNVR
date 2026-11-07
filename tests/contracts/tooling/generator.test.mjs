@@ -204,3 +204,27 @@ test('native discriminator mappings accept local references and reject malformed
     }
   }
 });
+
+test('native generation rejects path-item refs consistently with runtime projection', async () => {
+  const original = JSON.parse(await readFile(source, 'utf8'));
+  const referenced = structuredClone(original.paths['/api/fixture']);
+  for (const projected of [false, true]) {
+    for (const variant of ['valid', 'missing-authorization', 'missing-operation-id', 'sibling', 'cycle', 'non-object']) {
+      const doc = structuredClone(original);
+      doc.components.pathItems = {Fixture: structuredClone(referenced)};
+      if (variant === 'missing-authorization') delete doc.components.pathItems.Fixture.get['x-lightnvr-authorization'];
+      if (variant === 'missing-operation-id') delete doc.components.pathItems.Fixture.get.operationId;
+      if (variant === 'cycle') doc.components.pathItems.Fixture = {$ref: '#/components/pathItems/Fixture'};
+      if (variant === 'non-object') doc.components.pathItems.Fixture = [];
+      doc.paths['/api/fixture'] = {$ref: '#/components/pathItems/Fixture'};
+      if (variant === 'sibling') doc.paths['/api/fixture'].post = {operationId: 'unvalidatedSibling'};
+      const candidate = path.join(directory, 'native-path-reference.json');
+      await writeFile(candidate, JSON.stringify(doc));
+      const result = spawnSync('python3', [path.join(root, 'scripts/contracts/generate_native.py'),
+        '--source', candidate, '--validate-only', ...(projected ? ['--projected'] : [])], {encoding: 'utf8'});
+      assert.notEqual(result.status, 0, `${variant}, projected=${projected}`);
+      assert.match(result.stderr, /ValueError: Path item references are not supported/);
+    }
+  }
+  assert.equal((await generateArtifacts(source)).size, 4);
+});
