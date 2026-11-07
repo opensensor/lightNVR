@@ -1102,13 +1102,24 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
     /* Parse comma-separated IDs */
     uint64_t ids[MAX_TIMELINE_SEGMENTS];
     int id_count = 0;
+    int limit_exceeded = 0;
     char *saveptr = NULL;
     char *token = strtok_r(ids_param, ",", &saveptr);
-    while (token && id_count < MAX_TIMELINE_SEGMENTS) {
+    while (token) {
         while (*token == ' ') token++;
         uint64_t id = strtoull(token, NULL, 10);
-        if (id > 0) ids[id_count++] = id;
+        if (id > 0) {
+            if (id_count < MAX_TIMELINE_SEGMENTS) {
+                ids[id_count++] = id;
+            } else {
+                limit_exceeded = 1;
+            }
+        }
         token = strtok_r(NULL, ",", &saveptr);
+    }
+    if (limit_exceeded) {
+        http_response_set_json_error(res, 413, "Too many recording IDs provided");
+        return;
     }
     if (id_count == 0) {
         http_response_set_json_error(res, 400, "No valid recording IDs provided");
