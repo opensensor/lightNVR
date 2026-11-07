@@ -545,7 +545,7 @@ native, sanitizer, browser, semantic-equivalence, coverage and asset evidence.
 All 467 tracked JS/TS/JSON inputs retain zero standard quality findings in the
 full local CodeQL suite. GitHub now marks both go2rtc alerts #351/#352 fixed.
 
-F2 fleet reads and selectors follows this review; S1 signaling/audio authorization
+F2 fleet reads and selectors follow this review; S1 signaling/audio authorization
 will be delivered separately. No credential-encryption migration or Rust work is
 included, and Basic/legacy-key compatibility is retained.
 
