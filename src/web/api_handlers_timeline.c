@@ -807,6 +807,8 @@ void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
         start_time = parse_iso8601_time(start_time_str);
         if (start_time == 0) {
             log_error("Failed to parse start time: %s", start_time_str);
+            http_response_set_json_error(res, 400, "Invalid start time format");
+            return;
         }
     } else {
         // Default to 24 hours ago
@@ -817,6 +819,8 @@ void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
         end_time = parse_iso8601_time(end_time_str);
         if (end_time == 0) {
             log_error("Failed to parse end time: %s", end_time_str);
+            http_response_set_json_error(res, 400, "Invalid end time format");
+            return;
         }
         // For date-only format, set to end of day
         if (strlen(end_time_str) == 10) {  // YYYY-MM-DD format
