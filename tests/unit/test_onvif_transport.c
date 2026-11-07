@@ -221,7 +221,14 @@ static void *operation_server(void *unused) {
             !strstr(request, header) || !strstr(request, element) ||
             !strstr(request, destination_element) || !strstr(request, "<Fixture/>")) server_failed = 4;
         const char response[] = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\n<Envelope/>";
-        if (send(client, response, sizeof(response) - 1, MSG_NOSIGNAL) != (ssize_t)(sizeof(response) - 1)) server_failed = 5;
+        size_t total_sent = 0;
+        size_t response_len = sizeof(response) - 1;
+        while (total_sent < response_len) {
+            ssize_t sent = send(client, response + total_sent, response_len - total_sent, MSG_NOSIGNAL);
+            if (sent <= 0) { server_failed = 5; break; }
+            total_sent += (size_t)sent;
+        }
+        if (total_sent != response_len) server_failed = 5;
         close(client);
     }
     return NULL;
