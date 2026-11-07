@@ -56,6 +56,7 @@ void setUp(void) {
     concurrent_attempts = accepted_actions = unexpected_lock_errors = fixture_errors = 0;
     memset(g_pulse_gen, 0, sizeof(g_pulse_gen));
     g_pulse_gen_count = 0;
+    g_pulse_gen_sequence = 0;
     pthread_mutex_lock(&g_pulse_gen_mutex);
     pulse_gen_increment("camera");
     pthread_mutex_unlock(&g_pulse_gen_mutex);

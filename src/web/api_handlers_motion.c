@@ -51,6 +51,7 @@
 
 #include "core/event_producers.h"
 #include "database/db_auth.h"
+#include "database/db_core.h"
 #include "database/db_detections.h"
 #include "database/db_recording_tags.h"
 #include "video/detection_result.h"
@@ -90,7 +91,40 @@ typedef struct {
 
 static pulse_gen_entry_t g_pulse_gen[MAX_STREAMS];
 static int               g_pulse_gen_count = 0;
+static uint64_t          g_pulse_gen_sequence = 0;
 static pthread_mutex_t   g_pulse_gen_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* Reclaim only names absent from a complete database snapshot. Disabled
+ * cameras still exist. On query failure, preserve the table unchanged.
+ * Caller MUST hold g_pulse_gen_mutex. */
+static void pulse_gen_prune_stale_locked(void) {
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) return;
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, "SELECT name FROM streams;", -1, &stmt, NULL);
+    bool present[MAX_STREAMS] = {false};
+    if (rc == SQLITE_OK) {
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+            const char *name = (const char *)sqlite3_column_text(stmt, 0);
+            if (!name) continue;
+            for (int i = 0; i < g_pulse_gen_count; i++) {
+                if (strcmp(g_pulse_gen[i].name, name) == 0) {
+                    present[i] = true;
+                    break;
+                }
+            }
+        }
+    }
+    sqlite3_finalize(stmt);
+    db_close_readonly_connection(db);
+    if (rc != SQLITE_DONE) return;
+
+    int count = 0;
+    for (int i = 0; i < g_pulse_gen_count; i++) {
+        if (present[i]) g_pulse_gen[count++] = g_pulse_gen[i];
+    }
+    g_pulse_gen_count = count;
+}
 
 /* Return the current generation for stream_name (0 if not seen before).
  * Caller MUST hold g_pulse_gen_mutex. */
@@ -105,17 +139,22 @@ static uint64_t pulse_gen_get(const char *stream_name) {
 /* Increment the generation counter for stream_name and return the new value.
  * Caller MUST hold g_pulse_gen_mutex. */
 static uint64_t pulse_gen_increment(const char *stream_name) {
+    // Never recycle a token after a name is pruned and later reused: an old
+    // sleeping worker may still carry that name and its previous token.
+    if (g_pulse_gen_sequence == UINT64_MAX) return 0;
+    if (g_pulse_gen_count == MAX_STREAMS && pulse_gen_get(stream_name) == 0)
+        pulse_gen_prune_stale_locked();
     for (int i = 0; i < g_pulse_gen_count; i++) {
         if (strcmp(g_pulse_gen[i].name, stream_name) == 0)
-            return ++g_pulse_gen[i].generation;
+            return g_pulse_gen[i].generation = ++g_pulse_gen_sequence;
     }
     /* First time we see this stream — add an entry. */
     if (g_pulse_gen_count < MAX_STREAMS) {
         int i = g_pulse_gen_count++;
         safe_strcpy(g_pulse_gen[i].name, stream_name,
                     sizeof(g_pulse_gen[i].name), 0);
-        g_pulse_gen[i].generation = 1;
-        return 1;
+        g_pulse_gen[i].generation = ++g_pulse_gen_sequence;
+        return g_pulse_gen[i].generation;
     }
     /* Reject before dispatch when supersession cannot be tracked. */
     log_warn("pulse_gen table full; cannot track motion action for '%s'",
