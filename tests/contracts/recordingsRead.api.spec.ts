@@ -1,6 +1,6 @@
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {readFileSync,writeFileSync,unlinkSync,existsSync} from 'node:fs';
+import {readFileSync,writeFileSync,unlinkSync,existsSync,copyFileSync} from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {test,expect,admin,anonymous,viewer,wire,ok,database,createUser,role,policy,token,cameraScope,discovery,operationIds,recordingCommonOps,recordingReplayOps,lintProjections,type Identity,type Server} from './permissionCases';
@@ -81,6 +81,37 @@ test('timelines filter requested IDs, counts and ranges without revealing hidden
   for(const [route,status] of [[`/api/timeline/segments?stream=B&${query}`,403],['/api/timeline/segments?camera_uuid=invalid',400],['/api/timeline/segments-by-ids?ids=invalid,0',400]] as const) {
     const denied=await wire(server,route,viewer);expect(denied.response.status).toBe(status);safeDenied(denied.body,server,fixture);
   }
+});
+
+test('large timeline IDs remain exact through JSON, playback and ZIP export',async({server},info)=>{
+  const fixture=seedRecordings(server);
+  const exact=['9007199254740991','9007199254740992','9007199254740993','9223372036854775807'];
+  for(const id of exact) {
+    const file=path.join(fixture.directory,`${id}.mp4`);copyFileSync(fixture.source,file);
+    database(server,`INSERT INTO recordings(id,stream_name,camera_uuid,file_path,start_time,end_time,size_bytes,width,height,fps,codec,is_complete,trigger_type,playback_issue)
+      SELECT ?,stream_name,camera_uuid,?,start_time,end_time,size_bytes,width,height,fps,codec,is_complete,trigger_type,playback_issue FROM recordings WHERE id=?`,[BigInt(id),file,ids.playable]);
+  }
+  const expected=[Number.MAX_SAFE_INTEGER,...exact.slice(1)];
+  const contract=await ok(server,'/api/openapi.json',admin);
+  expect(contract.components.schemas.RecordingTimelineSegment.properties.id.oneOf[0].maximum).toBe(Number.MAX_SAFE_INTEGER);
+  const selected=await ok(server,`/api/timeline/segments-by-ids?ids=${exact.join(',')},${ids.hidden},${exact[2]}`,viewer);
+  expect(validateRecordingTimelineByIds(selected)).toBe(true);
+  expect(selected.segments.map((row:{id:number|string})=>row.id)).toEqual([...expected,exact[2]]);
+  const timeline=await ok(server,`/api/timeline/segments?camera_uuid=${server.cameras.A.camera_uuid}&${timelineQuery(fixture)}`,viewer);
+  expect(validateRecordingTimeline(timeline)).toBe(true);
+  for(const id of expected) expect(timeline.segments.some((row:{id:number|string})=>row.id===id)).toBe(true);
+  const playback=await server.request(`/api/recordings/play/${exact[2]}`,{principal:'viewer'});
+  expect(playback.status).toBe(200);expect(Buffer.from(await playback.arrayBuffer())).toEqual(fixture.bytes);
+  const accepted=await ok(server,'/api/recordings/batch-download',admin,'POST',{ids:exact.slice(1,3),filename:'exact.zip'});
+  await expect.poll(async()=> (await ok(server,`/api/recordings/batch-download/status/${accepted.token}`,admin)).status,
+    {timeout:15000,intervals:[50,100,200]}).toBe('complete');
+  const zip=await server.request(`/api/recordings/batch-download/result/${accepted.token}`,{principal:'admin'});
+  expect(zip.status).toBe(200);
+  const archive=info.outputPath('exact.zip');writeFileSync(archive,Buffer.from(await zip.arrayBuffer()));
+  const members=JSON.parse(execFileSync('python3',['-c',
+    'import hashlib,json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(json.dumps({n:hashlib.sha256(z.read(n)).hexdigest() for n in z.namelist()}))',archive],{encoding:'utf8'}));
+  expect(Object.keys(members).sort()).toEqual(exact.slice(1,3).map(id=>`${id}.mp4`));
+  for(const digest of Object.values(members)) expect(digest).toBe(createHash('sha256').update(fixture.bytes).digest('hex'));
 });
 
 test('recording reads fail closed on policy lookup failure and recover without empty or partial success',async({server})=>{

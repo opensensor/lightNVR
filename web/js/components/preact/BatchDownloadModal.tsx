@@ -4,7 +4,6 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { t as translate, useI18n } from '../../i18n.ts';
-import type { Recording } from '../../types/core.ts';
 import type {
   BatchDownloadStartResponse,
   BatchDownloadStatusResponse,
@@ -13,7 +12,7 @@ import type {
 import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
 
 /** Only id and stream are read, so the timeline can pass its own segment objects. */
-type DownloadableRecording = Pick<Recording, 'id'> & { stream?: string };
+type DownloadableRecording = { id: number | string; stream?: string };
 
 export interface BatchDownloadModalProps {
   isOpen: boolean;
@@ -45,14 +44,14 @@ async function downloadSequential(recordings: DownloadableRecording[]) {
 
 /**
  * ZIP download: POST to server, poll for completion, then redirect to result URL.
- * @param {number[]} ids
+ * @param {Array<number|string>} ids
  * @param {string}  filename
  * @param {Function} onProgress  (current, total) => void
  * @param {Function} onComplete  () => void
  * @param {Function} onError    (msg) => void
  */
 async function downloadZip(
-  ids: number[],
+  ids: Array<number | string>,
   filename: string,
   onProgress: (current: number, total: number) => void,
   onComplete: () => void,
@@ -121,7 +120,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
   const selected = Object.entries(selectedIds)
     .filter(([_, isSelected]) => !!isSelected)
     .map(([id]): DownloadableRecording => recordings.find(r => String(r.id) === id) || {
-      id: parseInt(id, 10),
+      id: Number.isSafeInteger(Number(id)) ? Number(id) : id,
       stream: 'recording'
     });
 

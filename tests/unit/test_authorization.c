@@ -1496,7 +1496,7 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
     cJSON_Delete(json);
 
     snprintf(batch_body, sizeof(batch_body),
-             "{\"ids\":[%llu],\"filename\":\"allowed.zip\"}",
+             "{\"ids\":[\"%llu\"],\"filename\":\"allowed.zip\"}",
              (unsigned long long)allowed_id);
     json = call_handler_path(handle_batch_download_recordings,
                              HTTP_METHOD_POST,
@@ -3352,6 +3352,68 @@ void test_timeline_ids_batch_only_authorized_recordings_and_keep_open_detection_
     cJSON_Delete(json);
 }
 
+void test_timeline_ids_keep_safe_numbers_and_exact_large_strings(void) {
+    const uint64_t ids[] = {42, UINT64_C(9007199254740991), UINT64_C(9007199254740992),
+                            UINT64_C(9007199254740993), UINT64_C(9223372036854775807)};
+    stream_config_t camera = create_camera("timeline_exact_ids", "");
+    recording_metadata_t rec = {0};
+    safe_strcpy(rec.stream_name, camera.name, sizeof(rec.stream_name), 0);
+    safe_strcpy(rec.camera_uuid, camera.camera_uuid, sizeof(rec.camera_uuid), 0);
+    rec.is_complete = true;
+    /* Create the rows before assigning large primary keys so sqlite_sequence
+     * stays small for the other tests that rely on auto-assigned numeric IDs. */
+    for (int i = 0; i < 5; i++) {
+        snprintf(rec.file_path, sizeof(rec.file_path), "/tmp/timeline-exact-%d.mp4", i);
+        rec.start_time = 1787920000 + i * 10;
+        rec.end_time = rec.start_time + 5;
+        TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&rec));
+    }
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "UPDATE recordings SET id=-id", NULL, NULL, NULL));
+    for (int i = 0; i < 5; i++) {
+        char sql[256];
+        snprintf(sql, sizeof(sql), "UPDATE recordings SET id=%llu WHERE file_path='/tmp/timeline-exact-%d.mp4'",
+                 (unsigned long long)ids[i], i);
+        TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), sql, NULL, NULL, NULL));
+    }
+    char api_key[128] = {0};
+    create_camera_action_user("timeline_exact_ids_user", camera.camera_uuid,
+        authorization_action_bit(AUTHZ_RECORDINGS_REPLAY), api_key);
+    g_config.web_auth_enabled = true;
+    char range_path[256];
+    snprintf(range_path, sizeof(range_path), "/api/timeline/segments?camera_uuid=%s&start=2026-08-28T00:00:00Z&end=2026-08-29T00:00:00Z", camera.camera_uuid);
+    const char *paths[] = {range_path, "/api/timeline/segments-by-ids?ids=42,9007199254740991,9007199254740992,9007199254740993,9223372036854775807"};
+    void (*handlers[])(const http_request_t *, http_response_t *) = {
+        handle_get_timeline_segments, handle_get_timeline_segments_by_ids};
+    for (int endpoint = 0; endpoint < 2; endpoint++) {
+        cJSON *json = call_handler_path(handlers[endpoint], HTTP_METHOD_GET, paths[endpoint], NULL, api_key, 200);
+        const cJSON *segments = cJSON_GetObjectItemCaseSensitive(json, "segments");
+        TEST_ASSERT_EQUAL_INT(5, cJSON_GetArraySize(segments));
+        for (int i = 0; i < 5; i++) {
+            const cJSON *id = cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(segments, i), "id");
+            if (i < 2) {
+                TEST_ASSERT_TRUE(cJSON_IsNumber(id));
+                TEST_ASSERT_EQUAL_UINT64(ids[i], (uint64_t)id->valuedouble);
+            } else {
+                char decimal[32]; snprintf(decimal, sizeof(decimal), "%llu", (unsigned long long)ids[i]);
+                TEST_ASSERT_TRUE(cJSON_IsString(id));
+                TEST_ASSERT_EQUAL_STRING(decimal, id->valuestring);
+            }
+        }
+        cJSON_Delete(json);
+    }
+    /* Export must resolve the exact large string ID before checking permission.
+     * This user has replay only, so a correctly resolved recording yields 403. */
+    cJSON_Delete(call_handler_path(handle_batch_download_recordings, HTTP_METHOD_POST,
+        "/api/recordings/batch-download", "{\"ids\":[\"9007199254740993\"]}", api_key, 403));
+    const char *bad_ids[] = {"9007199254740992", "1.5", "\"18446744073709551616\"", "\"1junk\"", "\"-1\"", "\"0\""};
+    for (size_t i = 0; i < sizeof(bad_ids) / sizeof(bad_ids[0]); i++) {
+        char body[128]; snprintf(body, sizeof(body), "{\"ids\":[%s]}", bad_ids[i]);
+        cJSON_Delete(call_handler_path(handle_batch_download_recordings, HTTP_METHOD_POST,
+            "/api/recordings/batch-download", body, api_key, 400));
+    }
+}
+
 void test_timeline_ids_reject_malformed_tokens_without_partial_results(void) {
     stream_config_t camera = create_camera("timeline_strict_ids", "");
     recording_metadata_t rec = {0};
@@ -3573,6 +3635,7 @@ int main(void) {
     RUN_TEST(test_timeline_ids_batch_only_authorized_recordings_and_keep_open_detection_bounds);
     RUN_TEST(test_timeline_ids_preserve_duplicates_at_query_size_limit);
     RUN_TEST(test_timeline_ids_reject_malformed_tokens_without_partial_results);
+    RUN_TEST(test_timeline_ids_keep_safe_numbers_and_exact_large_strings);
     RUN_TEST(test_timeline_manifest_rejects_invalid_bounds_before_querying_recordings);
     RUN_TEST(test_legacy_role_compatibility_has_no_runtime_allowed_tags_path);
     RUN_TEST(test_legacy_principals_migrate_to_idempotent_selector_grants);

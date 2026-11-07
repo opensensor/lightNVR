@@ -2929,7 +2929,7 @@ validate192.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_AdminRoleWrite = validate188, func0 = require_equal().default, pattern53 = new RegExp("\\S", "u");
+var __contract_AdminRoleWrite = validate188, func0 = require_equal().default, pattern57 = new RegExp("\\S", "u");
 
 function validate188(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate188.evaluated;
@@ -3026,7 +3026,7 @@ function validate188(data, {instancePath: instancePath = "", parentData: parentD
             limit: 1
           }
         } ], !1;
-        if (!pattern53.test(data1)) return validate188.errors = [ {
+        if (!pattern57.test(data1)) return validate188.errors = [ {
           instancePath: instancePath + "/name",
           schemaPath: "#/properties/name/pattern",
           keyword: "pattern",
@@ -13117,7 +13117,7 @@ validate428.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_DetectionZone = validate452, pattern182 = new RegExp("^#[0-9a-fA-F]{6}$", "u");
+var __contract_DetectionZone = validate452, pattern186 = new RegExp("^#[0-9a-fA-F]{6}$", "u");
 
 function validate452(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate452.evaluated;
@@ -13272,7 +13272,7 @@ function validate452(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern182.test(data3)) return validate452.errors = [ {
+            if (!pattern186.test(data3)) return validate452.errors = [ {
               instancePath: instancePath + "/color",
               schemaPath: "#/properties/color/pattern",
               keyword: "pattern",
@@ -13602,7 +13602,7 @@ function validate451(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern182.test(data3)) return validate451.errors = [ {
+            if (!pattern186.test(data3)) return validate451.errors = [ {
               instancePath: instancePath + "/color",
               schemaPath: "#/properties/color/pattern",
               keyword: "pattern",
@@ -18899,7 +18899,7 @@ var __contract_EventRoute = validate293, schema318 = {
   },
   required: [ "uuid", "name", "description", "enabled", "destination", "event_types", "camera_scope", "predicate", "schedule", "suppression", "revision", "created_at", "updated_at" ],
   additionalProperties: !1
-}, pattern91 = new RegExp("^(?:[01][0-9]|2[0-3]):[0-5][0-9]$", "u");
+}, pattern95 = new RegExp("^(?:[01][0-9]|2[0-3]):[0-5][0-9]$", "u");
 
 function validate293(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let vErrors = [], errors = 0, evaluated0 = validate293.evaluated;
@@ -19911,7 +19911,7 @@ function validate293(data, {instancePath: instancePath = "", parentData: parentD
                                                           type: "string"
                                                         }
                                                       } ], !1;
-                                                      if (!pattern91.test(data28)) return validate293.errors = [ {
+                                                      if (!pattern95.test(data28)) return validate293.errors = [ {
                                                         instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
                                                         schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
                                                         keyword: "pattern",
@@ -19933,7 +19933,7 @@ function validate293(data, {instancePath: instancePath = "", parentData: parentD
                                                           type: "string"
                                                         }
                                                       } ], !1;
-                                                      if (!pattern91.test(data29)) return validate293.errors = [ {
+                                                      if (!pattern95.test(data29)) return validate293.errors = [ {
                                                         instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
                                                         schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
                                                         keyword: "pattern",
@@ -21218,7 +21218,7 @@ function validate297(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern91.test(data27)) return validate297.errors = [ {
+                                                    if (!pattern95.test(data27)) return validate297.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
                                                       keyword: "pattern",
@@ -21240,7 +21240,7 @@ function validate297(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern91.test(data28)) return validate297.errors = [ {
+                                                    if (!pattern95.test(data28)) return validate297.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
                                                       keyword: "pattern",
@@ -22981,7 +22981,7 @@ function validate301(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern91.test(data27)) return validate301.errors = [ {
+                                                    if (!pattern95.test(data27)) return validate301.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
                                                       keyword: "pattern",
@@ -23003,7 +23003,7 @@ function validate301(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern91.test(data28)) return validate301.errors = [ {
+                                                    if (!pattern95.test(data28)) return validate301.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
                                                       keyword: "pattern",
@@ -24172,7 +24172,7 @@ function validate299(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern91.test(data27)) return validate299.errors = [ {
+                                                    if (!pattern95.test(data27)) return validate299.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
                                                       keyword: "pattern",
@@ -24194,7 +24194,7 @@ function validate299(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern91.test(data28)) return validate299.errors = [ {
+                                                    if (!pattern95.test(data28)) return validate299.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
                                                       keyword: "pattern",
@@ -24812,7 +24812,7 @@ function validate292(data, {instancePath: instancePath = "", parentData: parentD
                               type: "string"
                             }
                           } ], !1;
-                          if (!pattern91.test(data6)) return validate292.errors = [ {
+                          if (!pattern95.test(data6)) return validate292.errors = [ {
                             instancePath: instancePath + "/windows/" + i0 + "/start",
                             schemaPath: "#/properties/windows/items/properties/start/pattern",
                             keyword: "pattern",
@@ -24833,7 +24833,7 @@ function validate292(data, {instancePath: instancePath = "", parentData: parentD
                             type: "string"
                           }
                         } ], !1;
-                        if (!pattern91.test(data7)) return validate292.errors = [ {
+                        if (!pattern95.test(data7)) return validate292.errors = [ {
                           instancePath: instancePath + "/windows/" + i0 + "/end",
                           schemaPath: "#/properties/windows/items/properties/end/pattern",
                           keyword: "pattern",
@@ -37738,7 +37738,7 @@ var __contract_EvidenceSearchRequest = validate386, schema449 = {
     required: [ "start_time", "end_time", "selector" ],
     additionalProperties: !0
   } ]
-}, pattern160 = new RegExp("^v1-[0-9a-fA-F]+-[0-9a-fA-F]+$", "u");
+}, pattern164 = new RegExp("^v1-[0-9a-fA-F]+-[0-9a-fA-F]+$", "u");
 
 function validate386(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let vErrors = [], errors = 0, evaluated0 = validate386.evaluated;
@@ -37976,7 +37976,7 @@ function validate386(data, {instancePath: instancePath = "", parentData: parentD
               if (void 0 !== data.cursor) {
                 let data6 = data.cursor, _errs14 = errors, _errs15 = errors, valid9 = !1, _errs16 = errors;
                 if (errors === _errs16) if ("string" == typeof data6) {
-                  if (!pattern160.test(data6)) {
+                  if (!pattern164.test(data6)) {
                     let err17 = {
                       instancePath: instancePath + "/cursor",
                       schemaPath: "#/oneOf/0/properties/cursor/anyOf/0/pattern",
@@ -39127,7 +39127,7 @@ function validate386(data, {instancePath: instancePath = "", parentData: parentD
               if (void 0 !== data.cursor) {
                 let data40 = data.cursor, _errs88 = errors, _errs89 = errors, valid44 = !1, _errs90 = errors;
                 if (errors === _errs90) if ("string" == typeof data40) {
-                  if (!pattern160.test(data40)) {
+                  if (!pattern164.test(data40)) {
                     let err103 = {
                       instancePath: instancePath + "/cursor",
                       schemaPath: "#/oneOf/1/properties/cursor/anyOf/0/pattern",
@@ -51924,7 +51924,7 @@ validate165.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_FleetTagCreate = validate212, pattern68 = new RegExp("^(|#[0-9a-fA-F]{6})$", "u");
+var __contract_FleetTagCreate = validate212, pattern72 = new RegExp("^(|#[0-9a-fA-F]{6})$", "u");
 
 function validate212(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate212.evaluated;
@@ -51998,7 +51998,7 @@ function validate212(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern68.test(data1)) return validate212.errors = [ {
+            if (!pattern72.test(data1)) return validate212.errors = [ {
               instancePath: instancePath + "/color",
               schemaPath: "#/properties/color/pattern",
               keyword: "pattern",
@@ -52286,7 +52286,7 @@ function validate213(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern68.test(data1)) return validate213.errors = [ {
+            if (!pattern72.test(data1)) return validate213.errors = [ {
               instancePath: instancePath + "/color",
               schemaPath: "#/properties/color/pattern",
               keyword: "pattern",
@@ -79043,91 +79043,147 @@ validate125.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_RecordingExportRequest = validate124;
+var __contract_RecordingExportRequest = validate124, pattern14 = new RegExp("^[1-9][0-9]{0,19}$", "u");
 
 function validate124(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
-  let evaluated0 = validate124.evaluated;
+  let vErrors = [], errors = 0, evaluated0 = validate124.evaluated;
   if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
-  !data || "object" != typeof data || Array.isArray(data)) return validate124.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/type",
-    keyword: "type",
-    params: {
-      type: "object"
-    }
-  } ], !1;
-  if (void 0 === data.ids) return validate124.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "ids"
-    }
-  } ], !1;
-  if (void 0 !== data.ids) {
-    let data0 = data.ids, _errs2 = 0;
-    if (0 === _errs2) {
-      if (!Array.isArray(data0)) return validate124.errors = [ {
-        instancePath: instancePath + "/ids",
-        schemaPath: "#/properties/ids/type",
-        keyword: "type",
-        params: {
-          type: "array"
-        }
-      } ], !1;
-      if (data0.length > 200) return validate124.errors = [ {
-        instancePath: instancePath + "/ids",
-        schemaPath: "#/properties/ids/maxItems",
-        keyword: "maxItems",
-        params: {
-          limit: 200
-        }
-      } ], !1;
-      if (data0.length < 1) return validate124.errors = [ {
-        instancePath: instancePath + "/ids",
-        schemaPath: "#/properties/ids/minItems",
-        keyword: "minItems",
-        params: {
-          limit: 1
-        }
-      } ], !1;
-      {
-        let len0 = data0.length;
-        for (let i0 = 0; i0 < len0; i0++) {
-          let data1 = data0[i0], _errs4 = 0;
-          if (0 === _errs4) {
-            if ("number" != typeof data1 || !isFinite(data1)) return validate124.errors = [ {
-              instancePath: instancePath + "/ids/" + i0,
-              schemaPath: "#/properties/ids/items/type",
-              keyword: "type",
-              params: {
-                type: "number"
-              }
-            } ], !1;
-            if (data1 <= 0 || isNaN(data1)) return validate124.errors = [ {
-              instancePath: instancePath + "/ids/" + i0,
-              schemaPath: "#/properties/ids/items/exclusiveMinimum",
-              keyword: "exclusiveMinimum",
-              params: {
-                comparison: ">",
-                limit: 0
-              }
-            } ], !1;
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate124.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.ids) return validate124.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "ids"
+      }
+    } ], !1;
+    if (void 0 !== data.ids) {
+      let data0 = data.ids, _errs2 = errors;
+      if (errors === _errs2) {
+        if (!Array.isArray(data0)) return validate124.errors = [ {
+          instancePath: instancePath + "/ids",
+          schemaPath: "#/properties/ids/type",
+          keyword: "type",
+          params: {
+            type: "array"
           }
-          if (0 !== _errs4) break;
+        } ], !1;
+        if (data0.length > 200) return validate124.errors = [ {
+          instancePath: instancePath + "/ids",
+          schemaPath: "#/properties/ids/maxItems",
+          keyword: "maxItems",
+          params: {
+            limit: 200
+          }
+        } ], !1;
+        if (data0.length < 1) return validate124.errors = [ {
+          instancePath: instancePath + "/ids",
+          schemaPath: "#/properties/ids/minItems",
+          keyword: "minItems",
+          params: {
+            limit: 1
+          }
+        } ], !1;
+        {
+          let len0 = data0.length;
+          for (let i0 = 0; i0 < len0; i0++) {
+            let data1 = data0[i0], _errs4 = errors, _errs5 = errors, valid2 = !1, passing0 = null, _errs6 = errors;
+            if ("number" != typeof data1 || data1 % 1 || isNaN(data1) || !isFinite(data1)) {
+              let err0 = {
+                instancePath: instancePath + "/ids/" + i0,
+                schemaPath: "#/properties/ids/items/oneOf/0/type",
+                keyword: "type",
+                params: {
+                  type: "integer"
+                }
+              };
+              vErrors.push(err0), errors++;
+            }
+            if (errors === _errs6 && "number" == typeof data1 && isFinite(data1)) if (data1 > 9007199254740991 || isNaN(data1)) {
+              let err1 = {
+                instancePath: instancePath + "/ids/" + i0,
+                schemaPath: "#/properties/ids/items/oneOf/0/maximum",
+                keyword: "maximum",
+                params: {
+                  comparison: "<=",
+                  limit: 9007199254740991
+                }
+              };
+              vErrors.push(err1), errors++;
+            } else if (data1 < 1 || isNaN(data1)) {
+              let err2 = {
+                instancePath: instancePath + "/ids/" + i0,
+                schemaPath: "#/properties/ids/items/oneOf/0/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: 1
+                }
+              };
+              vErrors.push(err2), errors++;
+            }
+            _errs6 === errors && (valid2 = !0, passing0 = 0);
+            let _errs8 = errors;
+            if (errors === _errs8) if ("string" == typeof data1) {
+              if (!pattern14.test(data1)) {
+                let err3 = {
+                  instancePath: instancePath + "/ids/" + i0,
+                  schemaPath: "#/properties/ids/items/oneOf/1/pattern",
+                  keyword: "pattern",
+                  params: {
+                    pattern: "^[1-9][0-9]{0,19}$"
+                  }
+                };
+                vErrors.push(err3), errors++;
+              }
+            } else {
+              let err4 = {
+                instancePath: instancePath + "/ids/" + i0,
+                schemaPath: "#/properties/ids/items/oneOf/1/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              };
+              vErrors.push(err4), errors++;
+            }
+            var _valid1 = _errs8 === errors;
+            if (_valid1 && valid2 ? (valid2 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid2 = !0,
+            passing0 = 1), !valid2) {
+              let err5 = {
+                instancePath: instancePath + "/ids/" + i0,
+                schemaPath: "#/properties/ids/items/oneOf",
+                keyword: "oneOf",
+                params: {
+                  passingSchemas: passing0
+                }
+              };
+              return vErrors.push(err5), errors++, validate124.errors = vErrors, !1;
+            }
+            if (errors = _errs5, vErrors.length = _errs5, _errs4 !== errors) break;
+          }
         }
       }
-    }
-    var valid0 = 0 === _errs2;
-  } else valid0 = !0;
-  return valid0 && void 0 !== data.filename && "string" != typeof data.filename ? (validate124.errors = [ {
-    instancePath: instancePath + "/filename",
-    schemaPath: "#/properties/filename/type",
-    keyword: "type",
-    params: {
-      type: "string"
-    }
-  } ], !1) : (validate124.errors = [], !0);
+      var valid0 = _errs2 === errors;
+    } else valid0 = !0;
+    if (valid0 && void 0 !== data.filename && "string" != typeof data.filename) return validate124.errors = [ {
+      instancePath: instancePath + "/filename",
+      schemaPath: "#/properties/filename/type",
+      keyword: "type",
+      params: {
+        type: "string"
+      }
+    } ], !1;
+  }
+  return validate124.errors = vErrors, 0 === errors;
 }
 
 validate124.evaluated = {
@@ -79834,8 +79890,15 @@ var __contract_RecordingTimeline = validate106, schema110 = {
   type: "object",
   properties: {
     id: {
-      type: "integer",
-      minimum: 1
+      description: "Recording ID: a number through 9007199254740991 (JavaScript maximum safe integer), otherwise an exact decimal string. Treat IDs as opaque values; do not convert strings to Number.",
+      oneOf: [ {
+        type: "integer",
+        minimum: 1,
+        maximum: 9007199254740991
+      }, {
+        type: "string",
+        pattern: "^[1-9][0-9]{0,19}$"
+      } ]
     },
     stream: {
       type: "string"
@@ -79887,407 +79950,467 @@ var __contract_RecordingTimeline = validate106, schema110 = {
 };
 
 function validate106(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
-  let evaluated0 = validate106.evaluated;
+  let vErrors = [], errors = 0, evaluated0 = validate106.evaluated;
   if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
-  !data || "object" != typeof data || Array.isArray(data)) return validate106.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/type",
-    keyword: "type",
-    params: {
-      type: "object"
-    }
-  } ], !1;
-  if (void 0 === data.segments) return validate106.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "segments"
-    }
-  } ], !1;
-  if (void 0 === data.stream) return validate106.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "stream"
-    }
-  } ], !1;
-  if (void 0 === data.start_time) return validate106.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "start_time"
-    }
-  } ], !1;
-  if (void 0 === data.end_time) return validate106.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "end_time"
-    }
-  } ], !1;
-  if (void 0 === data.segment_count) return validate106.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "segment_count"
-    }
-  } ], !1;
-  if (void 0 !== data.segments) {
-    let data0 = data.segments, _errs2 = 0;
-    if (0 === _errs2) {
-      if (!Array.isArray(data0)) return validate106.errors = [ {
-        instancePath: instancePath + "/segments",
-        schemaPath: "#/properties/segments/type",
-        keyword: "type",
-        params: {
-          type: "array"
-        }
-      } ], !1;
-      {
-        let len0 = data0.length;
-        for (let i0 = 0; i0 < len0; i0++) {
-          let data1 = data0[i0], _errs4 = 0;
-          if (!data1 || "object" != typeof data1 || Array.isArray(data1)) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/type",
-            keyword: "type",
-            params: {
-              type: "object"
-            }
-          } ], !1;
-          if (void 0 === data1.id) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "id"
-            }
-          } ], !1;
-          if (void 0 === data1.stream) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "stream"
-            }
-          } ], !1;
-          if (void 0 === data1.camera_uuid) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "camera_uuid"
-            }
-          } ], !1;
-          if (void 0 === data1.start_time) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "start_time"
-            }
-          } ], !1;
-          if (void 0 === data1.in_progress) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "in_progress"
-            }
-          } ], !1;
-          if (void 0 === data1.duration) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "duration"
-            }
-          } ], !1;
-          if (void 0 === data1.size) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "size"
-            }
-          } ], !1;
-          if (void 0 === data1.capture_method) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "capture_method"
-            }
-          } ], !1;
-          if (void 0 === data1.schedule_restricted) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "schedule_restricted"
-            }
-          } ], !1;
-          if (void 0 === data1.has_detection) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "has_detection"
-            }
-          } ], !1;
-          if (void 0 === data1.end_time) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "end_time"
-            }
-          } ], !1;
-          if (void 0 === data1.start_timestamp) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "start_timestamp"
-            }
-          } ], !1;
-          if (void 0 === data1.end_timestamp) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "end_timestamp"
-            }
-          } ], !1;
-          if (void 0 === data1.local_start_timestamp) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "local_start_timestamp"
-            }
-          } ], !1;
-          if (void 0 === data1.local_end_timestamp) return validate106.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "local_end_timestamp"
-            }
-          } ], !1;
-          if (void 0 !== data1.id) {
-            let data2 = data1.id, _errs8 = 0;
-            if ("number" != typeof data2 || data2 % 1 || isNaN(data2) || !isFinite(data2)) return validate106.errors = [ {
-              instancePath: instancePath + "/segments/" + i0 + "/id",
-              schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/type",
-              keyword: "type",
-              params: {
-                type: "integer"
-              }
-            } ], !1;
-            if (0 === _errs8 && "number" == typeof data2 && isFinite(data2) && (data2 < 1 || isNaN(data2))) return validate106.errors = [ {
-              instancePath: instancePath + "/segments/" + i0 + "/id",
-              schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/minimum",
-              keyword: "minimum",
-              params: {
-                comparison: ">=",
-                limit: 1
-              }
-            } ], !1;
-            var valid3 = 0 === _errs8;
-          } else valid3 = !0;
-          if (valid3) {
-            if (void 0 !== data1.stream) {
-              let _errs10 = 0;
-              if ("string" != typeof data1.stream) return validate106.errors = [ {
-                instancePath: instancePath + "/segments/" + i0 + "/stream",
-                schemaPath: "#/$defs/RecordingTimelineSegment/properties/stream/type",
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate106.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.segments) return validate106.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "segments"
+      }
+    } ], !1;
+    if (void 0 === data.stream) return validate106.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "stream"
+      }
+    } ], !1;
+    if (void 0 === data.start_time) return validate106.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "start_time"
+      }
+    } ], !1;
+    if (void 0 === data.end_time) return validate106.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "end_time"
+      }
+    } ], !1;
+    if (void 0 === data.segment_count) return validate106.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "segment_count"
+      }
+    } ], !1;
+    if (void 0 !== data.segments) {
+      let data0 = data.segments, _errs2 = errors;
+      if (errors === _errs2) {
+        if (!Array.isArray(data0)) return validate106.errors = [ {
+          instancePath: instancePath + "/segments",
+          schemaPath: "#/properties/segments/type",
+          keyword: "type",
+          params: {
+            type: "array"
+          }
+        } ], !1;
+        {
+          let len0 = data0.length;
+          for (let i0 = 0; i0 < len0; i0++) {
+            let data1 = data0[i0], _errs4 = errors;
+            if (errors == errors) {
+              if (!data1 || "object" != typeof data1 || Array.isArray(data1)) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/type",
                 keyword: "type",
                 params: {
-                  type: "string"
+                  type: "object"
                 }
               } ], !1;
-              var valid4 = 0 === _errs10;
-            } else valid4 = !0;
-            if (valid4) {
-              if (void 0 !== data1.camera_uuid) {
-                let data4 = data1.camera_uuid, _errs12 = 0;
-                if ("string" != typeof data4 && null !== data4) return validate106.errors = [ {
-                  instancePath: instancePath + "/segments/" + i0 + "/camera_uuid",
-                  schemaPath: "#/$defs/RecordingTimelineSegment/properties/camera_uuid/type",
-                  keyword: "type",
-                  params: {
-                    type: schema110.properties.camera_uuid.type
+              if (void 0 === data1.id) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "id"
+                }
+              } ], !1;
+              if (void 0 === data1.stream) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "stream"
+                }
+              } ], !1;
+              if (void 0 === data1.camera_uuid) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "camera_uuid"
+                }
+              } ], !1;
+              if (void 0 === data1.start_time) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "start_time"
+                }
+              } ], !1;
+              if (void 0 === data1.in_progress) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "in_progress"
+                }
+              } ], !1;
+              if (void 0 === data1.duration) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "duration"
+                }
+              } ], !1;
+              if (void 0 === data1.size) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "size"
+                }
+              } ], !1;
+              if (void 0 === data1.capture_method) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "capture_method"
+                }
+              } ], !1;
+              if (void 0 === data1.schedule_restricted) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "schedule_restricted"
+                }
+              } ], !1;
+              if (void 0 === data1.has_detection) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "has_detection"
+                }
+              } ], !1;
+              if (void 0 === data1.end_time) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "end_time"
+                }
+              } ], !1;
+              if (void 0 === data1.start_timestamp) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "start_timestamp"
+                }
+              } ], !1;
+              if (void 0 === data1.end_timestamp) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "end_timestamp"
+                }
+              } ], !1;
+              if (void 0 === data1.local_start_timestamp) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "local_start_timestamp"
+                }
+              } ], !1;
+              if (void 0 === data1.local_end_timestamp) return validate106.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "local_end_timestamp"
+                }
+              } ], !1;
+              if (void 0 !== data1.id) {
+                let data2 = data1.id, _errs8 = errors, _errs9 = errors, valid4 = !1, passing0 = null, _errs10 = errors;
+                if ("number" != typeof data2 || data2 % 1 || isNaN(data2) || !isFinite(data2)) {
+                  let err0 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/0/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  };
+                  vErrors.push(err0), errors++;
+                }
+                if (errors === _errs10 && "number" == typeof data2 && isFinite(data2)) if (data2 > 9007199254740991 || isNaN(data2)) {
+                  let err1 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/0/maximum",
+                    keyword: "maximum",
+                    params: {
+                      comparison: "<=",
+                      limit: 9007199254740991
+                    }
+                  };
+                  vErrors.push(err1), errors++;
+                } else if (data2 < 1 || isNaN(data2)) {
+                  let err2 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/0/minimum",
+                    keyword: "minimum",
+                    params: {
+                      comparison: ">=",
+                      limit: 1
+                    }
+                  };
+                  vErrors.push(err2), errors++;
+                }
+                _errs10 === errors && (valid4 = !0, passing0 = 0);
+                let _errs12 = errors;
+                if (errors === _errs12) if ("string" == typeof data2) {
+                  if (!pattern14.test(data2)) {
+                    let err3 = {
+                      instancePath: instancePath + "/segments/" + i0 + "/id",
+                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/1/pattern",
+                      keyword: "pattern",
+                      params: {
+                        pattern: "^[1-9][0-9]{0,19}$"
+                      }
+                    };
+                    vErrors.push(err3), errors++;
                   }
-                } ], !1;
-                if (0 === _errs12 && "string" == typeof data4 && !pattern11.test(data4)) return validate106.errors = [ {
-                  instancePath: instancePath + "/segments/" + i0 + "/camera_uuid",
-                  schemaPath: "#/$defs/RecordingTimelineSegment/properties/camera_uuid/pattern",
-                  keyword: "pattern",
-                  params: {
-                    pattern: "^[0-9a-fA-F-]{36}$"
-                  }
-                } ], !1;
-                var valid5 = 0 === _errs12;
-              } else valid5 = !0;
-              if (valid5) {
-                if (void 0 !== data1.start_time) {
-                  let _errs14 = 0;
-                  if ("string" != typeof data1.start_time) return validate106.errors = [ {
-                    instancePath: instancePath + "/segments/" + i0 + "/start_time",
-                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/start_time/type",
+                } else {
+                  let err4 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/1/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  };
+                  vErrors.push(err4), errors++;
+                }
+                var _valid1 = _errs12 === errors;
+                if (_valid1 && valid4 ? (valid4 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid4 = !0,
+                passing0 = 1), !valid4) {
+                  let err5 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf",
+                    keyword: "oneOf",
+                    params: {
+                      passingSchemas: passing0
+                    }
+                  };
+                  return vErrors.push(err5), errors++, validate106.errors = vErrors, !1;
+                }
+                errors = _errs9, vErrors.length = _errs9;
+                var valid3 = _errs8 === errors;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data1.stream) {
+                  let _errs14 = errors;
+                  if ("string" != typeof data1.stream) return validate106.errors = [ {
+                    instancePath: instancePath + "/segments/" + i0 + "/stream",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/stream/type",
                     keyword: "type",
                     params: {
                       type: "string"
                     }
                   } ], !1;
-                  var valid6 = 0 === _errs14;
-                } else valid6 = !0;
-                if (valid6) {
-                  if (void 0 !== data1.in_progress) {
-                    let _errs16 = 0;
-                    if ("boolean" != typeof data1.in_progress) return validate106.errors = [ {
-                      instancePath: instancePath + "/segments/" + i0 + "/in_progress",
-                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/in_progress/type",
+                  var valid5 = _errs14 === errors;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data1.camera_uuid) {
+                    let data4 = data1.camera_uuid, _errs16 = errors;
+                    if ("string" != typeof data4 && null !== data4) return validate106.errors = [ {
+                      instancePath: instancePath + "/segments/" + i0 + "/camera_uuid",
+                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/camera_uuid/type",
                       keyword: "type",
                       params: {
-                        type: "boolean"
+                        type: schema110.properties.camera_uuid.type
                       }
                     } ], !1;
-                    var valid7 = 0 === _errs16;
-                  } else valid7 = !0;
-                  if (valid7) {
-                    if (void 0 !== data1.duration) {
-                      let data7 = data1.duration, _errs18 = 0;
-                      if ("number" != typeof data7 || !isFinite(data7)) return validate106.errors = [ {
-                        instancePath: instancePath + "/segments/" + i0 + "/duration",
-                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/duration/type",
+                    if (errors === _errs16 && "string" == typeof data4 && !pattern11.test(data4)) return validate106.errors = [ {
+                      instancePath: instancePath + "/segments/" + i0 + "/camera_uuid",
+                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/camera_uuid/pattern",
+                      keyword: "pattern",
+                      params: {
+                        pattern: "^[0-9a-fA-F-]{36}$"
+                      }
+                    } ], !1;
+                    var valid6 = _errs16 === errors;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data1.start_time) {
+                      let _errs18 = errors;
+                      if ("string" != typeof data1.start_time) return validate106.errors = [ {
+                        instancePath: instancePath + "/segments/" + i0 + "/start_time",
+                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/start_time/type",
                         keyword: "type",
                         params: {
-                          type: "number"
+                          type: "string"
                         }
                       } ], !1;
-                      var valid8 = 0 === _errs18;
-                    } else valid8 = !0;
-                    if (valid8) {
-                      if (void 0 !== data1.size) {
-                        let _errs20 = 0;
-                        if ("string" != typeof data1.size) return validate106.errors = [ {
-                          instancePath: instancePath + "/segments/" + i0 + "/size",
-                          schemaPath: "#/$defs/RecordingTimelineSegment/properties/size/type",
+                      var valid7 = _errs18 === errors;
+                    } else valid7 = !0;
+                    if (valid7) {
+                      if (void 0 !== data1.in_progress) {
+                        let _errs20 = errors;
+                        if ("boolean" != typeof data1.in_progress) return validate106.errors = [ {
+                          instancePath: instancePath + "/segments/" + i0 + "/in_progress",
+                          schemaPath: "#/$defs/RecordingTimelineSegment/properties/in_progress/type",
                           keyword: "type",
                           params: {
-                            type: "string"
+                            type: "boolean"
                           }
                         } ], !1;
-                        var valid9 = 0 === _errs20;
-                      } else valid9 = !0;
-                      if (valid9) {
-                        if (void 0 !== data1.capture_method) {
-                          let _errs22 = 0;
-                          if ("string" != typeof data1.capture_method) return validate106.errors = [ {
-                            instancePath: instancePath + "/segments/" + i0 + "/capture_method",
-                            schemaPath: "#/$defs/RecordingTimelineSegment/properties/capture_method/type",
+                        var valid8 = _errs20 === errors;
+                      } else valid8 = !0;
+                      if (valid8) {
+                        if (void 0 !== data1.duration) {
+                          let data7 = data1.duration, _errs22 = errors;
+                          if ("number" != typeof data7 || !isFinite(data7)) return validate106.errors = [ {
+                            instancePath: instancePath + "/segments/" + i0 + "/duration",
+                            schemaPath: "#/$defs/RecordingTimelineSegment/properties/duration/type",
                             keyword: "type",
                             params: {
-                              type: "string"
+                              type: "number"
                             }
                           } ], !1;
-                          var valid10 = 0 === _errs22;
-                        } else valid10 = !0;
-                        if (valid10) {
-                          if (void 0 !== data1.schedule_restricted) {
-                            let data10 = data1.schedule_restricted, _errs24 = 0;
-                            if ("boolean" != typeof data10 && null !== data10) return validate106.errors = [ {
-                              instancePath: instancePath + "/segments/" + i0 + "/schedule_restricted",
-                              schemaPath: "#/$defs/RecordingTimelineSegment/properties/schedule_restricted/type",
+                          var valid9 = _errs22 === errors;
+                        } else valid9 = !0;
+                        if (valid9) {
+                          if (void 0 !== data1.size) {
+                            let _errs24 = errors;
+                            if ("string" != typeof data1.size) return validate106.errors = [ {
+                              instancePath: instancePath + "/segments/" + i0 + "/size",
+                              schemaPath: "#/$defs/RecordingTimelineSegment/properties/size/type",
                               keyword: "type",
                               params: {
-                                type: schema110.properties.schedule_restricted.type
+                                type: "string"
                               }
                             } ], !1;
-                            var valid11 = 0 === _errs24;
-                          } else valid11 = !0;
-                          if (valid11) {
-                            if (void 0 !== data1.has_detection) {
-                              let _errs26 = 0;
-                              if ("boolean" != typeof data1.has_detection) return validate106.errors = [ {
-                                instancePath: instancePath + "/segments/" + i0 + "/has_detection",
-                                schemaPath: "#/$defs/RecordingTimelineSegment/properties/has_detection/type",
+                            var valid10 = _errs24 === errors;
+                          } else valid10 = !0;
+                          if (valid10) {
+                            if (void 0 !== data1.capture_method) {
+                              let _errs26 = errors;
+                              if ("string" != typeof data1.capture_method) return validate106.errors = [ {
+                                instancePath: instancePath + "/segments/" + i0 + "/capture_method",
+                                schemaPath: "#/$defs/RecordingTimelineSegment/properties/capture_method/type",
                                 keyword: "type",
                                 params: {
-                                  type: "boolean"
+                                  type: "string"
                                 }
                               } ], !1;
-                              var valid12 = 0 === _errs26;
-                            } else valid12 = !0;
-                            if (valid12) {
-                              if (void 0 !== data1.end_time) {
-                                let _errs28 = 0;
-                                if ("string" != typeof data1.end_time) return validate106.errors = [ {
-                                  instancePath: instancePath + "/segments/" + i0 + "/end_time",
-                                  schemaPath: "#/$defs/RecordingTimelineSegment/properties/end_time/type",
+                              var valid11 = _errs26 === errors;
+                            } else valid11 = !0;
+                            if (valid11) {
+                              if (void 0 !== data1.schedule_restricted) {
+                                let data10 = data1.schedule_restricted, _errs28 = errors;
+                                if ("boolean" != typeof data10 && null !== data10) return validate106.errors = [ {
+                                  instancePath: instancePath + "/segments/" + i0 + "/schedule_restricted",
+                                  schemaPath: "#/$defs/RecordingTimelineSegment/properties/schedule_restricted/type",
                                   keyword: "type",
                                   params: {
-                                    type: "string"
+                                    type: schema110.properties.schedule_restricted.type
                                   }
                                 } ], !1;
-                                var valid13 = 0 === _errs28;
-                              } else valid13 = !0;
-                              if (valid13) {
-                                if (void 0 !== data1.start_timestamp) {
-                                  let data13 = data1.start_timestamp, _errs30 = 0;
-                                  if ("number" != typeof data13 || data13 % 1 || isNaN(data13) || !isFinite(data13)) return validate106.errors = [ {
-                                    instancePath: instancePath + "/segments/" + i0 + "/start_timestamp",
-                                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/start_timestamp/type",
+                                var valid12 = _errs28 === errors;
+                              } else valid12 = !0;
+                              if (valid12) {
+                                if (void 0 !== data1.has_detection) {
+                                  let _errs30 = errors;
+                                  if ("boolean" != typeof data1.has_detection) return validate106.errors = [ {
+                                    instancePath: instancePath + "/segments/" + i0 + "/has_detection",
+                                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/has_detection/type",
                                     keyword: "type",
                                     params: {
-                                      type: "integer"
+                                      type: "boolean"
                                     }
                                   } ], !1;
-                                  var valid14 = 0 === _errs30;
-                                } else valid14 = !0;
-                                if (valid14) {
-                                  if (void 0 !== data1.end_timestamp) {
-                                    let data14 = data1.end_timestamp, _errs32 = 0;
-                                    if ("number" != typeof data14 || data14 % 1 || isNaN(data14) || !isFinite(data14)) return validate106.errors = [ {
-                                      instancePath: instancePath + "/segments/" + i0 + "/end_timestamp",
-                                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/end_timestamp/type",
+                                  var valid13 = _errs30 === errors;
+                                } else valid13 = !0;
+                                if (valid13) {
+                                  if (void 0 !== data1.end_time) {
+                                    let _errs32 = errors;
+                                    if ("string" != typeof data1.end_time) return validate106.errors = [ {
+                                      instancePath: instancePath + "/segments/" + i0 + "/end_time",
+                                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/end_time/type",
                                       keyword: "type",
                                       params: {
-                                        type: "integer"
+                                        type: "string"
                                       }
                                     } ], !1;
-                                    var valid15 = 0 === _errs32;
-                                  } else valid15 = !0;
-                                  if (valid15) {
-                                    if (void 0 !== data1.local_start_timestamp) {
-                                      let data15 = data1.local_start_timestamp, _errs34 = 0;
-                                      if ("number" != typeof data15 || data15 % 1 || isNaN(data15) || !isFinite(data15)) return validate106.errors = [ {
-                                        instancePath: instancePath + "/segments/" + i0 + "/local_start_timestamp",
-                                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/local_start_timestamp/type",
+                                    var valid14 = _errs32 === errors;
+                                  } else valid14 = !0;
+                                  if (valid14) {
+                                    if (void 0 !== data1.start_timestamp) {
+                                      let data13 = data1.start_timestamp, _errs34 = errors;
+                                      if ("number" != typeof data13 || data13 % 1 || isNaN(data13) || !isFinite(data13)) return validate106.errors = [ {
+                                        instancePath: instancePath + "/segments/" + i0 + "/start_timestamp",
+                                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/start_timestamp/type",
                                         keyword: "type",
                                         params: {
                                           type: "integer"
                                         }
                                       } ], !1;
-                                      var valid16 = 0 === _errs34;
-                                    } else valid16 = !0;
-                                    if (valid16 && void 0 !== data1.local_end_timestamp) {
-                                      let data16 = data1.local_end_timestamp;
-                                      if ("number" != typeof data16 || data16 % 1 || isNaN(data16) || !isFinite(data16)) return validate106.errors = [ {
-                                        instancePath: instancePath + "/segments/" + i0 + "/local_end_timestamp",
-                                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/local_end_timestamp/type",
-                                        keyword: "type",
-                                        params: {
-                                          type: "integer"
+                                      var valid15 = _errs34 === errors;
+                                    } else valid15 = !0;
+                                    if (valid15) {
+                                      if (void 0 !== data1.end_timestamp) {
+                                        let data14 = data1.end_timestamp, _errs36 = errors;
+                                        if ("number" != typeof data14 || data14 % 1 || isNaN(data14) || !isFinite(data14)) return validate106.errors = [ {
+                                          instancePath: instancePath + "/segments/" + i0 + "/end_timestamp",
+                                          schemaPath: "#/$defs/RecordingTimelineSegment/properties/end_timestamp/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "integer"
+                                          }
+                                        } ], !1;
+                                        var valid16 = _errs36 === errors;
+                                      } else valid16 = !0;
+                                      if (valid16) {
+                                        if (void 0 !== data1.local_start_timestamp) {
+                                          let data15 = data1.local_start_timestamp, _errs38 = errors;
+                                          if ("number" != typeof data15 || data15 % 1 || isNaN(data15) || !isFinite(data15)) return validate106.errors = [ {
+                                            instancePath: instancePath + "/segments/" + i0 + "/local_start_timestamp",
+                                            schemaPath: "#/$defs/RecordingTimelineSegment/properties/local_start_timestamp/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "integer"
+                                            }
+                                          } ], !1;
+                                          var valid17 = _errs38 === errors;
+                                        } else valid17 = !0;
+                                        if (valid17 && void 0 !== data1.local_end_timestamp) {
+                                          let data16 = data1.local_end_timestamp;
+                                          if ("number" != typeof data16 || data16 % 1 || isNaN(data16) || !isFinite(data16)) return validate106.errors = [ {
+                                            instancePath: instancePath + "/segments/" + i0 + "/local_end_timestamp",
+                                            schemaPath: "#/$defs/RecordingTimelineSegment/properties/local_end_timestamp/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "integer"
+                                            }
+                                          } ], !1;
                                         }
-                                      } ], !1;
+                                      }
                                     }
                                   }
                                 }
@@ -80301,171 +80424,171 @@ function validate106(data, {instancePath: instancePath = "", parentData: parentD
                 }
               }
             }
+            if (_errs4 !== errors) break;
           }
-          if (0 !== _errs4) break;
         }
       }
-    }
-    var valid0 = 0 === _errs2;
-  } else valid0 = !0;
-  if (valid0) {
-    if (void 0 !== data.stream) {
-      let _errs38 = 0;
-      if ("string" != typeof data.stream) return validate106.errors = [ {
-        instancePath: instancePath + "/stream",
-        schemaPath: "#/properties/stream/type",
-        keyword: "type",
-        params: {
-          type: "string"
-        }
-      } ], !1;
-      var valid18 = 0 === _errs38;
-    } else valid18 = !0;
-    if (valid18) {
-      if (void 0 !== data.start_time) {
-        let _errs40 = 0;
-        if ("string" != typeof data.start_time) return validate106.errors = [ {
-          instancePath: instancePath + "/start_time",
-          schemaPath: "#/properties/start_time/type",
+      var valid0 = _errs2 === errors;
+    } else valid0 = !0;
+    if (valid0) {
+      if (void 0 !== data.stream) {
+        let _errs42 = errors;
+        if ("string" != typeof data.stream) return validate106.errors = [ {
+          instancePath: instancePath + "/stream",
+          schemaPath: "#/properties/stream/type",
           keyword: "type",
           params: {
             type: "string"
           }
         } ], !1;
-        var valid19 = 0 === _errs40;
+        var valid19 = _errs42 === errors;
       } else valid19 = !0;
       if (valid19) {
-        if (void 0 !== data.end_time) {
-          let _errs42 = 0;
-          if ("string" != typeof data.end_time) return validate106.errors = [ {
-            instancePath: instancePath + "/end_time",
-            schemaPath: "#/properties/end_time/type",
+        if (void 0 !== data.start_time) {
+          let _errs44 = errors;
+          if ("string" != typeof data.start_time) return validate106.errors = [ {
+            instancePath: instancePath + "/start_time",
+            schemaPath: "#/properties/start_time/type",
             keyword: "type",
             params: {
               type: "string"
             }
           } ], !1;
-          var valid20 = 0 === _errs42;
+          var valid20 = _errs44 === errors;
         } else valid20 = !0;
         if (valid20) {
-          if (void 0 !== data.segment_count) {
-            let data20 = data.segment_count, _errs44 = 0;
-            if ("number" != typeof data20 || data20 % 1 || isNaN(data20) || !isFinite(data20)) return validate106.errors = [ {
-              instancePath: instancePath + "/segment_count",
-              schemaPath: "#/properties/segment_count/type",
+          if (void 0 !== data.end_time) {
+            let _errs46 = errors;
+            if ("string" != typeof data.end_time) return validate106.errors = [ {
+              instancePath: instancePath + "/end_time",
+              schemaPath: "#/properties/end_time/type",
               keyword: "type",
               params: {
-                type: "integer"
+                type: "string"
               }
             } ], !1;
-            if (0 === _errs44 && "number" == typeof data20 && isFinite(data20) && (data20 < 0 || isNaN(data20))) return validate106.errors = [ {
-              instancePath: instancePath + "/segment_count",
-              schemaPath: "#/properties/segment_count/minimum",
-              keyword: "minimum",
-              params: {
-                comparison: ">=",
-                limit: 0
-              }
-            } ], !1;
-            var valid21 = 0 === _errs44;
+            var valid21 = _errs46 === errors;
           } else valid21 = !0;
           if (valid21) {
-            if (void 0 !== data.detection_intervals) {
-              let data21 = data.detection_intervals, _errs46 = 0;
-              if (0 === _errs46) {
-                if (!Array.isArray(data21)) return validate106.errors = [ {
-                  instancePath: instancePath + "/detection_intervals",
-                  schemaPath: "#/properties/detection_intervals/type",
-                  keyword: "type",
-                  params: {
-                    type: "array"
-                  }
-                } ], !1;
-                {
-                  let len1 = data21.length;
-                  for (let i1 = 0; i1 < len1; i1++) {
-                    let data22 = data21[i1], _errs48 = 0;
-                    if (0 === _errs48) {
-                      if (!data22 || "object" != typeof data22 || Array.isArray(data22)) return validate106.errors = [ {
-                        instancePath: instancePath + "/detection_intervals/" + i1,
-                        schemaPath: "#/properties/detection_intervals/items/type",
-                        keyword: "type",
-                        params: {
-                          type: "object"
-                        }
-                      } ], !1;
-                      if (void 0 === data22.start_timestamp) return validate106.errors = [ {
-                        instancePath: instancePath + "/detection_intervals/" + i1,
-                        schemaPath: "#/properties/detection_intervals/items/required",
-                        keyword: "required",
-                        params: {
-                          missingProperty: "start_timestamp"
-                        }
-                      } ], !1;
-                      if (void 0 === data22.end_timestamp) return validate106.errors = [ {
-                        instancePath: instancePath + "/detection_intervals/" + i1,
-                        schemaPath: "#/properties/detection_intervals/items/required",
-                        keyword: "required",
-                        params: {
-                          missingProperty: "end_timestamp"
-                        }
-                      } ], !1;
-                      if (void 0 !== data22.start_timestamp) {
-                        let data23 = data22.start_timestamp, _errs51 = 0;
-                        if ("number" != typeof data23 || data23 % 1 || isNaN(data23) || !isFinite(data23)) return validate106.errors = [ {
-                          instancePath: instancePath + "/detection_intervals/" + i1 + "/start_timestamp",
-                          schemaPath: "#/properties/detection_intervals/items/properties/start_timestamp/type",
-                          keyword: "type",
-                          params: {
-                            type: "integer"
-                          }
-                        } ], !1;
-                        var valid24 = 0 === _errs51;
-                      } else valid24 = !0;
-                      if (valid24 && void 0 !== data22.end_timestamp) {
-                        let data24 = data22.end_timestamp;
-                        if ("number" != typeof data24 || data24 % 1 || isNaN(data24) || !isFinite(data24)) return validate106.errors = [ {
-                          instancePath: instancePath + "/detection_intervals/" + i1 + "/end_timestamp",
-                          schemaPath: "#/properties/detection_intervals/items/properties/end_timestamp/type",
-                          keyword: "type",
-                          params: {
-                            type: "integer"
-                          }
-                        } ], !1;
-                      }
-                    }
-                    if (0 !== _errs48) break;
-                  }
-                }
-              }
-              var valid22 = 0 === _errs46;
-            } else valid22 = !0;
-            if (valid22 && void 0 !== data.detection_interval_count) {
-              let data25 = data.detection_interval_count, _errs55 = 0;
-              if ("number" != typeof data25 || data25 % 1 || isNaN(data25) || !isFinite(data25)) return validate106.errors = [ {
-                instancePath: instancePath + "/detection_interval_count",
-                schemaPath: "#/properties/detection_interval_count/type",
+            if (void 0 !== data.segment_count) {
+              let data20 = data.segment_count, _errs48 = errors;
+              if ("number" != typeof data20 || data20 % 1 || isNaN(data20) || !isFinite(data20)) return validate106.errors = [ {
+                instancePath: instancePath + "/segment_count",
+                schemaPath: "#/properties/segment_count/type",
                 keyword: "type",
                 params: {
                   type: "integer"
                 }
               } ], !1;
-              if (0 === _errs55 && "number" == typeof data25 && isFinite(data25) && (data25 < 0 || isNaN(data25))) return validate106.errors = [ {
-                instancePath: instancePath + "/detection_interval_count",
-                schemaPath: "#/properties/detection_interval_count/minimum",
+              if (errors === _errs48 && "number" == typeof data20 && isFinite(data20) && (data20 < 0 || isNaN(data20))) return validate106.errors = [ {
+                instancePath: instancePath + "/segment_count",
+                schemaPath: "#/properties/segment_count/minimum",
                 keyword: "minimum",
                 params: {
                   comparison: ">=",
                   limit: 0
                 }
               } ], !1;
+              var valid22 = _errs48 === errors;
+            } else valid22 = !0;
+            if (valid22) {
+              if (void 0 !== data.detection_intervals) {
+                let data21 = data.detection_intervals, _errs50 = errors;
+                if (errors === _errs50) {
+                  if (!Array.isArray(data21)) return validate106.errors = [ {
+                    instancePath: instancePath + "/detection_intervals",
+                    schemaPath: "#/properties/detection_intervals/type",
+                    keyword: "type",
+                    params: {
+                      type: "array"
+                    }
+                  } ], !1;
+                  {
+                    let len1 = data21.length;
+                    for (let i1 = 0; i1 < len1; i1++) {
+                      let data22 = data21[i1], _errs52 = errors;
+                      if (errors === _errs52) {
+                        if (!data22 || "object" != typeof data22 || Array.isArray(data22)) return validate106.errors = [ {
+                          instancePath: instancePath + "/detection_intervals/" + i1,
+                          schemaPath: "#/properties/detection_intervals/items/type",
+                          keyword: "type",
+                          params: {
+                            type: "object"
+                          }
+                        } ], !1;
+                        if (void 0 === data22.start_timestamp) return validate106.errors = [ {
+                          instancePath: instancePath + "/detection_intervals/" + i1,
+                          schemaPath: "#/properties/detection_intervals/items/required",
+                          keyword: "required",
+                          params: {
+                            missingProperty: "start_timestamp"
+                          }
+                        } ], !1;
+                        if (void 0 === data22.end_timestamp) return validate106.errors = [ {
+                          instancePath: instancePath + "/detection_intervals/" + i1,
+                          schemaPath: "#/properties/detection_intervals/items/required",
+                          keyword: "required",
+                          params: {
+                            missingProperty: "end_timestamp"
+                          }
+                        } ], !1;
+                        if (void 0 !== data22.start_timestamp) {
+                          let data23 = data22.start_timestamp, _errs55 = errors;
+                          if ("number" != typeof data23 || data23 % 1 || isNaN(data23) || !isFinite(data23)) return validate106.errors = [ {
+                            instancePath: instancePath + "/detection_intervals/" + i1 + "/start_timestamp",
+                            schemaPath: "#/properties/detection_intervals/items/properties/start_timestamp/type",
+                            keyword: "type",
+                            params: {
+                              type: "integer"
+                            }
+                          } ], !1;
+                          var valid25 = _errs55 === errors;
+                        } else valid25 = !0;
+                        if (valid25 && void 0 !== data22.end_timestamp) {
+                          let data24 = data22.end_timestamp;
+                          if ("number" != typeof data24 || data24 % 1 || isNaN(data24) || !isFinite(data24)) return validate106.errors = [ {
+                            instancePath: instancePath + "/detection_intervals/" + i1 + "/end_timestamp",
+                            schemaPath: "#/properties/detection_intervals/items/properties/end_timestamp/type",
+                            keyword: "type",
+                            params: {
+                              type: "integer"
+                            }
+                          } ], !1;
+                        }
+                      }
+                      if (_errs52 !== errors) break;
+                    }
+                  }
+                }
+                var valid23 = _errs50 === errors;
+              } else valid23 = !0;
+              if (valid23 && void 0 !== data.detection_interval_count) {
+                let data25 = data.detection_interval_count, _errs59 = errors;
+                if ("number" != typeof data25 || data25 % 1 || isNaN(data25) || !isFinite(data25)) return validate106.errors = [ {
+                  instancePath: instancePath + "/detection_interval_count",
+                  schemaPath: "#/properties/detection_interval_count/type",
+                  keyword: "type",
+                  params: {
+                    type: "integer"
+                  }
+                } ], !1;
+                if (errors === _errs59 && "number" == typeof data25 && isFinite(data25) && (data25 < 0 || isNaN(data25))) return validate106.errors = [ {
+                  instancePath: instancePath + "/detection_interval_count",
+                  schemaPath: "#/properties/detection_interval_count/minimum",
+                  keyword: "minimum",
+                  params: {
+                    comparison: ">=",
+                    limit: 0
+                  }
+                } ], !1;
+              }
             }
           }
         }
       }
     }
   }
-  return validate106.errors = [], !0;
+  return validate106.errors = vErrors, 0 === errors;
 }
 
 validate106.evaluated = {
@@ -80477,415 +80600,475 @@ validate106.evaluated = {
 var __contract_RecordingTimelineByIds = validate107;
 
 function validate107(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
-  let evaluated0 = validate107.evaluated;
+  let vErrors = [], errors = 0, evaluated0 = validate107.evaluated;
   if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
-  !data || "object" != typeof data || Array.isArray(data)) return validate107.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/type",
-    keyword: "type",
-    params: {
-      type: "object"
-    }
-  } ], !1;
-  if (void 0 === data.segments) return validate107.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "segments"
-    }
-  } ], !1;
-  if (void 0 === data.stream) return validate107.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "stream"
-    }
-  } ], !1;
-  if (void 0 === data.start_time) return validate107.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "start_time"
-    }
-  } ], !1;
-  if (void 0 === data.end_time) return validate107.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "end_time"
-    }
-  } ], !1;
-  if (void 0 === data.segment_count) return validate107.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "segment_count"
-    }
-  } ], !1;
-  if (void 0 === data.multi_stream) return validate107.errors = [ {
-    instancePath: instancePath,
-    schemaPath: "#/required",
-    keyword: "required",
-    params: {
-      missingProperty: "multi_stream"
-    }
-  } ], !1;
-  if (void 0 !== data.segments) {
-    let data0 = data.segments, _errs2 = 0;
-    if (0 === _errs2) {
-      if (!Array.isArray(data0)) return validate107.errors = [ {
-        instancePath: instancePath + "/segments",
-        schemaPath: "#/properties/segments/type",
-        keyword: "type",
-        params: {
-          type: "array"
-        }
-      } ], !1;
-      {
-        let len0 = data0.length;
-        for (let i0 = 0; i0 < len0; i0++) {
-          let data1 = data0[i0], _errs4 = 0;
-          if (!data1 || "object" != typeof data1 || Array.isArray(data1)) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/type",
-            keyword: "type",
-            params: {
-              type: "object"
-            }
-          } ], !1;
-          if (void 0 === data1.id) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "id"
-            }
-          } ], !1;
-          if (void 0 === data1.stream) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "stream"
-            }
-          } ], !1;
-          if (void 0 === data1.camera_uuid) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "camera_uuid"
-            }
-          } ], !1;
-          if (void 0 === data1.start_time) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "start_time"
-            }
-          } ], !1;
-          if (void 0 === data1.in_progress) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "in_progress"
-            }
-          } ], !1;
-          if (void 0 === data1.duration) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "duration"
-            }
-          } ], !1;
-          if (void 0 === data1.size) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "size"
-            }
-          } ], !1;
-          if (void 0 === data1.capture_method) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "capture_method"
-            }
-          } ], !1;
-          if (void 0 === data1.schedule_restricted) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "schedule_restricted"
-            }
-          } ], !1;
-          if (void 0 === data1.has_detection) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "has_detection"
-            }
-          } ], !1;
-          if (void 0 === data1.end_time) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "end_time"
-            }
-          } ], !1;
-          if (void 0 === data1.start_timestamp) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "start_timestamp"
-            }
-          } ], !1;
-          if (void 0 === data1.end_timestamp) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "end_timestamp"
-            }
-          } ], !1;
-          if (void 0 === data1.local_start_timestamp) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "local_start_timestamp"
-            }
-          } ], !1;
-          if (void 0 === data1.local_end_timestamp) return validate107.errors = [ {
-            instancePath: instancePath + "/segments/" + i0,
-            schemaPath: "#/$defs/RecordingTimelineSegment/required",
-            keyword: "required",
-            params: {
-              missingProperty: "local_end_timestamp"
-            }
-          } ], !1;
-          if (void 0 !== data1.id) {
-            let data2 = data1.id, _errs8 = 0;
-            if ("number" != typeof data2 || data2 % 1 || isNaN(data2) || !isFinite(data2)) return validate107.errors = [ {
-              instancePath: instancePath + "/segments/" + i0 + "/id",
-              schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/type",
-              keyword: "type",
-              params: {
-                type: "integer"
-              }
-            } ], !1;
-            if (0 === _errs8 && "number" == typeof data2 && isFinite(data2) && (data2 < 1 || isNaN(data2))) return validate107.errors = [ {
-              instancePath: instancePath + "/segments/" + i0 + "/id",
-              schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/minimum",
-              keyword: "minimum",
-              params: {
-                comparison: ">=",
-                limit: 1
-              }
-            } ], !1;
-            var valid3 = 0 === _errs8;
-          } else valid3 = !0;
-          if (valid3) {
-            if (void 0 !== data1.stream) {
-              let _errs10 = 0;
-              if ("string" != typeof data1.stream) return validate107.errors = [ {
-                instancePath: instancePath + "/segments/" + i0 + "/stream",
-                schemaPath: "#/$defs/RecordingTimelineSegment/properties/stream/type",
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate107.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.segments) return validate107.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "segments"
+      }
+    } ], !1;
+    if (void 0 === data.stream) return validate107.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "stream"
+      }
+    } ], !1;
+    if (void 0 === data.start_time) return validate107.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "start_time"
+      }
+    } ], !1;
+    if (void 0 === data.end_time) return validate107.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "end_time"
+      }
+    } ], !1;
+    if (void 0 === data.segment_count) return validate107.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "segment_count"
+      }
+    } ], !1;
+    if (void 0 === data.multi_stream) return validate107.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "multi_stream"
+      }
+    } ], !1;
+    if (void 0 !== data.segments) {
+      let data0 = data.segments, _errs2 = errors;
+      if (errors === _errs2) {
+        if (!Array.isArray(data0)) return validate107.errors = [ {
+          instancePath: instancePath + "/segments",
+          schemaPath: "#/properties/segments/type",
+          keyword: "type",
+          params: {
+            type: "array"
+          }
+        } ], !1;
+        {
+          let len0 = data0.length;
+          for (let i0 = 0; i0 < len0; i0++) {
+            let data1 = data0[i0], _errs4 = errors;
+            if (errors == errors) {
+              if (!data1 || "object" != typeof data1 || Array.isArray(data1)) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/type",
                 keyword: "type",
                 params: {
-                  type: "string"
+                  type: "object"
                 }
               } ], !1;
-              var valid4 = 0 === _errs10;
-            } else valid4 = !0;
-            if (valid4) {
-              if (void 0 !== data1.camera_uuid) {
-                let data4 = data1.camera_uuid, _errs12 = 0;
-                if ("string" != typeof data4 && null !== data4) return validate107.errors = [ {
-                  instancePath: instancePath + "/segments/" + i0 + "/camera_uuid",
-                  schemaPath: "#/$defs/RecordingTimelineSegment/properties/camera_uuid/type",
-                  keyword: "type",
-                  params: {
-                    type: schema110.properties.camera_uuid.type
+              if (void 0 === data1.id) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "id"
+                }
+              } ], !1;
+              if (void 0 === data1.stream) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "stream"
+                }
+              } ], !1;
+              if (void 0 === data1.camera_uuid) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "camera_uuid"
+                }
+              } ], !1;
+              if (void 0 === data1.start_time) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "start_time"
+                }
+              } ], !1;
+              if (void 0 === data1.in_progress) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "in_progress"
+                }
+              } ], !1;
+              if (void 0 === data1.duration) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "duration"
+                }
+              } ], !1;
+              if (void 0 === data1.size) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "size"
+                }
+              } ], !1;
+              if (void 0 === data1.capture_method) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "capture_method"
+                }
+              } ], !1;
+              if (void 0 === data1.schedule_restricted) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "schedule_restricted"
+                }
+              } ], !1;
+              if (void 0 === data1.has_detection) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "has_detection"
+                }
+              } ], !1;
+              if (void 0 === data1.end_time) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "end_time"
+                }
+              } ], !1;
+              if (void 0 === data1.start_timestamp) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "start_timestamp"
+                }
+              } ], !1;
+              if (void 0 === data1.end_timestamp) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "end_timestamp"
+                }
+              } ], !1;
+              if (void 0 === data1.local_start_timestamp) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "local_start_timestamp"
+                }
+              } ], !1;
+              if (void 0 === data1.local_end_timestamp) return validate107.errors = [ {
+                instancePath: instancePath + "/segments/" + i0,
+                schemaPath: "#/$defs/RecordingTimelineSegment/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "local_end_timestamp"
+                }
+              } ], !1;
+              if (void 0 !== data1.id) {
+                let data2 = data1.id, _errs8 = errors, _errs9 = errors, valid4 = !1, passing0 = null, _errs10 = errors;
+                if ("number" != typeof data2 || data2 % 1 || isNaN(data2) || !isFinite(data2)) {
+                  let err0 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/0/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  };
+                  vErrors.push(err0), errors++;
+                }
+                if (errors === _errs10 && "number" == typeof data2 && isFinite(data2)) if (data2 > 9007199254740991 || isNaN(data2)) {
+                  let err1 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/0/maximum",
+                    keyword: "maximum",
+                    params: {
+                      comparison: "<=",
+                      limit: 9007199254740991
+                    }
+                  };
+                  vErrors.push(err1), errors++;
+                } else if (data2 < 1 || isNaN(data2)) {
+                  let err2 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/0/minimum",
+                    keyword: "minimum",
+                    params: {
+                      comparison: ">=",
+                      limit: 1
+                    }
+                  };
+                  vErrors.push(err2), errors++;
+                }
+                _errs10 === errors && (valid4 = !0, passing0 = 0);
+                let _errs12 = errors;
+                if (errors === _errs12) if ("string" == typeof data2) {
+                  if (!pattern14.test(data2)) {
+                    let err3 = {
+                      instancePath: instancePath + "/segments/" + i0 + "/id",
+                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/1/pattern",
+                      keyword: "pattern",
+                      params: {
+                        pattern: "^[1-9][0-9]{0,19}$"
+                      }
+                    };
+                    vErrors.push(err3), errors++;
                   }
-                } ], !1;
-                if (0 === _errs12 && "string" == typeof data4 && !pattern11.test(data4)) return validate107.errors = [ {
-                  instancePath: instancePath + "/segments/" + i0 + "/camera_uuid",
-                  schemaPath: "#/$defs/RecordingTimelineSegment/properties/camera_uuid/pattern",
-                  keyword: "pattern",
-                  params: {
-                    pattern: "^[0-9a-fA-F-]{36}$"
-                  }
-                } ], !1;
-                var valid5 = 0 === _errs12;
-              } else valid5 = !0;
-              if (valid5) {
-                if (void 0 !== data1.start_time) {
-                  let _errs14 = 0;
-                  if ("string" != typeof data1.start_time) return validate107.errors = [ {
-                    instancePath: instancePath + "/segments/" + i0 + "/start_time",
-                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/start_time/type",
+                } else {
+                  let err4 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf/1/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  };
+                  vErrors.push(err4), errors++;
+                }
+                var _valid1 = _errs12 === errors;
+                if (_valid1 && valid4 ? (valid4 = !1, passing0 = [ passing0, 1 ]) : _valid1 && (valid4 = !0,
+                passing0 = 1), !valid4) {
+                  let err5 = {
+                    instancePath: instancePath + "/segments/" + i0 + "/id",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/id/oneOf",
+                    keyword: "oneOf",
+                    params: {
+                      passingSchemas: passing0
+                    }
+                  };
+                  return vErrors.push(err5), errors++, validate107.errors = vErrors, !1;
+                }
+                errors = _errs9, vErrors.length = _errs9;
+                var valid3 = _errs8 === errors;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data1.stream) {
+                  let _errs14 = errors;
+                  if ("string" != typeof data1.stream) return validate107.errors = [ {
+                    instancePath: instancePath + "/segments/" + i0 + "/stream",
+                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/stream/type",
                     keyword: "type",
                     params: {
                       type: "string"
                     }
                   } ], !1;
-                  var valid6 = 0 === _errs14;
-                } else valid6 = !0;
-                if (valid6) {
-                  if (void 0 !== data1.in_progress) {
-                    let _errs16 = 0;
-                    if ("boolean" != typeof data1.in_progress) return validate107.errors = [ {
-                      instancePath: instancePath + "/segments/" + i0 + "/in_progress",
-                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/in_progress/type",
+                  var valid5 = _errs14 === errors;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data1.camera_uuid) {
+                    let data4 = data1.camera_uuid, _errs16 = errors;
+                    if ("string" != typeof data4 && null !== data4) return validate107.errors = [ {
+                      instancePath: instancePath + "/segments/" + i0 + "/camera_uuid",
+                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/camera_uuid/type",
                       keyword: "type",
                       params: {
-                        type: "boolean"
+                        type: schema110.properties.camera_uuid.type
                       }
                     } ], !1;
-                    var valid7 = 0 === _errs16;
-                  } else valid7 = !0;
-                  if (valid7) {
-                    if (void 0 !== data1.duration) {
-                      let data7 = data1.duration, _errs18 = 0;
-                      if ("number" != typeof data7 || !isFinite(data7)) return validate107.errors = [ {
-                        instancePath: instancePath + "/segments/" + i0 + "/duration",
-                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/duration/type",
+                    if (errors === _errs16 && "string" == typeof data4 && !pattern11.test(data4)) return validate107.errors = [ {
+                      instancePath: instancePath + "/segments/" + i0 + "/camera_uuid",
+                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/camera_uuid/pattern",
+                      keyword: "pattern",
+                      params: {
+                        pattern: "^[0-9a-fA-F-]{36}$"
+                      }
+                    } ], !1;
+                    var valid6 = _errs16 === errors;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data1.start_time) {
+                      let _errs18 = errors;
+                      if ("string" != typeof data1.start_time) return validate107.errors = [ {
+                        instancePath: instancePath + "/segments/" + i0 + "/start_time",
+                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/start_time/type",
                         keyword: "type",
                         params: {
-                          type: "number"
+                          type: "string"
                         }
                       } ], !1;
-                      var valid8 = 0 === _errs18;
-                    } else valid8 = !0;
-                    if (valid8) {
-                      if (void 0 !== data1.size) {
-                        let _errs20 = 0;
-                        if ("string" != typeof data1.size) return validate107.errors = [ {
-                          instancePath: instancePath + "/segments/" + i0 + "/size",
-                          schemaPath: "#/$defs/RecordingTimelineSegment/properties/size/type",
+                      var valid7 = _errs18 === errors;
+                    } else valid7 = !0;
+                    if (valid7) {
+                      if (void 0 !== data1.in_progress) {
+                        let _errs20 = errors;
+                        if ("boolean" != typeof data1.in_progress) return validate107.errors = [ {
+                          instancePath: instancePath + "/segments/" + i0 + "/in_progress",
+                          schemaPath: "#/$defs/RecordingTimelineSegment/properties/in_progress/type",
                           keyword: "type",
                           params: {
-                            type: "string"
+                            type: "boolean"
                           }
                         } ], !1;
-                        var valid9 = 0 === _errs20;
-                      } else valid9 = !0;
-                      if (valid9) {
-                        if (void 0 !== data1.capture_method) {
-                          let _errs22 = 0;
-                          if ("string" != typeof data1.capture_method) return validate107.errors = [ {
-                            instancePath: instancePath + "/segments/" + i0 + "/capture_method",
-                            schemaPath: "#/$defs/RecordingTimelineSegment/properties/capture_method/type",
+                        var valid8 = _errs20 === errors;
+                      } else valid8 = !0;
+                      if (valid8) {
+                        if (void 0 !== data1.duration) {
+                          let data7 = data1.duration, _errs22 = errors;
+                          if ("number" != typeof data7 || !isFinite(data7)) return validate107.errors = [ {
+                            instancePath: instancePath + "/segments/" + i0 + "/duration",
+                            schemaPath: "#/$defs/RecordingTimelineSegment/properties/duration/type",
                             keyword: "type",
                             params: {
-                              type: "string"
+                              type: "number"
                             }
                           } ], !1;
-                          var valid10 = 0 === _errs22;
-                        } else valid10 = !0;
-                        if (valid10) {
-                          if (void 0 !== data1.schedule_restricted) {
-                            let data10 = data1.schedule_restricted, _errs24 = 0;
-                            if ("boolean" != typeof data10 && null !== data10) return validate107.errors = [ {
-                              instancePath: instancePath + "/segments/" + i0 + "/schedule_restricted",
-                              schemaPath: "#/$defs/RecordingTimelineSegment/properties/schedule_restricted/type",
+                          var valid9 = _errs22 === errors;
+                        } else valid9 = !0;
+                        if (valid9) {
+                          if (void 0 !== data1.size) {
+                            let _errs24 = errors;
+                            if ("string" != typeof data1.size) return validate107.errors = [ {
+                              instancePath: instancePath + "/segments/" + i0 + "/size",
+                              schemaPath: "#/$defs/RecordingTimelineSegment/properties/size/type",
                               keyword: "type",
                               params: {
-                                type: schema110.properties.schedule_restricted.type
+                                type: "string"
                               }
                             } ], !1;
-                            var valid11 = 0 === _errs24;
-                          } else valid11 = !0;
-                          if (valid11) {
-                            if (void 0 !== data1.has_detection) {
-                              let _errs26 = 0;
-                              if ("boolean" != typeof data1.has_detection) return validate107.errors = [ {
-                                instancePath: instancePath + "/segments/" + i0 + "/has_detection",
-                                schemaPath: "#/$defs/RecordingTimelineSegment/properties/has_detection/type",
+                            var valid10 = _errs24 === errors;
+                          } else valid10 = !0;
+                          if (valid10) {
+                            if (void 0 !== data1.capture_method) {
+                              let _errs26 = errors;
+                              if ("string" != typeof data1.capture_method) return validate107.errors = [ {
+                                instancePath: instancePath + "/segments/" + i0 + "/capture_method",
+                                schemaPath: "#/$defs/RecordingTimelineSegment/properties/capture_method/type",
                                 keyword: "type",
                                 params: {
-                                  type: "boolean"
+                                  type: "string"
                                 }
                               } ], !1;
-                              var valid12 = 0 === _errs26;
-                            } else valid12 = !0;
-                            if (valid12) {
-                              if (void 0 !== data1.end_time) {
-                                let _errs28 = 0;
-                                if ("string" != typeof data1.end_time) return validate107.errors = [ {
-                                  instancePath: instancePath + "/segments/" + i0 + "/end_time",
-                                  schemaPath: "#/$defs/RecordingTimelineSegment/properties/end_time/type",
+                              var valid11 = _errs26 === errors;
+                            } else valid11 = !0;
+                            if (valid11) {
+                              if (void 0 !== data1.schedule_restricted) {
+                                let data10 = data1.schedule_restricted, _errs28 = errors;
+                                if ("boolean" != typeof data10 && null !== data10) return validate107.errors = [ {
+                                  instancePath: instancePath + "/segments/" + i0 + "/schedule_restricted",
+                                  schemaPath: "#/$defs/RecordingTimelineSegment/properties/schedule_restricted/type",
                                   keyword: "type",
                                   params: {
-                                    type: "string"
+                                    type: schema110.properties.schedule_restricted.type
                                   }
                                 } ], !1;
-                                var valid13 = 0 === _errs28;
-                              } else valid13 = !0;
-                              if (valid13) {
-                                if (void 0 !== data1.start_timestamp) {
-                                  let data13 = data1.start_timestamp, _errs30 = 0;
-                                  if ("number" != typeof data13 || data13 % 1 || isNaN(data13) || !isFinite(data13)) return validate107.errors = [ {
-                                    instancePath: instancePath + "/segments/" + i0 + "/start_timestamp",
-                                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/start_timestamp/type",
+                                var valid12 = _errs28 === errors;
+                              } else valid12 = !0;
+                              if (valid12) {
+                                if (void 0 !== data1.has_detection) {
+                                  let _errs30 = errors;
+                                  if ("boolean" != typeof data1.has_detection) return validate107.errors = [ {
+                                    instancePath: instancePath + "/segments/" + i0 + "/has_detection",
+                                    schemaPath: "#/$defs/RecordingTimelineSegment/properties/has_detection/type",
                                     keyword: "type",
                                     params: {
-                                      type: "integer"
+                                      type: "boolean"
                                     }
                                   } ], !1;
-                                  var valid14 = 0 === _errs30;
-                                } else valid14 = !0;
-                                if (valid14) {
-                                  if (void 0 !== data1.end_timestamp) {
-                                    let data14 = data1.end_timestamp, _errs32 = 0;
-                                    if ("number" != typeof data14 || data14 % 1 || isNaN(data14) || !isFinite(data14)) return validate107.errors = [ {
-                                      instancePath: instancePath + "/segments/" + i0 + "/end_timestamp",
-                                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/end_timestamp/type",
+                                  var valid13 = _errs30 === errors;
+                                } else valid13 = !0;
+                                if (valid13) {
+                                  if (void 0 !== data1.end_time) {
+                                    let _errs32 = errors;
+                                    if ("string" != typeof data1.end_time) return validate107.errors = [ {
+                                      instancePath: instancePath + "/segments/" + i0 + "/end_time",
+                                      schemaPath: "#/$defs/RecordingTimelineSegment/properties/end_time/type",
                                       keyword: "type",
                                       params: {
-                                        type: "integer"
+                                        type: "string"
                                       }
                                     } ], !1;
-                                    var valid15 = 0 === _errs32;
-                                  } else valid15 = !0;
-                                  if (valid15) {
-                                    if (void 0 !== data1.local_start_timestamp) {
-                                      let data15 = data1.local_start_timestamp, _errs34 = 0;
-                                      if ("number" != typeof data15 || data15 % 1 || isNaN(data15) || !isFinite(data15)) return validate107.errors = [ {
-                                        instancePath: instancePath + "/segments/" + i0 + "/local_start_timestamp",
-                                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/local_start_timestamp/type",
+                                    var valid14 = _errs32 === errors;
+                                  } else valid14 = !0;
+                                  if (valid14) {
+                                    if (void 0 !== data1.start_timestamp) {
+                                      let data13 = data1.start_timestamp, _errs34 = errors;
+                                      if ("number" != typeof data13 || data13 % 1 || isNaN(data13) || !isFinite(data13)) return validate107.errors = [ {
+                                        instancePath: instancePath + "/segments/" + i0 + "/start_timestamp",
+                                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/start_timestamp/type",
                                         keyword: "type",
                                         params: {
                                           type: "integer"
                                         }
                                       } ], !1;
-                                      var valid16 = 0 === _errs34;
-                                    } else valid16 = !0;
-                                    if (valid16 && void 0 !== data1.local_end_timestamp) {
-                                      let data16 = data1.local_end_timestamp;
-                                      if ("number" != typeof data16 || data16 % 1 || isNaN(data16) || !isFinite(data16)) return validate107.errors = [ {
-                                        instancePath: instancePath + "/segments/" + i0 + "/local_end_timestamp",
-                                        schemaPath: "#/$defs/RecordingTimelineSegment/properties/local_end_timestamp/type",
-                                        keyword: "type",
-                                        params: {
-                                          type: "integer"
+                                      var valid15 = _errs34 === errors;
+                                    } else valid15 = !0;
+                                    if (valid15) {
+                                      if (void 0 !== data1.end_timestamp) {
+                                        let data14 = data1.end_timestamp, _errs36 = errors;
+                                        if ("number" != typeof data14 || data14 % 1 || isNaN(data14) || !isFinite(data14)) return validate107.errors = [ {
+                                          instancePath: instancePath + "/segments/" + i0 + "/end_timestamp",
+                                          schemaPath: "#/$defs/RecordingTimelineSegment/properties/end_timestamp/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "integer"
+                                          }
+                                        } ], !1;
+                                        var valid16 = _errs36 === errors;
+                                      } else valid16 = !0;
+                                      if (valid16) {
+                                        if (void 0 !== data1.local_start_timestamp) {
+                                          let data15 = data1.local_start_timestamp, _errs38 = errors;
+                                          if ("number" != typeof data15 || data15 % 1 || isNaN(data15) || !isFinite(data15)) return validate107.errors = [ {
+                                            instancePath: instancePath + "/segments/" + i0 + "/local_start_timestamp",
+                                            schemaPath: "#/$defs/RecordingTimelineSegment/properties/local_start_timestamp/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "integer"
+                                            }
+                                          } ], !1;
+                                          var valid17 = _errs38 === errors;
+                                        } else valid17 = !0;
+                                        if (valid17 && void 0 !== data1.local_end_timestamp) {
+                                          let data16 = data1.local_end_timestamp;
+                                          if ("number" != typeof data16 || data16 % 1 || isNaN(data16) || !isFinite(data16)) return validate107.errors = [ {
+                                            instancePath: instancePath + "/segments/" + i0 + "/local_end_timestamp",
+                                            schemaPath: "#/$defs/RecordingTimelineSegment/properties/local_end_timestamp/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "integer"
+                                            }
+                                          } ], !1;
                                         }
-                                      } ], !1;
+                                      }
                                     }
                                   }
                                 }
@@ -80899,87 +81082,87 @@ function validate107(data, {instancePath: instancePath = "", parentData: parentD
                 }
               }
             }
+            if (_errs4 !== errors) break;
           }
-          if (0 !== _errs4) break;
         }
       }
-    }
-    var valid0 = 0 === _errs2;
-  } else valid0 = !0;
-  if (valid0) {
-    if (void 0 !== data.stream) {
-      let _errs38 = 0;
-      if ("(selected)" !== data.stream) return validate107.errors = [ {
-        instancePath: instancePath + "/stream",
-        schemaPath: "#/properties/stream/const",
-        keyword: "const",
-        params: {
-          allowedValue: "(selected)"
-        }
-      } ], !1;
-      var valid18 = 0 === _errs38;
-    } else valid18 = !0;
-    if (valid18) {
-      if (void 0 !== data.start_time) {
-        let _errs39 = 0;
-        if ("string" != typeof data.start_time) return validate107.errors = [ {
-          instancePath: instancePath + "/start_time",
-          schemaPath: "#/properties/start_time/type",
-          keyword: "type",
+      var valid0 = _errs2 === errors;
+    } else valid0 = !0;
+    if (valid0) {
+      if (void 0 !== data.stream) {
+        let _errs42 = errors;
+        if ("(selected)" !== data.stream) return validate107.errors = [ {
+          instancePath: instancePath + "/stream",
+          schemaPath: "#/properties/stream/const",
+          keyword: "const",
           params: {
-            type: "string"
+            allowedValue: "(selected)"
           }
         } ], !1;
-        var valid19 = 0 === _errs39;
+        var valid19 = _errs42 === errors;
       } else valid19 = !0;
       if (valid19) {
-        if (void 0 !== data.end_time) {
-          let _errs41 = 0;
-          if ("string" != typeof data.end_time) return validate107.errors = [ {
-            instancePath: instancePath + "/end_time",
-            schemaPath: "#/properties/end_time/type",
+        if (void 0 !== data.start_time) {
+          let _errs43 = errors;
+          if ("string" != typeof data.start_time) return validate107.errors = [ {
+            instancePath: instancePath + "/start_time",
+            schemaPath: "#/properties/start_time/type",
             keyword: "type",
             params: {
               type: "string"
             }
           } ], !1;
-          var valid20 = 0 === _errs41;
+          var valid20 = _errs43 === errors;
         } else valid20 = !0;
         if (valid20) {
-          if (void 0 !== data.segment_count) {
-            let data20 = data.segment_count, _errs43 = 0;
-            if ("number" != typeof data20 || data20 % 1 || isNaN(data20) || !isFinite(data20)) return validate107.errors = [ {
-              instancePath: instancePath + "/segment_count",
-              schemaPath: "#/properties/segment_count/type",
+          if (void 0 !== data.end_time) {
+            let _errs45 = errors;
+            if ("string" != typeof data.end_time) return validate107.errors = [ {
+              instancePath: instancePath + "/end_time",
+              schemaPath: "#/properties/end_time/type",
               keyword: "type",
               params: {
-                type: "integer"
+                type: "string"
               }
             } ], !1;
-            if (0 === _errs43 && "number" == typeof data20 && isFinite(data20) && (data20 < 0 || isNaN(data20))) return validate107.errors = [ {
-              instancePath: instancePath + "/segment_count",
-              schemaPath: "#/properties/segment_count/minimum",
-              keyword: "minimum",
-              params: {
-                comparison: ">=",
-                limit: 0
-              }
-            } ], !1;
-            var valid21 = 0 === _errs43;
+            var valid21 = _errs45 === errors;
           } else valid21 = !0;
-          if (valid21 && void 0 !== data.multi_stream && !0 !== data.multi_stream) return validate107.errors = [ {
-            instancePath: instancePath + "/multi_stream",
-            schemaPath: "#/properties/multi_stream/const",
-            keyword: "const",
-            params: {
-              allowedValue: !0
-            }
-          } ], !1;
+          if (valid21) {
+            if (void 0 !== data.segment_count) {
+              let data20 = data.segment_count, _errs47 = errors;
+              if ("number" != typeof data20 || data20 % 1 || isNaN(data20) || !isFinite(data20)) return validate107.errors = [ {
+                instancePath: instancePath + "/segment_count",
+                schemaPath: "#/properties/segment_count/type",
+                keyword: "type",
+                params: {
+                  type: "integer"
+                }
+              } ], !1;
+              if (errors === _errs47 && "number" == typeof data20 && isFinite(data20) && (data20 < 0 || isNaN(data20))) return validate107.errors = [ {
+                instancePath: instancePath + "/segment_count",
+                schemaPath: "#/properties/segment_count/minimum",
+                keyword: "minimum",
+                params: {
+                  comparison: ">=",
+                  limit: 0
+                }
+              } ], !1;
+              var valid22 = _errs47 === errors;
+            } else valid22 = !0;
+            if (valid22 && void 0 !== data.multi_stream && !0 !== data.multi_stream) return validate107.errors = [ {
+              instancePath: instancePath + "/multi_stream",
+              schemaPath: "#/properties/multi_stream/const",
+              keyword: "const",
+              params: {
+                allowedValue: !0
+              }
+            } ], !1;
+          }
         }
       }
     }
   }
-  return validate107.errors = [], !0;
+  return validate107.errors = vErrors, 0 === errors;
 }
 
 validate107.evaluated = {
@@ -84879,7 +85062,7 @@ var __contract_StorageMigration = validate345, schema396 = {
   },
   required: [ "uuid", "source_target_uuid", "destination_target_uuid", "recording_id", "operation", "source_object_key", "destination_object_key", "last_error", "state", "checksum_mode", "checksum", "bytes_total", "bytes_copied", "attempt_count", "max_attempts", "bandwidth_limit_bps", "progress", "next_attempt_at", "cancel_requested", "window_start_minute", "window_end_minute", "revision", "created_at", "updated_at", "started_at", "completed_at" ],
   additionalProperties: !1
-}, pattern141 = new RegExp("^[0-9a-f]{64}$", "u");
+}, pattern145 = new RegExp("^[0-9a-f]{64}$", "u");
 
 function validate345(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let vErrors = [], errors = 0, evaluated0 = validate345.evaluated;
@@ -85308,7 +85491,7 @@ function validate345(data, {instancePath: instancePath = "", parentData: parentD
                             if (void 0 !== data.checksum) {
                               let data10 = data.checksum, _errs25 = errors, _errs26 = errors, valid14 = !1, _errs27 = errors;
                               if (errors === _errs27) if ("string" == typeof data10) {
-                                if (!pattern141.test(data10)) {
+                                if (!pattern145.test(data10)) {
                                   let err0 = {
                                     instancePath: instancePath + "/checksum",
                                     schemaPath: "#/properties/checksum/anyOf/0/pattern",
@@ -97891,7 +98074,7 @@ var __contract_StreamCreateRequest = validate442, schema531 = {
       }
     }
   }
-}, pattern181 = new RegExp("^[A-Za-z0-9_.-]+$", "u");
+}, pattern185 = new RegExp("^[A-Za-z0-9_.-]+$", "u");
 
 function validate442(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let vErrors = [], errors = 0, evaluated0 = validate442.evaluated;
@@ -98824,7 +99007,7 @@ function validate442(data, {instancePath: instancePath = "", parentData: parentD
                                                                                                                 limit: 1
                                                                                                               }
                                                                                                             } ], !1;
-                                                                                                            if (!pattern181.test(data54)) return validate442.errors = [ {
+                                                                                                            if (!pattern185.test(data54)) return validate442.errors = [ {
                                                                                                               instancePath: instancePath + "/name",
                                                                                                               schemaPath: "#/properties/name/pattern",
                                                                                                               keyword: "pattern",
@@ -99195,7 +99378,7 @@ var __contract_StreamDetectionEngine = validate460, schema554 = {
   },
   required: [ "key", "type", "model_path", "enabled", "threshold", "interval_seconds", "sort_order", "config", "managed_by_legacy_stream_fields" ],
   additionalProperties: !0
-}, pattern186 = new RegExp("^[a-z0-9_-]+$", "u");
+}, pattern190 = new RegExp("^[a-z0-9_-]+$", "u");
 
 function validate460(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate460.evaluated;
@@ -99307,7 +99490,7 @@ function validate460(data, {instancePath: instancePath = "", parentData: parentD
           limit: 1
         }
       } ], !1;
-      if (!pattern186.test(data0)) return validate460.errors = [ {
+      if (!pattern190.test(data0)) return validate460.errors = [ {
         instancePath: instancePath + "/key",
         schemaPath: "#/properties/key/pattern",
         keyword: "pattern",
@@ -99626,7 +99809,7 @@ function validate459(data, {instancePath: instancePath = "", parentData: parentD
           limit: 1
         }
       } ], !1;
-      if (!pattern186.test(data0)) return validate459.errors = [ {
+      if (!pattern190.test(data0)) return validate459.errors = [ {
         instancePath: instancePath + "/key",
         schemaPath: "#/properties/key/pattern",
         keyword: "pattern",
@@ -100007,7 +100190,7 @@ function validate462(data, {instancePath: instancePath = "", parentData: parentD
                     limit: 1
                   }
                 } ], !1;
-                if (!pattern186.test(data3)) return validate462.errors = [ {
+                if (!pattern190.test(data3)) return validate462.errors = [ {
                   instancePath: instancePath + "/engines/" + i0 + "/key",
                   schemaPath: "#/$defs/StreamDetectionEngine/properties/key/pattern",
                   keyword: "pattern",
@@ -100372,7 +100555,7 @@ function validate461(data, {instancePath: instancePath = "", parentData: parentD
                 limit: 1
               }
             } ], !1;
-            if (!pattern186.test(data2)) return validate461.errors = [ {
+            if (!pattern190.test(data2)) return validate461.errors = [ {
               instancePath: instancePath + "/engines/" + i0 + "/key",
               schemaPath: "#/$defs/StreamDetectionEngineWrite/properties/key/pattern",
               keyword: "pattern",
@@ -105131,7 +105314,7 @@ function validate453(data, {instancePath: instancePath = "", parentData: parentD
                       type: "string"
                     }
                   } ], !1;
-                  if (!pattern182.test(data5)) return validate453.errors = [ {
+                  if (!pattern186.test(data5)) return validate453.errors = [ {
                     instancePath: instancePath + "/zones/" + i0 + "/color",
                     schemaPath: "#/$defs/DetectionZone/properties/color/pattern",
                     keyword: "pattern",
@@ -105568,7 +105751,7 @@ function validate454(data, {instancePath: instancePath = "", parentData: parentD
                       type: "string"
                     }
                   } ], !1;
-                  if (!pattern182.test(data5)) return validate454.errors = [ {
+                  if (!pattern186.test(data5)) return validate454.errors = [ {
                     instancePath: instancePath + "/zones/" + i0 + "/color",
                     schemaPath: "#/$defs/DetectionZoneWrite/properties/color/pattern",
                     keyword: "pattern",
@@ -113738,7 +113921,7 @@ validate137.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_TotpCodeRequest = validate134, pattern17 = new RegExp("^[0-9]{6}$", "u");
+var __contract_TotpCodeRequest = validate134, pattern21 = new RegExp("^[0-9]{6}$", "u");
 
 function validate134(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate134.evaluated;
@@ -113779,7 +113962,7 @@ function validate134(data, {instancePath: instancePath = "", parentData: parentD
           type: "string"
         }
       } ], !1;
-      if (!pattern17.test(data0)) return validate134.errors = [ {
+      if (!pattern21.test(data0)) return validate134.errors = [ {
         instancePath: instancePath + "/code",
         schemaPath: "#/properties/code/pattern",
         keyword: "pattern",
@@ -113872,7 +114055,7 @@ function validate132(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern17.test(data1)) return validate132.errors = [ {
+            if (!pattern21.test(data1)) return validate132.errors = [ {
               instancePath: instancePath + "/code",
               schemaPath: "#/properties/code/pattern",
               keyword: "pattern",
@@ -113974,7 +114157,7 @@ validate133.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_TotpSetupResponse = validate135, pattern19 = new RegExp("^[A-Z2-7]{32}$", "u"), pattern20 = new RegExp("^otpauth://totp/", "u"), formats0 = require_formats().fullFormats.uri;
+var __contract_TotpSetupResponse = validate135, pattern23 = new RegExp("^[A-Z2-7]{32}$", "u"), pattern24 = new RegExp("^otpauth://totp/", "u"), formats0 = require_formats().fullFormats.uri;
 
 function validate135(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate135.evaluated;
@@ -114054,7 +114237,7 @@ function validate135(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern19.test(data1)) return validate135.errors = [ {
+            if (!pattern23.test(data1)) return validate135.errors = [ {
               instancePath: instancePath + "/secret",
               schemaPath: "#/properties/secret/pattern",
               keyword: "pattern",
@@ -114077,7 +114260,7 @@ function validate135(data, {instancePath: instancePath = "", parentData: parentD
                   type: "string"
                 }
               } ], !1;
-              if (!pattern20.test(data2)) return validate135.errors = [ {
+              if (!pattern24.test(data2)) return validate135.errors = [ {
                 instancePath: instancePath + "/otpauth_uri",
                 schemaPath: "#/properties/otpauth_uri/pattern",
                 keyword: "pattern",

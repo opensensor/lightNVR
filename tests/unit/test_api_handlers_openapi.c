@@ -93,6 +93,18 @@ static void test_viewer_cannot_override_identity(void) {
     TEST_ASSERT_NULL(get(get(get(document,"components"),"schemas"),"StreamPrivileged"));
     TEST_ASSERT_NOT_NULL(get(get(document,"paths"),"/api/streams/{name}/full"));
 }
+static void test_recording_id_bounds_survive_discovery_serialization(void) {
+    invoke(200);
+    cJSON *schemas = get(get(document, "components"), "schemas");
+    cJSON *timeline_id = get(get(get(schemas, "RecordingTimelineSegment"), "properties"), "id");
+    cJSON *export_id = get(get(get(get(schemas, "RecordingExportRequest"), "properties"), "ids"), "items");
+    cJSON *ids[] = {timeline_id, export_id};
+    for (int i = 0; i < 2; i++) {
+        cJSON *maximum = get(cJSON_GetArrayItem(get(ids[i], "oneOf"), 0), "maximum");
+        TEST_ASSERT_TRUE(cJSON_IsNumber(maximum));
+        TEST_ASSERT_TRUE(maximum->valuedouble == 9007199254740991.0);
+    }
+}
 static void test_anonymous(void) { request.num_headers = 0; invoke(401); TEST_ASSERT_NOT_NULL(get(document,"error")); }
 static void test_synthetic_modes_rejected(void) {
     g_config.web_auth_enabled = false; invoke(403); cJSON_Delete(document); document = NULL; http_response_free(&response); http_response_init(&response);
@@ -132,7 +144,8 @@ int main(void) {
     safe_strcpy(camera.codec,"h264",sizeof(camera.codec),0);
     if (!add_stream_config(&camera)) return 1;
     UNITY_BEGIN();
-    RUN_TEST(test_admin_embedded_revision_and_headers); RUN_TEST(test_viewer_cannot_override_identity);
+    RUN_TEST(test_admin_embedded_revision_and_headers);
+    RUN_TEST(test_recording_id_bounds_survive_discovery_serialization); RUN_TEST(test_viewer_cannot_override_identity);
     RUN_TEST(test_anonymous); RUN_TEST(test_synthetic_modes_rejected);
     RUN_TEST(test_authenticated_demo_retains_real_permissions); RUN_TEST(test_failure_never_returns_canonical);
     RUN_TEST(test_password_gate);

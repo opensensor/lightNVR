@@ -19,7 +19,7 @@ import {
   zoomTimelineRange
 } from './timelineUtils.ts';
 import { useI18n } from '../../../i18n.ts';
-import type { TimelineSegment, TimelineState } from '../../../types/timeline.ts';
+import type { TimelineRecordingId, TimelineSegment, TimelineState } from '../../../types/timeline.ts';
 
 /**
  * TimelineControls component
@@ -36,7 +36,7 @@ export function TimelineControls({optionsOpen = false, onToggleOptions}: {
   const [timeDisplayText, setTimeDisplayText] = useState('00:00:00');
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(-1);
   const [segmentCount, setSegmentCount] = useState(0);
-  const [currentRecordingId, setCurrentRecordingId] = useState<number | null>(null);
+  const [currentRecordingId, setCurrentRecordingId] = useState<TimelineRecordingId | null>(null);
   const [isProtected, setIsProtected] = useState(false);
   const [recordingTags, setRecordingTags] = useState<string[]>([]);
   const [showTagsOverlay, setShowTagsOverlay] = useState(false);
@@ -278,7 +278,7 @@ export function TimelineControls({optionsOpen = false, onToggleOptions}: {
     }
   };
 
-  const handleTagsChanged = (_id: number, newTags: string[]) => {
+  const handleTagsChanged = (_id: TimelineRecordingId, newTags: string[]) => {
     timelineState.setState({ currentRecordingTags: newTags });
   };
 

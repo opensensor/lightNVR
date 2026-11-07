@@ -121,10 +121,10 @@ export function TimelinePlayer({
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
   const lastTimeUpdateRef = useRef<number | null>(null);
   const lastSegmentIdRef = useRef<string | null>(null);
-  const lastDetectionSegmentIdRef = useRef<number | null>(null);
+  const lastDetectionSegmentIdRef = useRef<TimelineSegment['id'] | null>(null);
   const playbackCleanupRef = useRef<(() => void) | null>(null);
   const initialPausedSyncEventLoggedRef = useRef(false);
-  const lastInitialPausedSegmentIdRef = useRef<number | null>(null);
+  const lastInitialPausedSegmentIdRef = useRef<TimelineSegment['id'] | null>(null);
   const suppressNativePlaybackSyncRef = useRef(false);
   const suppressNativePlaybackSyncTokenRef = useRef(0);
 
