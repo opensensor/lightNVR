@@ -59,3 +59,13 @@ Raw development logs: ignored `build/hardening-four/events-*`. Final combined
 suite results are recorded in the execution plan. Fixtures use synthetic owned
 camera metadata, loopback sinks and temporary databases. No physical camera,
 remote broker, certificate deployment or user configuration was exercised.
+
+Transport review follow-up: event requests force `redirect: error` and
+`credentials: same-origin` after caller options. Real 307/308 responses from an
+owned loopback application endpoint previously forwarded the synthetic broker
+password to a second owned origin before response validation. Both regressions
+now verify zero forwarding and exactly one application request, even when callers
+request `redirect: follow`, `credentials: include` and seven retries. Errors stay
+sanitized and ambiguous writes remain marked `mayHaveApplied`. The shared
+redirect harness and system/event suite pass all 22 tests; TypeScript and adapter
+ESLint pass. Evidence: `build/evidence-contracts/transport-{red,green}.log`.

@@ -1,7 +1,7 @@
 import {getSystemSettings,getSystemInformation,getSystemStatus,getHostHealth,getHostHealthIncidents,getSystemLogs,getGo2rtcEffectiveConfiguration,getGo2rtcOverrideDiagnostics,getWorkspaces,getSetupStatus,getStreamHealth,updateSystemSettings,updateWorkspaces,updateSetupStatus,validateGo2rtcConfiguration,clearSystemLogs,createSystemBackup,restartSystem,shutdownSystem,SystemRequestError} from '../../js/api/system.ts';
 import {ContractValidationError} from '../../js/api/contractErrors.ts';
 const privateValue='fixture-secret-must-not-leak';
-function respond(body:unknown,status=200){return jest.spyOn(global,'fetch').mockImplementation(async()=>new Response(JSON.stringify(body),{status}));}
+function respond(body:unknown,status=200){return jest.spyOn(global,'fetch').mockImplementation(async()=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}}));}
 beforeEach(()=>{for(const method of ['log','debug','warn','error'] as const)jest.spyOn(console,method).mockImplementation(()=>{});});
 afterEach(()=>{for(const method of ['log','debug','warn','error'] as const)expect(console[method]).not.toHaveBeenCalled();jest.restoreAllMocks();});
 test('system reads reject unvalidated partial data rather than presenting healthy defaults',async()=>{
@@ -46,4 +46,19 @@ test('malformed JSON and abort stay sanitized',async()=>{
  jest.spyOn(global,'fetch').mockResolvedValue(new Response(privateValue));await expect(getSystemStatus()).rejects.toMatchObject({issue:'json'});
  const controller=new AbortController();controller.abort(privateValue);const fetch=respond({});fetch.mockClear();
  await expect(getSystemSettings({signal:controller.signal})).rejects.toMatchObject({name:'AbortError'});expect(fetch).not.toHaveBeenCalled();
+});
+
+import {withRedirectFixture} from './redirectHarness';
+test.each([307,308] as const)('HTTP %i cannot forward settings credentials or retry the mutation',async status=>{
+ await withRedirectFixture(status,async fixture=>{
+  const fetch=jest.spyOn(global,'fetch').mockImplementation(fixture.fetch);
+  const failure=await updateSystemSettings({mqtt_password:privateValue},{redirect:'follow',credentials:'include',retries:7}).then(()=>null,error=>error);
+  expect(fixture.sourceBodies).toHaveLength(1);expect(JSON.parse(fixture.sourceBodies[0]!).mqtt_password).toBe(privateValue);
+  expect(fixture.forwardedBodies).toHaveLength(0);expect(failure).toMatchObject({name:'SystemRequestError',mayHaveApplied:true});expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0]?.[1]).toMatchObject({redirect:'error',credentials:'same-origin'});
+ });
+});
+test.each(['text/html','text/plain',''])('a %s acknowledgment cannot confirm a settings write',async contentType=>{
+ jest.spyOn(global,'fetch').mockResolvedValue(new Response('{"success":true,"restart_required":false}',{status:200,headers:{'Content-Type':contentType}}));
+ await expect(updateSystemSettings({mqtt_password:privateValue})).rejects.toMatchObject({phase:'response',issue:'json',mayHaveApplied:true});
 });

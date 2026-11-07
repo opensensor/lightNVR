@@ -29,13 +29,15 @@ async function request<T>(url: string, operation: SystemOperation, schema: strin
     const headers = new Headers(options.headers);
     if (body !== undefined) headers.set('Content-Type', 'application/json');
     response = await enhancedFetch(url, {timeout: 20000, ...options, method, body,
-      retries: method === 'GET' ? (options.retries ?? 1) : 0, cache: 'no-store', sensitive: true, headers});
+      retries: method === 'GET' ? (options.retries ?? 1) : 0, cache: 'no-store', credentials: 'same-origin', redirect: 'error', sensitive: true, headers});
   } catch (error: unknown) {
     if (options.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) throw new DOMException('Request cancelled', 'AbortError');
     const status = typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number' ? error.status : undefined;
     throw new SystemRequestError(operation, status, mutation && (status === undefined || status >= 500));
   }
   if (response.status !== 200) throw invalidResponse(operation, schema, response.status, 'status');
+  if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? ''))
+    throw invalidResponse(operation, schema, response.status, 'json');
   let value: unknown;
   try {value = await response.json();}
   catch {

@@ -34,3 +34,14 @@ test('wrong content type and status reject, and canceled requests do not leak th
  const controller=new AbortController();controller.abort(secret);const fetch=respond({});fetch.mockClear();
  await expect(eventJSON('/api/events/catalog',{signal:controller.signal})).rejects.toMatchObject({name:'AbortError'});expect(fetch).not.toHaveBeenCalled();
 });
+
+import {withRedirectFixture} from './redirectHarness';
+test.each([307,308] as const)('HTTP %i cannot forward broker credentials or retry the mutation',async status=>{
+ await withRedirectFixture(status,async fixture=>{
+  const fetch=jest.spyOn(global,'fetch').mockImplementation(fixture.fetch);
+  const failure=await eventJSON('/api/event-destinations',{method:'POST',body:JSON.stringify(body),redirect:'follow',credentials:'include',retries:7}).then(()=>null,error=>error);
+  expect(fixture.sourceBodies).toHaveLength(1);expect(JSON.parse(fixture.sourceBodies[0]!).authentication.password).toBe(secret);
+  expect(fixture.forwardedBodies).toHaveLength(0);expect(failure).toMatchObject({name:'EventRequestError',mayHaveApplied:true});expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0]?.[1]).toMatchObject({redirect:'error',credentials:'same-origin'});
+ });
+});

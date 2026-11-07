@@ -90,3 +90,16 @@ restart acknowledgment now uses structured `mayHaveApplied` errors to keep
 observing outage/recovery without resubmitting the restart; an explicit 403
 returns to confirmation. The lost-response case failed with zero status probes
 before the fix; both restart browser cases pass after it.
+
+Transport review follow-up: the system adapter now forces `redirect: error` and
+`credentials: same-origin` after caller options, and rejects successful responses
+without JSON content type before parsing. Two owned loopback HTTP origins
+reproduced 307/308 forwarding of a synthetic MQTT password before the change;
+non-JSON acknowledgments also incorrectly reported saved settings. The shared
+`web/tests/contracts/redirectHarness.ts` exercises actual fetch redirects, not
+mocked redirect responses. Both redirect cases now send exactly one request to
+the application origin, no request/body to the second origin, and report an
+ambiguous mutation without retry. Three MIME cases fail closed. Together with
+event transport tests, 22 tests pass; existing abort, sanitized-error and no-retry
+cases remain green. Web TypeScript checks and adapter ESLint pass. Raw evidence:
+`build/evidence-contracts/transport-{red,green,typecheck,eslint}.log`.
