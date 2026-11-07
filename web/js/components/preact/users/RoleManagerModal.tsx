@@ -1,5 +1,5 @@
+import { administrationJSON } from '../../../api/administration.ts';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog } from '../common/ModalDialog.tsx';
@@ -53,8 +53,8 @@ export function RoleManagerModal({ onClose, getAuthHeaders }: RoleManagerModalPr
     setError('');
     try {
       const [actionResponse, roleResponse] = await Promise.all([
-        fetchJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON<AuthorizationRolesResponse>('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
+        administrationJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
+        administrationJSON<AuthorizationRolesResponse>('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
       ]);
       const loadedRoles = roleResponse.roles || [];
       const nextUuid = preferredUuid && loadedRoles.some((role) => role.uuid === preferredUuid)
@@ -112,7 +112,7 @@ export function RoleManagerModal({ onClose, getAuthHeaders }: RoleManagerModalPr
     if (draft.builtin || !draft.name.trim() || draft.actions.length === 0) return;
     setSaving(true);
     try {
-      const response = await fetchJSON<AuthorizationRoleMutationResponse>(
+      const response = await administrationJSON<AuthorizationRoleMutationResponse>(
         draft.uuid ? `/api/authorization/roles/${encodeURIComponent(draft.uuid)}` : '/api/authorization/roles',
         {
           method: draft.uuid ? 'PUT' : 'POST',
@@ -141,7 +141,7 @@ export function RoleManagerModal({ onClose, getAuthHeaders }: RoleManagerModalPr
     if (!draft.uuid || draft.builtin) return;
     setSaving(true);
     try {
-      await fetchJSON(`/api/authorization/roles/${encodeURIComponent(draft.uuid)}`, {
+      await administrationJSON(`/api/authorization/roles/${encodeURIComponent(draft.uuid)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ expected_policy_version: policyVersion }),

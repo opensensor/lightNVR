@@ -74,7 +74,10 @@ static void test_admin_embedded_revision_and_headers(void) {
     http_response_add_header(&response,"Cache-Control","public");
     http_response_add_header(&response,"ETag","obsolete");
     invoke(200);
-    TEST_ASSERT_EQUAL_INT(54,cJSON_GetArraySize(get(document,"paths")));
+    cJSON *canonical = cJSON_Parse((const char *)lightnvr_openapi_document);
+    TEST_ASSERT_NOT_NULL(canonical);
+    TEST_ASSERT_EQUAL_INT(cJSON_GetArraySize(get(canonical,"paths")),cJSON_GetArraySize(get(document,"paths")));
+    cJSON_Delete(canonical);
     TEST_ASSERT_EQUAL_STRING(lightnvr_openapi_document_revision,get(get(document,"x-lightnvr-coverage"),"canonical_revision")->valuestring);
     TEST_ASSERT_TRUE(cJSON_IsTrue(get(get(document,"x-lightnvr-coverage"),"partial")));
     TEST_ASSERT_NULL(get(document,"x-lightnvr-validators"));

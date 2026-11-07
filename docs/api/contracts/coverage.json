@@ -10,7 +10,8 @@
     "Recording-action slice covers twelve protection/retention, tags, deletion, direct download and export-job routes. Retention override is explicitly included by the engineering plan. Job discovery is authenticated; concrete access requires exact creator user and scoped-token identity. Mixed otherwise-valid unauthorized batches fail before mutation/job creation. Operational missing/incomplete/protected failures retain their documented early or partial-result semantics. These jobs expose no cancellation endpoint or cancelled state. Legacy file-path deletion and synchronization remain later.",
     "Session/trusted-device self-service adds four operations: real session/Basic/legacy key owners only, no scoped-token principal. Lists retain the explicit 32-entry cap; revocation and cookie clearing are independent of that cap. IDs are canonical positive safe integers. MFA/password/logout expansion remains pending.",
     "F1d adds MFA completion/enrollment/status, password change and legacy logout. Self-service or effective users.manage discovery; concrete target authorization remains enforced. Seven operations, 44 total. Login and MFA consumers validate responses before claiming success.",
-    "F2 covers 13 read/query/preview operations: fleet queries, saved view reads, collection list/detail/members/preview, locations, tags and camera tags. Data remains filtered independently of discovery; mutations are F4. Total 57 operations, 183 residual."
+    "F2 covers 13 read/query/preview operations: fleet queries, saved view reads, collection list/detail/members/preview, locations, tags and camera tags. Data remains filtered independently of discovery; mutations are F4. Total 57 operations, 183 residual.",
+    "F3 covers 20 user administration, authorization policy and audit operations. Non-scoped management is explicit; scoped users.manage never issues unrestricted legacy credentials. CSV exports are paginated byte contracts. Total 77 covered operations, 163 residual."
   ],
   "operations": [
     {
@@ -1137,8 +1138,10 @@
       "handler": "handle_users_list",
       "source": "src/web/libuv_api_handlers.c",
       "line": 318,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "listAdminUsers",
+      "eligibility": "global"
     },
     {
       "method": "POST",
@@ -1146,8 +1149,10 @@
       "handler": "handle_users_create",
       "source": "src/web/libuv_api_handlers.c",
       "line": 319,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "createAdminUser",
+      "eligibility": "non_scoped_global"
     },
     {
       "method": "GET",
@@ -1155,8 +1160,10 @@
       "handler": "handle_users_get",
       "source": "src/web/libuv_api_handlers.c",
       "line": 320,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "getAdminUser",
+      "eligibility": "global"
     },
     {
       "method": "PUT",
@@ -1164,8 +1171,10 @@
       "handler": "handle_users_update",
       "source": "src/web/libuv_api_handlers.c",
       "line": 321,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateAdminUser",
+      "eligibility": "identity_management"
     },
     {
       "method": "DELETE",
@@ -1173,8 +1182,10 @@
       "handler": "handle_users_delete",
       "source": "src/web/libuv_api_handlers.c",
       "line": 322,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteAdminUser",
+      "eligibility": "global"
     },
     {
       "method": "POST",
@@ -1182,8 +1193,10 @@
       "handler": "handle_users_generate_api_key",
       "source": "src/web/libuv_api_handlers.c",
       "line": 323,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "createLegacyApiKey",
+      "eligibility": "non_scoped_identity"
     },
     {
       "method": "PUT",
@@ -1202,8 +1215,10 @@
       "handler": "handle_users_password_lock",
       "source": "src/web/libuv_api_handlers.c",
       "line": 325,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "setUserPasswordLock",
+      "eligibility": "global"
     },
     {
       "method": "POST",
@@ -1211,8 +1226,10 @@
       "handler": "handle_users_clear_login_lockout",
       "source": "src/web/libuv_api_handlers.c",
       "line": 326,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "clearUserLoginLockout",
+      "eligibility": "global"
     },
     {
       "method": "GET",
@@ -1220,8 +1237,10 @@
       "handler": "handle_get_authorization_actions",
       "source": "src/web/libuv_api_handlers.c",
       "line": 329,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "listAuthorizationActions",
+      "eligibility": "global"
     },
     {
       "method": "POST",
@@ -1229,8 +1248,10 @@
       "handler": "handle_post_authorization_simulate",
       "source": "src/web/libuv_api_handlers.c",
       "line": 331,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "simulateAuthorization",
+      "eligibility": "global"
     },
     {
       "method": "GET",
@@ -1238,8 +1259,10 @@
       "handler": "handle_get_authorization_roles",
       "source": "src/web/libuv_api_handlers.c",
       "line": 333,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "listAuthorizationRoles",
+      "eligibility": "non_scoped_global"
     },
     {
       "method": "POST",
@@ -1247,8 +1270,10 @@
       "handler": "handle_post_authorization_role",
       "source": "src/web/libuv_api_handlers.c",
       "line": 335,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "createAuthorizationRole",
+      "eligibility": "non_scoped_global"
     },
     {
       "method": "PUT",
@@ -1256,8 +1281,10 @@
       "handler": "handle_put_authorization_role",
       "source": "src/web/libuv_api_handlers.c",
       "line": 337,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateAuthorizationRole",
+      "eligibility": "non_scoped_global"
     },
     {
       "method": "DELETE",
@@ -1265,8 +1292,10 @@
       "handler": "handle_delete_authorization_role",
       "source": "src/web/libuv_api_handlers.c",
       "line": 339,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteAuthorizationRole",
+      "eligibility": "non_scoped_global"
     },
     {
       "method": "GET",
@@ -1304,8 +1333,10 @@
       "handler": "handle_get_user_authorization",
       "source": "src/web/libuv_api_handlers.c",
       "line": 350,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "getUserAuthorizationPolicy",
+      "eligibility": "non_scoped_global"
     },
     {
       "method": "PUT",
@@ -1313,8 +1344,10 @@
       "handler": "handle_put_user_authorization",
       "source": "src/web/libuv_api_handlers.c",
       "line": 352,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "setUserAuthorizationPolicy",
+      "eligibility": "non_scoped_global"
     },
     {
       "method": "GET",
@@ -1322,8 +1355,10 @@
       "handler": "handle_get_audit_export",
       "source": "src/web/libuv_api_handlers.c",
       "line": 356,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "exportAuditEvents",
+      "eligibility": "global"
     },
     {
       "method": "GET",
@@ -1331,8 +1366,10 @@
       "handler": "handle_get_audit_events",
       "source": "src/web/libuv_api_handlers.c",
       "line": 358,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "listAuditEvents",
+      "eligibility": "global"
     },
     {
       "method": "GET",
@@ -1340,8 +1377,10 @@
       "handler": "handle_get_audit_settings",
       "source": "src/web/libuv_api_handlers.c",
       "line": 360,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "getAuditSettings",
+      "eligibility": "global"
     },
     {
       "method": "PUT",
@@ -1349,8 +1388,10 @@
       "handler": "handle_put_audit_settings",
       "source": "src/web/libuv_api_handlers.c",
       "line": 362,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "identity-admin",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateAuditSettings",
+      "eligibility": "global"
     },
     {
       "method": "GET",

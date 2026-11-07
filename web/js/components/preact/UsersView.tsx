@@ -1,3 +1,4 @@
+import { administrationJSON, saveAdminUser } from '../../api/administration.ts';
 /**
  * LightNVR Web Interface Users View Component
  * Preact component for the user management page
@@ -5,7 +6,7 @@
 
 import { useState, useCallback, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
-import { useQuery, useMutation, fetchJSON } from '../../query-client.ts';
+import { useQuery, useMutation } from '../../query-client.ts';
 import { useI18n } from '../../i18n.ts';
 
 // Import user components
@@ -77,15 +78,7 @@ export function UsersView() {
     error,
     refetch: refetchUsers
   } = useQuery<UsersResponse, ApiRequestError>(
-    ['users'],
-    '/api/auth/users',
-    {
-      headers: getAuthHeaders(),
-      cache: 'no-store',
-      timeout: 15000, // 15 second timeout
-      retries: 2,     // Retry twice
-      retryDelay: 1000 // 1 second between retries
-    }
+    {queryKey: ['users'], queryFn: ({signal}) => administrationJSON<UsersResponse>('/api/auth/users', {headers:getAuthHeaders(), signal}), retry: false}
   );
 
   // Extract users array from response
@@ -129,15 +122,14 @@ export function UsersView() {
   // Add user mutation
   const addUserMutation = useMutation<unknown, Error, UserWritePayload>({
     mutationFn: async (userData) => {
-      return await fetchJSON('/api/auth/users', {
+      return await saveAdminUser('/api/auth/users', {...userData}, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
-        body: JSON.stringify(userData),
         timeout: 15000, // 15 second timeout
-        retries: 1,     // Retry once
+        retries: 0,     // Never repeat a mutation automatically
         retryDelay: 1000 // 1 second between retries
       });
     },
@@ -150,7 +142,7 @@ export function UsersView() {
       refetchUsers();
     },
     onError: (error) => {
-      console.error('Error adding user:', error);
+      refetchUsers();
       showStatusMessage(t('users.userAddError', { message: error.message }), 'error', 8000);
     }
   });
@@ -158,15 +150,14 @@ export function UsersView() {
   // Edit user mutation
   const editUserMutation = useMutation<unknown, Error, { userId: number; userData: UserWritePayload }>({
     mutationFn: async ({ userId, userData }) => {
-      return await fetchJSON(`/api/auth/users/${userId}`, {
+      return await saveAdminUser(`/api/auth/users/${userId}`, {...userData}, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
-        body: JSON.stringify(userData),
         timeout: 15000, // 15 second timeout
-        retries: 1,     // Retry once
+        retries: 0,     // Never repeat a mutation automatically
         retryDelay: 1000 // 1 second between retries
       });
     },
@@ -179,7 +170,7 @@ export function UsersView() {
       refetchUsers();
     },
     onError: (error) => {
-      console.error('Error updating user:', error);
+      refetchUsers();
       showStatusMessage(t('users.userUpdateError', { message: error.message }), 'error', 8000);
     }
   });
@@ -187,11 +178,11 @@ export function UsersView() {
   // Delete user mutation
   const deleteUserMutation = useMutation<unknown, Error, number>({
     mutationFn: async (userId) => {
-      return await fetchJSON(`/api/auth/users/${userId}`, {
+      return await administrationJSON(`/api/auth/users/${userId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
         timeout: 15000, // 15 second timeout
-        retries: 1,     // Retry once
+        retries: 0,     // Never repeat a mutation automatically
         retryDelay: 1000 // 1 second between retries
       });
     },
@@ -212,11 +203,11 @@ export function UsersView() {
   const clearLoginLockoutInFlight = useRef(false);
   const clearLoginLockoutMutation = useMutation<ClearLoginLockoutResponse, Error, number>({
     mutationFn: async (userId) => {
-      return await fetchJSON<ClearLoginLockoutResponse>(`/api/auth/users/${userId}/login-lockout/clear`, {
+      return await administrationJSON<ClearLoginLockoutResponse>(`/api/auth/users/${userId}/login-lockout/clear`, {
         method: 'POST',
         headers: getAuthHeaders(),
         timeout: 15000,
-        retries: 1,
+        retries: 0,
         retryDelay: 1000
       });
     },
@@ -243,7 +234,6 @@ export function UsersView() {
   const handleAddUser = useCallback((e: Event) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
-    console.log('Adding user:', formData.username);
     const userData: UserWritePayload = {
       ...formData,
       allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
@@ -260,12 +250,12 @@ export function UsersView() {
   const handleEditUser = useCallback((e: Event) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
-    console.log('Editing user:', selectedUser!.id, selectedUser!.username);
     const userData: UserWritePayload = {
       ...formData,
       allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
     };
-    if (selectedUser!.authorization_mode === 'policy') delete userData.role;
+    // Numeric legacy roles are never writable here; role grants have a separate editor.
+    delete userData.role;
     return editUserMutation.mutateAsync({
       userId: selectedUser!.id,
       userData
@@ -278,7 +268,6 @@ export function UsersView() {
    * DELETE is in flight (#399 / PRD UXD_01 §5.1 / T1).
    */
   const handleDeleteUser = useCallback(() => {
-    console.log('Deleting user:', selectedUser!.id, selectedUser!.username);
     return deleteUserMutation.mutateAsync(selectedUser!.id);
   }, [selectedUser, deleteUserMutation]);
 
@@ -287,7 +276,6 @@ export function UsersView() {
     // Gate repeat events before the observer's pending render reaches the button.
     clearLoginLockoutInFlight.current = true;
 
-    console.log('Clearing login lockout for user:', selectedUser.id, selectedUser.username);
     clearLoginLockoutMutation.mutate(selectedUser.id);
   }, [selectedUser, clearLoginLockoutMutation]);
 

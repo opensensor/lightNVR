@@ -1,3 +1,4 @@
+import type { components } from '../../generated/api/schema';
 /**
  * Shared domain types for the LightNVR web UI. Field lists come from the JSON
  * the C handlers in src/web/ build; the handler is named on each type.
@@ -256,22 +257,7 @@ export interface BatchDeleteCounts {
 export type UserRoleName = 'admin' | 'user' | 'viewer' | 'api' | 'unknown';
 
 /** Item of GET /api/auth/users. `role` is numeric here; see role_name. */
-export interface User {
-  id: number;
-  username: string;
-  email: string;
-  role: number;
-  role_name: UserRoleName;
-  created_at: number;
-  updated_at: number;
-  last_login: number;
-  is_active: boolean;
-  password_change_locked: boolean;
-  must_change_password: boolean;
-  totp_enabled: boolean;
-  authorization_mode: string;
-  allowed_login_cidrs: string | null;
-}
+export type User = components['schemas']['AdminUser'];
 
 /**
  * GET /api/auth/verify (handle_auth_verify). `role` is a role name here, unlike

@@ -1,6 +1,5 @@
+import { administrationJSON, exportAuditEvents } from '../../../api/administration.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
-import { enhancedFetch } from '../../../fetch-utils.ts';
 import { useI18n } from '../../../i18n.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { AuditDecisionModes } from './AuditDecisionModes.tsx';
@@ -124,7 +123,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }: Audit
     setLoading(true);
     setError('');
     try {
-      const response = await fetchJSON<Partial<AuditEventsPage>>(`/api/audit/events?${queryString}`, {
+      const response = await administrationJSON<AuditEventsPage>(`/api/audit/events?${queryString}`, {
         headers: getAuthHeaders(),
         cache: 'no-store',
         timeout: 20000,
@@ -142,7 +141,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }: Audit
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
   useEffect(() => {
-    fetchJSON<AuditSettings>('/api/audit/settings', {
+    administrationJSON<AuditSettings>('/api/audit/settings', {
       headers: getAuthHeaders(), cache: 'no-store', timeout: 15000, retries: 0,
     }).then((loadedSettings) => {
       setSettings(loadedSettings);
@@ -197,7 +196,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }: Audit
     }
     setSavingRetention(true);
     try {
-      const response = await fetchJSON<AuditSettings>('/api/audit/settings', {
+      const response = await administrationJSON<AuditSettings>('/api/audit/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ retention_days: days }),
@@ -219,10 +218,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }: Audit
   const exportPage = async () => {
     setExporting(true);
     try {
-      const response = await enhancedFetch(`/api/audit/events/export?${queryString}`, {
-        headers: getAuthHeaders(), cache: 'no-store', timeout: 30000, retries: 0,
-      });
-      const blob = await response.blob();
+      const blob = await exportAuditEvents(queryString, {headers:getAuthHeaders(), timeout:30000});
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;

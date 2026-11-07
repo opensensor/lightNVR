@@ -1,5 +1,5 @@
+import { administrationJSON } from '../../../api/administration.ts';
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import {
@@ -35,7 +35,7 @@ export function AuditDecisionModes({ settings, getAuthHeaders, onSaved }: AuditD
   const save = async () => {
     setSaving(true);
     try {
-      const response = await fetchJSON<AuditSettings>('/api/audit/settings', {
+      const response = await administrationJSON<AuditSettings>('/api/audit/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ allowed_decision_modes: changes }),
