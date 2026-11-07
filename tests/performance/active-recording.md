@@ -21,8 +21,10 @@ The regression in `mediaLifecycle.api.spec.ts` uses one stream for ten seconds;
 `LIGHTNVR_CONTRACT_BIN` selects the binary as in the other native contract tests.
 
 Source/harness/native-file/binary hashes, build flags when available, machine
-information, samples and failures are retained in `results.json`. The owned
-source children have bounded shutdown. These are workstation observations, not
+information, samples and failures are retained in `results.json`.
+`trackedDiffSha256` hashes the raw bytes of `git diff --no-ext-diff --no-textconv HEAD`
+as a stream, so large regenerated source diffs do not require an output buffer.
+The owned source children have bounded shutdown. These are workstation observations, not
 physical-camera, remote-storage, long-duration, active-viewer or sustainable
 capacity qualifications. Use named target hardware and repeated serial runs
 before setting supported capacity budgets.

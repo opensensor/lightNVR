@@ -313,9 +313,10 @@ int http_response_set_json(http_response_t *res, int status_code, const char *js
     // Replace helper-managed standard headers while preserving caller-provided headers.
     http_response_remove_standard_json_headers(res);
 
-    // Add one canonical set of standard headers.
+    // JSON may contain personal credentials or user-scoped data. Keep the
+    // canonical policy private even when replacing caller-provided headers.
     http_response_add_cors_headers(res);
-    http_response_add_header(res, "Cache-Control", "no-cache, no-store, must-revalidate");
+    http_response_add_header(res, "Cache-Control", "private, no-cache, no-store, must-revalidate");
     http_response_add_header(res, "Pragma", "no-cache");
     http_response_add_header(res, "Expires", "0");
 

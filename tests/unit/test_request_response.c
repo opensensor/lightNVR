@@ -487,7 +487,11 @@ void test_json_replaces_mixed_case_duplicate_standard_headers(void) {
     TEST_ASSERT_EQUAL_STRING("Access-Control-Allow-Origin", res.headers[1].name);
     TEST_ASSERT_EQUAL_STRING("*", res.headers[1].value);
     TEST_ASSERT_EQUAL_STRING("Cache-Control", res.headers[6].name);
-    TEST_ASSERT_EQUAL_STRING("no-cache, no-store, must-revalidate", res.headers[6].value);
+    TEST_ASSERT_EQUAL_STRING("private, no-cache, no-store, must-revalidate", res.headers[6].value);
+    TEST_ASSERT_EQUAL_INT(0, http_response_set_json_error(&res, 400, "Invalid credential ID"));
+    TEST_ASSERT_EQUAL_INT(9, res.num_headers);
+    TEST_ASSERT_EQUAL_STRING("Cache-Control", res.headers[6].name);
+    TEST_ASSERT_EQUAL_STRING("private, no-cache, no-store, must-revalidate", res.headers[6].value);
     http_response_free(&res);
 }
 

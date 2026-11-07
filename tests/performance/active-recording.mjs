@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Bounded synthetic active-recording measurements on an owned loopback fixture. */
 import {startFixture} from '../contracts/fixture-server.mjs';
+import {trackedDiffSha256} from './git-provenance.mjs';
 import {createServer} from 'node:http';
 import {spawn,execFileSync} from 'node:child_process';
 import {mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
@@ -15,7 +16,7 @@ if(!Number.isInteger(count)||count<1||count>32||!Number.isInteger(seconds)||seco
 await mkdir(directory,{recursive:false});
 const git=(...argv)=>execFileSync('git',argv,{encoding:'utf8'}).trim();
 const hash=value=>createHash('sha256').update(value).digest('hex');
-const report={revision:git('rev-parse','HEAD'),trackedDiffSha256:hash(git('diff','HEAD')),binarySha256:hash(await readFile(binary)),
+const report={revision:git('rev-parse','HEAD'),trackedDiffSha256:await trackedDiffSha256(),binarySha256:hash(await readFile(binary)),
  cpu:os.cpus()[0]?.model,cores:os.cpus().length,ramBytes:os.totalmem(),os:os.release(),
  workload:{streams:count,durationSeconds:seconds,codec:'H.264',width:1920,height:1080,fps:15,gop:15,source:'owned loopback HTTP MPEG-TS',viewers:0},
  limitation:'Workstation synthetic recording only. Source generation shares the host. No physical cameras, active live viewers, remote storage, sustainable-capacity or power-loss claim.',samples:[],recordings:[],status:'running'};

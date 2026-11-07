@@ -16,6 +16,7 @@ on:
       - 'rust/**'
       - 'tools/rust-transpile/**'
       - 'tests/contracts/**'
+      - 'tests/performance/**'
       - 'web/**'
       - '.github/workflows/lightnvr-rs.yml'
   push:
