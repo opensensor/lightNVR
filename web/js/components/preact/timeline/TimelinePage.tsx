@@ -1321,22 +1321,39 @@ export function TimelinePage() {
 
         // Use polled segments as the authoritative list
         const updated = authoritative.sort((a, b) => a.start_timestamp - b.start_timestamp);
+        const previousSegments = timelineState.timelineSegments || [];
+        const previousIndex = timelineState.currentSegmentIndex;
+        const activeSegment = (
+          typeof previousIndex === 'number'
+          && previousIndex >= 0
+          && previousIndex < previousSegments.length
+        ) ? previousSegments[previousIndex] : null;
+        const nextCurrentSegmentIndex = activeSegment
+          ? updated.findIndex((segment) => (
+            (segment.id != null && activeSegment.id != null && segment.id === activeSegment.id)
+            || (
+              segment.start_timestamp === activeSegment.start_timestamp
+              && segment.end_timestamp === activeSegment.end_timestamp
+            )
+          ))
+          : -1;
+
         if (removedSegs.length > 0) {
           const fading = [
             ...updated,
             ...removedSegs.map((segment) => ({ ...segment, _removing: true })),
           ].sort((a, b) => a.start_timestamp - b.start_timestamp);
           setSegments(fading);
-          timelineState.setState({ timelineSegments: fading });
+          timelineState.setState({ timelineSegments: fading, currentSegmentIndex: nextCurrentSegmentIndex });
           clearTimeout(fadeTimeoutId as TimeoutId);
           fadeTimeoutId = setTimeout(() => {
             if (cancelled) return;
             setSegments(updated);
-            timelineState.setState({ timelineSegments: updated });
+            timelineState.setState({ timelineSegments: updated, currentSegmentIndex: nextCurrentSegmentIndex });
           }, 100);
         } else {
           setSegments(updated);
-          timelineState.setState({ timelineSegments: updated });
+          timelineState.setState({ timelineSegments: updated, currentSegmentIndex: nextCurrentSegmentIndex });
         }
 
         if (addedSegs.length > 0) {
