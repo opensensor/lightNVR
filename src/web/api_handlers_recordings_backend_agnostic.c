@@ -851,6 +851,37 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     } else if (filter && cJSON_IsObject(filter)) {
         // Delete by filter - total count will be determined by worker thread
         total_count = 0;
+
+        // Validate filter keys strictly to avoid silently ignoring malformed date bounds.
+        for (cJSON *item = filter->child; item != NULL; item = item->next) {
+            const char *key = item->string;
+            if (!key) {
+                cJSON_Delete(json);
+                http_response_set_json_error(res, 400, "Invalid filter key");
+                return;
+            }
+
+            // Reject case-mismatched date-bound keys explicitly.
+            if ((strcasecmp(key, "start") == 0 && strcmp(key, "start") != 0) ||
+                (strcasecmp(key, "end") == 0 && strcmp(key, "end") != 0)) {
+                cJSON_Delete(json);
+                http_response_set_json_error(res, 400, "Invalid filter key casing; use 'start' and 'end'");
+                return;
+            }
+
+            // Allow only supported keys for filter-based deletion.
+            if (strcmp(key, "start") != 0 &&
+                strcmp(key, "end") != 0 &&
+                strcmp(key, "camera_uuids") != 0 &&
+                strcmp(key, "camera_uuid") != 0 &&
+                strcmp(key, "stream_uuid") != 0 &&
+                strcmp(key, "stream_uuids") != 0) {
+                cJSON_Delete(json);
+                http_response_set_json_error(res, 400, "Unknown filter field");
+                return;
+            }
+        }
+
         if (!authorize_batch_delete_filter(&user, filter, res, camera_scope, &camera_scope_count)) {
             cJSON_Delete(json);
             return;
