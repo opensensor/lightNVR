@@ -306,7 +306,11 @@ test('batch deletion preserves adjacent large IDs through authorization and work
   const accepted=await jsonResult(server,'/api/recordings/batch-delete',deleter,'POST',
     {ids:[exact[1],Number(exact[0]),'18446744073709551616','1junk']},202,'RecordingDeletionJobAccepted');
   const progress=await deletionDone(server,accepted.job_id,deleter);
-  expect(progress.succeeded).toBe(1);expect(progress.failed).toBe(3);
+  expect(progress).toMatchObject({total:4,current:4,succeeded:1,failed:3});
+  await expect.poll(()=>withDb(server,db=>{
+    const row=db.prepare("SELECT details_json FROM audit_events WHERE target_uuid=? AND json_extract(details_json,'$.context.total_count') IS NOT NULL ORDER BY id DESC LIMIT 1").get(accepted.job_id);
+    return row ? JSON.parse(String(row.details_json)).context : null;
+  })).toMatchObject({total_count:4,success_count:1,error_count:3});
   expect(existsSync(path.join(fixture.directory,`${exact[0]}.mp4`))).toBe(true);
   expect(existsSync(path.join(fixture.directory,`${exact[1]}.mp4`))).toBe(false);
   expect(withDb(server,db=>db.prepare('SELECT COUNT(*) AS n FROM recordings WHERE id=?').get(BigInt(exact[0]))?.n)).toBe(1);
@@ -335,4 +339,39 @@ test('single deletion rejects malformed decimal paths without touching recording
   await jsonResult(server,`/api/recordings/${encoded}`,deleter,'DELETE',undefined,200,'RecordingDeletionResult');
   expect(existsSync(path.join(fixture.directory,`${ids.sibling}.mp4`))).toBe(false);
   expect(state(server,[ids.playable,ids.hidden])).toEqual([before[0],before[2]]);
+});
+
+
+test('recording detail IDs require exact decimal syntax and retain replay authorization',async({server})=>{
+  seedRecordings(server);const reader=await actor(server,'strict_detail_id',['recordings.replay']);
+  for(const id of ['101junk','101.5','%2B101','%20101','-18446744073709551515','101%00junk','0','18446744073709551616']) {
+    await jsonResult(server,`/api/recordings/${id}`,reader,'GET',undefined,400,'ApiError');
+  }
+  const valid=await wire(server,'/api/recordings/%31%30%31',reader);
+  expect(valid.response.status).toBe(200);expect(valid.body.id).toBe(101);
+  await jsonResult(server,`/api/recordings/${ids.hidden}`,reader,'GET',undefined,403,'ApiError');
+});
+
+test('filtered deletion rejects invalid date bounds before dispatch and honors valid ranges',async({server})=>{
+  const fixture=seedRecordings(server);const owner=await actor(server,'date_bound_deleter',['recording.delete']);
+  const all=[ids.playable,ids.sibling,ids.interrupted,ids.progress,ids.hidden,ids.orphan];
+  const before=state(server,all);
+  const invalid=[null,42,true,{},'', 'garbage', '2026-02-30T00:00:00Z', '2026-13-01T00:00:00Z',
+    '2026-01-01T24:00:00Z','2026-01-01T00:00:60Z','2026-01-01T00:00:00junk',
+    '2026-01-01T00:00:00.Z','2026-01-01T00:00:00+02:00','1970-01-01T00:00:00Z','1969-12-31T23:59:59Z'];
+  for(const key of ['start','end','Start','END']) for(const bound of invalid) {
+    await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',{filter:{stream:'A',[key]:bound}},400,'ApiError');
+  }
+  await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',
+    {filter:{stream:'A',start:'2026-12-01T00:00:00Z',end:'2026-01-01T00:00:00Z'}},400,'ApiError');
+  expect(state(server,all)).toEqual(before);
+  const future=await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',
+    {filter:{stream:'A',start:'2099-01-01T00:00:00.123Z',end:'2099-01-02T00:00:00'}},202,'RecordingDeletionJobAccepted');
+  expect(await deletionDone(server,future.job_id,owner)).toMatchObject({total:0,current:0,succeeded:0,failed:0});
+  expect(state(server,all)).toEqual(before);
+  const job=await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',
+    {filter:{stream:'A',tag:'visible-tag',start:new Date((fixture.start-1)*1000).toISOString(),end:new Date((fixture.end+1)*1000).toISOString()}},202,'RecordingDeletionJobAccepted');
+  expect(await deletionDone(server,job.job_id,owner)).toMatchObject({total:1,current:1,succeeded:1,failed:0});
+  expect(state(server,[ids.playable])[0]).toMatchObject({row:undefined,exists:false});
+  expect(state(server,all.slice(1))).toEqual(before.slice(1));
 });

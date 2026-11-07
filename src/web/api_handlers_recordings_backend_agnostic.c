@@ -83,15 +83,18 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "Invalid request path");
         return;
     }
-    
-    // Convert ID to integer using strict decimal parsing
+
+    // Check the raw path too: a decoded NUL can hide a suffix from validation.
+    const char *encoded_nul = strstr(req->path, "%00");
+    const char *query = strchr(req->path, '?');
     uint64_t id;
-    if (recording_id_parse_decimal(id_str, &id) != 0) {
+    if ((encoded_nul && (!query || encoded_nul < query)) ||
+        !recording_id_parse_decimal(id_str, &id)) {
         log_error("Invalid recording ID: %s", id_str);
         http_response_set_json_error(res, 400, "Invalid recording ID");
         return;
     }
-    
+
     log_debug("Handling GET /api/recordings/%llu request", (unsigned long long)id);
     
     // Get recording from database
@@ -320,6 +323,8 @@ typedef struct {
     char job_id[64];
     cJSON *json;  // Parsed JSON request (will be freed by thread)
     int preflight_error_count;
+    time_t start_time;
+    time_t end_time;
     /* Server-captured identities, never accepted from client JSON. */
     int camera_scope_count;
     char camera_scope[MAX_STREAMS][CAMERA_UUID_STRING_SIZE];
@@ -392,9 +397,11 @@ static void *batch_delete_worker_thread(void *arg) {
     if (ids_array && cJSON_IsArray(ids_array)) {
         // Delete by IDs
         int array_size = cJSON_GetArraySize(ids_array);
+        int total_count = array_size + data->preflight_error_count;
 
         // Update progress to running
-        batch_delete_progress_update(job_id, 0, 0, 0, "Starting batch delete operation...");
+        batch_delete_progress_update(job_id, data->preflight_error_count, 0,
+                                     data->preflight_error_count, "Starting batch delete operation...");
 
         // Process each ID
         int success_count = 0;
@@ -438,8 +445,8 @@ static void *batch_delete_worker_thread(void *arg) {
             // Update progress every 10 recordings or on last recording
             if ((i + 1) % 10 == 0 || (i + 1) == array_size) {
                 char status_msg[256];
-                snprintf(status_msg, sizeof(status_msg), "Deleting recordings... %d/%d", i + 1, array_size);
-                batch_delete_progress_update(job_id, i + 1, success_count, error_count, status_msg);
+                snprintf(status_msg, sizeof(status_msg), "Deleting recordings... %d/%d", i + 1 + data->preflight_error_count, total_count);
+                batch_delete_progress_update(job_id, i + 1 + data->preflight_error_count, success_count, error_count, status_msg);
             }
         }
 
@@ -447,14 +454,14 @@ static void *batch_delete_worker_thread(void *arg) {
         batch_delete_progress_complete_with_pending(job_id, success_count, error_count, pending_count);
         audit_batch_delete_job(
             data, error_count == 0 ? "success" : "failure",
-            error_count == 0 ? "deletions_accepted" : "partial_failure", array_size,
+            error_count == 0 ? "deletions_accepted" : "partial_failure", total_count,
             success_count, error_count);
         log_info("Batch delete job completed: %s (succeeded: %d, failed: %d)", job_id, success_count, error_count);
 
     } else if (filter && cJSON_IsObject(filter)) {
         // Delete by filter
-        time_t start_time = 0;
-        time_t end_time = 0;
+        time_t start_time = data->start_time;
+        time_t end_time = data->end_time;
         int has_detection = 0;
         char detection_label[256] = {0};
         char tag_filter[512] = {0};
@@ -463,53 +470,12 @@ static void *batch_delete_worker_thread(void *arg) {
         int protected_filter = -1;
 
         // Extract filter parameters
-        cJSON *start = cJSON_GetObjectItem(filter, "start");
-        cJSON *end = cJSON_GetObjectItem(filter, "end");
+
         cJSON *detection = cJSON_GetObjectItem(filter, "detection");
         cJSON *detection_label_item = cJSON_GetObjectItem(filter, "detection_label");
         cJSON *tag_item = cJSON_GetObjectItem(filter, "tag");
         cJSON *capture_method_item = cJSON_GetObjectItem(filter, "capture_method");
         cJSON *protected_item = cJSON_GetObjectItem(filter, "protected");
-
-        if (start) {
-            if (!cJSON_IsString(start)) {
-                cJSON_Delete(json);
-                http_send_error(req, 400, "start must be a string");
-                return;
-            }
-            struct tm tm = {0};
-            if (strptime(start->valuestring, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
-                strptime(start->valuestring, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
-                strptime(start->valuestring, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
-                strptime(start->valuestring, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-                tm.tm_isdst = 0;
-                start_time = timegm(&tm);
-            } else {
-                cJSON_Delete(json);
-                http_send_error(req, 400, "Invalid start date format");
-                return;
-            }
-        }
-
-        if (end) {
-            if (!cJSON_IsString(end)) {
-                cJSON_Delete(json);
-                http_send_error(req, 400, "end must be a string");
-                return;
-            }
-            struct tm tm = {0};
-            if (strptime(end->valuestring, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
-                strptime(end->valuestring, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
-                strptime(end->valuestring, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
-                strptime(end->valuestring, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-                tm.tm_isdst = 0;
-                end_time = timegm(&tm);
-            } else {
-                cJSON_Delete(json);
-                http_send_error(req, 400, "Invalid end date format");
-                return;
-            }
-        }
 
         if (detection && cJSON_IsNumber(detection)) {
             has_detection = detection->valueint;
@@ -720,6 +686,39 @@ static int authorize_batch_delete_ids(const user_t *user, cJSON *json,
     return 1;
 }
 
+/* Missing bounds are unbounded. Supplied bounds must never silently become zero. */
+static bool parse_delete_time_bound(const cJSON *item, time_t *value) {
+    *value = 0;
+    if (!item) return true;
+    if (!cJSON_IsString(item) || !item->valuestring) return false;
+    const char *text = item->valuestring;
+    size_t length = strlen(text);
+    if (length < 19 || length > 64) return false;
+    for (size_t i = 0; i < 19; i++) {
+        char separator = i == 4 || i == 7 ? '-' : i == 10 ? 'T' : i == 13 || i == 16 ? ':' : 0;
+        if (separator ? text[i] != separator : text[i] < '0' || text[i] > '9') return false;
+    }
+    struct tm parsed = {0};
+    char *end = strptime(text, "%Y-%m-%dT%H:%M:%S", &parsed);
+    if (!end) return false;
+    if (*end == '.') {
+        end++;
+        if (*end < '0' || *end > '9') return false;
+        while (*end >= '0' && *end <= '9') end++;
+    }
+    if (*end == 'Z') end++;
+    if (*end) return false;
+    struct tm original = parsed;
+    time_t result = timegm(&parsed);
+    struct tm normalized;
+    if (result <= 0 || !gmtime_r(&result, &normalized) ||
+        normalized.tm_year != original.tm_year || normalized.tm_mon != original.tm_mon ||
+        normalized.tm_mday != original.tm_mday || normalized.tm_hour != original.tm_hour ||
+        normalized.tm_min != original.tm_min || normalized.tm_sec != original.tm_sec) return false;
+    *value = result;
+    return true;
+}
+
 static int authorize_batch_delete_filter(const user_t *user,
     const cJSON *filter, http_response_t *res,
     char camera_scope[][CAMERA_UUID_STRING_SIZE], int *scope_count) {
@@ -832,12 +831,13 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     int total_count = 0;
 
     int preflight_error_count = 0;
+    time_t start_time = 0, end_time = 0;
     char camera_scope[MAX_STREAMS][CAMERA_UUID_STRING_SIZE] = {{0}};
     int camera_scope_count = 0;
     if (ids_array && cJSON_IsArray(ids_array)) {
         // Delete by IDs
-        int requested_count = cJSON_GetArraySize(ids_array);
-        if (requested_count == 0) {
+        total_count = cJSON_GetArraySize(ids_array);
+        if (total_count == 0) {
             log_warn("Empty 'ids' array in batch delete request");
             cJSON_Delete(json);
             http_response_set_json_error(res, 400, "Empty 'ids' array");
@@ -848,16 +848,18 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
             cJSON_Delete(json);
             return;
         }
-        cJSON *authorized_ids_array = cJSON_GetObjectItem(json, "ids");
-        int authorized_count = (authorized_ids_array && cJSON_IsArray(authorized_ids_array))
-                                   ? cJSON_GetArraySize(authorized_ids_array)
-                                   : 0;
-        total_count = authorized_count + preflight_error_count;
     } else if (filter && cJSON_IsObject(filter)) {
         // Delete by filter - total count will be determined by worker thread
         total_count = 0;
         if (!authorize_batch_delete_filter(&user, filter, res, camera_scope, &camera_scope_count)) {
             cJSON_Delete(json);
+            return;
+        }
+        if (!parse_delete_time_bound(cJSON_GetObjectItem(filter, "start"), &start_time) ||
+            !parse_delete_time_bound(cJSON_GetObjectItem(filter, "end"), &end_time) ||
+            (start_time && end_time && start_time > end_time)) {
+            cJSON_Delete(json);
+            http_response_set_json_error(res, 400, "Invalid deletion date range");
             return;
         }
     } else {
@@ -895,6 +897,8 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     safe_strcpy(thread_data->job_id, job_id, sizeof(thread_data->job_id), 0);
     thread_data->json = json;  // Transfer ownership to thread
     thread_data->preflight_error_count = preflight_error_count;
+    thread_data->start_time = start_time;
+    thread_data->end_time = end_time;
     thread_data->camera_scope_count = camera_scope_count;
     memcpy(thread_data->camera_scope, camera_scope, sizeof(camera_scope));
     thread_data->owner_user_id = user.id;
