@@ -438,15 +438,15 @@ export function RecordingsView() {
       const recordingsArray = recordingsData.recordings || [];
 
       // When filtering for detection events, all returned recordings should have detections
-      if (filters.recordingType === 'detection') {
-        recordingsArray.forEach(recording => {
-          recording.has_detections = true;
-        });
-      }
+      // Derive updated objects to avoid mutating query-cached data
+      const displayRecordings =
+        filters.recordingType === 'detection'
+          ? recordingsArray.map(recording => ({ ...recording, has_detections: true }))
+          : recordingsArray;
 
       // Set the recordings state
-      setRecordings(recordingsArray);
-      setHasData(recordingsArray.length > 0);
+      setRecordings(displayRecordings);
+      setHasData(displayRecordings.length > 0);
 
       // Update pagination
       if (recordingsData.pagination) {
@@ -661,7 +661,7 @@ export function RecordingsView() {
         break;
     }
 
-    applyFilters();
+    // Refetch is driven by reactive state/query-key updates after filters settle.
   };
 
   // Sort by field — URL sync is handled by the reactive useEffect
