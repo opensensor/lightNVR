@@ -107,6 +107,9 @@ class RepositoryTests(unittest.TestCase):
         (self.root / 'rust').mkdir()
         (self.root / 'CMakeLists.txt').write_text('project(LightNVR VERSION 1.2.3 LANGUAGES C)\n')
         (self.root / 'web/package.json').write_text(json.dumps({'version': '1.2.3'}))
+        (self.root / 'web/package-lock.json').write_text(json.dumps({
+            'version': '1.2.3', 'lockfileVersion': 3,
+            'packages': {'': {'version': '1.2.3'}, 'node_modules/example': {'version': '9.8.7'}}}))
         (self.root / 'rust/Cargo.toml').write_text('[package]\nversion = "1.2.3"\n')
         self.anchor = self.commit('initial')
         release.git('push', '-q', 'origin', 'main')
@@ -154,18 +157,53 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(release.git('rev-parse', 'HEAD'), self.anchor)
         self.assertEqual(release.git('tag', '--list'), '')
 
-    def test_version_bump_preparation_creates_commit_but_no_tag(self):
+    def install_bump_script(self):
         (self.root / 'scripts').mkdir()
         shutil.copy2(Path(SPEC.origin).parent / 'bump-version.sh', self.root / 'scripts/bump-version.sh')
         (self.root / '.gitignore').write_text('web/js/version.js\ninclude/core/version.h\n')
         self.commit('prepare scripts')
+
+    def assert_web_lock_version(self, expected):
+        lock = json.loads((self.root / 'web/package-lock.json').read_text())
+        self.assertEqual(lock['version'], expected)
+        self.assertEqual(lock['packages']['']['version'], expected)
+        self.assertEqual(lock['packages']['node_modules/example']['version'], '9.8.7')
+
+    def test_version_bump_preparation_creates_commit_but_no_tag(self):
+        self.install_bump_script()
         with patch.object(release, 'publish') as publish:
             release.main(['1.2.4', '--no-push', '--yes'])
         publish.assert_not_called()
         self.assertEqual(release.versions('HEAD'), ('1.2.4', '1.2.4'))
+        self.assert_web_lock_version('1.2.4')
         self.assertEqual(release.git('status', '--porcelain'), '')
         self.assertEqual(release.git('tag', '--list'), '')
         self.assertEqual(release.git('rev-parse', 'origin/main'), self.anchor)
+
+    def test_preparation_repairs_legacy_web_version(self):
+        self.install_bump_script()
+        (self.root / 'web/package.json').write_text(json.dumps({'version': '1.0.0'}))
+        self.commit('legacy web package version')
+        release.main(['1.2.4', '--no-push', '--yes'])
+        self.assertEqual(release.versions('HEAD'), ('1.2.4', '1.2.4'))
+        self.assert_web_lock_version('1.2.4')
+        self.assertEqual(release.git('status', '--porcelain'), '')
+        self.assertEqual(release.git('tag', '--list'), '')
+
+    def test_preparation_repairs_web_when_cmake_already_has_target_version(self):
+        self.install_bump_script()
+        (self.root / 'web/package.json').write_text(json.dumps({'version': '1.0.0'}))
+        self.commit('partial preparation')
+        release.main(['1.2.3', '--no-push', '--yes'])
+        self.assertEqual(release.versions('HEAD'), ('1.2.3', '1.2.3'))
+        self.assert_web_lock_version('1.2.3')
+        self.assertEqual(release.git('status', '--porcelain'), '')
+
+    def test_publication_still_rejects_mismatched_web_version(self):
+        (self.root / 'web/package.json').write_text(json.dumps({'version': '1.0.0'}))
+        self.commit('legacy web package version')
+        with self.assertRaisesRegex(release.ReleaseError, 'versions'):
+            release.check_versions('HEAD', '1.2.3', rust=True)
 
     def test_prepare_and_resume_generated_commit(self):
         real_command = release.command

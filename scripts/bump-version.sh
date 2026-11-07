@@ -74,16 +74,27 @@ update_package_json() {
     
     print_info "Updating web/package.json..."
     
-    # Use sed to replace the version
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sed -i '' -E "s/\"version\":\s*\"[0-9]+\.[0-9]+\.[0-9]+\"/\"version\": \"$new_version\"/" "$package_file"
-    else
-        # Linux
-        sed -i -E "s/\"version\":\s*\"[0-9]+\.[0-9]+\.[0-9]+\"/\"version\": \"$new_version\"/" "$package_file"
-    fi
-    
-    print_info "✓ Updated package.json to version $new_version"
+    # Keep package metadata in sync without resolving or updating dependencies.
+    python3 - "$package_file" "$new_version" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+package_file = Path(sys.argv[1])
+version = sys.argv[2]
+package = json.loads(package_file.read_text())
+package["version"] = version
+lock_file = package_file.with_name("package-lock.json")
+lock = json.loads(lock_file.read_text()) if lock_file.exists() else None
+if lock is not None:
+    lock["version"] = version
+    if "" in lock.get("packages", {}):
+        lock["packages"][""]["version"] = version
+    lock_file.write_text(json.dumps(lock, indent=2) + "\n")
+package_file.write_text(json.dumps(package, indent=2) + "\n")
+PY
+
+    print_info "✓ Updated web package and lockfile metadata to version $new_version"
 }
 
 # Function to regenerate version.h
@@ -168,7 +179,7 @@ main() {
         echo ""
         echo "This will update:"
         echo "  - CMakeLists.txt"
-        echo "  - web/package.json"
+        echo "  - web/package.json and web/package-lock.json"
         echo "  - include/core/version.h"
         echo "  - web/js/version.js"
         exit 0
@@ -222,13 +233,13 @@ main() {
     print_info "Version bump complete!"
     print_info "Files updated:"
     print_info "  - CMakeLists.txt"
-    print_info "  - web/package.json"
+    print_info "  - web/package.json and web/package-lock.json"
     print_info "  - include/core/version.h"
     print_info "  - web/js/version.js"
     echo
     print_info "Next steps:"
     print_info "  1. Review the changes: git diff --submodule=log"
-    print_info "  2. Stage version files: git add -- CMakeLists.txt web/package.json"
+    print_info "  2. Stage version files: git add -- CMakeLists.txt web/package.json web/package-lock.json"
     print_info "  3. Review staged changes: git diff --cached --submodule=log"
     print_info "  4. Commit the changes: git commit -m 'Bump version to $new_version'"
     print_info "  5. Wait for generated Rust and CI, then publish: ./scripts/release.sh $new_version --publish-only"

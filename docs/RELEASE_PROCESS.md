@@ -45,7 +45,7 @@ checkout staged with `git add -A` can silently undo a security update, as happen
 in [issue #680](https://github.com/opensensor/lightNVR/issues/680).
 
 Version-bump commits should contain only the tracked version files,
-`CMakeLists.txt` and `web/package.json`. Review the staged diff before committing;
+`CMakeLists.txt`, `web/package.json`, and `web/package-lock.json`. Review the staged diff before committing;
 it should not include submodule changes. The generated version files are ignored
 by git.
 
@@ -54,6 +54,7 @@ by git.
 The version is managed in the following files:
 - `CMakeLists.txt` - Main project version (line 2)
 - `web/package.json` - Web interface version
+- `web/package-lock.json` - Matching web package version metadata
 - `include/core/version.h` - Generated from template
 - `web/js/version.js` - Generated for web interface
 
@@ -67,7 +68,7 @@ If you need to bump the version without creating a release:
 
 This will:
 - Update `CMakeLists.txt` with the new version
-- Update `web/package.json` with the new version
+- Update `web/package.json` and its lockfile metadata with the new version
 - Regenerate `include/core/version.h` from the template
 - Regenerate `web/js/version.js` with the new version
 
@@ -115,8 +116,10 @@ the release; Git still refuses to overwrite them during a fast-forward. It refus
 to silently pull new product changes into the release.
 
 1. Validates the version, checkout and absence of both `X.Y.Z` and `vX.Y.Z` tags.
-2. Runs `bump-version.sh`, stages only `CMakeLists.txt` and `web/package.json`,
-   and commits the version bump. If that version is already prepared, it resumes.
+2. Runs `bump-version.sh`, stages only `CMakeLists.txt`, `web/package.json`, and `web/package-lock.json`,
+   and commits the version bump. CMake is the release version authority; preparation
+   aligns legacy web package versions automatically without changing dependencies.
+   If that version is already prepared, it resumes.
 3. Pushes the preparation to `main`, without creating a tag.
 4. Follows generated `rust/` commits while CI runs. Any intervening commit that
    changes files outside `rust/`, or a rewritten history, stops the release for review.

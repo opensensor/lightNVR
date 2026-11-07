@@ -225,21 +225,23 @@ def main(argv=None):
         check_descendants(git('rev-parse', 'HEAD'), remote)
         git('merge', '--ff-only', remote)
     current, web = versions('HEAD')
-    if current != web:
-        raise ReleaseError('CMake and web versions disagree; fix them before releasing.')
-    if args.publish_only and current != args.version:
-        raise ReleaseError('--publish-only requires the prepared version in this checkout.')
+    if args.publish_only and (current, web) != (args.version, args.version):
+        raise ReleaseError('--publish-only requires matching prepared CMake and web versions. '
+                           'Run without --publish-only to prepare them first.')
     if tuple(map(int, args.version.split('.'))) < tuple(map(int, current.split('.'))):
         raise ReleaseError('Refusing to lower the release version.')
     print(f'Release v{args.version}: prepare main, wait for Rust regeneration and CI, then tag.')
     if not args.yes and input('Proceed? [y/N] ').strip().lower() != 'y':
         print('Release cancelled.')
         return
-    if current != args.version:
+    # CMake is the release version authority. Preparation also repairs legacy
+    # web package versions; publication still requires all versions to agree.
+    if (current, web) != (args.version, args.version):
         command('bash', str(ROOT / 'scripts/bump-version.sh'), args.version,
                 input='y\n', capture=False)
-        git('add', '--', 'CMakeLists.txt', 'web/package.json')
-        command('git', 'diff', '--cached', '--', 'CMakeLists.txt', 'web/package.json', capture=False)
+        version_files = ('CMakeLists.txt', 'web/package.json', 'web/package-lock.json')
+        git('add', '--', *version_files)
+        command('git', 'diff', '--cached', '--', *version_files, capture=False)
         git('commit', '-m', f'Bump version to {args.version}')
     anchor = git('rev-parse', 'HEAD')
     if args.no_push:
