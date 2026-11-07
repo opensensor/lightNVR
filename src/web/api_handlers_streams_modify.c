@@ -34,6 +34,7 @@
 #include "video/unified_detection_thread.h"
 #include "database/database_manager.h"
 #include "database/db_auth.h"
+#include "database/db_fleet_query.h"
 #include "video/hls/hls_directory.h"
 #include "video/hls/hls_api.h"
 #include "video/onvif_device_management.h"
@@ -48,11 +49,23 @@ static pthread_mutex_t g_put_stream_update_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static bool check_stream_write_access(const http_request_t *req,
                                       http_response_t *res,
-                                      const stream_config_t *config) {
-    return config
-        ? httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
-                                        config->name) != 0
-        : httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE) != 0;
+                                      stream_config_t *config) {
+    if (!config) return httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE) != 0;
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_stream_action_with_context(req, res, AUTHZ_CAMERA_CONFIGURE,
+            config->name, &user, &camera, &evaluation)) return false;
+    /* Bind asynchronous work to the identity actually authorized, not a name
+     * which can be reused before the worker is scheduled. */
+    safe_strcpy(config->camera_uuid, camera.camera_uuid, sizeof(config->camera_uuid), 0);
+    return true;
+}
+
+static bool stream_task_identity_matches(const char *name, const char *camera_uuid) {
+    fleet_camera_t current;
+    return camera_uuid[0] && db_fleet_camera_find_by_name_readonly(name, &current) == 0 &&
+           strcmp(camera_uuid, current.camera_uuid) == 0;
 }
 
 
@@ -182,6 +195,12 @@ static void put_stream_worker_locked(put_stream_task_t *task) {
     stream_handle_t stream = get_stream_by_name(task->stream_id);
     if (!stream) {
         log_warn("Stream %s no longer exists, dropping queued PUT update", task->stream_id);
+        put_stream_task_free(task);
+        return;
+    }
+
+    if (!stream_task_identity_matches(task->stream_id, task->config.camera_uuid)) {
+        log_warn("Camera identity changed; dropping queued PUT for %s", task->stream_id);
         put_stream_task_free(task);
         return;
     }
@@ -2366,7 +2385,8 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
  * @brief Structure for DELETE stream background task
  */
 typedef struct {
-    char stream_id[MAX_STREAM_NAME];          // Decoded stream ID (durable key)
+    char stream_id[MAX_STREAM_NAME];          // Current name, checked against captured UUID
+    char camera_uuid[CAMERA_UUID_STRING_SIZE];
     bool permanent_delete;                     // Whether to permanently delete
 } delete_stream_task_t;
 
@@ -2393,6 +2413,12 @@ static void *delete_stream_worker(void *arg) {
     stream_handle_t stream = get_stream_by_name(task->stream_id);
     if (!stream) {
         log_warn("Stream %s no longer exists, nothing to delete", task->stream_id);
+        free(task);
+        return NULL;
+    }
+
+    if (!stream_task_identity_matches(task->stream_id, task->camera_uuid)) {
+        log_warn("Camera identity changed; dropping queued DELETE for %s", task->stream_id);
         free(task);
         return NULL;
     }
@@ -2508,6 +2534,7 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     }
 
     safe_strcpy(task->stream_id, stream_id, sizeof(task->stream_id), 0);
+    safe_strcpy(task->camera_uuid, config.camera_uuid, sizeof(task->camera_uuid), 0);
     task->permanent_delete = permanent_delete;
 
     // Prepare the accepted response; the backend sends it after this handler returns.
@@ -2575,6 +2602,7 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
  */
 typedef struct {
     char stream_name[MAX_STREAM_NAME];  // Decoded stream name
+    char camera_uuid[CAMERA_UUID_STRING_SIZE];
     uint64_t restart_generation;
 } refresh_stream_task_t;
 
@@ -2696,6 +2724,13 @@ static void *refresh_stream_worker(void *arg) {
     log_set_thread_context("StreamAPI", task->stream_name);
     log_info("Processing stream refresh for %s in worker thread", task->stream_name);
 
+    if (!stream_task_identity_matches(task->stream_name, task->camera_uuid)) {
+        log_warn("Camera identity changed; dropping queued refresh for %s", task->stream_name);
+        finish_stream_refresh(task->stream_name, true);
+        free(task);
+        return NULL;
+    }
+
     // If go2rtc integration is not initialized, try to start it
     if (!go2rtc_integration_is_initialized()) {
         log_info("go2rtc integration not initialized, attempting full start");
@@ -2719,6 +2754,8 @@ static void *refresh_stream_worker(void *arg) {
     if (!lifecycle_entered) {
         log_error("Failed to enter go2rtc lifecycle for stream refresh: %s",
                   task->stream_name);
+    } else if (!stream_task_identity_matches(task->stream_name, task->camera_uuid)) {
+        log_warn("Camera identity changed while refresh waited for lifecycle: %s", task->stream_name);
     } else if (lifecycle_guard.restart_generation != task->restart_generation) {
         log_info("Coalesced refresh for %s with completed global go2rtc restart",
                  task->stream_name);
@@ -2806,8 +2843,11 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
         *suffix = '\0';
     }
 
-    if (!httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
-                                       stream_name)) return;
+    user_t user;
+    fleet_camera_t authorized_camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_stream_action_with_context(req, res, AUTHZ_CAMERA_CONFIGURE,
+            stream_name, &user, &authorized_camera, &evaluation)) return;
 
     log_info("Refreshing go2rtc registration for stream: %s", stream_name);
 
@@ -2852,6 +2892,7 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
         return;
     }
     safe_strcpy(task->stream_name, stream_name, MAX_STREAM_NAME, 0);
+    safe_strcpy(task->camera_uuid, authorized_camera.camera_uuid, sizeof(task->camera_uuid), 0);
     task->restart_generation = go2rtc_lifecycle_restart_generation();
 
     // Send immediate 202 Accepted response

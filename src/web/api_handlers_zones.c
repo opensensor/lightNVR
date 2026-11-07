@@ -9,6 +9,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <ctype.h>
 
 #define LOG_COMPONENT "ZonesAPI"
 #include "core/logger.h"
@@ -177,6 +178,33 @@ void handle_post_zones(const http_request_t *req, http_response_t *res) {
             log_warn("Invalid zone data at index %d", i);
             cJSON_Delete(json);
             http_response_set_json_error(res, 400, "Each zone needs an id, name and polygon");
+            return;
+        }
+
+        /* Reject lossy identifiers and malformed options before replacing the
+         * entire zone set; silently truncating can change which zone is edited. */
+        bool valid_options = id->valuestring[0] &&
+            strlen(id->valuestring) < sizeof(zone->id) &&
+            strlen(name->valuestring) < sizeof(zone->name) &&
+            (!enabled || cJSON_IsBool(enabled)) &&
+            (!filter_classes || (cJSON_IsString(filter_classes) &&
+                strlen(filter_classes->valuestring) < sizeof(zone->filter_classes))) &&
+            (!min_confidence || (cJSON_IsNumber(min_confidence) &&
+                isfinite(min_confidence->valuedouble) &&
+                min_confidence->valuedouble >= 0 && min_confidence->valuedouble <= 1));
+        if (color) {
+            valid_options = valid_options && cJSON_IsString(color) &&
+                strlen(color->valuestring) == 7 && color->valuestring[0] == '#';
+            for (int c = 1; valid_options && c < 7; ++c) {
+                valid_options = isxdigit((unsigned char)color->valuestring[c]) != 0;
+            }
+        }
+        for (int previous = 0; valid_options && previous < i; ++previous) {
+            valid_options = strcmp(zones[previous].id, id->valuestring) != 0;
+        }
+        if (!valid_options) {
+            cJSON_Delete(json);
+            http_response_set_json_error(res, 400, "Invalid or duplicate zone identifier or options");
             return;
         }
 

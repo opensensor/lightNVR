@@ -1205,6 +1205,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ice-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return configured ICE servers for a principal permitted to view at least one camera. TURN credentials are intentionally provided to that authorized browser.
+         * @description Return configured ICE servers for a principal permitted to view at least one camera. TURN credentials are intentionally provided to that authorized browser.
+         */
+        get: operations["getIceServers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/investigation-bookmarks": {
         parameters: {
             query?: never;
@@ -2733,7 +2753,11 @@ export interface paths {
          */
         get: operations["listStreams"];
         put?: never;
-        post?: never;
+        /**
+         * Create a camera using global camera.configure. Creation intent is distinct from editing an existing camera.
+         * @description Create a camera using global camera.configure. Creation intent is distinct from editing an existing camera.
+         */
+        post: operations["createStream"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2750,14 +2774,19 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /** getStream */
+        get: operations["getStream"];
         /**
          * Update stream configuration or privacy
          * @description Requires camera.configure on the named camera using raw DB facts; no read permission is implied. Boolean set_privacy_mode selects a privacy-only request and rejects accompanying configuration fields. Ordinary updates are partial; enable_disabled=true with enabled=false is rejected. Unknown ordinary fields are ignored, and 202 is not a durable-success guarantee. A 502 privacy response can follow a saved flag when go2rtc removal fails; retry is required and the stream may remain viewable in the meantime.
          */
         put: operations["updateStream"];
         post?: never;
-        delete?: never;
+        /**
+         * Queue camera deletion using captured identity. Acknowledgment does not prove completion. Default disables the camera; permanent=true removes its configuration.
+         * @description Queue camera deletion using captured identity. Acknowledgment does not prove completion. Default disables the camera; permanent=true removes its configuration.
+         */
+        delete: operations["deleteStream"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2776,6 +2805,27 @@ export interface paths {
         get: operations["getDaynight"];
         /** setDaynight */
         put: operations["setDaynight"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/detection-engines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getStreamDetectionEngines */
+        get: operations["getStreamDetectionEngines"];
+        /** setStreamDetectionEngines */
+        put: operations["setStreamDetectionEngines"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3029,6 +3079,116 @@ export interface paths {
         put?: never;
         /** stopPtz */
         post: operations["stopPtz"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/recording": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getStreamRecording */
+        get: operations["getStreamRecording"];
+        put?: never;
+        /**
+         * Start manual recording (202 starting) or stop it (200 idle). Continuous scheduled recording cannot be manually stopped. Follow the recording state to observe completion.
+         * @description Start manual recording (202 starting) or stop it (200 idle). Continuous scheduled recording cannot be manually stopped. Follow the recording state to observe completion.
+         */
+        post: operations["controlStreamRecording"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue refresh of the captured camera identity. A response may coalesce with an existing refresh; it does not prove a successful camera connection.
+         * @description Queue refresh of the captured camera identity. A response may coalesce with an existing refresh; it does not prove a successful camera connection.
+         */
+        post: operations["refreshStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getStreamRetention */
+        get: operations["getStreamRetention"];
+        /** setStreamRetention */
+        put: operations["setStreamRetention"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/{name}/zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** getStreamZones */
+        get: operations["getStreamZones"];
+        put?: never;
+        /** saveStreamZones */
+        post: operations["saveStreamZones"];
+        /** deleteStreamZones */
+        delete: operations["deleteStreamZones"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/streams/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe an administrator-supplied media URL. A failed media probe returns 200 with success=false; it does not create a camera.
+         * @description Probe an administrator-supplied media URL. A failed media probe returns 200 with success=false; it does not create a camera.
+         */
+        post: operations["probeStream"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3944,6 +4104,39 @@ export interface components {
             source: "onvif-imaging";
             /** @constant */
             success: true;
+        };
+        DetectionZone: {
+            color: string;
+            enabled: boolean;
+            filter_classes: string;
+            id: string;
+            min_confidence: number;
+            name: string;
+            polygon: ({
+                x: number;
+                y: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            stream_name: string;
+        } & {
+            [key: string]: unknown;
+        };
+        DetectionZoneWrite: {
+            color?: string;
+            enabled?: boolean;
+            filter_classes?: string;
+            id: string;
+            min_confidence?: number;
+            name: string;
+            polygon: ({
+                x: number;
+                y: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+        } & {
+            [key: string]: unknown;
         };
         DeviceCommandResult: {
             message: string;
@@ -5439,6 +5632,17 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        IceServersResponse: {
+            ice_servers: ({
+                credential?: string;
+                urls: string[];
+                username?: string;
+            } & {
+                [key: string]: unknown;
+            })[];
+        } & {
+            [key: string]: unknown;
+        };
         ImagingModeLevel: {
             level?: number;
             mode?: string;
@@ -6843,6 +7047,131 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        StreamCreated: {
+            camera_uuid: string;
+            location_uuid: string;
+            onvif_message?: string;
+            /** @enum {string} */
+            onvif_status?: "success" | "error";
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamCreateRequest: {
+            /** @description Null or empty string clears this override; omission preserves the current value. */
+            admin_url?: string | null;
+            /** @description Omission or null preserves the current value. */
+            audio_voice_enhancement?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            backchannel_enabled?: boolean | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. */
+            codec?: string | null;
+            /** @description Omission or null preserves the current value. */
+            detection_based_recording?: boolean | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            detection_interval?: number | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. */
+            detection_model?: string | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. */
+            detection_object_filter?: string | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. */
+            detection_object_filter_list?: string | null;
+            /** @description Omission or null preserves the current value. */
+            detection_record_on_schedule?: boolean | null;
+            /** @description Omission/null preserves; use exactly 168 booleans. The current handler ignores wrong-length arrays and treats each non-true element as false, rather than rejecting all malformed schedule input. */
+            detection_recording_schedule?: components["schemas"]["WeeklySchedule"] | null;
+            /** @description Numeric input is truncated toward zero and must yield -1..365: -1 inherits global, 0 unlimited, positive days. Null/omission preserves. For predictable clients, send an integer. */
+            detection_retention_days?: number | null;
+            /** @description Percentage confidence, including zero; divided by 100 for storage. Omission/null preserves the current value. The handler does not clamp this numeric field. */
+            detection_threshold?: number | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. Nonempty values must start with http://, https://, rtsp:// or rtsps:// (case-insensitive), at most 511 UTF-8 bytes. */
+            detection_url?: string | null;
+            /** @description Omission or null preserves the current value. */
+            enable_disabled?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            enabled?: boolean | null;
+            /** @description Empty string disables; otherwise at most 1023 UTF-8 bytes containing version=1, projection=equidistant, mount=ceiling and bounded centerX/centerY [0,1], radius [.05,1], fov [160,360], rotation/defaultYaw [-360,360], defaultTilt [-90,30], defaultViewFov [20,120]. Null is rejected. Unknown document fields are tolerated. */
+            eptz_config?: string;
+            /** @description Null or empty string clears this override; omission preserves the current value. Whitespace-only also clears. Maximum 8191 UTF-8 bytes. Nonblank multiline values are YAML-validated when YAML support is enabled; malformed YAML can return a structured error. Single-line values are not YAML-checked. */
+            go2rtc_source_override?: string | null;
+            /** @description Omission or null preserves the current value. */
+            isOnvif?: boolean | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            max_storage_mb?: number | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. */
+            motion_trigger_source?: string | null;
+            name: string;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. Processed only when the resulting isOnvif value is true; empty string clears this field. ONVIF probing may precede the 202 response. */
+            onvif_password?: string | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            onvif_port?: number | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. Processed only when the resulting isOnvif value is true; empty string clears this field. ONVIF probing may precede the 202 response. */
+            onvif_profile?: string | null;
+            /** @description Omission preserves the current value. Null is ignored by this typed field handler. Processed only when the resulting isOnvif value is true; empty string clears this field. ONVIF probing may precede the 202 response. */
+            onvif_username?: string | null;
+            playback_transport?: components["schemas"]["PlaybackTransport"];
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            post_detection_buffer?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            pre_detection_buffer?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            priority?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            protocol?: number | null;
+            /** @description Omission or null preserves the current value. */
+            ptz_enabled?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            ptz_has_home?: boolean | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            ptz_max_x?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            ptz_max_y?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            ptz_max_z?: number | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. Nonempty values are a supported RTMP/RTMPS destination list, at most 511 UTF-8 bytes; each destination must pass the publish URL validator. */
+            publish_url?: string | null;
+            /** @description Omission or null preserves the current value. */
+            record?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            record_audio?: boolean | null;
+            /** @description Omission or null preserves the current value. */
+            record_on_schedule?: boolean | null;
+            /** @description Omission/null preserves; use exactly 168 booleans. The current handler ignores wrong-length arrays and treats each non-true element as false, rather than rejecting all malformed schedule input. */
+            recording_schedule?: components["schemas"]["WeeklySchedule"] | null;
+            /** @description Numeric input is truncated toward zero and must yield -1..365: -1 inherits global, 0 unlimited, positive days. Null/omission preserves. For predictable clients, send an integer. */
+            retention_days?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            segment_duration?: number | null;
+            /** @description A boolean selects the separate privacy-only form; null is ignored in the ordinary-update form. */
+            set_privacy_mode?: null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            storage_priority?: number | null;
+            /** @description Omission or null preserves the current value. */
+            streaming_enabled?: boolean | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. */
+            sub_stream_url?: string | null;
+            /** @description Null or empty string clears this override; omission preserves the current value. */
+            tags?: string | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            tier_critical_multiplier?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            tier_ephemeral_multiplier?: number | null;
+            /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
+            tier_important_multiplier?: number | null;
+            url: string;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamDeleteAccepted: {
+            permanent: boolean;
+            /** @constant */
+            status: "accepted";
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description Fields shared by compatibility-list rows and full detail. Strings use empty values rather than null; additional fields are preserved for additive compatibility. */
         StreamDetailsBase: {
             audio_voice_enhancement: boolean;
@@ -6916,6 +7245,54 @@ export interface components {
             url: string;
             /** @description Detected metadata; zero is valid when unavailable. */
             width: number;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamDetectionEngine: {
+            /** @description Engine-specific configuration; current engine plugins own its keys. Serialized JSON must fit the native configuration buffer. */
+            config: {
+                [key: string]: unknown;
+            };
+            enabled: boolean;
+            interval_seconds: number;
+            key: string;
+            managed_by_legacy_stream_fields: boolean;
+            model_path: string;
+            sort_order: number;
+            threshold: number;
+            /** @enum {string} */
+            type: "object" | "motion" | "onvif" | "api" | "external";
+        } & {
+            [key: string]: unknown;
+        };
+        StreamDetectionEngines: {
+            count: number;
+            engines: components["schemas"]["StreamDetectionEngine"][];
+            restart_required: boolean;
+            stream_name: string;
+            /** @constant */
+            trigger_policy: "any_of";
+        } & {
+            [key: string]: unknown;
+        };
+        StreamDetectionEnginesRequest: {
+            engines: components["schemas"]["StreamDetectionEngineWrite"][];
+        } & {
+            [key: string]: unknown;
+        };
+        StreamDetectionEngineWrite: {
+            /** @description Engine-specific configuration; current engine plugins own its keys. Serialized JSON must fit the native configuration buffer. */
+            config?: {
+                [key: string]: unknown;
+            };
+            enabled?: boolean;
+            interval_seconds: number;
+            key: string;
+            model_path?: string;
+            sort_order?: number;
+            threshold: number;
+            /** @enum {string} */
+            type: "object" | "motion" | "onvif" | "api" | "external";
         } & {
             [key: string]: unknown;
         };
@@ -7033,6 +7410,64 @@ export interface components {
         } & {
             [key: string]: unknown;
         });
+        StreamProbeRequest: {
+            onvif_password?: string;
+            onvif_username?: string;
+            protocol: number;
+            url: string;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamProbeResponse: ({
+            info: {
+                codec: string;
+                fps: number;
+                height: number;
+                width: number;
+            } & {
+                [key: string]: unknown;
+            };
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        }) | ({
+            message: string;
+            /** @constant */
+            success: false;
+        } & {
+            [key: string]: unknown;
+        });
+        StreamRecordingChanged: {
+            /** @enum {string} */
+            action: "start" | "stop";
+            /** @enum {string} */
+            state: "starting" | "idle";
+            stream: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamRecordingRequest: {
+            /** @enum {string} */
+            action: "start" | "stop";
+        } & {
+            [key: string]: unknown;
+        };
+        StreamRecordingState: {
+            capture_method: string | null;
+            manual_control_allowed: boolean;
+            /** @enum {string|null} */
+            manual_control_reason: "read_only" | "continuous_recording" | null;
+            recording_active: boolean;
+            recording_id: number | null;
+            /** @enum {string} */
+            state: "starting" | "recording" | "idle";
+            stream: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description This camera is readable but not configurable. Sensitive fields remain present as empty strings; has_sub_stream can still be true. */
         StreamRedacted: components["schemas"]["StreamDetailsBase"] & ({
             /** @constant */
@@ -7054,6 +7489,34 @@ export interface components {
         } & {
             [key: string]: unknown;
         });
+        StreamRefreshAccepted: {
+            coalesced?: boolean;
+            message: string;
+            retry_after_seconds?: number;
+            stream: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamRetention: {
+            detection_retention_days: number;
+            max_storage_mb: number;
+            message?: string;
+            retention_days: number;
+            stream_name: string;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamRetentionRequest: {
+            detection_retention_days?: number;
+            max_storage_mb?: number;
+            retention_days?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Single legacy stream object. URL and credential fields are redacted unless this same camera is configurable. */
+        StreamSingleResponse: components["schemas"]["StreamRedacted"] | components["schemas"]["StreamPrivileged"];
         /** @enum {string} */
         StreamStatus: "Stopped" | "Starting" | "Running" | "Stopping" | "Error" | "Reconnecting" | "Degraded" | "Unknown";
         /** @description Administrative and live summary fields. Unlike detail, summary rows contain no input URL, credentials or error_message. */
@@ -7129,6 +7592,31 @@ export interface components {
             [key: string]: unknown;
         };
         StreamUpdateRequest: components["schemas"]["StreamConfigurationUpdate"] | components["schemas"]["StreamPrivacyUpdate"];
+        StreamZones: {
+            zones: components["schemas"]["DetectionZone"][];
+        } & {
+            [key: string]: unknown;
+        };
+        StreamZonesDeleted: {
+            message: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamZonesRequest: {
+            zones: components["schemas"]["DetectionZoneWrite"][];
+        } & {
+            [key: string]: unknown;
+        };
+        StreamZonesSaved: {
+            count: number;
+            message: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
         SuccessResponse: {
             api_key?: never;
             password?: never;
@@ -13733,6 +14221,98 @@ export interface operations {
             };
             /** @description Server or persistence failure. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getIceServers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IceServersResponse"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22313,6 +22893,197 @@ export interface operations {
             };
         };
     };
+    createStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamCreated"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamSingleResponse"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     updateStream: {
         parameters: {
             query?: never;
@@ -22403,6 +23174,104 @@ export interface operations {
             };
             /** @description Privacy flag was saved, but removing the stream from go2rtc failed. The camera may still be viewable; retry the privacy-only request. This error is not a rollback of the saved privacy flag. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteStream: {
+        parameters: {
+            query?: {
+                /** @description Exactly true requests permanent deletion; absence or another value disables. */
+                permanent?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDeleteAccepted"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22577,6 +23446,200 @@ export interface operations {
             };
             /** @description Invalid input, denied access, unavailable device or failed device operation. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStreamDetectionEngines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDetectionEngines"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setStreamDetectionEngines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamDetectionEnginesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamDetectionEngines"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23786,6 +24849,883 @@ export interface operations {
             };
             /** @description Invalid input, denied access, unavailable device or failed device operation. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStreamRecording: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRecordingState"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    controlStreamRecording: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamRecordingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRecordingChanged"];
+                };
+            };
+            /** @description Recording start accepted; not a durable recording guarantee. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRecordingChanged"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    refreshStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRefreshAccepted"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStreamRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRetention"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setStreamRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamRetentionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamRetention"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getStreamZones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamZones"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    saveStreamZones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamZonesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamZonesSaved"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteStreamZones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current stream name, percent-encoded as one URL segment. The runtime stores up to 255 UTF-8 bytes. Embedded slash is unsupported by the full-read suffix parser; normal creation restricts names to letters, digits, dot, hyphen and underscore. Legacy configured names may require encoding. UUID is not accepted in place of the name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamZonesDeleted"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    probeStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamProbeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamProbeResponse"];
+                };
+            };
+            /** @description Invalid input. No mutation is applied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authentication credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Action or camera denied. No mutation is applied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Current state or capacity conflicts with the operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, scheduling or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Upstream media service failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

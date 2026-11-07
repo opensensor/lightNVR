@@ -111,8 +111,10 @@
       "handler": "handle_post_stream",
       "source": "src/web/libuv_api_handlers.c",
       "line": 112,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "createStream",
+      "eligibility": "global"
     },
     {
       "method": "POST",
@@ -120,8 +122,10 @@
       "handler": "handle_test_stream",
       "source": "src/web/libuv_api_handlers.c",
       "line": 113,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "probeStream",
+      "eligibility": "global"
     },
     {
       "method": "GET",
@@ -613,8 +617,10 @@
       "handler": "handle_get_stream_recording",
       "source": "src/web/libuv_api_handlers.c",
       "line": 214,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStreamRecording",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -622,8 +628,10 @@
       "handler": "handle_post_stream_recording",
       "source": "src/web/libuv_api_handlers.c",
       "line": 216,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "controlStreamRecording",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -631,8 +639,10 @@
       "handler": "handle_get_zones",
       "source": "src/web/libuv_api_handlers.c",
       "line": 220,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStreamZones",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -640,8 +650,10 @@
       "handler": "handle_post_zones",
       "source": "src/web/libuv_api_handlers.c",
       "line": 221,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "saveStreamZones",
+      "eligibility": "camera"
     },
     {
       "method": "DELETE",
@@ -649,8 +661,10 @@
       "handler": "handle_delete_zones",
       "source": "src/web/libuv_api_handlers.c",
       "line": 222,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteStreamZones",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -658,8 +672,10 @@
       "handler": "handle_get_stream_retention",
       "source": "src/web/libuv_api_handlers.c",
       "line": 225,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStreamRetention",
+      "eligibility": "camera"
     },
     {
       "method": "PUT",
@@ -667,8 +683,10 @@
       "handler": "handle_put_stream_retention",
       "source": "src/web/libuv_api_handlers.c",
       "line": 226,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "setStreamRetention",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -676,8 +694,10 @@
       "handler": "handle_get_detection_engines",
       "source": "src/web/libuv_api_handlers.c",
       "line": 227,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStreamDetectionEngines",
+      "eligibility": "camera"
     },
     {
       "method": "PUT",
@@ -685,8 +705,10 @@
       "handler": "handle_put_detection_engines",
       "source": "src/web/libuv_api_handlers.c",
       "line": 229,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "setStreamDetectionEngines",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -694,8 +716,10 @@
       "handler": "handle_post_stream_refresh",
       "source": "src/web/libuv_api_handlers.c",
       "line": 233,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "refreshStream",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -879,8 +903,10 @@
       "handler": "handle_get_stream",
       "source": "src/web/libuv_api_handlers.c",
       "line": 256,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStream",
+      "eligibility": "camera"
     },
     {
       "method": "PUT",
@@ -899,8 +925,10 @@
       "handler": "handle_delete_stream",
       "source": "src/web/libuv_api_handlers.c",
       "line": 258,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteStream",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -973,8 +1001,10 @@
       "handler": "handle_get_ice_servers",
       "source": "src/web/libuv_api_handlers.c",
       "line": 273,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "stream-lifecycle",
+      "classification": "protected-review-per-route",
+      "operation_id": "getIceServers",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -2505,8 +2535,9 @@
       "handler": "handle_direct_hls_request",
       "source": "src/web/libuv_api_handlers.c",
       "line": 504,
-      "coverage": "later",
-      "classification": "protocol"
+      "coverage": "excluded",
+      "classification": "media-protocol",
+      "reason": "Binary/signaling protocol; see docs/api/contracts/media-protocols.md and media-authority-evidence.md for request, authority, status, payload and owned protocol evidence."
     },
     {
       "method": "GET",
@@ -2514,8 +2545,9 @@
       "handler": "handle_go2rtc_proxy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 508,
-      "coverage": "later",
-      "classification": "protocol"
+      "coverage": "excluded",
+      "classification": "media-protocol",
+      "reason": "Binary/signaling protocol; see docs/api/contracts/media-protocols.md and media-authority-evidence.md for request, authority, status, payload and owned protocol evidence."
     },
     {
       "method": "POST",
@@ -2523,8 +2555,9 @@
       "handler": "handle_go2rtc_proxy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 509,
-      "coverage": "later",
-      "classification": "protocol"
+      "coverage": "excluded",
+      "classification": "media-protocol",
+      "reason": "Binary/signaling protocol; see docs/api/contracts/media-protocols.md and media-authority-evidence.md for request, authority, status, payload and owned protocol evidence."
     },
     {
       "method": "GET",
@@ -2532,8 +2565,9 @@
       "handler": "handle_go2rtc_proxy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 511,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "excluded",
+      "classification": "media-protocol",
+      "reason": "Binary/signaling protocol; see docs/api/contracts/media-protocols.md and media-authority-evidence.md for request, authority, status, payload and owned protocol evidence."
     },
     {
       "method": "POST",
@@ -2541,8 +2575,9 @@
       "handler": "handle_go2rtc_proxy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 513,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "excluded",
+      "classification": "media-protocol",
+      "reason": "Binary/signaling protocol; see docs/api/contracts/media-protocols.md and media-authority-evidence.md for request, authority, status, payload and owned protocol evidence."
     },
     {
       "method": "GET",
@@ -2550,8 +2585,9 @@
       "handler": "handle_go2rtc_proxy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 515,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "excluded",
+      "classification": "media-protocol",
+      "reason": "Binary/signaling protocol; see docs/api/contracts/media-protocols.md and media-authority-evidence.md for request, authority, status, payload and owned protocol evidence."
     },
     {
       "method": "GET",
@@ -2559,8 +2595,9 @@
       "handler": "handle_go2rtc_proxy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 517,
-      "coverage": "later",
-      "classification": "protocol"
+      "coverage": "excluded",
+      "classification": "media-protocol",
+      "reason": "Binary/signaling protocol; see docs/api/contracts/media-protocols.md and media-authority-evidence.md for request, authority, status, payload and owned protocol evidence."
     },
     {
       "method": "GET",
@@ -2568,8 +2605,9 @@
       "handler": "handle_go2rtc_proxy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 519,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "excluded",
+      "classification": "media-protocol",
+      "reason": "Binary/signaling protocol; see docs/api/contracts/media-protocols.md and media-authority-evidence.md for request, authority, status, payload and owned protocol evidence."
     },
     {
       "method": "GET",

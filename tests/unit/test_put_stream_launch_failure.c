@@ -290,6 +290,31 @@ void test_queued_update_preserves_privacy_toggle(void) {
                                   "A queued PUT must not revert a privacy toggle");
 }
 
+void test_queued_update_rejects_reused_camera_name(void) {
+    set_body("{\"priority\":8}");
+    capture_success = true;
+    handle_put_stream(&request, &response);
+    capture_success = false;
+    TEST_ASSERT_EQUAL_INT(202, response.status_code);
+    TEST_ASSERT_NOT_NULL(captured_worker);
+    TEST_ASSERT_EQUAL_INT(0, remove_stream(original_stream));
+    TEST_ASSERT_EQUAL_INT(0, delete_stream_config_internal(original_config.name, true));
+    stream_config_t replacement = original_config;
+    replacement.camera_uuid[0] = 0;
+    replacement.priority = 9;
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&replacement));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(replacement.name, &original_persisted));
+    original_stream = add_stream(&original_persisted);
+    TEST_ASSERT_NOT_NULL(original_stream);
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config(original_stream, &original_config));
+    void *task = failed_task;
+    failed_task = NULL;
+    fake_go2rtc = true;
+    captured_worker(task);
+    fake_go2rtc = false;
+    assert_unchanged();
+    TEST_ASSERT_EQUAL_UINT(0, reload_calls + restart_calls + unregister_calls);
+}
 void test_stale_config_write_cannot_clear_privacy_mode(void) {
     /* Every in-memory setter (set_stream_recording, ...) persists via
      * update_stream_config() with a config whose privacy_mode may be stale. */
@@ -452,6 +477,7 @@ int main(void) {
     RUN_TEST(test_privacy_toggle_with_other_fields_rejected);
     RUN_TEST(test_privacy_toggle_with_name_accepted);
     RUN_TEST(test_queued_update_preserves_privacy_toggle);
+    RUN_TEST(test_queued_update_rejects_reused_camera_name);
     RUN_TEST(test_stale_config_write_cannot_clear_privacy_mode);
     RUN_TEST(test_privacy_enable_fails_when_go2rtc_still_serves_stream);
     RUN_TEST(test_privacy_enable_removes_sub_stream);

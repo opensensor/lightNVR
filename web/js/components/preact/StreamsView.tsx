@@ -61,6 +61,7 @@ import type {
 } from '../../types/streams.ts';
 import { normalizePlaybackTransport } from '../../utils/playback-transport.ts';
 import { getStreamFull, listStreamSummaries, updateStream } from '../../api/streams.ts';
+import { createStream, probeStream, deleteStream as requestDeleteStream } from '../../api/mediaLifecycle.ts';
 import type { StreamSummaryQuery, StreamUpdateResult } from '../../api/streams.ts';
 import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
 
@@ -542,16 +543,7 @@ export function StreamsView() {
         return { editing: true, result: await updateStream(name, body, { timeout: 15000 }) };
       }
       // Create new stream via POST
-      return { editing: false, result: await fetchJSON('/api/streams', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(streamData),
-        timeout: 45000,
-        retries: 1,
-        retryDelay: 1000
-      }) };
+      return { editing: false, result: await createStream(streamData, {timeout: 45000}) };
     },
     onSuccess: (data, variables) => {
       if (variables.editing) {
@@ -593,14 +585,8 @@ export function StreamsView() {
   });
 
   // Mutation for testing stream connection
-  const testStreamMutation = usePostMutation<StreamTestResponse, StreamTestRequest>(
-    '/api/streams/test',
-    {
-      timeout: 20000,
-      retries: 1,
-      retryDelay: 2000
-    },
-    {
+  const testStreamMutation = useMutation<StreamTestResponse, Error, StreamTestRequest>({
+      mutationFn: (body) => probeStream(body, {timeout: 20000}),
       onMutate: () => {
         showStatusMessage(t('streams.testingStreamConnection'));
       },
@@ -614,20 +600,13 @@ export function StreamsView() {
       onError: (error) => {
         showStatusMessage(t('streams.errorTestingStream', { message: error.message }), 'error', 5000);
       }
-    }
-  );
+  });
 
   // Mutation for deleting stream
   const deleteStreamMutation = useMutation<unknown, Error, { streamId: string }>({
     mutationFn: async (params) => {
       const { streamId } = params;
-      const url = `/api/streams/${encodeURIComponent(streamId)}?permanent=true`;
-      return await fetchJSON(url, {
-        method: 'DELETE',
-        timeout: 15000,
-        retries: 1,
-        retryDelay: 1000
-      });
+      return await requestDeleteStream(streamId, true, {timeout: 15000});
     },
     onSuccess: () => {
       showStatusMessage(t('streams.streamSuccessfullyDeleted'));
@@ -647,13 +626,7 @@ export function StreamsView() {
   const disableStreamMutation = useMutation<unknown, Error, { streamId: string }>({
     mutationFn: async (params) => {
       const { streamId } = params;
-      const url = `/api/streams/${encodeURIComponent(streamId)}`;
-      return await fetchJSON(url, {
-        method: 'DELETE',
-        timeout: 15000,
-        retries: 1,
-        retryDelay: 1000
-      });
+      return await requestDeleteStream(streamId, false, {timeout: 15000});
     },
     onSuccess: () => {
       showStatusMessage(t('streams.streamSuccessfullyDisabled'));

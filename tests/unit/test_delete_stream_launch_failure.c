@@ -20,6 +20,8 @@
 static bool inject_failure, capture_success;
 static unsigned launch_attempts, task_frees;
 static void *failed_task;
+static void *(*captured_worker)(void *);
+static unsigned backend_calls;
 static stream_handle_t original_stream;
 static stream_config_t original_config, original_persisted;
 static http_request_t request;
@@ -31,10 +33,17 @@ int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
     if (!inject_failure && !capture_success) return __real_pthread_create(thread, attr, callback, argument);
     launch_attempts++;
     failed_task = argument;
+    captured_worker = callback;
     /* Capture a successful handoff without starting a worker in this fixture.
      * These controls test the handler response, not asynchronous completion. */
     if (capture_success) return 0;
     return EAGAIN; /* POSIX failure: callback is never scheduled. */
+}
+bool __wrap_go2rtc_integration_full_start(void) { backend_calls++; return false; }
+bool __wrap_go2rtc_integration_unregister_stream(const char *name) {
+    (void)name;
+    backend_calls++;
+    return true;
 }
 void __real_free(void *);
 void __wrap_free(void *allocation) {
@@ -49,6 +58,8 @@ void setUp(void) {
     inject_failure = capture_success = false;
     launch_attempts = task_frees = 0;
     failed_task = NULL;
+    captured_worker = NULL;
+    backend_calls = 0;
     g_config.web_auth_enabled = false;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM streams", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(0, init_stream_state_manager(4));
@@ -139,6 +150,41 @@ static void assert_successful_handoff(bool permanent) {
 }
 static void test_soft_delete_successful_handoff(void) { assert_successful_handoff(false); }
 static void test_permanent_delete_successful_handoff(void) { assert_successful_handoff(true); }
+static void queued_name_reuse(bool refresh) {
+    if (refresh) {
+        strcat(request.path, "/refresh");
+        strcpy(request.method_str, "POST");
+    } else {
+        strcpy(request.query_string, "permanent=true");
+    }
+    capture_success = true;
+    if (refresh) handle_post_stream_refresh(&request, &response);
+    else handle_delete_stream(&request, &response);
+    capture_success = false;
+    TEST_ASSERT_EQUAL_INT(202, response.status_code);
+    TEST_ASSERT_NOT_NULL(captured_worker);
+    /* Replace the authorized camera before the queued real callback executes. */
+    char old_uuid[CAMERA_UUID_STRING_SIZE];
+    strcpy(old_uuid, original_persisted.camera_uuid);
+    TEST_ASSERT_EQUAL_INT(0, remove_stream(original_stream));
+    TEST_ASSERT_EQUAL_INT(0, delete_stream_config_internal(original_config.name, true));
+    stream_config_t replacement = original_config;
+    replacement.camera_uuid[0] = 0;
+    replacement.priority = 9;
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&replacement));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(replacement.name, &original_persisted));
+    TEST_ASSERT_NOT_EQUAL(0, strcmp(old_uuid, original_persisted.camera_uuid));
+    original_stream = add_stream(&original_persisted);
+    TEST_ASSERT_NOT_NULL(original_stream);
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config(original_stream, &original_config));
+    void *task = failed_task;
+    failed_task = NULL;
+    captured_worker(task);
+    TEST_ASSERT_EQUAL_UINT(0, backend_calls);
+    assert_unchanged();
+}
+static void test_queued_delete_rejects_reused_camera_name(void) { queued_name_reuse(false); }
+static void test_queued_refresh_rejects_reused_camera_name(void) { queued_name_reuse(true); }
 int main(void) {
     char directory[] = "/tmp/lightnvr-delete-launch-XXXXXX";
     if (!mkdtemp(directory)) return 1;
@@ -150,6 +196,8 @@ int main(void) {
     if (mkdir(g_config.storage_path, 0700) != 0) return 1;
     if (init_database_ex(path, DB_INIT_NO_CHECK | DB_INIT_NO_BACKUP) != 0) return 1;
     UNITY_BEGIN();
+    RUN_TEST(test_queued_delete_rejects_reused_camera_name);
+    RUN_TEST(test_queued_refresh_rejects_reused_camera_name);
     RUN_TEST(test_soft_delete_launch_failure);
     RUN_TEST(test_permanent_delete_launch_failure);
     RUN_TEST(test_unauthorized_delete_never_launches_worker);

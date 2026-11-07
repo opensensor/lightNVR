@@ -17,8 +17,8 @@ import {
   resolveImageAspect,
 } from '../../utils/zone-editor-geometry.ts';
 import type { ImageLetterbox } from '../../utils/zone-editor-geometry.ts';
-import type { ApiErrorBody } from '../../types/core.ts';
-import type { DetectionZone, ZonePoint, ZonesResponse } from '../../types/streams.ts';
+import { getStreamZones, saveStreamZones } from '../../api/mediaLifecycle.ts';
+import type { DetectionZone, ZonePoint } from '../../types/streams.ts';
 
 export interface ZoneEditorProps {
   streamName: string;
@@ -83,16 +83,8 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
     setHoveredPoint(null);
     const loadZones = async () => {
       try {
-        const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`);
-        if (response.ok) {
-          const data: ZonesResponse = await response.json();
-          if (isActive && data.zones && Array.isArray(data.zones)) {
-            console.log('Loaded zones from API:', data.zones);
-            setZoneList(data.zones);
-          }
-        } else {
-          console.warn('Failed to load zones:', response.status);
-        }
+        const data = await getStreamZones(streamName);
+        if (isActive) setZoneList(data.zones);
       } catch (error) {
         console.error('Error loading zones:', error);
       }
@@ -537,25 +529,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   const handleSave = async () => {
     try {
       // Save zones to the backend API
-      const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ zones: zoneList }),
-      });
-
-      if (!response.ok) {
-        const errorData: ApiErrorBody = await response.json().catch(() => ({
-          error: t('zoneEditor.failedToSaveZones', {
-            message: t('zoneEditor.httpError', { status: response.status }),
-          }),
-        }));
-        throw new Error(errorData.error || t('zoneEditor.httpError', { status: response.status }));
-      }
-
-      const result: unknown = await response.json();
-      console.log('Zones saved successfully:', result);
+      await saveStreamZones(streamName, {zones: zoneList});
 
       // Update parent component
       onZonesChange(zoneList);

@@ -11,6 +11,7 @@
 
 #include <cjson/cJSON.h>
 #include <math.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -115,6 +116,13 @@ static bool parse_engine(const cJSON *item, stream_detection_engine_t *engine) {
         (order && (!cJSON_IsNumber(order) || !isfinite(order->valuedouble) ||
                    floor(order->valuedouble) != order->valuedouble)) ||
         (config && !cJSON_IsObject(config))) return false;
+    /* Do not validate a truncated identifier or saturated cJSON valueint. */
+    if (strlen(key->valuestring) >= sizeof(engine->engine_key) ||
+        strlen(type->valuestring) >= sizeof(engine->engine_type) ||
+        (model && strlen(model->valuestring) >= sizeof(engine->model_path)) ||
+        threshold->valuedouble < 0 || threshold->valuedouble > 1 ||
+        interval->valuedouble < 1 || interval->valuedouble > 86400 ||
+        (order && (order->valuedouble < INT_MIN || order->valuedouble > INT_MAX))) return false;
     memset(engine, 0, sizeof(*engine));
     safe_strcpy(engine->engine_key, key->valuestring,
                 sizeof(engine->engine_key), 0);
