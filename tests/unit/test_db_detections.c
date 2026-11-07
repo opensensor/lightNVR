@@ -361,8 +361,9 @@ void test_get_recording_detection_summaries_batches_linked_and_fallback_rows(voi
 /* update_detections_recording_id */
 void test_update_detections_recording_id(void) {
     time_t now = time(NULL);
+    time_t det_ts = now - 5;
     detection_result_t r = make_result("person", 0.95f);
-    store_detections_in_db("cam6", &r, now - 5, 0);
+    store_detections_in_db("cam6", &r, det_ts, 0);
 
     /* Create a real recording entry to satisfy the FK constraint */
     recording_metadata_t rec;
@@ -384,7 +385,27 @@ void test_update_detections_recording_id(void) {
     TEST_ASSERT_NOT_EQUAL(0, rec_id);
 
     int updated = update_detections_recording_id("cam6", rec_id, now - 10);
-    TEST_ASSERT_GREATER_OR_EQUAL(0, updated);
+    TEST_ASSERT_EQUAL_INT(1, updated);
+
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        g_db,
+        "SELECT recording_id FROM detections WHERE stream_name = ? AND timestamp = ? LIMIT 1;",
+        -1, &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    TEST_ASSERT_NOT_NULL(stmt);
+
+    rc = sqlite3_bind_text(stmt, 1, "cam6", -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    rc = sqlite3_bind_int64(stmt, 2, (sqlite3_int64)det_ts);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+
+    rc = sqlite3_step(stmt);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, rc);
+    TEST_ASSERT_EQUAL_UINT64(rec_id, (uint64_t)sqlite3_column_int64(stmt, 0));
+
+    rc = sqlite3_finalize(stmt);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
 }
 
 /* Regression for #547: a detection can arrive after the continuous writer
