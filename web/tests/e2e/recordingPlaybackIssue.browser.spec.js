@@ -59,7 +59,7 @@ it.each(['table','grid'])('%s explains damaged recordings while retaining recove
     expect(await note.innerText()).toContain(t('recordings.playbackRetention'));
     expect(await page.getByRole('button',{name:t('recordings.play'),exact:true}).isDisabled()).toBe(true);
     await page.getByRole('button',{name:t('recordings.downloadOriginal'),exact:true}).click();
-    await page.getByTitle(view === 'table' ? t('recordings.protect') : 'Protect',{exact:true}).click();
+    await page.getByTitle(t('recordings.protect'),{exact:true}).click();
     await page.getByRole('button',{name:t('common.delete'),exact:true}).click();
     expect(await page.evaluate(()=>window.calls)).toEqual({play:0,download:1,protect:1,delete:1,thumbnail:0});
     await page.evaluate(()=>window.mount(true,true));

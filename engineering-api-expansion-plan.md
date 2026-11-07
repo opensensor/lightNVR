@@ -169,14 +169,14 @@ F1..F14,F16 -> F15
 - **ownership**: Performance harnesses and named target evidence; optimization requires a separately reviewed measured need.
 - **description**: Extend disabled-camera measurements to populated tags/locations/collections, realistic policies and active recording on representative hardware. Measure the remaining configured-max metrics buffer (about 11.9 MiB at 1,024 streams), snapshot/JSON memory, latency, descriptors and assets. The integrated modern validator chunk is now 2,240.15 kB raw / 218.55 kB gzip (legacy: 2,230.06 / 181.69 kB); these replace the earlier pilot sizes. Measure page loading, parse/evaluation and memory before deciding whether to split validators by consumer family.
 - **validation**: Named hardware/binaries/flags, repeated serial/concurrent samples and controls. Derive budgets from target headroom; workstation numbers are not embedded capacity or production SLOs.
-- **status**: Not started
+- **status**: In progress: owned active-recording and browser baselines collected; named-target acceptance remains open
 
 ### F14: Longer recovery, storage and upgrade qualification
 - **depends_on**: [F13]
 - **ownership**: Reliability harnesses/release evidence; device/network/storage fixtures separately owned.
 - **description**: Extend bounded crash/reconnect/storage/upgrade runs to declared longer durations, network/object-store faults and selected hardware. Preserve exact prior-release/submodule provenance; upgrade a copied installation.
 - **validation**: Decode/DTS/gaps, protected hashes, integrity, resources and cleanup; predeclare durations/tolerances and retain failures. Distinguish hosted observations from local checks.
-- **status**: Not started
+- **status**: Recording-stop regression fixed and bounded crash recovery repeated in [#854](https://github.com/opensensor/lightNVR/pull/854); extended storage/upgrade/device qualification remains open
 
 ### F15: Reconcile coverage and the next decision
 - **depends_on**: [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F16]
@@ -208,9 +208,10 @@ F1..F14,F16 -> F15
 
 ## Next execution sequence after #840
 
-These are planned acceptance gates, not completed measurements. The mobile
-[M1 footage-finding slice](docs/prd/UXD_Mobile_Viewing.md) can proceed independently
-of the native qualification work; browser performance results should inform it.
+These remain acceptance gates; the initial local measurements below do not
+close target qualification. The mobile [M1 footage-finding slice](docs/prd/UXD_Mobile_Viewing.md)
+and shared five-view navigation are implemented for review independently of
+the native qualification work.
 
 | Slice | Work and evidence | Completion gate |
 | --- | --- | --- |
@@ -221,10 +222,19 @@ of the native qualification work; browser performance results should inform it.
 | F14b — Upgrade and device qualification | Upgrade copied installations with exact prior-release and submodule provenance. Qualify selected camera vendors/backchannels, multicast discovery and real iPhone/Android viewing; reuse the mobile M3 matrix. | Retained before/after data, playable media, authorization/revocation checks and cleanup; name every qualified device/browser/version and every untested combination. |
 | F15 — Production acceptance | Reconcile inventory, device/provider limits, fork publication and exact-revision hosted/local checks after F13/F14. | Evidence supports the declared deployment envelope; no remaining qualification task is relabeled complete merely because its implementation merged. |
 
-Start F13a/F13b and mobile M1 next. F14 harness preparation can begin while F13
-measurements run, but its final workload and acceptance depend on F13 results.
-The supporting go2rtc PR and final hosted main results need follow-through;
-neither is a reason to reopen completed contract-family implementation.
+The [2026-11-07 mobile/browser receipt](docs/validation/mobile-recordings-2026-11-07.md)
+records production-page measurements and automated phone/desktop coverage.
+[#854](https://github.com/opensensor/lightNVR/pull/854) adds the active-recording
+harness and fixes a reproduced corrupt final packet on manual stop; a serial
+eight-stream/60-second workstation run and bounded crash recovery passed.
+These are initial local observations, not 2024+ device or NVR capacity acceptance.
+
+Next: complete the populated/busy-day M2 workflow audit, isolate validator costs
+and first-live-frame timing where measured need warrants it, then run F13/F14 on
+named hardware/storage with a declared load envelope. Populated authorization
+metadata, longer fault/upgrade runs, physical iPhone/Android checks, supporting
+go2rtc publication and final hosted main results remain open. The product's
+2024+ target-generation requirement does not identify particular test devices.
 
 ## Post-merge code quality review (2026-11-07)
 

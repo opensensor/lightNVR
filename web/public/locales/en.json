@@ -2971,5 +2971,8 @@
   "apiDocs.denied": "Sign in with an account permitted to view the API reference.",
   "apiDocs.unavailable": "Unable to load the API reference. Try again.",
   "apiDocs.partial": "This reference covers selected APIs. Missing operations do not indicate denied access.",
-  "apiDocs.empty": "No API operations are available in this reference for the current session."
+  "apiDocs.empty": "No API operations are available in this reference for the current session.",
+  "recordings.reverseSort": "Reverse sort order",
+  "recordings.ascending": "Ascending ↑",
+  "recordings.descending": "Descending ↓"
 }

@@ -1,3 +1,4 @@
+import { RecordingsNavigation } from '../recordings/RecordingsNavigation.tsx';
 import { evidenceJSON } from '../../../api/evidence.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
@@ -1501,16 +1502,13 @@ export function InvestigationView() {
             selectedResult={selectedResult}
             t={t}
           />
-          <nav className="investigation-subnav" aria-label={t('recordings.views')}>
-            <a href="recordings.html">{t('nav.recordings')}</a>
-            <a href="timeline.html">{t('nav.timeline')}</a>
-            <a className="is-active" href="investigation.html" aria-current="page">
-              {t('nav.investigation')}
-            </a>
-            <a href="plates.html">{t('nav.plates')}</a>
-          </nav>
+
         </div>
       </div>
+
+      <RecordingsNavigation active="investigation" recordingsUrl={new URLSearchParams(window.location.search).get('return_to')}
+        cameras={selectedCameraUuids} streams={streams.filter(stream => selectedCameraUuids.includes(stream.camera_uuid)).map(stream => stream.name)}
+        start={startTime} end={endTime} cursor={cursor} />
 
       <section className="investigation-query-card" aria-labelledby="investigation-query-heading">
         <div className="investigation-query-header">

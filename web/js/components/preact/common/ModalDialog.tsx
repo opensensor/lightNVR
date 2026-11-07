@@ -23,7 +23,7 @@ interface ModalShellProps {
   initialFocusRef?: RefObject<HTMLElement | null>;
 }
 
-function ModalShell({
+export function ModalShell({
   isOpen,
   onClose,
   title,

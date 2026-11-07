@@ -17,6 +17,7 @@
     "playwright.config.ts",
     "tests/integration/**/*.ts",
     "tests/load/**/*.ts",
+    "tests/performance/**/*.ts",
     "tests/contracts/**/*.ts",
     "tests/contracts/**/*.mts",
     "tests/typecheck/**/*.ts"

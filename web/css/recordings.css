@@ -69,7 +69,7 @@
     }
 }
 
-.recordings-mobile-filters { display: none; }
+.recordings-mobile-filters { display: inline-flex; align-items: center; min-height: 44px; }
 @media (max-width: 768px) {
     body.recordings-view-page > .container {
         padding-inline: max(0.5rem, env(safe-area-inset-left)) max(0.5rem, env(safe-area-inset-right));
