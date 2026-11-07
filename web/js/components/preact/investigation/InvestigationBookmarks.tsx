@@ -1,6 +1,6 @@
+import { evidenceJSON } from '../../../api/evidence.ts';
 import { useState } from 'preact/hooks';
 
-import { fetchJSON } from '../../../query-client.ts';
 import {
   buildInvestigationBookmarkPayload,
   investigationBookmarkUrl,
@@ -66,7 +66,7 @@ export function InvestigationBookmarks({
     setLoading(true);
     setError('');
     try {
-      const data = await fetchJSON<InvestigationBookmarksResponse>('/api/investigation-bookmarks', {
+      const data = await evidenceJSON<InvestigationBookmarksResponse>('/api/investigation-bookmarks', {
         timeout: 15000,
         retries: 1,
       });
@@ -96,7 +96,7 @@ export function InvestigationBookmarks({
     setLoading(true);
     setError('');
     try {
-      await fetchJSON('/api/investigation-bookmarks', {
+      await evidenceJSON('/api/investigation-bookmarks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -119,7 +119,7 @@ export function InvestigationBookmarks({
     setLoading(true);
     setError('');
     try {
-      await fetchJSON(`/api/investigation-bookmarks/${bookmark.uuid}`, {
+      await evidenceJSON(`/api/investigation-bookmarks/${bookmark.uuid}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ revision: bookmark.revision }),

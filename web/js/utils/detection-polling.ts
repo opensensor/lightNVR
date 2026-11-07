@@ -1,3 +1,4 @@
+import { evidenceJSON } from '../api/evidence.ts';
 import type { DetectionResultsResponse } from '../types/core.ts';
 
 export interface DetectionPollingOptions {
@@ -34,13 +35,7 @@ export function startDetectionPolling({
     controller = new AbortController();
     const timeout = setTimeout(() => controller?.abort(), requestTimeout);
     try {
-      const response = await fetch(`/api/detection/results/${encodeURIComponent(streamName)}`, {
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to fetch detection results: ${response.status}`);
-      }
-      const data = (await response.json()) as DetectionResultsResponse;
+      const data = await evidenceJSON<DetectionResultsResponse>(`/api/detection/results/${encodeURIComponent(streamName)}`, {signal:controller.signal});
       if (!stopped) {
         errors = 0;
         interval = pollingInterval;

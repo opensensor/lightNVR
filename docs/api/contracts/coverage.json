@@ -11,7 +11,8 @@
     "Session/trusted-device self-service adds four operations: real session/Basic/legacy key owners only, no scoped-token principal. Lists retain the explicit 32-entry cap; revocation and cookie clearing are independent of that cap. IDs are canonical positive safe integers. MFA/password/logout expansion remains pending.",
     "F1d adds MFA completion/enrollment/status, password change and legacy logout. Self-service or effective users.manage discovery; concrete target authorization remains enforced. Seven operations, 44 total. Login and MFA consumers validate responses before claiming success.",
     "F2 covers 13 read/query/preview operations: fleet queries, saved view reads, collection list/detail/members/preview, locations, tags and camera tags. Data remains filtered independently of discovery; mutations are F4. Total 57 operations, 183 residual.",
-    "F3 covers 20 user administration, authorization policy and audit operations. Non-scoped management is explicit; scoped users.manage never issues unrestricted legacy credentials. CSV exports are paginated byte contracts. Total 77 covered operations, 163 residual."
+    "F3 covers 20 user administration, authorization policy and audit operations. Non-scoped management is explicit; scoped users.manage never issues unrestricted legacy credentials. CSV exports are paginated byte contracts. Total 77 covered operations, 163 residual.",
+    "F11/P4e covers23 investigation/bookmark/detection/LPR/recording residual routes, including JSON attachments, JPEG, playlist and playback redirect protocols. Captured UUIDs take precedence over mutable names; legacy missing capture UUIDs retain name fallback."
   ],
   "operations": [
     {
@@ -971,8 +972,10 @@
       "handler": "handle_get_detection_results",
       "source": "src/web/libuv_api_handlers.c",
       "line": 294,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "getEvidenceDetections",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -980,8 +983,10 @@
       "handler": "handle_get_detection_models",
       "source": "src/web/libuv_api_handlers.c",
       "line": 295,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "listEvidenceModels",
+      "eligibility": "global_or_camera"
     },
     {
       "method": "POST",
@@ -989,8 +994,10 @@
       "handler": "handle_post_lpr_search",
       "source": "src/web/libuv_api_handlers.c",
       "line": 296,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "searchEvidenceLpr",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -998,8 +1005,10 @@
       "handler": "handle_post_lpr_export",
       "source": "src/web/libuv_api_handlers.c",
       "line": 297,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "exportEvidenceLpr",
+      "eligibility": "camera"
     },
     {
       "method": "DELETE",
@@ -1007,8 +1016,10 @@
       "handler": "handle_delete_lpr_read",
       "source": "src/web/libuv_api_handlers.c",
       "line": 298,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteEvidenceLpr",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -1016,8 +1027,10 @@
       "handler": "handle_get_detection_snapshot",
       "source": "src/web/libuv_api_handlers.c",
       "line": 300,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "getEvidenceSnapshot",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -1890,8 +1903,10 @@
       "handler": "handle_check_recording_file",
       "source": "src/web/libuv_api_handlers.c",
       "line": 464,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "checkEvidenceRecordingFile",
+      "eligibility": "camera"
     },
     {
       "method": "DELETE",
@@ -1899,8 +1914,10 @@
       "handler": "handle_delete_recording_file",
       "source": "src/web/libuv_api_handlers.c",
       "line": 465,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteEvidenceRecordingFile",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -1963,8 +1980,10 @@
       "handler": "handle_get_protected_recordings",
       "source": "src/web/libuv_api_handlers.c",
       "line": 471,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "countEvidenceProtected",
+      "eligibility": "authenticated"
     },
     {
       "method": "POST",
@@ -1983,8 +2002,10 @@
       "handler": "handle_post_recordings_sync",
       "source": "src/web/libuv_api_handlers.c",
       "line": 473,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "syncEvidenceRecordings",
+      "eligibility": "global"
     },
     {
       "method": "GET",
@@ -2117,8 +2138,10 @@
       "handler": "handle_timeline_manifest",
       "source": "src/web/libuv_api_handlers.c",
       "line": 488,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "getEvidenceManifest",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -2126,8 +2149,10 @@
       "handler": "handle_timeline_playback",
       "source": "src/web/libuv_api_handlers.c",
       "line": 489,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "redirectEvidencePlayback",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -2135,8 +2160,10 @@
       "handler": "handle_post_investigation_timeline",
       "source": "src/web/libuv_api_handlers.c",
       "line": 490,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "queryEvidenceTimeline",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -2144,8 +2171,10 @@
       "handler": "handle_post_investigation_segment_at",
       "source": "src/web/libuv_api_handlers.c",
       "line": 491,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "resolveEvidenceSegment",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -2153,8 +2182,10 @@
       "handler": "handle_post_investigation_search",
       "source": "src/web/libuv_api_handlers.c",
       "line": 492,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "searchEvidence",
+      "eligibility": "authenticated"
     },
     {
       "method": "POST",
@@ -2162,8 +2193,10 @@
       "handler": "handle_post_investigation_recording_preview",
       "source": "src/web/libuv_api_handlers.c",
       "line": 493,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "previewEvidenceRecordings",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -2171,8 +2204,10 @@
       "handler": "handle_post_investigation_thumbnail_samples",
       "source": "src/web/libuv_api_handlers.c",
       "line": 494,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "sampleEvidenceThumbnails",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -2180,8 +2215,10 @@
       "handler": "handle_investigation_thumbnail",
       "source": "src/web/libuv_api_handlers.c",
       "line": 495,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "getEvidenceThumbnail",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -2189,8 +2226,10 @@
       "handler": "handle_get_investigation_bookmark",
       "source": "src/web/libuv_api_handlers.c",
       "line": 496,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "getEvidenceBookmark",
+      "eligibility": "authenticated"
     },
     {
       "method": "PUT",
@@ -2198,8 +2237,10 @@
       "handler": "handle_put_investigation_bookmark",
       "source": "src/web/libuv_api_handlers.c",
       "line": 497,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateEvidenceBookmark",
+      "eligibility": "authenticated"
     },
     {
       "method": "DELETE",
@@ -2207,8 +2248,10 @@
       "handler": "handle_delete_investigation_bookmark",
       "source": "src/web/libuv_api_handlers.c",
       "line": 498,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteEvidenceBookmark",
+      "eligibility": "authenticated"
     },
     {
       "method": "GET",
@@ -2216,8 +2259,10 @@
       "handler": "handle_get_investigation_bookmarks",
       "source": "src/web/libuv_api_handlers.c",
       "line": 499,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "listEvidenceBookmarks",
+      "eligibility": "authenticated"
     },
     {
       "method": "POST",
@@ -2225,8 +2270,10 @@
       "handler": "handle_post_investigation_bookmark",
       "source": "src/web/libuv_api_handlers.c",
       "line": 500,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "evidence",
+      "classification": "protected-review-per-route",
+      "operation_id": "createEvidenceBookmark",
+      "eligibility": "authenticated"
     },
     {
       "method": "GET",

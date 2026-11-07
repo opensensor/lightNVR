@@ -16,9 +16,9 @@ def predicate(value):
         raise ValueError('Authorization predicate requires integer version 1')
     kind = value.get('kind')
     expected = {'version', 'kind'} if kind in ('authenticated', 'public', 'non_scoped_identity', 'identity_management') else {'version', 'kind', 'requirements'}
-    if set(value) != expected or kind not in ('authenticated', 'public', 'non_scoped_identity', 'identity_management', 'camera', 'global', 'non_scoped_global', 'non_scoped_camera'):
+    if set(value) != expected or kind not in ('authenticated', 'public', 'non_scoped_identity', 'identity_management', 'camera', 'global', 'non_scoped_global', 'non_scoped_camera', 'global_or_camera'):
         raise ValueError('Unsupported authorization predicate kind or keys')
-    if kind in ('camera', 'global', 'non_scoped_global', 'non_scoped_camera'):
+    if kind in ('camera', 'global', 'non_scoped_global', 'non_scoped_camera', 'global_or_camera'):
         requirements = value['requirements']
         if not isinstance(requirements, list) or not requirements:
             raise ValueError('Authorization requirements must be nonempty')
@@ -27,7 +27,7 @@ def predicate(value):
                 raise ValueError('Unsupported authorization requirement keys')
             if req['action'] not in ACTIONS or req['resource'] not in ('raw', 'runtime', 'live'):
                 raise ValueError('Unsupported authorization action or resource')
-            if kind in ('global', 'non_scoped_global') and req['resource'] != 'raw':
+            if kind in ('global', 'non_scoped_global', 'global_or_camera') and req['resource'] != 'raw':
                 raise ValueError('Global authorization uses raw resource placeholder')
 
 

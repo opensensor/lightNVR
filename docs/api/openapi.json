@@ -43,6 +43,10 @@
     {
       "name": "Audit",
       "description": "User, policy and audit administration."
+    },
+    {
+      "name": "Evidence",
+      "description": "Investigations, detections, bookmarks, LPR and recording media protocols."
     }
   ],
   "x-lightnvr-coverage": {
@@ -125,9 +129,32 @@
       "listAuditEvents",
       "exportAuditEvents",
       "getAuditSettings",
-      "updateAuditSettings"
+      "updateAuditSettings",
+      "getEvidenceDetections",
+      "listEvidenceModels",
+      "searchEvidenceLpr",
+      "exportEvidenceLpr",
+      "deleteEvidenceLpr",
+      "checkEvidenceRecordingFile",
+      "deleteEvidenceRecordingFile",
+      "countEvidenceProtected",
+      "syncEvidenceRecordings",
+      "queryEvidenceTimeline",
+      "resolveEvidenceSegment",
+      "searchEvidence",
+      "previewEvidenceRecordings",
+      "sampleEvidenceThumbnails",
+      "listEvidenceBookmarks",
+      "createEvidenceBookmark",
+      "getEvidenceBookmark",
+      "updateEvidenceBookmark",
+      "deleteEvidenceBookmark",
+      "getEvidenceSnapshot",
+      "getEvidenceThumbnail",
+      "getEvidenceManifest",
+      "redirectEvidencePlayback"
     ],
-    "description": "Partial contract coverage: Streams pilot, identity/token, recording reads and twelve recording action/job operations. The covered operation list is independent of authorization; omitted projected operations may be covered but denied. Uncovered APIs are not permission decisions. Identity includes session/trusted-device lifecycle, MFA completion/enrollment, password change and legacy logout. F3 adds user administration, role/policy management, action simulation and audit events/settings/CSV; all direct targets remain independently authorized."
+    "description": "Partial contract coverage: Streams pilot, identity/token, recording reads and twelve recording action/job operations. The covered operation list is independent of authorization; omitted projected operations may be covered but denied. Uncovered APIs are not permission decisions. Identity includes session/trusted-device lifecycle, MFA completion/enrollment, password change and legacy logout. F3 adds user administration, role/policy management, action simulation and audit events/settings/CSV; all direct targets remain independently authorized. F11 adds investigations/bookmarks, detections/models, LPR and remaining recording media/file protocols; binary and redirect responses have explicit media contracts."
   },
   "x-lightnvr-validators": [
     "StreamSummaryPage",
@@ -232,7 +259,42 @@
     "AuditEventsPage",
     "AuditDecisionMode",
     "AuditSettings",
-    "AuditSettingsWrite"
+    "AuditSettingsWrite",
+    "EvidenceDetection",
+    "EvidenceDetections",
+    "EvidenceModel",
+    "EvidenceModels",
+    "EvidenceFileCheck",
+    "EvidenceFileDeleted",
+    "EvidenceProtectedCount",
+    "EvidenceSyncComplete",
+    "EvidenceSegment",
+    "EvidenceTimelineTrack",
+    "EvidenceTimeline",
+    "EvidenceSegmentAt",
+    "EvidenceRangeRequest",
+    "EvidenceSegmentAtRequest",
+    "EvidenceThumbnailRequest",
+    "EvidencePreviewRecording",
+    "EvidencePreview",
+    "EvidenceThumbnailSample",
+    "EvidenceThumbnails",
+    "EvidenceSearchResult",
+    "EvidenceSearch",
+    "EvidenceSearchRequest",
+    "EvidenceBookmarkFilters",
+    "EvidenceBookmarkResult",
+    "EvidenceBookmark",
+    "EvidenceBookmarks",
+    "EvidenceBookmarkCreate",
+    "EvidenceBookmarkUpdate",
+    "EvidenceBookmarkDelete",
+    "EvidenceLprRead",
+    "EvidenceLprReads",
+    "EvidenceLprSearchRequest",
+    "EvidenceLprExportRequest",
+    "EvidenceLprDeleted",
+    "EvidenceBookmarkDeleted"
   ],
   "paths": {
     "/api/streams": {
@@ -9369,6 +9431,3251 @@
           }
         }
       }
+    },
+    "/api/detection/results/{name}": {
+      "get": {
+        "operationId": "getEvidenceDetections",
+        "summary": "Get evidence detections",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Current camera live.view authorizes the query. Captured detection UUIDs take precedence over reused stream names; only legacy NULL/empty UUID rows fall back to name. Optional start/end are epoch-second filters; absent bounds use a recent interval of at least 30 seconds.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceDetections"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Concrete resource identifier; authorized independently.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ]
+      }
+    },
+    "/api/detection/models": {
+      "get": {
+        "operationId": "listEvidenceModels",
+        "summary": "List evidence models",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global_or_camera",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global camera.configure or that permission on an existing camera. Built-in models remain present if the configured model directory is absent. File models include paths and support/build metadata only for an authorized configurator.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceModels"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lpr/search": {
+      "post": {
+        "operationId": "searchEvidenceLpr",
+        "summary": "Search evidence lpr",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "lpr.search",
+              "resource": "raw"
+            },
+            {
+              "action": "lpr.read",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceLprReads"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceLprSearchRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lpr/export": {
+      "post": {
+        "operationId": "exportEvidenceLpr",
+        "summary": "Export evidence lpr",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "lpr.export",
+              "resource": "raw"
+            },
+            {
+              "action": "lpr.search",
+              "resource": "raw"
+            },
+            {
+              "action": "lpr.read",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceLprReads"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string",
+                  "const": "attachment; filename=\"lightnvr-lpr-export.json\""
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceLprExportRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lpr/reads/{read_uuid}": {
+      "delete": {
+        "operationId": "deleteEvidenceLpr",
+        "summary": "Delete evidence lpr",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "lpr.delete",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceLprDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "read_uuid",
+            "in": "path",
+            "required": true,
+            "description": "Concrete resource identifier; authorized independently.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/recordings/files/check": {
+      "get": {
+        "operationId": "checkEvidenceRecordingFile",
+        "summary": "Check evidence recording file",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "recordings.replay",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceFileCheck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "description": "Exact registered recording file path. Unknown paths return404; this is not an arbitrary filesystem operation. Captured recording UUID controls authority.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/recordings/files": {
+      "delete": {
+        "operationId": "deleteEvidenceRecordingFile",
+        "summary": "Delete evidence recording file",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "recording.delete",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceFileDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Deletion scheduled; not proof of file removal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceFileDeleted"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "description": "Exact registered recording file path. Unknown paths return404; this is not an arbitrary filesystem operation. Captured recording UUID controls authority.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/recordings/protected": {
+      "get": {
+        "operationId": "countEvidenceProtected",
+        "summary": "Count evidence protected",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceProtectedCount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "stream",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional current camera name; otherwise count only recordings visible by replay scope."
+          }
+        ]
+      }
+    },
+    "/api/recordings/sync": {
+      "post": {
+        "operationId": "syncEvidenceRecordings",
+        "summary": "Sync evidence recordings",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceSyncComplete"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/investigations/timeline": {
+      "post": {
+        "operationId": "queryEvidenceTimeline",
+        "summary": "Query evidence timeline",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "recordings.replay",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceTimeline"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceRangeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/investigations/segment-at": {
+      "post": {
+        "operationId": "resolveEvidenceSegment",
+        "summary": "Resolve evidence segment",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "recordings.replay",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceSegmentAt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceSegmentAtRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/investigations/search": {
+      "post": {
+        "operationId": "searchEvidence",
+        "summary": "Search evidence",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceSearch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceSearchRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/investigations/recordings/preview": {
+      "post": {
+        "operationId": "previewEvidenceRecordings",
+        "summary": "Preview evidence recordings",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "recordings.replay",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceRangeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/investigations/thumbnail-samples": {
+      "post": {
+        "operationId": "sampleEvidenceThumbnails",
+        "summary": "Sample evidence thumbnails",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "recordings.replay",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceThumbnails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceThumbnailRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/investigation-bookmarks": {
+      "get": {
+        "operationId": "listEvidenceBookmarks",
+        "summary": "List evidence bookmarks",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "description": "Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceBookmarks"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createEvidenceBookmark",
+        "summary": "Create evidence bookmark",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "description": "Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.",
+        "responses": {
+          "201": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceBookmark"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceBookmarkCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/investigation-bookmarks/{uuid}": {
+      "get": {
+        "operationId": "getEvidenceBookmark",
+        "summary": "Get evidence bookmark",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "description": "Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceBookmark"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "description": "Concrete resource identifier; authorized independently.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateEvidenceBookmark",
+        "summary": "Update evidence bookmark",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "description": "Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceBookmark"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceBookmarkUpdate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "description": "Concrete resource identifier; authorized independently.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteEvidenceBookmark",
+        "summary": "Delete evidence bookmark",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "description": "Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceBookmarkDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceBookmarkDelete"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "description": "Concrete resource identifier; authorized independently.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/snapshots/{camera}/{filename}": {
+      "get": {
+        "operationId": "getEvidenceSnapshot",
+        "summary": "Get evidence snapshot",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "snapshot.create",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "New MQTT snapshot URLs use the captured immutable camera UUID namespace. UUID URLs authorize that UUID and never fall back to a display-name directory. Existing name-only snapshot URLs remain compatible and authorize the current named camera; old files do not contain recoverable capture identity. Camera snapshot.create is required.",
+        "responses": {
+          "200": {
+            "description": "Authorized media bytes; not JSON. Thumbnail offsets are milliseconds and snap to the cache grid. Generation may be disabled. Manifest references recording IDs whose playback rechecks captured identity.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "A supported byte range of authorized media.",
+            "headers": {
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Unsatisfiable range."
+          }
+        },
+        "parameters": [
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "description": "Concrete resource identifier; authorized independently.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "description": "Concrete resource identifier; authorized independently.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/investigations/thumbnail/{recording_id}/{offset_ms}": {
+      "get": {
+        "operationId": "getEvidenceThumbnail",
+        "summary": "Get evidence thumbnail",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "recordings.replay",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Authorized media bytes; not JSON. Thumbnail offsets are milliseconds and snap to the cache grid. Generation may be disabled. Manifest references recording IDs whose playback rechecks captured identity.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "A supported byte range of authorized media.",
+            "headers": {
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Unsatisfiable range."
+          }
+        },
+        "parameters": [
+          {
+            "name": "recording_id",
+            "in": "path",
+            "required": true,
+            "description": "Concrete resource identifier; authorized independently.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          },
+          {
+            "name": "offset_ms",
+            "in": "path",
+            "required": true,
+            "description": "Concrete resource identifier; authorized independently.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/timeline/manifest": {
+      "get": {
+        "operationId": "getEvidenceManifest",
+        "summary": "Get evidence manifest",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "recordings.replay",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "200": {
+            "description": "Authorized media bytes; not JSON. Thumbnail offsets are milliseconds and snap to the cache grid. Generation may be disabled. Manifest references recording IDs whose playback rechecks captured identity.",
+            "content": {
+              "application/vnd.apple.mpegurl": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "A supported byte range of authorized media.",
+            "headers": {
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/vnd.apple.mpegurl": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Unsatisfiable range."
+          }
+        },
+        "parameters": [
+          {
+            "name": "stream",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "ISO8601 or date-only; defaults to recent24hours."
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "ISO8601 or date-only; defaults to recent24hours."
+          }
+        ]
+      }
+    },
+    "/api/timeline/play": {
+      "get": {
+        "operationId": "redirectEvidencePlayback",
+        "summary": "Redirect evidence playback",
+        "tags": [
+          "Evidence"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "recordings.replay",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.",
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied by current camera policy, feature configuration or demo write restriction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, protected media or transfer conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds operation limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure; a mutation may have applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected storage or media work temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "Empty redirect to the chosen recording playback endpoint; playback independently reauthorizes the recording.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^/api/recordings/play/[0-9]+$"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "stream",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Positive epoch seconds or ISO8601; defaults to now."
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -15297,6 +18604,2607 @@
             }
           }
         ]
+      },
+      "EvidenceDetection": {
+        "type": "object",
+        "properties": {
+          "confidence": {
+            "type": "number"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "width": {
+            "type": "number"
+          },
+          "height": {
+            "type": "number"
+          },
+          "label": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer"
+          },
+          "end_timestamp": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confidence",
+          "x",
+          "y",
+          "width",
+          "height",
+          "label",
+          "timestamp",
+          "end_timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceDetections": {
+        "type": "object",
+        "properties": {
+          "detections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceDetection"
+            }
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "stream_status": {
+            "$ref": "#/components/schemas/StreamStatus"
+          }
+        },
+        "required": [
+          "detections",
+          "timestamp",
+          "stream_status"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "supported": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "unsupported_reason": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path",
+          "type",
+          "supported"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceModels": {
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceModel"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "litert_available": {
+            "type": "boolean"
+          },
+          "sod_available": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "models",
+          "count",
+          "litert_available",
+          "sod_available"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceFileCheck": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "exists": {
+                "const": false
+              }
+            },
+            "required": [
+              "exists"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "exists": {
+                "const": true
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "mtime": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "exists",
+              "size",
+              "mtime"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "EvidenceFileDeleted": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "existed": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "deleted",
+              "deletion_pending"
+            ]
+          }
+        },
+        "required": [
+          "success",
+          "existed",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceProtectedCount": {
+        "type": "object",
+        "properties": {
+          "protected_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stream_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protected_count"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceSyncComplete": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          },
+          "updated": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "success",
+          "message",
+          "updated"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceSegment": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "start_time": {
+                "type": "integer"
+              },
+              "end_time": {
+                "type": "integer"
+              },
+              "duration": {
+                "type": "integer"
+              },
+              "has_detection": {
+                "type": "boolean"
+              },
+              "size_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "protected": {
+                "type": "boolean"
+              },
+              "media_available": {
+                "const": true
+              },
+              "capture_method": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "start_time",
+              "end_time",
+              "duration",
+              "has_detection",
+              "size_bytes",
+              "protected",
+              "media_available",
+              "capture_method"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "start_time": {
+                "type": "integer"
+              },
+              "end_time": {
+                "type": "integer"
+              },
+              "duration": {
+                "type": "integer"
+              },
+              "has_detection": {
+                "type": "boolean"
+              },
+              "size_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "protected": {
+                "type": "boolean"
+              },
+              "media_available": {
+                "const": true
+              },
+              "source_segment_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "coverage_only": {
+                "const": true
+              }
+            },
+            "required": [
+              "id",
+              "start_time",
+              "end_time",
+              "duration",
+              "has_detection",
+              "size_bytes",
+              "protected",
+              "media_available",
+              "source_segment_count",
+              "coverage_only"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "EvidenceTimelineTrack": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "stream_name": {
+            "type": "string"
+          },
+          "segment_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "returned_interval_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "aggregated": {
+            "type": "boolean"
+          },
+          "aggregation_bucket_seconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "truncated": {
+            "const": false
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "identity_resolved": {
+                "const": true
+              },
+              "requested_start": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "requested_end": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "identity_resolved",
+              "requested_start",
+              "requested_end"
+            ],
+            "additionalProperties": false
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSegment"
+            }
+          }
+        },
+        "required": [
+          "camera_uuid",
+          "name",
+          "stream_name",
+          "segment_count",
+          "returned_interval_count",
+          "aggregated",
+          "aggregation_bucket_seconds",
+          "truncated",
+          "coverage",
+          "segments"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceTimeline": {
+        "type": "object",
+        "properties": {
+          "start_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "camera_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_active_decoders": {
+            "const": 4
+          },
+          "tracks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceTimelineTrack"
+            }
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time",
+          "camera_count",
+          "max_active_decoders",
+          "tracks"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceSegmentAt": {
+        "type": "object",
+        "properties": {
+          "segment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceSegment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "segment"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceRangeRequest": {
+        "type": "object",
+        "properties": {
+          "start_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "camera_uuids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "minItems": 1,
+            "maxItems": 16,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time",
+          "camera_uuids"
+        ],
+        "additionalProperties": true,
+        "description": "End must exceed start by no more than 31 days. All explicit cameras must exist and permit recordings.replay; mixed unauthorized input is rejected."
+      },
+      "EvidenceSegmentAtRequest": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "camera_uuids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "minItems": 1,
+            "maxItems": 1
+          }
+        },
+        "required": [
+          "timestamp",
+          "camera_uuids"
+        ],
+        "additionalProperties": true
+      },
+      "EvidenceThumbnailRequest": {
+        "type": "object",
+        "properties": {
+          "start_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "camera_uuids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "minItems": 1,
+            "maxItems": 1
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 12
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time",
+          "camera_uuids"
+        ],
+        "additionalProperties": true
+      },
+      "EvidencePreviewRecording": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "camera_name": {
+            "type": "string"
+          },
+          "stream_name": {
+            "type": "string"
+          },
+          "start_time": {
+            "type": "integer"
+          },
+          "end_time": {
+            "type": "integer"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "protected": {
+            "type": "boolean"
+          },
+          "can_protect": {
+            "type": "boolean"
+          },
+          "can_export": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "camera_uuid",
+          "camera_name",
+          "stream_name",
+          "start_time",
+          "end_time",
+          "size_bytes",
+          "protected",
+          "can_protect",
+          "can_export"
+        ],
+        "additionalProperties": false
+      },
+      "EvidencePreview": {
+        "type": "object",
+        "properties": {
+          "start_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "camera_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "recording_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "protected_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unprotected_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recordings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidencePreviewRecording"
+            },
+            "maxItems": 200
+          },
+          "permissions": {
+            "type": "object",
+            "properties": {
+              "protect": {
+                "type": "object",
+                "properties": {
+                  "allowed_count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "denied_count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "actionable_count": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "allowed_count",
+                  "denied_count",
+                  "actionable_count"
+                ],
+                "additionalProperties": false
+              },
+              "export": {
+                "type": "object",
+                "properties": {
+                  "allowed_count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "denied_count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "all_allowed": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "allowed_count",
+                  "denied_count",
+                  "all_allowed"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "protect",
+              "export"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time",
+          "camera_count",
+          "recording_count",
+          "total_bytes",
+          "protected_count",
+          "unprotected_count",
+          "recordings",
+          "permissions"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceThumbnailSample": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "media_status": {
+                "const": "gap"
+              },
+              "thumbnail": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "const": "unavailable"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "timestamp",
+              "media_status",
+              "thumbnail"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "media_status": {
+                "const": "available"
+              },
+              "thumbnail": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "const": "available"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "url"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "unavailable",
+                          "disabled"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "recording_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "recording_start_time": {
+                "type": "integer"
+              },
+              "recording_end_time": {
+                "type": "integer"
+              },
+              "offset_ms": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "timestamp",
+              "media_status",
+              "thumbnail",
+              "recording_id",
+              "recording_start_time",
+              "recording_end_time",
+              "offset_ms"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "EvidenceThumbnails": {
+        "type": "object",
+        "properties": {
+          "start_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "camera": {
+            "type": "object",
+            "properties": {
+              "camera_uuid": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "camera_uuid",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceThumbnailSample"
+            },
+            "maxItems": 12
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "segments_truncated": {
+                "const": false
+              },
+              "available_samples": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "gap_samples": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "segments_truncated",
+              "available_samples",
+              "gap_samples"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time",
+          "sample_count",
+          "camera",
+          "samples",
+          "coverage"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceSearchResult": {
+        "type": "object",
+        "properties": {
+          "result_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "motion",
+              "detection"
+            ]
+          },
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "start_time": {
+            "type": "integer"
+          },
+          "end_time": {
+            "type": "integer"
+          },
+          "media_available": {
+            "type": "boolean"
+          },
+          "known_gap": {
+            "type": "boolean"
+          },
+          "recording_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "camera": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "location_uuid": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "location_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "location_path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "location_uuid",
+              "location_name",
+              "location_path"
+            ],
+            "additionalProperties": false
+          },
+          "detection": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "label": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number"
+              },
+              "source": {
+                "type": "string"
+              },
+              "zone_uuid": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "track_id": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "bounding_box": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "width": {
+                        "type": "number"
+                      },
+                      "height": {
+                        "type": "number"
+                      },
+                      "normalized": {
+                        "const": true
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "width",
+                      "height",
+                      "normalized"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "confidence",
+              "source",
+              "zone_uuid",
+              "track_id",
+              "bounding_box"
+            ],
+            "additionalProperties": false
+          },
+          "thumbnail": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "const": "available"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "url"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "unavailable",
+                      "disabled"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "recording": {
+            "type": "object",
+            "properties": {
+              "capture_method": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "protected": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "capture_method",
+              "protected"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "result_id",
+          "event_type",
+          "camera_uuid",
+          "start_time",
+          "end_time",
+          "media_available",
+          "known_gap",
+          "recording_id",
+          "camera",
+          "detection",
+          "thumbnail",
+          "recording"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceSearch": {
+        "type": "object",
+        "properties": {
+          "camera_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "selector_applied": {
+            "type": "boolean"
+          },
+          "summary_complete": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSearchResult"
+            }
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "returned": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "has_more": {
+                "type": "boolean"
+              },
+              "next_cursor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "limit",
+              "returned",
+              "total",
+              "has_more",
+              "next_cursor"
+            ],
+            "additionalProperties": false
+          },
+          "facets": {
+            "type": "object",
+            "properties": {
+              "cameras": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "zones": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "event_types": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "locations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "capture_methods": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "recording_tags": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "protection": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "cameras",
+              "labels",
+              "zones",
+              "sources",
+              "event_types",
+              "locations",
+              "capture_methods",
+              "recording_tags",
+              "protection"
+            ],
+            "additionalProperties": false
+          },
+          "histogram": {
+            "type": "object",
+            "properties": {
+              "bucket_seconds": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "buckets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "start_time": {
+                      "type": "integer"
+                    },
+                    "end_time": {
+                      "type": "integer"
+                    },
+                    "event_time": {
+                      "type": "integer"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "start_time",
+                    "end_time",
+                    "event_time",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "bucket_seconds",
+              "buckets"
+            ],
+            "additionalProperties": false
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "requested_start": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "requested_end": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "searched_start": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "searched_end": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "unresolved_legacy_rows": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "spatial_metadata": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "requested": {
+                        "const": false
+                      }
+                    },
+                    "required": [
+                      "requested"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "requested": {
+                        "const": true
+                      },
+                      "search_type": {
+                        "const": "metadata_search"
+                      },
+                      "camera_uuid": {
+                        "type": "string",
+                        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                      },
+                      "match": {
+                        "type": "string",
+                        "enum": [
+                          "center",
+                          "intersects",
+                          "minimum_intersection"
+                        ]
+                      },
+                      "rows_with_boxes": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "rows_without_boxes": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "complete": {
+                        "type": "boolean"
+                      },
+                      "rectangle": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "y": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "width": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 1
+                          },
+                          "height": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 1
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "width",
+                          "height"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "min_intersection": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "requested",
+                      "search_type",
+                      "camera_uuid",
+                      "match",
+                      "rows_with_boxes",
+                      "rows_without_boxes",
+                      "complete",
+                      "rectangle"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "incomplete_reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "complete": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "requested_start",
+              "requested_end",
+              "searched_start",
+              "searched_end",
+              "unresolved_legacy_rows",
+              "spatial_metadata",
+              "incomplete_reasons",
+              "complete"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "camera_count",
+          "selector_applied",
+          "summary_complete",
+          "results",
+          "page",
+          "facets",
+          "histogram",
+          "coverage"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceSearchRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "start_time": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "end_time": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "camera_uuids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "minItems": 1,
+                "maxItems": 16,
+                "uniqueItems": true
+              },
+              "selector": false,
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^v1-[0-9a-fA-F]+-[0-9a-fA-F]+$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "include_summary": {
+                "type": "boolean"
+              },
+              "summary_only": {
+                "type": "boolean"
+              },
+              "filters": {
+                "type": "object",
+                "properties": {
+                  "event_types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "locations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "zones": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "capture_methods": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "recording_tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "protected": {
+                    "type": "boolean"
+                  },
+                  "min_confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "max_confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [],
+                "additionalProperties": true
+              },
+              "region": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "width": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  },
+                  "height": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  },
+                  "camera_uuid": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                  },
+                  "match": {
+                    "type": "string",
+                    "enum": [
+                      "center",
+                      "intersects",
+                      "minimum_intersection"
+                    ]
+                  },
+                  "min_intersection": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "camera_uuid",
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "start_time",
+              "end_time",
+              "camera_uuids"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "properties": {
+              "start_time": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "end_time": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "camera_uuids": false,
+              "selector": {
+                "$ref": "#/components/schemas/FleetSelector"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^v1-[0-9a-fA-F]+-[0-9a-fA-F]+$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "include_summary": {
+                "type": "boolean"
+              },
+              "summary_only": {
+                "type": "boolean"
+              },
+              "filters": {
+                "type": "object",
+                "properties": {
+                  "event_types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "locations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "zones": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "capture_methods": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "recording_tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127
+                    },
+                    "maxItems": 16
+                  },
+                  "protected": {
+                    "type": "boolean"
+                  },
+                  "min_confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "max_confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [],
+                "additionalProperties": true
+              },
+              "region": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "width": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  },
+                  "height": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  },
+                  "camera_uuid": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                  },
+                  "match": {
+                    "type": "string",
+                    "enum": [
+                      "center",
+                      "intersects",
+                      "minimum_intersection"
+                    ]
+                  },
+                  "min_intersection": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "camera_uuid",
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "start_time",
+              "end_time",
+              "selector"
+            ],
+            "additionalProperties": true
+          }
+        ]
+      },
+      "EvidenceBookmarkFilters": {
+        "type": "object",
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "zone": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "capture_method": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "recording_tag": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "protection": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "min_confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "region": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "width": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "height": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "camera_uuid": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "match": {
+                "type": "string",
+                "enum": [
+                  "center",
+                  "intersects",
+                  "minimum_intersection"
+                ]
+              },
+              "min_intersection": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "camera_uuid",
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "EvidenceBookmarkResult": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "result_id": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "camera_uuid": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "start_time": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "end_time": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "event_type": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "recording_id": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "detection_id": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "label": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "EvidenceBookmark": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2047
+          },
+          "start_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "cursor_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "primary_camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "camera_uuids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "minItems": 1,
+            "maxItems": 16,
+            "uniqueItems": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/EvidenceBookmarkFilters"
+          },
+          "representative_result": {
+            "$ref": "#/components/schemas/EvidenceBookmarkResult"
+          },
+          "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "integer"
+          },
+          "holds_recordings": {
+            "const": false
+          }
+        },
+        "required": [
+          "title",
+          "note",
+          "start_time",
+          "end_time",
+          "cursor_time",
+          "primary_camera_uuid",
+          "camera_uuids",
+          "filters",
+          "representative_result",
+          "uuid",
+          "revision",
+          "created_at",
+          "updated_at",
+          "holds_recordings"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceBookmarks": {
+        "type": "object",
+        "properties": {
+          "bookmarks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceBookmark"
+            },
+            "maxItems": 256
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "bookmarks",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceBookmarkCreate": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2047
+          },
+          "start_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "cursor_time": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "primary_camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "camera_uuids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "minItems": 1,
+            "maxItems": 16,
+            "uniqueItems": true
+          },
+          "filters": {
+            "$ref": "#/components/schemas/EvidenceBookmarkFilters"
+          },
+          "representative_result": {
+            "$ref": "#/components/schemas/EvidenceBookmarkResult"
+          }
+        },
+        "required": [
+          "title",
+          "start_time",
+          "end_time",
+          "cursor_time",
+          "primary_camera_uuid",
+          "camera_uuids",
+          "filters"
+        ],
+        "additionalProperties": true,
+        "description": "Camera list, primary camera, region and saved result must agree. Cursor must lie inside the interval. The bookmark is owned by the current user (also for scoped tokens), never grants access, and does not protect media from retention."
+      },
+      "EvidenceBookmarkUpdate": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2047
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "title",
+          "revision"
+        ],
+        "additionalProperties": true
+      },
+      "EvidenceBookmarkDelete": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "additionalProperties": true
+      },
+      "EvidenceLprRead": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "type": {
+            "const": "license_plate"
+          },
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "stream_name": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "received_at": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source": {
+            "type": "string"
+          },
+          "plate": {
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recording_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attributes": {
+            "type": "object",
+            "properties": {
+              "country": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "region": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "plate_type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "direction": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "lane": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "vehicle_type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "vehicle_color": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "object_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "correlation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "vendor_topic": {
+                "type": "string"
+              },
+              "bounding_box": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "left": {
+                        "type": "number"
+                      },
+                      "top": {
+                        "type": "number"
+                      },
+                      "right": {
+                        "type": "number"
+                      },
+                      "bottom": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "left",
+                      "top",
+                      "right",
+                      "bottom"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "country",
+              "region",
+              "plate_type",
+              "direction",
+              "lane",
+              "vehicle_type",
+              "vehicle_color",
+              "object_id",
+              "correlation_id",
+              "vendor_topic",
+              "bounding_box"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "camera_uuid",
+          "stream_name",
+          "observed_at",
+          "received_at",
+          "source",
+          "plate",
+          "confidence",
+          "recording_id",
+          "attributes"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceLprReads": {
+        "type": "object",
+        "properties": {
+          "reads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceLprRead"
+            },
+            "maxItems": 1000
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "reads",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceLprSearchRequest": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "start_at": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_at": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "partial"
+            ]
+          },
+          "plate": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "camera_uuid",
+          "start_at",
+          "end_at"
+        ],
+        "additionalProperties": true,
+        "description": "Epoch milliseconds, end at/after start within 366 days; match requires a canonicalizable plate (partial at least 3 canonical characters). Search returns at most 100 rows."
+      },
+      "EvidenceLprExportRequest": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "start_at": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_at": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "partial"
+            ]
+          },
+          "plate": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "camera_uuid",
+          "start_at",
+          "end_at"
+        ],
+        "additionalProperties": true
+      },
+      "EvidenceLprDeleted": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "const": true
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceBookmarkDeleted": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "additionalProperties": false
       }
     }
   }

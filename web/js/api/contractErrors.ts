@@ -1,11 +1,12 @@
 /** Only stable operation names enter error messages; never URLs or wire data. */
 export type StreamOperation = 'listStreams' | 'listStreamSummaries' | 'getStreamFull' | 'updateStream';
 
+import type { EvidenceOperation } from './evidence.ts';
 import type { AdministrationOperation } from './administration.ts';
 import type { FleetOperation } from './fleet.ts';
 import type { AuthenticationOperation } from './authentication.ts';
 
-type ContractOperation = AdministrationOperation | FleetOperation | AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
+type ContractOperation = EvidenceOperation | AdministrationOperation | FleetOperation | AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
 
 export class ContractValidationError extends Error {
   readonly name = 'ContractValidationError';
@@ -19,7 +20,7 @@ export class ContractValidationError extends Error {
     readonly issue: 'shape' | 'json' | 'status' = 'shape',
   ) {
     super(`Invalid ${operation} ${phase}: ${schema} (${issue}).`);
-    this.mayHaveApplied = ['createAdminUser', 'updateAdminUser', 'deleteAdminUser', 'createLegacyApiKey', 'setUserPasswordLock', 'clearUserLoginLockout', 'createAuthorizationRole', 'updateAuthorizationRole', 'deleteAuthorizationRole', 'setUserAuthorizationPolicy', 'updateAuditSettings', 'updateStream', 'revokeAuthSession', 'revokeTrustedDevice', 'login', 'logout', 'completeTotpLogin', 'setupTotp', 'verifyTotp', 'disableTotp', 'changePassword'].includes(operation) && phase === 'response';
+    this.mayHaveApplied = ['deleteEvidenceLpr','deleteEvidenceRecordingFile','syncEvidenceRecordings','createEvidenceBookmark','updateEvidenceBookmark','deleteEvidenceBookmark','createAdminUser', 'updateAdminUser', 'deleteAdminUser', 'createLegacyApiKey', 'setUserPasswordLock', 'clearUserLoginLockout', 'createAuthorizationRole', 'updateAuthorizationRole', 'deleteAuthorizationRole', 'setUserAuthorizationPolicy', 'updateAuditSettings', 'updateStream', 'revokeAuthSession', 'revokeTrustedDevice', 'login', 'logout', 'completeTotpLogin', 'setupTotp', 'verifyTotp', 'disableTotp', 'changePassword'].includes(operation) && phase === 'response';
   }
 }
 

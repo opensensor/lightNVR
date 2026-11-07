@@ -85,6 +85,7 @@ export async function startFixture(options = {}) {
     output = await open(fixture.logPath, 'w', 0o600);
     await reservation.release(); reservation = null;
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('LIGHTNVR_')));
+    if(options.lprMasterKeyHex) env.LIGHTNVR_LPR_MASTER_KEY_HEX=options.lprMasterKeyHex;
     child = spawn(path.resolve(root, options.binary || process.env.LIGHTNVR_CONTRACT_BIN || 'build/eng-api-T2/bin/lightnvr'), ['-c', configPath], {cwd: root, env, stdio: ['ignore', output.fd, output.fd]});
     fixture.pid = child.pid;
     let spawnError;

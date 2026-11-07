@@ -17,6 +17,8 @@ import type {
   LprSearchOutcome,
   LprValidationError,
 } from '../../../types/investigation.ts';
+import * as evidenceGuards from '../../../../generated/api/validators.js';
+import { ContractValidationError } from '../../../api/contractErrors.ts';
 import type { StreamSummary } from '../../../types/core.ts';
 
 export const LPR_DEFAULT_LIMIT = 50;
@@ -198,9 +200,14 @@ function postJson(
   body: LprSearchBody,
   signal: AbortSignal | undefined,
 ) {
+  const exporting=url === '/api/lpr/export';
+  const valid=exporting?evidenceGuards.validateEvidenceLprExportRequest(body):evidenceGuards.validateEvidenceLprSearchRequest(body);
+  if(!valid)throw new ContractValidationError(exporting?'exportEvidenceLpr':'searchEvidenceLpr','request','EvidenceLprRequest');
   return fetchImpl(url, {
     method: 'POST',
     credentials: 'same-origin',
+    cache:'no-store',
+    redirect:'error',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
@@ -214,8 +221,9 @@ export async function searchLprReads(
   const response = await postJson(fetchImpl, '/api/lpr/search', body, signal);
   const result = await classifyLprResponse(response);
   if (result.outcome !== 'ok') return result;
-  const data: { reads?: LprRead[] } | null = await response.json();
-  return { outcome: 'ok', reads: Array.isArray(data?.reads) ? data.reads : [] };
+  const data:unknown=await response.json();
+  if(response.status!==200 || !/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type')??'') || !evidenceGuards.validateEvidenceLprReads(data))throw new ContractValidationError('searchEvidenceLpr','response','EvidenceLprReads',response.status);
+  return { outcome:'ok',reads:(data as {reads:LprRead[]}).reads };
 }
 
 export async function exportLprReads(
@@ -225,7 +233,10 @@ export async function exportLprReads(
   const response = await postJson(fetchImpl, '/api/lpr/export', body, signal);
   const result = await classifyLprResponse(response);
   if (result.outcome !== 'ok') return result;
-  return { outcome: 'ok', blob: await response.blob() };
+  const text=await response.text();let data:unknown;
+  try{data=JSON.parse(text);}catch{throw new ContractValidationError('exportEvidenceLpr','response','EvidenceLprReads',response.status,'json');}
+  if(response.status!==200 || !/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type')??'') || response.headers.get('content-disposition')!=='attachment; filename="lightnvr-lpr-export.json"' || !evidenceGuards.validateEvidenceLprReads(data))throw new ContractValidationError('exportEvidenceLpr','response','EvidenceLprReads',response.status);
+  return { outcome:'ok',blob:new Blob([text],{type:'application/json'}) };
 }
 
 export async function deleteLprRead(
@@ -235,8 +246,12 @@ export async function deleteLprRead(
   const response = await fetchImpl(`/api/lpr/reads/${encodeURIComponent(readId)}`, {
     method: 'DELETE',
     credentials: 'same-origin',
+    cache:'no-store',
+    redirect:'error',
   });
-  return classifyLprResponse(response);
+  const outcome=await classifyLprResponse(response);
+  if(outcome.outcome==='ok' && (response.status!==200 || !evidenceGuards.validateEvidenceLprDeleted(await response.json())))throw new ContractValidationError('deleteEvidenceLpr','response','EvidenceLprDeleted',response.status);
+  return outcome;
 }
 
 /**

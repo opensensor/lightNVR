@@ -585,7 +585,7 @@ static void prune_detection_snapshots(const char *dir_path) {
 
 /**
  * Save a detection event snapshot to
- * {storage_path}/snapshots/{safe_stream}/{YYYYmmdd_HHMMSS}.jpg.
+ * {storage_path}/snapshots/{captured_camera_uuid}/{YYYYmmdd_HHMMSS}.jpg.
  *
  * On success fills out_path with the absolute file path and out_url with the
  * relative URL served by the /api/snapshots endpoint.  Returns 0 on success.
@@ -682,13 +682,22 @@ int mqtt_publish_detection(const char *stream_name, const detection_result_t *re
     char snapshot_url[MAX_PATH_LENGTH] = "";
     char snapshot_topic[MAX_TOPIC_LENGTH] = "";
     {
+        /* Capture identity before fetching media. A later rename/name reuse
+         * must not transfer this stored snapshot to a different camera. */
+        stream_config_t snapshot_camera;
+        const bool snapshot_identity_valid =
+            get_stream_config_by_name(stream_name, &snapshot_camera) == 0 &&
+            lightnvr_uuid_is_valid(snapshot_camera.camera_uuid);
         unsigned char *jpeg_data = NULL;
         size_t jpeg_size = 0;
         if (go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size) &&
             jpeg_data && jpeg_size > 0) {
-            save_detection_snapshot(safe_name, timestamp, jpeg_data, jpeg_size,
-                                    snapshot_path, sizeof(snapshot_path),
-                                    snapshot_url, sizeof(snapshot_url));
+            if (snapshot_identity_valid) {
+                save_detection_snapshot(snapshot_camera.camera_uuid, timestamp,
+                                        jpeg_data, jpeg_size,
+                                        snapshot_path, sizeof(snapshot_path),
+                                        snapshot_url, sizeof(snapshot_url));
+            }
 
             snprintf(snapshot_topic, sizeof(snapshot_topic), "%s/detections/%s/snapshot",
                      mqtt_config->mqtt_topic_prefix, safe_name);

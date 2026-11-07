@@ -49,8 +49,11 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
         return;
     }
     api_phase_timer_t phase = api_phase_begin(req, "detection camera authorization");
-    bool authorized = httpd_authorize_stream_action(req, res, AUTHZ_LIVE_VIEW,
-                                                   stream_name);
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    bool authorized = httpd_authorize_stream_action_with_context(
+        req, res, AUTHZ_LIVE_VIEW, stream_name, &user, &camera, &evaluation);
     api_phase_end(&phase);
     if (!authorized) return;
 
@@ -115,7 +118,7 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
     // Get persisted event ranges. Ordinary model detections have identical
     // start/end values; external motion start/stop events may span segments.
     phase = api_phase_begin(req, "detection result database snapshot");
-    int count = get_detection_results_readonly(stream_name, &result,
+    int count = get_detection_results_for_camera_readonly(camera.camera_uuid, stream_name, &result,
                                                timestamps, end_timestamps,
                                                max_age, start_time, end_time);
     api_phase_end(&phase);

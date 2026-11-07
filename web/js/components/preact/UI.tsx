@@ -1,3 +1,4 @@
+import { evidenceJSON } from '../../api/evidence.ts';
 /**
  * UI utility components for LightNVR
  * JSX version of UI components
@@ -391,11 +392,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
           const detectionsUrl = `/api/detection/results/${data.stream}?start=${startTime}&end=${endTime}`;
           console.log('[VideoModal] Fetching detections from:', detectionsUrl);
 
-          const detectionsResponse = await fetch(detectionsUrl);
-
-          if (!detectionsResponse.ok) throw new Error('Failed to fetch detections');
-
-          const detectionsData = await detectionsResponse.json() as { detections?: DetectionResult[] };
+          const detectionsData = await evidenceJSON<{detections:DetectionResult[]}>(detectionsUrl);
           console.log('[VideoModal] Detections response:', detectionsData);
           const fetchedDetections = detectionsData.detections || [];
           setDetections(fetchedDetections);
