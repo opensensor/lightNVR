@@ -646,9 +646,9 @@ LightNVR implements a robust shutdown coordination system to ensure clean and or
 
 The shutdown coordination system follows a priority-based approach to ensure components shut down in the correct dependency order:
 
-1. **Detection Threads** (highest priority - 100): Shut down first since they depend on both MP4 writers and HLS streaming
-2. **MP4 Writers** (medium priority - 80): Shut down second since they depend on HLS streaming
-3. **HLS Streaming Threads** (lowest priority - 60): Shut down last as they are the foundation
+1. **Detection Threads** (highest priority - 100): Shut down first to stop generating new recording/event triggers during teardown
+2. **MP4 Writers** (medium priority - 80): Shut down next so active recordings can finalize after detection has stopped creating new work
+3. **HLS Streaming Threads** (lowest priority - 60): Shut down after other consumers; they are an independent consumer of go2rtc output
 4. **go2rtc Process** (final): Terminated after all consumers are stopped
 
 ### Key Components
