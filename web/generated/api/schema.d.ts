@@ -1,4 +1,68 @@
 export interface paths {
+    "/api/audit/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List audit events
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["listAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/events/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export audit events
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["exportAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get audit settings
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["getAuditSettings"];
+        /**
+         * Update audit settings
+         * @description Requires system.admin. All submitted fields are validated before writes. Retention saves and pruning occur before decision modes: on internal failure some work may have applied. Read settings before deciding to retry. Successful retention changes include pruned_events.
+         */
+        put: operations["updateAuditSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -159,6 +223,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List admin users
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["listAdminUsers"];
+        put?: never;
+        /**
+         * Create admin user
+         * @description Requires a non-scoped users.manage principal. Initial legacy role is converted to built-in policy grants; the caller may only delegate actions it holds. Returns 200. New users are provisioned inactive until policy and CIDR rules have been applied.
+         */
+        post: operations["createAdminUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get admin user
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["getAdminUser"];
+        /**
+         * Update admin user
+         * @description A non-scoped owner may edit its username/email. Other fields and other users require effective users.manage. Role is rejected; use versioned policy management. CIDR input is validated before saving. Password changes invalidate existing sessions/challenges/trusted devices; locked passwords cannot change.
+         */
+        put: operations["updateAdminUser"];
+        post?: never;
+        /**
+         * Delete admin user
+         * @description Requires users.manage. Cannot delete yourself or the last legacy administrator; deletion and credential revocation are durable.
+         */
+        delete: operations["deleteAdminUser"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/api-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create legacy api key
+         * @description Only a non-scoped owner or non-scoped users.manage principal may rotate the legacy key. Scoped tokens are always forbidden, including tokens with users.manage. The unrestricted key is returned once; lists never expose it. Discovery does not grant access to another user.
+         */
+        post: operations["createLegacyApiKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/login-lockout/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear user login lockout
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        post: operations["clearUserLoginLockout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/users/{id}/password": {
         parameters: {
             query?: never;
@@ -172,6 +328,26 @@ export interface paths {
          * @description A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Requires old_password for self-service without users.manage and for a forced own password change. Success atomically changes the password and revokes sessions, pending challenges and trusted devices. Changing your own password clears browser cookies. Basic/key compatibility remains supported.
          */
         put: operations["changePassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/password-lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set user password lock
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        put: operations["setUserPasswordLock"];
         post?: never;
         delete?: never;
         options?: never;
@@ -272,6 +448,118 @@ export interface paths {
          */
         get: operations["verifyIdentity"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/authorization/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List authorization actions
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["listAuthorizationActions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/authorization/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List authorization roles
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["listAuthorizationRoles"];
+        put?: never;
+        /**
+         * Create authorization role
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        post: operations["createAuthorizationRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/authorization/roles/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update authorization role
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        put: operations["updateAuthorizationRole"];
+        post?: never;
+        /**
+         * Delete authorization role
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        delete: operations["deleteAuthorizationRole"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/authorization/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Simulate authorization
+         * @description Requires users.manage. Evaluates the target user, not a token, against a concrete existing camera for camera-scoped actions or no camera for global actions. Does not modify grants; an audit event is appended.
+         */
+        post: operations["simulateAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/authorization/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get user authorization policy
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["getUserAuthorizationPolicy"];
+        /**
+         * Set user authorization policy
+         * @description Requires a non-scoped users.manage principal, current expected_policy_version, and mode policy. Replaces the grants atomically. Delegated actions and camera scope cannot exceed caller authority. Self-lockout is rejected. Effective permissions and scoped-token intersections are re-evaluated on subsequent requests.
+         */
+        put: operations["setUserAuthorizationPolicy"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1400,6 +1688,167 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AdminActionCatalog: {
+            actions: components["schemas"]["AdminActionCatalogEntry"][];
+            count: number;
+        };
+        AdminActionCatalogEntry: {
+            camera_scoped: boolean;
+            category: string;
+            description: string;
+            destructive: boolean;
+            enforced: boolean;
+            key: components["schemas"]["AuthorizationAction"];
+            mask_bit: number;
+        };
+        AdminAuthorizationRole: {
+            actions: components["schemas"]["AuthorizationAction"][];
+            builtin: boolean;
+            created_at: number;
+            description: string;
+            name: string;
+            updated_at: number;
+            uuid: string;
+        };
+        AdminPolicyGrant: {
+            created_at: number;
+            enabled: boolean;
+            role: string;
+            role_uuid: string;
+            scope: components["schemas"]["ApiTokenStoredScope"];
+            updated_at: number;
+            uuid: string;
+        };
+        AdminPolicyWrite: {
+            expected_policy_version: number;
+            grants: ({
+                role_uuid: string;
+                scope: components["schemas"]["ApiTokenScope"];
+            } & {
+                [key: string]: unknown;
+            })[];
+            /** @constant */
+            mode: "policy";
+        } & {
+            [key: string]: unknown;
+        };
+        AdminRoleDeleted: {
+            policy_version: number;
+            /** @constant */
+            success: true;
+        };
+        AdminRoles: {
+            count: number;
+            policy_version: number;
+            roles: components["schemas"]["AdminAuthorizationRole"][];
+        };
+        AdminRoleWrite: {
+            actions: components["schemas"]["AuthorizationAction"][];
+            description?: string;
+            expected_policy_version: number;
+            name: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AdminRoleWritten: {
+            policy_version: number;
+            role: components["schemas"]["AdminAuthorizationRole"];
+        };
+        AdminSimulation: {
+            action: components["schemas"]["AuthorizationAction"];
+            allowed: boolean;
+            explanation: string;
+            grant_uuid: string | null;
+            policy_version: number;
+            principal: {
+                authorization_mode: string;
+                id: number;
+                username: string;
+            };
+            resource: {
+                camera_uuid: string;
+                name: string;
+            } | null;
+            role: string;
+            role_uuid: string | null;
+            source: string;
+        };
+        AdminSimulationRequest: ({
+            /** @enum {string} */
+            action: "live.view" | "audio.listen" | "audio.talk" | "recordings.replay" | "recordings.export" | "snapshot.create" | "ptz.control" | "evidence.protect" | "recording.delete" | "camera.configure" | "fleet.execute_job" | "lpr.read" | "lpr.search" | "lpr.export" | "lpr.delete";
+            camera_uuid: string;
+            user_id: number;
+        } & {
+            [key: string]: unknown;
+        }) | ({
+            /** @enum {string} */
+            action: "storage.configure" | "events.configure" | "users.manage" | "system.admin";
+            camera_uuid?: never;
+            user_id: number;
+        } & {
+            [key: string]: unknown;
+        });
+        AdminUser: {
+            allowed_login_cidrs: string | null;
+            authorization_mode: string;
+            created_at: number;
+            email: string;
+            id: number;
+            is_active: boolean;
+            last_login: number;
+            must_change_password: boolean;
+            password_change_locked: boolean;
+            /** @enum {integer} */
+            role: 0 | 1 | 2 | 3;
+            /** @enum {string} */
+            role_name: "admin" | "user" | "viewer" | "api" | "unknown";
+            totp_enabled: boolean;
+            updated_at: number;
+            username: string;
+        };
+        AdminUserCreate: {
+            allowed_login_cidrs?: string | null;
+            email?: string;
+            is_active?: boolean;
+            password: string;
+            /** @enum {integer} */
+            role?: 0 | 1 | 2 | 3;
+            username: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AdminUserDeleted: {
+            message: string;
+            /** @constant */
+            success: true;
+        };
+        AdminUserPolicy: {
+            grant_count: number;
+            grants: components["schemas"]["AdminPolicyGrant"][];
+            /** @enum {string} */
+            mode: "legacy" | "policy";
+            policy_version: number;
+            user_id: number;
+        };
+        AdminUsers: {
+            users: components["schemas"]["AdminUser"][];
+        };
+        AdminUserUpdate: {
+            allowed_login_cidrs?: string | null;
+            allowed_tags?: never;
+            email?: string;
+            is_active?: boolean;
+            password?: "" | string;
+            role?: never;
+            username?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AdminVersionRequest: {
+            expected_policy_version: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description Most errors use a string error. YAML validation may use valid=false and error.message. Extra diagnostic fields may be added; clients must not log privileged request or response data. */
         ApiError: {
             error: string | ({
@@ -1512,6 +1961,57 @@ export interface components {
         } & {
             [key: string]: unknown;
         });
+        AuditDecisionMode: {
+            action: components["schemas"]["AuthorizationAction"];
+            category: string;
+            description: string;
+            /** @enum {string} */
+            mode: "off" | "summarize" | "record";
+        };
+        AuditEvent: {
+            action: string;
+            api_token_uuid: string | null;
+            auth_method: string;
+            details: {
+                [key: string]: unknown;
+            } | null;
+            occurred_at: number;
+            outcome: string;
+            principal_user_id: number | null;
+            principal_username: string;
+            remote_address: string;
+            request_id: string;
+            target_type: string | null;
+            target_uuid: string | null;
+            uuid: string;
+        };
+        AuditEventsPage: {
+            count: number;
+            events: components["schemas"]["AuditEvent"][];
+            page: number;
+            page_size: number;
+            total: number;
+        };
+        AuditSettings: {
+            allowed_decision_modes: components["schemas"]["AuditDecisionMode"][];
+            pruned_events?: number;
+            retention_days: number;
+            summary_window_seconds: number;
+        };
+        AuditSettingsWrite: ({
+            allowed_decision_modes?: {
+                [key: string]: "off" | "summarize" | "record";
+            };
+            retention_days?: number;
+        } & {
+            [key: string]: unknown;
+        }) | {
+            retention_days: number;
+        } | {
+            allowed_decision_modes: {
+                [key: string]: "off" | "summarize" | "record";
+            };
+        };
         AuthDemoIdentity: {
             api_key?: never;
             /** @constant */
@@ -2093,6 +2593,11 @@ export interface components {
             /** @constant */
             type: "wall";
         };
+        LegacyApiKeyCreated: {
+            api_key: string;
+            /** @constant */
+            success: true;
+        };
         LiveCameraSlot: {
             camera_uuid: components["schemas"]["CameraUuid"];
         };
@@ -2198,6 +2703,12 @@ export interface components {
             totp_secret?: never;
             totp_token?: never;
             trusted_device_days: number;
+        };
+        LoginLockoutCleared: {
+            cleared: boolean;
+            message: string;
+            /** @constant */
+            success: true;
         };
         LoginMfaChallenge: {
             api_key?: never;
@@ -2318,6 +2829,11 @@ export interface components {
         };
         /** @description New password must contain at least eight UTF-8 bytes. Self-service requires the current password; effective users.manage can reset passwords except its own forced first-login change. Locked/default-password rules are enforced by the server. */
         PasswordChangeRequest: components["schemas"]["PasswordSelfChange"] | components["schemas"]["PasswordAdminReset"];
+        PasswordLockRequest: {
+            locked: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         PasswordSelfChange: {
             new_password: string;
             old_password: string;
@@ -3110,6 +3626,350 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAuditEvents: {
+        parameters: {
+            query?: {
+                /** @description Trimmed exact filter; native field capacity applies. */
+                action?: string;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                event_type?: string;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                outcome?: string;
+                /** @description One-based page. */
+                page?: number;
+                /** @description Page size, including CSV exports. */
+                page_size?: number;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                principal_user_id?: number;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                request_id?: string;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                since?: number;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                target_uuid?: string;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                until?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventsPage"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    exportAuditEvents: {
+        parameters: {
+            query?: {
+                /** @description Trimmed exact filter; native field capacity applies. */
+                action?: string;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                event_type?: string;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                outcome?: string;
+                /** @description One-based page. */
+                page?: number;
+                /** @description Page size, including CSV exports. */
+                page_size?: number;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                principal_user_id?: number;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                request_id?: string;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                since?: number;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                target_uuid?: string;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                until?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One filtered page as UTF-8 CSV, quoted cells and neutralized spreadsheet formula prefixes. This is not an export of all pages. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: "attachment; filename=lightnvr-audit.csv";
+                    "X-Total-Count"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getAuditSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditSettings"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateAuditSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditSettings"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -3588,6 +4448,547 @@ export interface operations {
             };
         };
     };
+    listAdminUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUsers"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserCreate"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserUpdate"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserDeleted"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createLegacyApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyApiKeyCreated"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    clearUserLoginLockout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginLockoutCleared"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     changePassword: {
         parameters: {
             query?: never;
@@ -3652,6 +5053,87 @@ export interface operations {
                 };
             };
             /** @description Internal/database failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setUserPasswordLock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordLockRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -4020,6 +5502,630 @@ export interface operations {
             };
             /** @description No usable credential. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listAuthorizationActions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActionCatalog"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listAuthorizationRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRoles"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createAuthorizationRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRoleWrite"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRoleWritten"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateAuthorizationRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Role UUID. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRoleWrite"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRoleWritten"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteAuthorizationRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Role UUID. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRoleDeleted"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    simulateAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSimulationRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSimulation"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getUserAuthorizationPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserPolicy"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setUserAuthorizationPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserPolicy"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

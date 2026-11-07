@@ -2,11 +2,34 @@
 import type { components } from "./schema";
 export interface ContractValidationError { readonly keyword: string; readonly schemaPath: string }
 export interface ContractValidator<T> { (value: unknown): value is T; errors: readonly ContractValidationError[] | null }
+export declare const validateAdminActionCatalog: ContractValidator<components["schemas"]["AdminActionCatalog"]>;
+export declare const validateAdminActionCatalogEntry: ContractValidator<components["schemas"]["AdminActionCatalogEntry"]>;
+export declare const validateAdminAuthorizationRole: ContractValidator<components["schemas"]["AdminAuthorizationRole"]>;
+export declare const validateAdminPolicyGrant: ContractValidator<components["schemas"]["AdminPolicyGrant"]>;
+export declare const validateAdminPolicyWrite: ContractValidator<components["schemas"]["AdminPolicyWrite"]>;
+export declare const validateAdminRoleDeleted: ContractValidator<components["schemas"]["AdminRoleDeleted"]>;
+export declare const validateAdminRoleWrite: ContractValidator<components["schemas"]["AdminRoleWrite"]>;
+export declare const validateAdminRoleWritten: ContractValidator<components["schemas"]["AdminRoleWritten"]>;
+export declare const validateAdminRoles: ContractValidator<components["schemas"]["AdminRoles"]>;
+export declare const validateAdminSimulation: ContractValidator<components["schemas"]["AdminSimulation"]>;
+export declare const validateAdminSimulationRequest: ContractValidator<components["schemas"]["AdminSimulationRequest"]>;
+export declare const validateAdminUser: ContractValidator<components["schemas"]["AdminUser"]>;
+export declare const validateAdminUserCreate: ContractValidator<components["schemas"]["AdminUserCreate"]>;
+export declare const validateAdminUserDeleted: ContractValidator<components["schemas"]["AdminUserDeleted"]>;
+export declare const validateAdminUserPolicy: ContractValidator<components["schemas"]["AdminUserPolicy"]>;
+export declare const validateAdminUserUpdate: ContractValidator<components["schemas"]["AdminUserUpdate"]>;
+export declare const validateAdminUsers: ContractValidator<components["schemas"]["AdminUsers"]>;
+export declare const validateAdminVersionRequest: ContractValidator<components["schemas"]["AdminVersionRequest"]>;
 export declare const validateApiError: ContractValidator<components["schemas"]["ApiError"]>;
 export declare const validateApiTokenCreateRequest: ContractValidator<components["schemas"]["ApiTokenCreateRequest"]>;
 export declare const validateApiTokenCreated: ContractValidator<components["schemas"]["ApiTokenCreated"]>;
 export declare const validateApiTokenList: ContractValidator<components["schemas"]["ApiTokenList"]>;
 export declare const validateApiTokenMetadata: ContractValidator<components["schemas"]["ApiTokenMetadata"]>;
+export declare const validateAuditDecisionMode: ContractValidator<components["schemas"]["AuditDecisionMode"]>;
+export declare const validateAuditEvent: ContractValidator<components["schemas"]["AuditEvent"]>;
+export declare const validateAuditEventsPage: ContractValidator<components["schemas"]["AuditEventsPage"]>;
+export declare const validateAuditSettings: ContractValidator<components["schemas"]["AuditSettings"]>;
+export declare const validateAuditSettingsWrite: ContractValidator<components["schemas"]["AuditSettingsWrite"]>;
 export declare const validateAuthSessionsResponse: ContractValidator<components["schemas"]["AuthSessionsResponse"]>;
 export declare const validateAuthVerifyResponse: ContractValidator<components["schemas"]["AuthVerifyResponse"]>;
 export declare const validateCameraCollection: ContractValidator<components["schemas"]["CameraCollection"]>;
@@ -58,6 +81,7 @@ export declare const validateFloorSketchArea: ContractValidator<components["sche
 export declare const validateFloorSketchLabel: ContractValidator<components["schemas"]["FloorSketchLabel"]>;
 export declare const validateFloorSketchRect: ContractValidator<components["schemas"]["FloorSketchRect"]>;
 export declare const validateFloorSketchWall: ContractValidator<components["schemas"]["FloorSketchWall"]>;
+export declare const validateLegacyApiKeyCreated: ContractValidator<components["schemas"]["LegacyApiKeyCreated"]>;
 export declare const validateLiveCameraSlot: ContractValidator<components["schemas"]["LiveCameraSlot"]>;
 export declare const validateLiveLayout: ContractValidator<components["schemas"]["LiveLayout"]>;
 export declare const validateLiveLayoutCreate: ContractValidator<components["schemas"]["LiveLayoutCreate"]>;
@@ -65,6 +89,7 @@ export declare const validateLiveLayoutUpdate: ContractValidator<components["sch
 export declare const validateLiveLayoutsResponse: ContractValidator<components["schemas"]["LiveLayoutsResponse"]>;
 export declare const validateLiveStreamSummaryPage: ContractValidator<components["schemas"]["LiveStreamSummaryPage"]>;
 export declare const validateLoginConfig: ContractValidator<components["schemas"]["LoginConfig"]>;
+export declare const validateLoginLockoutCleared: ContractValidator<components["schemas"]["LoginLockoutCleared"]>;
 export declare const validateLoginMfaChallenge: ContractValidator<components["schemas"]["LoginMfaChallenge"]>;
 export declare const validateLoginRequest: ContractValidator<components["schemas"]["LoginRequest"]>;
 export declare const validateLoginResponse: ContractValidator<components["schemas"]["LoginResponse"]>;
@@ -75,6 +100,7 @@ export declare const validateOpenApiDocument: ContractValidator<components["sche
 export declare const validatePasswordAdminReset: ContractValidator<components["schemas"]["PasswordAdminReset"]>;
 export declare const validatePasswordChangeRequest: ContractValidator<components["schemas"]["PasswordChangeRequest"]>;
 export declare const validatePasswordChangedResponse: ContractValidator<components["schemas"]["PasswordChangedResponse"]>;
+export declare const validatePasswordLockRequest: ContractValidator<components["schemas"]["PasswordLockRequest"]>;
 export declare const validatePasswordSelfChange: ContractValidator<components["schemas"]["PasswordSelfChange"]>;
 export declare const validateRecordingBatchProtectionRequest: ContractValidator<components["schemas"]["RecordingBatchProtectionRequest"]>;
 export declare const validateRecordingBatchProtectionResult: ContractValidator<components["schemas"]["RecordingBatchProtectionResult"]>;

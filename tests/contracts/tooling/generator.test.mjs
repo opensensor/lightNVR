@@ -125,3 +125,15 @@ for (const kind of ['non_scoped_identity','identity_management']) test(`${kind} 
   await writeFile(candidate,JSON.stringify(doc));
   assert.equal((await generateArtifacts(candidate)).size,4);
 });
+
+for (const kind of ['non_scoped_global','non_scoped_camera']) test(`${kind} validates action requirements and rejects unknown metadata`, async () => {
+  const doc=JSON.parse(await readFile(source,'utf8'));
+  const predicate={version:1,kind,requirements:[{action:kind==='non_scoped_global'?'users.manage':'live.view',resource:'raw'}]};
+  doc.paths['/api/fixture'].get['x-lightnvr-authorization']=predicate;
+  const candidate=path.join(directory,`${kind}.json`);await writeFile(candidate,JSON.stringify(doc));
+  assert.equal((await generateArtifacts(candidate)).size,4);
+  for(const invalid of [{...predicate,requirements:[]},{...predicate,requirements:[{action:'unknown.action',resource:'raw'}]},{...predicate,extra:true},...(kind==='non_scoped_global'?[{...predicate,requirements:[{action:'users.manage',resource:'live'}]}]:[])]){
+    doc.paths['/api/fixture'].get['x-lightnvr-authorization']=invalid;await writeFile(candidate,JSON.stringify(doc));
+    await assert.rejects(generateArtifacts(candidate));
+  }
+});

@@ -11,7 +11,6 @@
  * fails to compile. A spread of a wider object is not caught, as with any type.
  */
 import type { t as translate } from '../i18n.ts';
-import type { User } from './core.ts';
 import type { components } from '../../generated/api/schema';
 
 export type Translate = typeof translate;
@@ -27,9 +26,7 @@ export type ApiRequestError = Error & { status?: number };
 // ---------------------------------------------------------------------------
 
 /** GET /api/auth/users */
-export interface UsersResponse {
-  users?: User[];
-}
+export type UsersResponse = components['schemas']['AdminUsers'];
 
 /** The add and edit form. `role` is the numeric role, as on User. */
 export interface UserFormData {
@@ -49,11 +46,7 @@ export interface UserWritePayload extends Omit<UserFormData, 'role' | 'allowed_l
 }
 
 /** POST /api/auth/users/:id/login-lockout/clear */
-export interface ClearLoginLockoutResponse {
-  success?: boolean;
-  cleared?: boolean;
-  message?: string;
-}
+export type ClearLoginLockoutResponse = components['schemas']['LoginLockoutCleared'];
 
 /** GET /api/auth/users/:id/totp/status */
 export type TotpStatusResponse = components['schemas']['TotpStatusResponse'];
@@ -78,20 +71,9 @@ export interface CameraSelector {
 }
 
 /** Item of GET /api/authorization/actions. The flags may be absent on older servers. */
-export interface AuthorizationAction {
-  key: string;
-  category: string;
-  description: string;
-  camera_scoped?: boolean;
-  destructive?: boolean;
-  enforced?: boolean;
-  mask_bit?: number;
-}
+export type AuthorizationAction = components['schemas']['AdminActionCatalogEntry'];
 
-export interface AuthorizationActionsResponse {
-  actions?: AuthorizationAction[];
-  count?: number;
-}
+export type AuthorizationActionsResponse = components['schemas']['AdminActionCatalog'];
 
 export interface AuthorizationActionGroup {
   category: string;
@@ -99,30 +81,15 @@ export interface AuthorizationActionGroup {
 }
 
 /** Item of GET /api/authorization/roles. */
-export interface AuthorizationRole {
-  uuid: string;
-  name: string;
-  description: string;
-  builtin: boolean;
-  actions: string[];
-  created_at: number;
-  updated_at: number;
-}
+export type AuthorizationRole = components['schemas']['AdminAuthorizationRole'];
 
-export interface AuthorizationRolesResponse {
-  policy_version?: number;
-  count?: number;
-  roles?: AuthorizationRole[];
-}
+export type AuthorizationRolesResponse = components['schemas']['AdminRoles'];
 
 /** POST and PUT /api/authorization/roles. */
-export interface AuthorizationRoleMutationResponse {
-  policy_version?: number;
-  role?: AuthorizationRole;
-}
+export type AuthorizationRoleMutationResponse = components['schemas']['AdminRoleWritten'];
 
 /** RoleManagerModal's editable copy of a role. */
-export type RoleDraft = Pick<AuthorizationRole, 'uuid' | 'name' | 'description' | 'actions' | 'builtin'>;
+export type RoleDraft = Pick<AuthorizationRole, 'uuid' | 'name' | 'description' | 'builtin'> & {actions: string[]};
 
 /** The `scope` object on grants and tokens. The server sends both nullable fields. */
 export interface AccessScope {
@@ -131,24 +98,10 @@ export interface AccessScope {
   collection_uuid: string | null;
 }
 
-export interface AuthorizationGrant {
-  uuid: string;
-  role_uuid: string;
-  role: string;
-  enabled: boolean;
-  created_at: number;
-  updated_at: number;
-  scope: AccessScope;
-}
+export type AuthorizationGrant = components['schemas']['AdminPolicyGrant'];
 
 /** GET and PUT /api/authorization/users/:id */
-export interface UserPolicyResponse {
-  user_id?: number;
-  mode?: string;
-  policy_version?: number;
-  grant_count?: number;
-  grants?: AuthorizationGrant[];
-}
+export type UserPolicyResponse = components['schemas']['AdminUserPolicy'];
 
 /** AccessPolicyModal's editable copy of a grant. */
 export interface DraftGrant {
@@ -168,16 +121,7 @@ export interface PolicyDraft {
 }
 
 /** POST /api/authorization/simulate. Only the fields the panel reads are required. */
-export interface AuthorizationSimulationResult {
-  allowed: boolean;
-  action?: string;
-  source: string;
-  policy_version: number;
-  explanation: string;
-  grant_uuid?: string | null;
-  role_uuid?: string | null;
-  role: string;
-}
+export type AuthorizationSimulationResult = components['schemas']['AdminSimulation'];
 
 /** Item of GET /api/camera-collections. */
 export interface AccessCollection {
@@ -260,10 +204,7 @@ export interface ApiTokenCreateResponse {
 }
 
 /** POST /api/auth/users/:id/api-key. `api_key` is the one-time secret. */
-export interface LegacyApiKeyResponse {
-  success?: boolean;
-  api_key: string;
-}
+export type LegacyApiKeyResponse = components['schemas']['LegacyApiKeyCreated'];
 
 /** The value on screen in ApiKeyModal's reveal step. Component state only. */
 export interface RevealedSecret {
@@ -289,29 +230,9 @@ export interface TokenDraft {
 // ---------------------------------------------------------------------------
 
 /** Item of GET /api/audit/events. `details` is free-form JSON per event type. */
-export interface AuditEvent {
-  uuid: string;
-  occurred_at: number;
-  request_id: string;
-  principal_user_id: number | null;
-  principal_username: string;
-  auth_method: string;
-  api_token_uuid: string | null;
-  action: string;
-  target_type: string | null;
-  target_uuid: string | null;
-  outcome: string;
-  remote_address: string;
-  details: Record<string, unknown> | null;
-}
+export type AuditEvent = components['schemas']['AuditEvent'];
 
-export interface AuditEventsPage {
-  page: number;
-  page_size: number;
-  count: number;
-  total: number;
-  events: AuditEvent[];
-}
+export type AuditEventsPage = components['schemas']['AuditEventsPage'];
 
 /** The filter form. Every value is text, including the datetime-local bounds. */
 export interface AuditFilters {
@@ -332,12 +253,7 @@ export type AuditQueryFilters = Partial<Omit<AuditFilters, 'since' | 'until'>> &
 };
 
 /** Item of AuditSettings.allowed_decision_modes. */
-export interface AuditDecisionModeEntry {
-  action: string;
-  category: string;
-  description: string;
-  mode: string;
-}
+export type AuditDecisionModeEntry = components['schemas']['AuditDecisionMode'];
 
 export interface AuditDecisionModeGroup {
   category: string;
@@ -345,12 +261,7 @@ export interface AuditDecisionModeGroup {
 }
 
 /** GET and PUT /api/audit/settings. `pruned_events` follows a retention change. */
-export interface AuditSettings {
-  retention_days: number;
-  summary_window_seconds: number;
-  pruned_events?: number;
-  allowed_decision_modes: AuditDecisionModeEntry[];
-}
+export type AuditSettings = components['schemas']['AuditSettings'];
 
 export interface AuditSummaryDetails {
   count: number;

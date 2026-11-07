@@ -40,7 +40,7 @@ export function validateTokenDraft(
   if (!Array.isArray(draft.actionKeys) || draft.actionKeys.length === 0) {
     return 'missing_actions';
   }
-  const actionsByKey = actions && new Map(actions.map((action) => [action.key, action]));
+  const actionsByKey = actions && new Map<string, AuthorizationAction>(actions.map((action) => [action.key, action]));
   if (actionsByKey && draft.actionKeys.some((key) => !actionsByKey.has(key))) {
     return 'invalid_action';
   }

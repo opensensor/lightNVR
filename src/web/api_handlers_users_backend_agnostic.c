@@ -243,11 +243,18 @@ static bool provision_new_user_policy(int64_t user_id, user_role_t role) {
 static int check_generate_api_key_permission(const http_request_t *req, http_response_t *res, int64_t target_user_id) {
     user_t user;
     if (httpd_check_action_access(req, &user)) {
+        /* Legacy keys carry the owner's unrestricted authority. A bounded token
+         * must never exchange users.manage for an unrestricted credential. */
+        if (user.authenticated_via_scoped_token) {
+            http_response_set_json_error(res, 403,
+                "Scoped tokens cannot generate legacy API keys");
+            return 0;
+        }
         if (principal_holds_global_action(&user, AUTHZ_USERS_MANAGE)) {
             return 1;
         }
 
-        if (!user.authenticated_via_scoped_token && user.id == target_user_id) {
+        if (user.id == target_user_id) {
             return 1;
         }
 

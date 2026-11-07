@@ -35,6 +35,14 @@
     {
       "name": "Recording actions",
       "description": "Capture-identity protection, tags, deletion and export jobs. Job access remains creator/token-bound; cancellation is unsupported."
+    },
+    {
+      "name": "Identity administration",
+      "description": "User, policy and audit administration."
+    },
+    {
+      "name": "Audit",
+      "description": "User, policy and audit administration."
     }
   ],
   "x-lightnvr-coverage": {
@@ -128,9 +136,29 @@
       "deleteFloorPlan",
       "getFloorPlanBackground",
       "setFloorPlanBackground",
-      "deleteFloorPlanBackground"
+      "deleteFloorPlanBackground",
+      "listAdminUsers",
+      "createAdminUser",
+      "getAdminUser",
+      "updateAdminUser",
+      "deleteAdminUser",
+      "createLegacyApiKey",
+      "setUserPasswordLock",
+      "clearUserLoginLockout",
+      "listAuthorizationActions",
+      "simulateAuthorization",
+      "listAuthorizationRoles",
+      "createAuthorizationRole",
+      "updateAuthorizationRole",
+      "deleteAuthorizationRole",
+      "getUserAuthorizationPolicy",
+      "setUserAuthorizationPolicy",
+      "listAuditEvents",
+      "exportAuditEvents",
+      "getAuditSettings",
+      "updateAuditSettings"
     ],
-    "description": "Partial contract coverage: Streams pilot, identity/token, recording reads and twelve recording action/job operations. The covered operation list is independent of authorization; omitted projected operations may be covered but denied. Uncovered APIs are not permission decisions. Identity includes session/trusted-device lifecycle, MFA completion/enrollment, password change and legacy logout. Fleet organization and live workspace contracts add 31 reviewed operations including binary plan backgrounds."
+    "description": "Reviewed operations are enumerated in covered_operations. Discovery is filtered independently by current authority; coverage never grants access."
   },
   "x-lightnvr-validators": [
     "StreamSummaryPage",
@@ -246,7 +274,33 @@
     "FloorPlan",
     "FloorPlansResponse",
     "FloorPlanDeletion",
-    "CameraUuid"
+    "CameraUuid",
+    "AdminUser",
+    "AdminUsers",
+    "AdminUserCreate",
+    "AdminUserUpdate",
+    "AdminUserDeleted",
+    "LegacyApiKeyCreated",
+    "PasswordLockRequest",
+    "LoginLockoutCleared",
+    "AdminActionCatalogEntry",
+    "AdminActionCatalog",
+    "AdminAuthorizationRole",
+    "AdminRoles",
+    "AdminRoleWrite",
+    "AdminRoleWritten",
+    "AdminVersionRequest",
+    "AdminRoleDeleted",
+    "AdminPolicyGrant",
+    "AdminUserPolicy",
+    "AdminPolicyWrite",
+    "AdminSimulationRequest",
+    "AdminSimulation",
+    "AuditEvent",
+    "AuditEventsPage",
+    "AuditDecisionMode",
+    "AuditSettings",
+    "AuditSettingsWrite"
   ],
   "paths": {
     "/api/streams": {
@@ -10505,6 +10559,2514 @@
           }
         ]
       }
+    },
+    "/api/auth/users": {
+      "get": {
+        "operationId": "listAdminUsers",
+        "summary": "List admin users",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUsers"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAdminUser",
+        "summary": "Create admin user",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "legacyApiKeyHeader": []
+          },
+          {
+            "legacyBearer": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires a non-scoped users.manage principal. Initial legacy role is converted to built-in policy grants; the caller may only delegate actions it holds. Returns 200. New users are provisioned inactive until policy and CIDR rules have been applied.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUserCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/users/{id}": {
+      "get": {
+        "operationId": "getAdminUser",
+        "summary": "Get admin user",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateAdminUser",
+        "summary": "Update admin user",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "identity_management"
+        },
+        "description": "A non-scoped owner may edit its username/email. Other fields and other users require effective users.manage. Role is rejected; use versioned policy management. CIDR input is validated before saving. Password changes invalidate existing sessions/challenges/trusted devices; locked passwords cannot change.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUserUpdate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteAdminUser",
+        "summary": "Delete admin user",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires users.manage. Cannot delete yourself or the last legacy administrator; deletion and credential revocation are durable.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ]
+      }
+    },
+    "/api/auth/users/{id}/api-key": {
+      "post": {
+        "operationId": "createLegacyApiKey",
+        "summary": "Create legacy api key",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "legacyApiKeyHeader": []
+          },
+          {
+            "legacyBearer": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_identity"
+        },
+        "description": "Only a non-scoped owner or non-scoped users.manage principal may rotate the legacy key. Scoped tokens are always forbidden, including tokens with users.manage. The unrestricted key is returned once; lists never expose it. Discovery does not grant access to another user.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyApiKeyCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ]
+      }
+    },
+    "/api/auth/users/{id}/password-lock": {
+      "put": {
+        "operationId": "setUserPasswordLock",
+        "summary": "Set user password lock",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordLockRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ]
+      }
+    },
+    "/api/auth/users/{id}/login-lockout/clear": {
+      "post": {
+        "operationId": "clearUserLoginLockout",
+        "summary": "Clear user login lockout",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginLockoutCleared"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ]
+      }
+    },
+    "/api/authorization/actions": {
+      "get": {
+        "operationId": "listAuthorizationActions",
+        "summary": "List authorization actions",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionCatalog"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/authorization/simulate": {
+      "post": {
+        "operationId": "simulateAuthorization",
+        "summary": "Simulate authorization",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires users.manage. Evaluates the target user, not a token, against a concrete existing camera for camera-scoped actions or no camera for global actions. Does not modify grants; an audit event is appended.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSimulation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSimulationRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/authorization/roles": {
+      "get": {
+        "operationId": "listAuthorizationRoles",
+        "summary": "List authorization roles",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "legacyApiKeyHeader": []
+          },
+          {
+            "legacyBearer": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRoles"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAuthorizationRole",
+        "summary": "Create authorization role",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "legacyApiKeyHeader": []
+          },
+          {
+            "legacyBearer": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "201": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRoleWritten"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminRoleWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/authorization/roles/{uuid}": {
+      "put": {
+        "operationId": "updateAuthorizationRole",
+        "summary": "Update authorization role",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "legacyApiKeyHeader": []
+          },
+          {
+            "legacyBearer": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRoleWritten"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminRoleWrite"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "description": "Role UUID.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteAuthorizationRole",
+        "summary": "Delete authorization role",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "legacyApiKeyHeader": []
+          },
+          {
+            "legacyBearer": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRoleDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVersionRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "description": "Role UUID.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/authorization/users/{id}": {
+      "get": {
+        "operationId": "getUserAuthorizationPolicy",
+        "summary": "Get user authorization policy",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "legacyApiKeyHeader": []
+          },
+          {
+            "legacyBearer": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "setUserAuthorizationPolicy",
+        "summary": "Set user authorization policy",
+        "tags": [
+          "Identity administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "legacyApiKeyHeader": []
+          },
+          {
+            "legacyBearer": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "users.manage",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires a non-scoped users.manage principal, current expected_policy_version, and mode policy. Replaces the grants atomically. Delegated actions and camera scope cannot exceed caller authority. Self-lockout is rejected. Effective permissions and scoped-token intersections are re-evaluated on subsequent requests.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPolicyWrite"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ]
+      }
+    },
+    "/api/audit/events": {
+      "get": {
+        "operationId": "listAuditEvents",
+        "summary": "List audit events",
+        "tags": [
+          "Audit"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "One-based page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "Page size, including CSV exports.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Nonnegative signed 64-bit integer; since must not exceed a nonzero until.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "description": "Nonnegative signed 64-bit integer; since must not exceed a nonzero until.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "principal_user_id",
+            "in": "query",
+            "description": "Nonnegative signed 64-bit integer; since must not exceed a nonzero until.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target_uuid",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/audit/events/export": {
+      "get": {
+        "operationId": "exportAuditEvents",
+        "summary": "Export audit events",
+        "tags": [
+          "Audit"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "One filtered page as UTF-8 CSV, quoted cells and neutralized spreadsheet formula prefixes. This is not an export of all pages.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string",
+                  "const": "attachment; filename=lightnvr-audit.csv"
+                }
+              },
+              "X-Total-Count": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "One-based page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "Page size, including CSV exports.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Nonnegative signed 64-bit integer; since must not exceed a nonzero until.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "description": "Nonnegative signed 64-bit integer; since must not exceed a nonzero until.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "principal_user_id",
+            "in": "query",
+            "description": "Nonnegative signed 64-bit integer; since must not exceed a nonzero until.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target_uuid",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "description": "Trimmed exact filter; native field capacity applies.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/audit/settings": {
+      "get": {
+        "operationId": "getAuditSettings",
+        "summary": "Get audit settings",
+        "tags": [
+          "Audit"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateAuditSettings",
+        "summary": "Update audit settings",
+        "tags": [
+          "Audit"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires system.admin. All submitted fields are validated before writes. Retention saves and pruning occur before decision modes: on internal failure some work may have applied. Read settings before deciding to retry. Successful retention changes include pruned_events.",
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, query or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or credential invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Policy revision, self-lockout, immutable role, duplicate or in-use conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database or internal failure; a mutation may already have applied. Read current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditSettingsWrite"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -16771,6 +19333,973 @@
       "CameraUuid": {
         "type": "string",
         "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      },
+      "AdminUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "username": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3
+            ]
+          },
+          "role_name": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user",
+              "viewer",
+              "api",
+              "unknown"
+            ]
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "integer"
+          },
+          "last_login": {
+            "type": "integer"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "password_change_locked": {
+            "type": "boolean"
+          },
+          "must_change_password": {
+            "type": "boolean"
+          },
+          "totp_enabled": {
+            "type": "boolean"
+          },
+          "authorization_mode": {
+            "type": "string"
+          },
+          "allowed_login_cidrs": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "email",
+          "role",
+          "role_name",
+          "created_at",
+          "updated_at",
+          "last_login",
+          "is_active",
+          "password_change_locked",
+          "must_change_password",
+          "totp_enabled",
+          "authorization_mode",
+          "allowed_login_cidrs"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUsers": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminUser"
+            }
+          }
+        },
+        "required": [
+          "users"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUserCreate": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 32
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3
+            ]
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "allowed_login_cidrs": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "additionalProperties": true
+      },
+      "AdminUserUpdate": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 32
+          },
+          "password": {
+            "anyOf": [
+              {
+                "const": ""
+              },
+              {
+                "type": "string",
+                "minLength": 8
+              }
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "allowed_login_cidrs": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": false,
+          "allowed_tags": false
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "AdminUserDeleted": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "LegacyApiKeyCreated": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "api_key": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "success",
+          "api_key"
+        ],
+        "additionalProperties": false
+      },
+      "PasswordLockRequest": {
+        "type": "object",
+        "properties": {
+          "locked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "locked"
+        ],
+        "additionalProperties": true
+      },
+      "LoginLockoutCleared": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "cleared": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "cleared",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "AdminActionCatalogEntry": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/AuthorizationAction"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "camera_scoped": {
+            "type": "boolean"
+          },
+          "destructive": {
+            "type": "boolean"
+          },
+          "enforced": {
+            "type": "boolean"
+          },
+          "mask_bit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "category",
+          "description",
+          "camera_scoped",
+          "destructive",
+          "enforced",
+          "mask_bit"
+        ],
+        "additionalProperties": false
+      },
+      "AdminActionCatalog": {
+        "type": "object",
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminActionCatalogEntry"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "actions",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "AdminAuthorizationRole": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorizationAction"
+            }
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "description",
+          "builtin",
+          "actions",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false
+      },
+      "AdminRoles": {
+        "type": "object",
+        "properties": {
+          "policy_version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminAuthorizationRole"
+            }
+          }
+        },
+        "required": [
+          "policy_version",
+          "count",
+          "roles"
+        ],
+        "additionalProperties": false
+      },
+      "AdminRoleWrite": {
+        "type": "object",
+        "properties": {
+          "expected_policy_version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127,
+            "pattern": "\\S"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorizationAction"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "expected_policy_version",
+          "name",
+          "actions"
+        ],
+        "additionalProperties": true
+      },
+      "AdminRoleWritten": {
+        "type": "object",
+        "properties": {
+          "policy_version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "role": {
+            "$ref": "#/components/schemas/AdminAuthorizationRole"
+          }
+        },
+        "required": [
+          "policy_version",
+          "role"
+        ],
+        "additionalProperties": false
+      },
+      "AdminVersionRequest": {
+        "type": "object",
+        "properties": {
+          "expected_policy_version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "expected_policy_version"
+        ],
+        "additionalProperties": true
+      },
+      "AdminRoleDeleted": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "policy_version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "success",
+          "policy_version"
+        ],
+        "additionalProperties": false
+      },
+      "AdminPolicyGrant": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "role_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "role": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ApiTokenStoredScope"
+          }
+        },
+        "required": [
+          "uuid",
+          "role_uuid",
+          "role",
+          "enabled",
+          "created_at",
+          "updated_at",
+          "scope"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUserPolicy": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "legacy",
+              "policy"
+            ]
+          },
+          "policy_version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "grant_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminPolicyGrant"
+            }
+          }
+        },
+        "required": [
+          "user_id",
+          "mode",
+          "policy_version",
+          "grant_count",
+          "grants"
+        ],
+        "additionalProperties": false
+      },
+      "AdminPolicyWrite": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "const": "policy"
+          },
+          "expected_policy_version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role_uuid": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "scope": {
+                  "$ref": "#/components/schemas/ApiTokenScope"
+                }
+              },
+              "required": [
+                "role_uuid",
+                "scope"
+              ],
+              "additionalProperties": true
+            },
+            "maxItems": 256
+          }
+        },
+        "required": [
+          "mode",
+          "expected_policy_version",
+          "grants"
+        ],
+        "additionalProperties": true
+      },
+      "AdminSimulationRequest": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "user_id": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "live.view",
+                  "audio.listen",
+                  "audio.talk",
+                  "recordings.replay",
+                  "recordings.export",
+                  "snapshot.create",
+                  "ptz.control",
+                  "evidence.protect",
+                  "recording.delete",
+                  "camera.configure",
+                  "fleet.execute_job",
+                  "lpr.read",
+                  "lpr.search",
+                  "lpr.export",
+                  "lpr.delete"
+                ]
+              },
+              "camera_uuid": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              }
+            },
+            "required": [
+              "user_id",
+              "action",
+              "camera_uuid"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "properties": {
+              "user_id": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "storage.configure",
+                  "events.configure",
+                  "users.manage",
+                  "system.admin"
+                ]
+              },
+              "camera_uuid": false
+            },
+            "required": [
+              "user_id",
+              "action"
+            ],
+            "additionalProperties": true
+          }
+        ]
+      },
+      "AdminSimulation": {
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "action": {
+            "$ref": "#/components/schemas/AuthorizationAction"
+          },
+          "source": {
+            "type": "string"
+          },
+          "policy_version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "grant_uuid": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role_uuid": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "principal": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "username": {
+                "type": "string"
+              },
+              "authorization_mode": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "username",
+              "authorization_mode"
+            ],
+            "additionalProperties": false
+          },
+          "resource": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "camera_uuid": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "camera_uuid",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "allowed",
+          "action",
+          "source",
+          "policy_version",
+          "explanation",
+          "grant_uuid",
+          "role_uuid",
+          "role",
+          "principal",
+          "resource"
+        ],
+        "additionalProperties": false
+      },
+      "AuditEvent": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "occurred_at": {
+            "type": "integer"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "principal_user_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "principal_username": {
+            "type": "string"
+          },
+          "auth_method": {
+            "type": "string"
+          },
+          "api_token_uuid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "target_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_uuid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "remote_address": {
+            "type": "string"
+          },
+          "details": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "uuid",
+          "occurred_at",
+          "request_id",
+          "principal_user_id",
+          "principal_username",
+          "auth_method",
+          "api_token_uuid",
+          "action",
+          "target_type",
+          "target_uuid",
+          "outcome",
+          "remote_address",
+          "details"
+        ],
+        "additionalProperties": false
+      },
+      "AuditEventsPage": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            }
+          }
+        },
+        "required": [
+          "page",
+          "page_size",
+          "count",
+          "total",
+          "events"
+        ],
+        "additionalProperties": false
+      },
+      "AuditDecisionMode": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/AuthorizationAction"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "summarize",
+              "record"
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "category",
+          "description",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "AuditSettings": {
+        "type": "object",
+        "properties": {
+          "retention_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "summary_window_seconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "allowed_decision_modes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditDecisionMode"
+            }
+          },
+          "pruned_events": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "retention_days",
+          "summary_window_seconds",
+          "allowed_decision_modes"
+        ],
+        "additionalProperties": false
+      },
+      "AuditSettingsWrite": {
+        "type": "object",
+        "properties": {
+          "retention_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "allowed_decision_modes": {
+            "type": "object",
+            "propertyNames": {
+              "$ref": "#/components/schemas/AuthorizationAction"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "off",
+                "summarize",
+                "record"
+              ]
+            }
+          }
+        },
+        "required": [],
+        "additionalProperties": true,
+        "anyOf": [
+          {
+            "required": [
+              "retention_days"
+            ],
+            "properties": {
+              "retention_days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3650
+              }
+            }
+          },
+          {
+            "required": [
+              "allowed_decision_modes"
+            ],
+            "properties": {
+              "allowed_decision_modes": {
+                "type": "object",
+                "propertyNames": {
+                  "$ref": "#/components/schemas/AuthorizationAction"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "off",
+                    "summarize",
+                    "record"
+                  ]
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }

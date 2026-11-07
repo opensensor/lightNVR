@@ -28,7 +28,7 @@ static const char upgrade_headers[] =
     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n";
 static const char upgrade_response[] =
     "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-    "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
+    "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nX-LightNVR-Media-Policy: 1\r\n\r\n";
 /* A masked text frame containing {"type":"mse"}. */
 static const unsigned char mse_request[] = {
     0x81, 0x8e, 0, 0, 0, 0, '{', '"', 't', 'y', 'p', 'e', '"', ':', '"', 'm', 's', 'e', '"', '}'
