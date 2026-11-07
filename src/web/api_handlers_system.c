@@ -524,21 +524,24 @@ static bool get_detector_memory_usage(unsigned long long *memory_usage) {
         pid_t candidate = (pid_t)strtol(d, &ep, 10);
         if (*ep != '\0' || candidate <= 0 || candidate == self) continue;
 
-        char cmdline_path[64];
-        snprintf(cmdline_path, sizeof(cmdline_path), "/proc/%d/cmdline", candidate);
-        FILE *cf = fopen(cmdline_path, "r");
+        char comm_path[64];
+        snprintf(comm_path, sizeof(comm_path), "/proc/%d/comm", candidate);
+        FILE *cf = fopen(comm_path, "r");
         if (!cf) continue;
 
-        char cmdline[512] = {0};
-        size_t bytes = fread(cmdline, 1, sizeof(cmdline) - 1, cf);
+        char comm[256] = {0};
+        if (!fgets(comm, sizeof(comm), cf)) {
+            fclose(cf);
+            continue;
+        }
         fclose(cf);
 
-        // cmdline fields are NUL-separated — replace with spaces for strstr
-        for (size_t i = 0; i < bytes; i++) {
-            if (cmdline[i] == '\0') cmdline[i] = ' ';
+        size_t len = strlen(comm);
+        if (len > 0 && comm[len - 1] == '\n') {
+            comm[len - 1] = '\0';
         }
 
-        if (strstr(cmdline, "light-object-detect")) {
+        if (strcmp(comm, "light-object-detect") == 0) {
             pid = candidate;
             break;
         }
