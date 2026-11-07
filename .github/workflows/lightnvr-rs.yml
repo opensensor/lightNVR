@@ -1,0 +1,178 @@
+name: lightnvr-rs
+
+# rust/ is generated from the C sources and checked in. On every relevant PR
+# this workflow proves the C still converts, builds and boots as Rust, then
+# commits the regenerated rust/ back to the PR branch. Humans never edit rust/.
+
+on:
+  pull_request:
+    branches: [main]
+    paths: &inputs
+      - 'src/**'
+      - 'include/**'
+      - 'third_party/faac'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'rust/**'
+      - 'tools/rust-transpile/**'
+      - 'tests/contracts/fixture-server.mjs'
+      - '.github/workflows/lightnvr-rs.yml'
+  push:
+    branches: [main]
+    paths: *inputs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lightnvr-rs-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  BOT_NAME: github-actions[bot]
+  BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+  IMAGE: lightnvr-rs-transpile:ci
+
+jobs:
+  guard:
+    name: rust/ is not hand-edited
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: tools/rust-transpile/guard.sh "origin/${{ github.base_ref }}" HEAD
+        env:
+          LIGHTNVR_RS_BOT_EMAIL: ${{ env.BOT_EMAIL }}
+
+  transpile:
+    name: C → Rust conversion, build and smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Check out the branch itself (not the merge ref) so we can push to it.
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          # A PAT/App token makes the bot commit trigger CI on the new head.
+          token: ${{ secrets.LIGHTNVR_RS_BOT_TOKEN || github.token }}
+          submodules: false
+
+      - name: Checkout FAAC
+        run: git submodule update --init --depth 1 third_party/faac
+
+      - name: Read toolchain pins
+        id: pins
+        run: |
+          for key in c2rust_revision rust_toolchain clang_major; do
+            echo "$key=$(jq -r ".$key" tools/rust-transpile/toolchain.json)" >> "$GITHUB_OUTPUT"
+          done
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build pinned transpile image
+        uses: docker/build-push-action@v6
+        with:
+          context: tools/rust-transpile
+          file: tools/rust-transpile/Dockerfile
+          tags: ${{ env.IMAGE }}
+          load: true
+          build-args: |
+            C2RUST_REVISION=${{ steps.pins.outputs.c2rust_revision }}
+            RUST_TOOLCHAIN=${{ steps.pins.outputs.rust_toolchain }}
+            CLANG_MAJOR=${{ steps.pins.outputs.clang_major }}
+          cache-from: type=gha,scope=lightnvr-rs-transpile
+          cache-to: type=gha,mode=max,scope=lightnvr-rs-transpile
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/cargo-home
+          key: lightnvr-rs-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: lightnvr-rs-cargo-
+
+      - name: Prepare cargo home
+        run: mkdir -p "$RUNNER_TEMP/cargo-home"
+
+      - name: Regenerate rust/ from C
+        run: &in_image >-
+          docker run --rm --user "$(id -u):$(id -g)"
+          -e HOME=/tmp -e CARGO_HOME=/cargo-home -e npm_config_cache=/tmp/npm-cache
+          -v "$GITHUB_WORKSPACE:/work" -v "$RUNNER_TEMP/cargo-home:/cargo-home" -w /work
+          "$IMAGE" bash -euo pipefail -c "$STEP"
+        env:
+          STEP: python3 tools/rust-transpile/generate.py --native
+
+      - name: Build lightnvr-rs
+        run: *in_image
+        env:
+          STEP: cargo build --release --manifest-path rust/Cargo.toml
+
+      - name: Smoke and contract tests against lightnvr-rs
+        run: *in_image
+        env:
+          STEP: >-
+            npm ci --ignore-scripts &&
+            node tools/rust-transpile/smoke.mjs rust/target/release/lightnvr-rs &&
+            LIGHTNVR_CONTRACT_BIN=/work/rust/target/release/lightnvr-rs
+            npx playwright test -c tests/contracts/playwright.config.ts --project=api
+            --workers=1 --retries=0 --forbid-only --reporter=list
+            authentication.api discovery.api
+
+      - name: Detect regenerated changes
+        id: diff
+        run: |
+          git add -A rust/
+          if git diff --cached --quiet -- rust/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "rust/ already matches the C sources."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --cached --stat -- rust/ | tail -n 20
+            git diff --cached --binary -- rust/ > "$RUNNER_TEMP/lightnvr-rs-regenerate.patch"
+          fi
+
+      - name: Commit regenerated rust/ to the PR
+        if: steps.diff.outputs.changed == 'true' && github.event_name == 'pull_request' && env.SAME_REPO == 'true'
+        run: |
+          git -c user.name="$BOT_NAME" -c user.email="$BOT_EMAIL" \
+            commit -m "lightnvr-rs: regenerate from C" \
+                   -m "Generated by tools/rust-transpile/generate.py for ${GITHUB_SHA::7}."
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
+      - name: Open sync PR for main
+        if: steps.diff.outputs.changed == 'true' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.LIGHTNVR_RS_BOT_TOKEN || github.token }}
+        run: |
+          branch=bot/lightnvr-rs-sync
+          git switch -C "$branch"
+          git -c user.name="$BOT_NAME" -c user.email="$BOT_EMAIL" \
+            commit -m "lightnvr-rs: regenerate from C" -m "Sync rust/ with ${GITHUB_SHA::7}."
+          git push --force origin "$branch"
+          gh pr view "$branch" >/dev/null 2>&1 || gh pr create --head "$branch" --base main \
+            --title "lightnvr-rs: regenerate from C" \
+            --body "rust/ drifted from the C sources on main (usually a merged fork PR). Generated by the lightnvr-rs workflow; review the C change, not this diff."
+
+      - name: Upload regeneration patch
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lightnvr-rs-regenerate-patch
+          path: ${{ runner.temp }}/lightnvr-rs-regenerate.patch
+          retention-days: 14
+
+      - name: Explain fork PR result
+        if: steps.diff.outputs.changed == 'true' && github.event_name == 'pull_request' && env.SAME_REPO != 'true'
+        run: |
+          echo "::notice::Your C changes convert, build and pass smoke tests as lightnvr-rs."
+          echo "::notice::rust/ will be regenerated automatically after merge (CI cannot push to forks)."

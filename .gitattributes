@@ -13,3 +13,6 @@
 ## Deterministic contract outputs; review their canonical source and generator.
 include/web/openapi_document_generated.h linguist-generated=true
 web/generated/api/* linguist-generated=true
+
+## lightnvr-rs: generated from C; collapsed in PR diffs, excluded from language stats
+rust/** linguist-generated=true

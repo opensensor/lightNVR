@@ -1,0 +1,96 @@
+name: lightnvr-rs release
+
+# Publishes the generated Rust backend next to the existing C artifacts.
+# Names mirror the C packages: lightnvr_<ver>_sid_amd64.deb ->
+# lightnvr-rs_<ver>_sid_amd64.tar.gz. The translation is x86_64-specific
+# (C2Rust inlines target headers), so only linux/amd64 is produced for now.
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  IMAGE: lightnvr-rs-transpile:release
+
+jobs:
+  build:
+    name: Build lightnvr-rs (sid/amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+      - name: Checkout FAAC
+        run: git submodule update --init --depth 1 third_party/faac
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == tag ]] || version="$(grep -m1 -Po '^version = "\K[^"]+' rust/Cargo.toml)-${GITHUB_SHA::7}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=lightnvr-rs_${version}_sid_amd64" >> "$GITHUB_OUTPUT"
+          for key in c2rust_revision rust_toolchain clang_major; do
+            echo "$key=$(jq -r ".$key" tools/rust-transpile/toolchain.json)" >> "$GITHUB_OUTPUT"
+          done
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: tools/rust-transpile
+          file: tools/rust-transpile/Dockerfile
+          tags: ${{ env.IMAGE }}
+          load: true
+          build-args: |
+            C2RUST_REVISION=${{ steps.version.outputs.c2rust_revision }}
+            RUST_TOOLCHAIN=${{ steps.version.outputs.rust_toolchain }}
+            CLANG_MAJOR=${{ steps.version.outputs.clang_major }}
+          cache-from: type=gha,scope=lightnvr-rs-transpile
+
+      - name: Verify rust/ matches this tag's C, build and smoke test
+        env:
+          LIGHTNVR_GIT_COMMIT: ${{ github.sha }}
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e CARGO_HOME=/tmp/cargo-home \
+            -e LIGHTNVR_GIT_COMMIT="${LIGHTNVR_GIT_COMMIT::7}" -v "$GITHUB_WORKSPACE:/work" -w /work "$IMAGE" \
+            bash -euo pipefail -c '
+              python3 tools/rust-transpile/generate.py --native --check
+              cargo build --release --locked --manifest-path rust/Cargo.toml
+              npm ci --ignore-scripts
+              node tools/rust-transpile/smoke.mjs rust/target/release/lightnvr-rs'
+
+      - name: Package
+        run: |
+          name="${{ steps.version.outputs.name }}"
+          mkdir -p "dist/$name/bin" "dist/$name/share/lightnvr-rs"
+          install -m 0755 rust/target/release/lightnvr-rs "dist/$name/bin/lightnvr-rs"
+          cp rust/MANIFEST.json "dist/$name/share/lightnvr-rs/"
+          cp -r db/migrations "dist/$name/share/lightnvr-rs/migrations"
+          cp -r config "dist/$name/share/lightnvr-rs/config"
+          cat > "dist/$name/README" <<'EOF'
+          lightnvr-rs: the LightNVR backend mechanically translated from C with C2Rust.
+          Same configuration, database and web UI as lightnvr. Unsafe, C-shaped Rust;
+          experimental. Links the same native libraries (FFmpeg, SQLite, libuv, curl,
+          mbedTLS, cJSON, mosquitto) and targets Debian sid on amd64.
+          EOF
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lightnvr-rs-sid-amd64
+          path: dist/*.tar.gz*
+
+      - name: Attach to GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
