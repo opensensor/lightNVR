@@ -227,21 +227,24 @@ class ToastContainer extends Component<ToastContainerProps, ToastContainerState>
     
     // Set timeout to auto-remove the toast after duration
     if (duration > 0) {
+      const exitAnimationDuration = 300;
+      const leadTime = Math.min(exitAnimationDuration, duration);
+
       this.schedule(() => {
         // Find the toast in the current state
         const toast = this.state.toasts.find(t => t.id === id);
         if (toast) {
           // Mark toast for exit animation
           this.setState(prevState => ({
-            toasts: prevState.toasts.map(t => 
+            toasts: prevState.toasts.map(t =>
               t.id === id ? { ...t, exiting: true } : t
             )
           }));
-          
+
           // Remove after animation completes
-          this.schedule(() => this.removeToast(id), 300);
+          this.schedule(() => this.removeToast(id), leadTime);
         }
-      }, duration - 300); // Start animation before duration ends
+      }, duration - leadTime); // Start animation before duration ends
     }
     
     return id;
