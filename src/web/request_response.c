@@ -80,7 +80,11 @@ static int url_decode_span(const char *src, size_t src_len, char *dst,
             if (high >= 0 && low >= 0) {
                 decoded = (unsigned char)((high << 4) | low);
                 i += 2;
-            }
+                char decoded = (char)((high << 4) | low);
+                if (decoded == '\0') {
+                    return -1;
+                }
+                dst[j++] = decoded;
         } else if (src[i] == '+') {
             decoded = ' ';
         }
