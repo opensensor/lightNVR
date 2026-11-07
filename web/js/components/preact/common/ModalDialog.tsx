@@ -151,10 +151,21 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const danger = variant === 'danger';
+  const [isConfirming, setIsConfirming] = useState(false);
 
-  const handleConfirm = () => {
-    onConfirm();
-    onClose();
+  const handleConfirm = async () => {
+    if (isConfirming) return;
+
+    setIsConfirming(true);
+    try {
+      const result = onConfirm();
+      if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+        await result;
+      }
+      onClose();
+    } finally {
+      setIsConfirming(false);
+    }
   };
 
   return (
@@ -186,7 +197,7 @@ export function ConfirmDialog({
         <button
           type="button"
           className={danger ? 'btn-danger' : 'btn-primary'}
-          disabled={confirmDisabled}
+          disabled={confirmDisabled || isConfirming}
           onClick={handleConfirm}
         >
           {confirmLabel}
