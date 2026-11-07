@@ -35,7 +35,7 @@ async function read<T>(url: string, operation: FleetOperation, schema: string, g
     const headers = new Headers(options.headers);
     if (body !== undefined) headers.set('Content-Type', 'application/json');
     response = await enhancedFetch(url, {timeout: 20000, retries: 1, ...options, method, body,
-      cache: 'no-store', sensitive: true, headers});
+      cache: 'no-store', sensitive: true, headers, credentials: 'same-origin', redirect: 'error'});
   } catch (error: unknown) {
     if (options.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) throw new DOMException('Request cancelled', 'AbortError');
     const status = typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number' ? error.status : undefined;

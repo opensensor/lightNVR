@@ -160,3 +160,13 @@ with the other slices. `generate_native.py`, `openapi_projection.c` and
 merge additively with identity changes. `test_openapi_projection.c` removes only a
 stale fixed count and preserves the canonical-admin immutability assertion. Root
 should retain the identity agent's new combined-predicate native tests on integration.
+
+## Redirect transport follow-up
+
+Fleet read/selector POST and mutation adapters now pin `redirect: 'error'` and
+`credentials: 'same-origin'` after caller options. Owned two-origin HTTP tests
+reproduced forwarding private selector IDs and mutation bodies on both 307 and
+308 before the fix; after it the source sees one request and the destination
+receives none. Explicit caller `redirect: 'follow'`/`credentials: 'include'`
+overrides cannot weaken these invariants. `fleetRedirect.spec.ts` provides four
+real-transport regressions and reuses the shared `redirectHarness.ts` fixture.
