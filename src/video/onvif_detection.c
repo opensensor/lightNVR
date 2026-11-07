@@ -640,6 +640,46 @@ static bool is_transport_drop(const onvif_request_status_t *status) {
            status->curl_code == CURLE_SEND_ERROR;
 }
 
+static bool subscription_address_matches_camera_origin(const char *camera_url,
+                                                          const char *subscription_address) {
+    if (!url_is_http_endpoint(camera_url) || !url_is_http_endpoint(subscription_address)) return false;
+
+    CURLU *camera = curl_url();
+    CURLU *sub = curl_url();
+    char *camera_host = NULL, *camera_scheme = NULL, *camera_port = NULL;
+    char *sub_host = NULL, *sub_scheme = NULL, *sub_port = NULL;
+    bool ok = false;
+
+    if (!camera || !sub) goto cleanup;
+    if (curl_url_set(camera, CURLUPART_URL, camera_url, 0) != CURLUE_OK) goto cleanup;
+    if (curl_url_set(sub, CURLUPART_URL, subscription_address, 0) != CURLUE_OK) goto cleanup;
+
+    if (curl_url_get(camera, CURLUPART_HOST, &camera_host, 0) != CURLUE_OK) goto cleanup;
+    if (curl_url_get(sub, CURLUPART_HOST, &sub_host, 0) != CURLUE_OK) goto cleanup;
+    if (curl_url_get(camera, CURLUPART_SCHEME, &camera_scheme, 0) != CURLUE_OK) goto cleanup;
+    if (curl_url_get(sub, CURLUPART_SCHEME, &sub_scheme, 0) != CURLUE_OK) goto cleanup;
+
+    if (curl_url_get(camera, CURLUPART_PORT, &camera_port, CURLU_DEFAULT_PORT) != CURLUE_OK) goto cleanup;
+    if (curl_url_get(sub, CURLUPART_PORT, &sub_port, CURLU_DEFAULT_PORT) != CURLUE_OK) goto cleanup;
+
+    long camera_number = strtol(camera_port, NULL, 10);
+    long sub_number = strtol(sub_port, NULL, 10);
+    ok = camera_number > 0 && camera_number == sub_number &&
+         strcasecmp(camera_scheme, sub_scheme) == 0 &&
+         strcasecmp(camera_host, sub_host) == 0;
+
+cleanup:
+    if (camera_host) curl_free(camera_host);
+    if (camera_scheme) curl_free(camera_scheme);
+    if (camera_port) curl_free(camera_port);
+    if (sub_host) curl_free(sub_host);
+    if (sub_scheme) curl_free(sub_scheme);
+    if (sub_port) curl_free(sub_port);
+    if (camera) curl_url_cleanup(camera);
+    if (sub) curl_url_cleanup(sub);
+    return ok;
+}
+
 /* Send a subscription-scoped request (PullMessages, Renew, Unsubscribe) to the
  * SubscriptionReference address on the subscription's own connection.
  * Transport drops are retried on the same subscription
@@ -656,8 +696,13 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
     const char *action = onvif_operation_action(operation);
     if (!subscription || !request_body || !action) return NULL;
 
-    if (strncmp(subscription->subscription_address, "http://", 7) == 0 ||
-        strncmp(subscription->subscription_address, "https://", 8) == 0) {
+    if (strncasecmp(subscription->subscription_address, "http://", 7) == 0 ||
+        strncasecmp(subscription->subscription_address, "https://", 8) == 0) {
+        if (!subscription_address_matches_camera_origin(subscription->camera_url,
+                                                         subscription->subscription_address)) {
+            log_warn("Rejected ONVIF subscription endpoint outside the configured camera origin");
+            return NULL;
+        }
         char *response = NULL;
         onvif_request_status_t status = {0};
         int attempts = 0;
@@ -710,6 +755,10 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         return response;
     }
 
+    // Only genuine relative paths may use the legacy camera-local fallback.
+    // An unsupported scheme or network-path URL is not a relative service.
+    if (strchr(subscription->subscription_address, ':') ||
+        strncmp(subscription->subscription_address, "//", 2) == 0) return NULL;
     const char *last_slash = strrchr(subscription->subscription_address, '/');
     if (!last_slash || last_slash[1] == '\0') return NULL;
     return send_onvif_request(subscription->camera_url,
@@ -1051,19 +1100,6 @@ static void note_pull_success(const char *camera_url) {
         break;
     }
     pthread_mutex_unlock(&subscription_mutex);
-}
-
-// Extract service name from subscription address
-static char *extract_service_name(const char *subscription_address) {
-    if (!subscription_address) return NULL;
-
-    // Find the last slash
-    const char *last_slash = strrchr(subscription_address, '/');
-    if (!last_slash) return NULL;
-
-    // Extract the service name
-    char *service = strdup(last_slash + 1);
-    return service;
 }
 
 /* Topics that signal motion/person detection.  "MotionDetector" also covers
@@ -1492,33 +1528,11 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     // when the motion window started, not when inference + DB write finished.
     time_t event_timestamp = time(NULL);
 
-    // Send PullMessages directly to the subscription address (the full URL returned by
-    // CreatePullPointSubscription per ONVIF spec).  send_subscription_request() retries
-    // camera-side connection drops on the same subscription before this counts as a
-    // failed poll (#603).  Fall back to the legacy path-extraction approach only when
-    // the stored address is not an absolute HTTP URL.
-    char *response = NULL;
+    // Use the same origin check and relative-path handling as Renew/Unsubscribe.
     bool transport_dropped = false;
-    if (strncmp(subscription->subscription_address, "http://", 7) == 0 ||
-        strncmp(subscription->subscription_address, "https://", 8) == 0) {
-        log_debug("ONVIF Detection: Sending PullMessages to subscription endpoint");
-        response = send_subscription_request(subscription, request_body,
-                                             ONVIF_OPERATION_PULL_MESSAGES,
-                                             &transport_dropped);
-    } else {
-        // Legacy fallback: extract last path component and re-append under /onvif/
-        log_warn("ONVIF Detection: subscription address is relative; using legacy path extraction");
-        char *service = extract_service_name(subscription->subscription_address);
-        if (service) {
-            response = send_onvif_request(subscription->camera_url,
-                                         subscription->username,
-                                         subscription->password,
-                                         request_body,
-                                         service,
-                                         ONVIF_OPERATION_PULL_MESSAGES);
-            free(service);
-        }
-    }
+    char *response = send_subscription_request(subscription, request_body,
+                                               ONVIF_OPERATION_PULL_MESSAGES,
+                                               &transport_dropped);
 
     if (!response) {
         if (!transport_dropped) log_error("Failed to pull messages from subscription");
