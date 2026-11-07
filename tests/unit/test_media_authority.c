@@ -108,6 +108,63 @@ void test_basic_audio_directions_and_live_revocation(void) {
     rights(authorization_action_bit(AUTHZ_AUDIO_TALK));
     check(403, NULL);
 }
+void test_instance_audio_disable_overrides_granted_media_rights(void) {
+  rights(authorization_action_bit(AUTHZ_LIVE_VIEW) |
+         authorization_action_bit(AUTHZ_AUDIO_LISTEN) |
+         authorization_action_bit(AUTHZ_AUDIO_TALK));
+  issue();
+  check(200, "{\"view\":true,\"listen\":true,\"talk\":true}");
+  g_config.audio_disabled = true;
+  check(200, "{\"view\":true,\"listen\":false,\"talk\":false}");
+  g_config.audio_disabled = false;
+  check(200, "{\"view\":true,\"listen\":true,\"talk\":true}");
+}
+void test_instance_audio_disable_remuxes_native_hls_despite_cached_grant(void) {
+  TEST_ASSERT_NOT_NULL(media_fixture);
+  rights(authorization_action_bit(AUTHZ_LIVE_VIEW) |
+         authorization_action_bit(AUTHZ_AUDIO_LISTEN));
+  /* Prime the normal 30-second media cache before the instance policy changes.
+   */
+  TEST_ASSERT_TRUE(httpd_authorize_media_stream_action(
+      &original, &response, AUTHZ_AUDIO_LISTEN, "camera"));
+  char directory[] = "/tmp/lightnvr-hls-policy-XXXXXX";
+  TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+  char hls[256], camera_dir[256], segment[256], output[256];
+  snprintf(hls, sizeof(hls), "%s/hls", directory);
+  snprintf(camera_dir, sizeof(camera_dir), "%s/hls/camera", directory);
+  snprintf(segment, sizeof(segment), "%s/hls/camera/av.ts", directory);
+  snprintf(output, sizeof(output), "%s/video.ts", directory);
+  TEST_ASSERT_EQUAL_INT(0, mkdir(hls, 0700));
+  TEST_ASSERT_EQUAL_INT(0, mkdir(camera_dir, 0700));
+  TEST_ASSERT_EQUAL_INT(0, symlink(media_fixture, segment));
+  strcpy(g_config.storage_path_hls, directory);
+  g_config.audio_disabled = true;
+  strcpy(original.path, "/hls/camera/av.ts");
+  handle_direct_hls_request(&original, &response);
+  /* Remove owned fixture paths before assertions, including on regression. */
+  unlink(segment);
+  rmdir(camera_dir);
+  rmdir(hls);
+  if (!response.body) {
+    rmdir(directory);
+    TEST_FAIL_MESSAGE("Global audio disable must remux the actual HLS segment");
+  }
+  FILE *file = fopen(output, "wb");
+  TEST_ASSERT_NOT_NULL(file);
+  TEST_ASSERT_EQUAL_UINT(response.body_length,
+                         fwrite(response.body, 1, response.body_length, file));
+  fclose(file);
+  AVFormatContext *input = NULL;
+  TEST_ASSERT_EQUAL_INT(0, avformat_open_input(&input, output, NULL, NULL));
+  TEST_ASSERT_GREATER_OR_EQUAL_INT(0, avformat_find_stream_info(input, NULL));
+  TEST_ASSERT_GREATER_OR_EQUAL_INT(
+      0, av_find_best_stream(input, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0));
+  TEST_ASSERT_LESS_THAN_INT(
+      0, av_find_best_stream(input, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0));
+  avformat_close_input(&input);
+  unlink(output);
+  rmdir(directory);
+}
 void test_lease_binds_source_loopback_immutable_identity_and_expiry(void) {
     issue();
     strcpy(callback.client_ip, "198.51.100.1");
@@ -208,6 +265,8 @@ int main(int argc, char **argv) {
     media_fixture = argc > 1 ? argv[1] : NULL;
     UNITY_BEGIN();
     RUN_TEST(test_basic_audio_directions_and_live_revocation);
+    RUN_TEST(test_instance_audio_disable_overrides_granted_media_rights);
+    RUN_TEST(test_instance_audio_disable_remuxes_native_hls_despite_cached_grant);
     RUN_TEST(test_lease_binds_source_loopback_immutable_identity_and_expiry);
     RUN_TEST(test_existing_lease_does_not_follow_substream_name_reassignment);
     RUN_TEST(test_disabled_account_revokes_existing_basic_lease);

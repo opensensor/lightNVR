@@ -198,7 +198,8 @@ void handle_direct_hls_request(const http_request_t *req, http_response_t *res) 
     if (stat(hls_file_path, &st) == 0 && S_ISREG(st.st_mode)) {
         http_response_t audio_response;
         http_response_init(&audio_response);
-        bool listen = httpd_authorize_media_stream_action(req, &audio_response,
+        bool listen = !g_config.audio_disabled &&
+                      httpd_authorize_media_stream_action(req, &audio_response,
                                                           AUTHZ_AUDIO_LISTEN, stream_name);
         http_response_free(&audio_response);
         if (!listen && !strstr(file_name, ".m3u8")) {

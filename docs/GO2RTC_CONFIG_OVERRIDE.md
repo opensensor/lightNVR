@@ -16,13 +16,14 @@ go2rtc is started with both files followed by a LightNVR-owned listener policy
 
 ```
 go2rtc --config /etc/lightnvr/go2rtc/go2rtc.yaml --config /etc/lightnvr/go2rtc/override.yaml \
-  --config '{"api":{"listen":"127.0.0.1:1984","tls_listen":"","unix_listen":""},"rtsp":{"listen":"127.0.0.1:8554"}}'
+  --config '{"api":{"listen":"127.0.0.1:1984","tls_listen":"","unix_listen":"","media_authority_port":8080},"rtsp":{"listen":"127.0.0.1:8554"}}'
 ```
 
 go2rtc loads them in order, calling `yaml.Unmarshal` once per configuration onto
 the same struct. Your override is merged by go2rtc's own parser. The final policy
 always pins HTTP and RTSP to `127.0.0.1` using LightNVR's configured ports and
-disables additional HTTPS and Unix API listeners. These listener fields in a
+disables additional HTTPS and Unix API listeners. It also fixes
+`api.media_authority_port` to LightNVR's configured web port. These fields in a
 saved override have no effect, even on builds without libyaml. Other settings,
 including `api.base_path`, stream definitions and WebRTC ICE settings, still merge.
 
@@ -35,8 +36,13 @@ This policy applies to children LightNVR launches. An independently running
 go2rtc service discovered by LightNVR needs the same listener restrictions in its
 own configuration. Local processes remain trusted. Administrator-configured
 tunnels, HomeKit, publishing and other bridges have their own access controls;
-loopback listeners do not make those integrations permission-aware. Separate
-`audio.listen` / `audio.talk` enforcement is still pending.
+loopback listeners do not make those integrations permission-aware. The maintained fork enforces separate `audio.listen` / `audio.talk` permissions
+on LightNVR's playback paths. Independently managed services must also run this
+compatible fork and set `api.media_authority_port` to LightNVR's web port.
+LightNVR must be reachable at `127.0.0.1` in the same network namespace; binding
+its web listener only to a non-loopback address causes playback to fail closed.
+See [media authority deployment requirements](CONFIGURATION.md#media-authority-deployment-requirements)
+for the supported listener setup and revocation bounds.
 
 > **Why two files?** Earlier versions appended your override to the bottom of `go2rtc.yaml`.  If your override touched any section lightNVR also wrote (`ffmpeg`, `log`, `streams`, …), the resulting file had duplicate top-level keys and `gopkg.in/yaml.v3` rejected the whole document — your override was silently dropped.  Two files lets each parse cleanly on its own.
 
@@ -60,7 +66,7 @@ These are the top-level keys we know about; an unknown key is allowed
 
 | Section | Purpose |
 | --- | --- |
-| `api` | HTTP/WS API settings including `base_path`; `listen`, `tls_listen`, and `unix_listen` are managed by LightNVR |
+| `api` | HTTP/WS API settings including `base_path`; `listen`, `tls_listen`, and `unix_listen`, and `media_authority_port` are managed by LightNVR |
 | `rtsp` | RTSP settings including `username`, `password`, `default_query`; `listen` is managed by LightNVR |
 | `webrtc` | WebRTC: `listen`, `candidates`, `ice_servers`, `filters` |
 | `ffmpeg` | Transcoding: `bin`, `global`, `timeout`, `h264`, `h265`, `opus`, custom codec/input templates |

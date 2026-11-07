@@ -512,8 +512,40 @@ libyaml, which is included in the standard builds.
 
 LightNVR's built-in HTTP proxy keeps its public `/go2rtc/*` routes and translates
 requests to the configured upstream prefix. For HTTPS playback through an external
-reverse proxy, configure that proxy to forward the chosen prefix (including
-WebSocket upgrades) to go2rtc.
+reverse proxy, forward browser requests (including WebSocket upgrades) to
+LightNVR, which performs authorization before contacting go2rtc.
+
+#### Media authority deployment requirements
+
+Use the maintained OpenSensor go2rtc fork shipped with this LightNVR version.
+Its media authority protocol enforces camera access and separate `audio.listen`
+and `audio.talk` permissions for WebRTC, MSE, and go2rtc HLS. Older binaries and
+upstream builds without this protocol fail closed for these playback requests.
+
+The fork renews an opaque media lease through LightNVR at `127.0.0.1` on
+`web.port`, using LightNVR's HTTP or HTTPS mode. **LightNVR's web listener must be
+reachable on IPv4 loopback in the same network namespace as go2rtc.** The default
+`web.bind_ip = 0.0.0.0` satisfies this requirement; `127.0.0.1` also works behind
+a reverse proxy in that namespace. Binding only to a specific non-loopback
+address, or placing go2rtc in a separate container network namespace, prevents
+renewal: new media requests are denied and established media is closed. LightNVR
+does not change your bind setting automatically. Keep `/etc/lightnvr` as the
+default configuration directory.
+
+For an independently managed go2rtc service, use the compatible fork, keep its
+API and RTSP listeners on loopback, and set `api.media_authority_port` to
+LightNVR's `web.port`. Both processes must share loopback reachability as above.
+LightNVR supplies this setting after overrides for children it launches; a saved
+override cannot disable it. Separate-host go2rtc deployment is not supported by
+this local authority protocol.
+
+Established fork media checks permission every five seconds with a two-second
+callback timeout, giving a seven-second revocation bound when the services are
+scheduled normally. A failed callback also closes media. Native `/hls/...`
+requests instead use the existing authorization cache, which can retain access
+for up to 30 seconds. Previously delivered or player-buffered media cannot be
+recalled. See [media access security](../SECURITY.md#media-access-and-revocation)
+for the scope of these guarantees.
 
 ### MQTT Settings
 
