@@ -25,9 +25,13 @@ def predicate(value):
         for req in requirements:
             if not isinstance(req, dict) or set(req) != {'action', 'resource'}:
                 raise ValueError('Unsupported authorization requirement keys')
-            if req['action'] not in ACTIONS or req['resource'] not in ('raw', 'runtime', 'live'):
+            action = req['action']
+            resource = req['resource']
+            if not isinstance(action, str) or not isinstance(resource, str):
                 raise ValueError('Unsupported authorization action or resource')
-            if kind in ('global', 'non_scoped_global', 'global_or_camera') and req['resource'] != 'raw':
+            if action not in ACTIONS or resource not in ('raw', 'runtime', 'live'):
+                raise ValueError('Unsupported authorization action or resource')
+            if kind in ('global', 'non_scoped_global', 'global_or_camera') and resource != 'raw':
                 raise ValueError('Global authorization uses raw resource placeholder')
 
 
