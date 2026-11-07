@@ -265,16 +265,35 @@ int http_response_set_json(http_response_t *res, int status_code, const char *js
     if (!res || !json_str) return -1;
 
     // Five CORS headers and three cache-control headers must all fit.
+    size_t len = strlen(json_str);
+    char *new_body = malloc(len + 1);
+    if (!new_body) return -1;
+    memcpy(new_body, json_str, len + 1);
+
+    // We add 8 headers total (5 CORS + 3 cache-control related).
+    if (res->num_headers > MAX_HEADERS || (MAX_HEADERS - res->num_headers) < 8) {
+        free(new_body);
+        return -1;
+    }
+
+    // Commit only after all fallible work is done.
+    if (res->body_allocated && res->body) {
+        free(res->body);
+    }
+    res->body = new_body;
+    res->body_length = len;
+    res->body_allocated = true;
+
     if (res->num_headers < 0 || res->num_headers > MAX_HEADERS - 8) return -1;
     // Copy first: failure must preserve the complete previous response, and
     // json_str may alias the existing body.
-    if (http_response_set_body(res, json_str) != 0) return -1;
+    // Header insertions are now guaranteed to fit due to capacity check above.
 
     res->status_code = status_code;
     safe_strcpy(res->content_type, "application/json", sizeof(res->content_type), 0);
 
     // Header insertions are now guaranteed to fit due to capacity check above.
-    http_response_add_cors_headers(res);
+    return 0;
     http_response_add_header(res, "Cache-Control", "no-cache, no-store, must-revalidate");
     http_response_add_header(res, "Pragma", "no-cache");
     http_response_add_header(res, "Expires", "0");
