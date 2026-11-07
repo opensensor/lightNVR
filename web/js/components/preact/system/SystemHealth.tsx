@@ -1,3 +1,4 @@
+import {getHostHealth} from '../../../api/system.ts';
 import { useMemo } from 'preact/hooks';
 import { useQuery } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
@@ -210,12 +211,7 @@ function ComponentHealth({ self, t }: ComponentHealthProps) {
 
 export function SystemHealth() {
   const { t } = useI18n();
-  const query = useQuery<SystemHealthResponse>(
-    ['systemHealth'],
-    '/api/system/health',
-    { timeout: 15000, retries: 1 },
-    { staleTime: 30000, refetchOnWindowFocus: false }
-  );
+  const query = useQuery<SystemHealthResponse>({queryKey:['systemHealth'],queryFn:({signal}) => getHostHealth({signal}),staleTime:30000,refetchOnWindowFocus:false});
   const health = query.data;
   const groups = useMemo(() => groupHealthObservations(health?.observations || []), [health?.observations]);
   const samples = boundedRecentSamples(health?.recent_samples);

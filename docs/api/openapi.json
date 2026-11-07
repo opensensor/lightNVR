@@ -35,6 +35,10 @@
     {
       "name": "Recording actions",
       "description": "Capture-identity protection, tags, deletion and export jobs. Job access remains creator/token-bound; cancellation is unsupported."
+    },
+    {
+      "name": "System",
+      "description": "System administration, health, settings and bootstrap."
     }
   ],
   "x-lightnvr-coverage": {
@@ -97,7 +101,30 @@
       "getFleetLocation",
       "listFleetTags",
       "getFleetTag",
-      "getCameraTagAssignments"
+      "getCameraTagAssignments",
+      "getSystemSettings",
+      "updateSystemSettings",
+      "validateGo2rtcConfiguration",
+      "getSystemInformationLegacy",
+      "getSystemInformation",
+      "getSystemStatus",
+      "getHostHealth",
+      "getHostHealthIncidents",
+      "getSystemLogs",
+      "clearSystemLogs",
+      "createSystemBackup",
+      "restartSystem",
+      "shutdownSystem",
+      "getGo2rtcEffectiveConfiguration",
+      "getGo2rtcOverrideDiagnostics",
+      "getWorkspaces",
+      "updateWorkspaces",
+      "getSetupStatus",
+      "updateSetupStatus",
+      "getStreamHealth",
+      "getHlsHealth",
+      "getMetrics",
+      "recordPlayerTelemetry"
     ],
     "description": "Partial contract coverage: Streams pilot, identity/token, recording reads and twelve recording action/job operations. The covered operation list is independent of authorization; omitted projected operations may be covered but denied. Uncovered APIs are not permission decisions. Identity includes session/trusted-device lifecycle, MFA completion/enrollment, password change and legacy logout."
   },
@@ -178,7 +205,31 @@
     "CameraCollection",
     "CameraCollectionsResponse",
     "CameraCollectionMembersResponse",
-    "CameraCollectionPreview"
+    "CameraCollectionPreview",
+    "SystemSettings",
+    "SystemSettingsUpdate",
+    "SystemSettingsSaved",
+    "SystemInformation",
+    "SystemLogs",
+    "HostHealth",
+    "HostHealthIncidents",
+    "Go2rtcConfigurationValidation",
+    "Go2rtcConfigurationInput",
+    "Go2rtcEffectiveConfiguration",
+    "Go2rtcOverrideDiagnostics",
+    "SetupStatus",
+    "SetupUpdate",
+    "SetupUpdated",
+    "SystemStatus",
+    "SystemActionAccepted",
+    "SystemBackupCreated",
+    "WorkspacesResponse",
+    "WorkspacesUpdate",
+    "StreamHealth",
+    "ProcessLiveness",
+    "StreamHealthHistory",
+    "HlsHealth",
+    "PlayerTelemetry"
   ],
   "paths": {
     "/api/streams": {
@@ -6807,6 +6858,2273 @@
         ],
         "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
       }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "getSystemSettings",
+        "summary": "Get system settings",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "updateSystemSettings",
+        "summary": "Update system settings",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemSettingsSaved"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemSettingsUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/go2rtc/validate": {
+      "post": {
+        "operationId": "validateGo2rtcConfiguration",
+        "summary": "Validate go2rtc configuration",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Go2rtcConfigurationValidation"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Go2rtcConfigurationInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system": {
+      "get": {
+        "operationId": "getSystemInformationLegacy",
+        "summary": "Get system information legacy",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInformation"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/info": {
+      "get": {
+        "operationId": "getSystemInformation",
+        "summary": "Get system information",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInformation"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/status": {
+      "get": {
+        "operationId": "getSystemStatus",
+        "summary": "Get system status",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/health": {
+      "get": {
+        "operationId": "getHostHealth",
+        "summary": "Get host health",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostHealth"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/health/incidents": {
+      "get": {
+        "operationId": "getHostHealthIncidents",
+        "summary": "Get host health incidents",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostHealthIncidents"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "include_closed",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque versioned cursor from the preceding page; malformed cursors return 400."
+          }
+        ]
+      }
+    },
+    "/api/system/logs": {
+      "get": {
+        "operationId": "getSystemLogs",
+        "summary": "Get system logs",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemLogs"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "level",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "last_ts",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/system/logs/clear": {
+      "post": {
+        "operationId": "clearSystemLogs",
+        "summary": "Clear system logs",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemActionAccepted"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/backup": {
+      "post": {
+        "operationId": "createSystemBackup",
+        "summary": "Create system backup",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemBackupCreated"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/restart": {
+      "post": {
+        "operationId": "restartSystem",
+        "summary": "Restart system",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemActionAccepted"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/shutdown": {
+      "post": {
+        "operationId": "shutdownSystem",
+        "summary": "Shutdown system",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemActionAccepted"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/go2rtc/effective-config": {
+      "get": {
+        "operationId": "getGo2rtcEffectiveConfiguration",
+        "summary": "Get go2rtc effective configuration",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Go2rtcEffectiveConfiguration"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/go2rtc/override-status": {
+      "get": {
+        "operationId": "getGo2rtcOverrideDiagnostics",
+        "summary": "Get go2rtc override diagnostics",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Go2rtcOverrideDiagnostics"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ui/workspaces": {
+      "get": {
+        "operationId": "getWorkspaces",
+        "summary": "Get workspaces",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspacesResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateWorkspaces",
+        "summary": "Update workspaces",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_identity"
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspacesResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspacesUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup/status": {
+      "get": {
+        "operationId": "getSetupStatus",
+        "summary": "Get setup status",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {},
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "public"
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "updateSetupStatus",
+        "summary": "Update setup status",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {},
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "bootstrap_setup"
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupUpdated"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupUpdate"
+              }
+            }
+          }
+        },
+        "description": "Before setup completion this bootstrap operation is public. Once complete it requires system.admin; resetting requires that authority. Malformed/absent optional fields retain the native default of completing setup."
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "getStreamHealth",
+        "summary": "Get stream health",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {},
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "public"
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "liveness",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Return only process liveness."
+          },
+          {
+            "name": "history_only",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Return authorized stream histories."
+          },
+          {
+            "name": "sparklines",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include stream history arrays."
+          }
+        ]
+      }
+    },
+    "/api/health/hls": {
+      "get": {
+        "operationId": "getHlsHealth",
+        "summary": "Get hls health",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {},
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "public"
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HlsHealth"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "operationId": "getMetrics",
+        "summary": "Get metrics",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "system.admin",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/telemetry/player": {
+      "post": {
+        "operationId": "recordPlayerTelemetry",
+        "summary": "Record player telemetry",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Required authority denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or persistence failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Successful response. Process-control responses acknowledge a request; verify eventual completion independently."
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayerTelemetry"
+              }
+            }
+          }
+        },
+        "description": "A named stream requires live.view on that stream. Empty/malformed unnamed telemetry is ignored with 204; an acknowledgment does not imply storage of an event."
+      }
     }
   },
   "components": {
@@ -11768,6 +14086,2888 @@
           "sample"
         ],
         "additionalProperties": false
+      },
+      "SystemSettings": {
+        "type": "object",
+        "properties": {
+          "log_level": {
+            "type": "number"
+          },
+          "syslog_enabled": {
+            "type": "boolean"
+          },
+          "syslog_ident": {
+            "type": "string"
+          },
+          "syslog_facility": {
+            "type": "string"
+          },
+          "storage_path": {
+            "type": "string"
+          },
+          "storage_path_hls": {
+            "type": "string"
+          },
+          "mp4_directory_format": {
+            "type": "string"
+          },
+          "max_storage_size": {
+            "type": "number"
+          },
+          "retention_days": {
+            "type": "number"
+          },
+          "auto_delete_oldest": {
+            "type": "boolean"
+          },
+          "storage_min_free_pct": {
+            "type": "number"
+          },
+          "storage_pressure_warning_pct": {
+            "type": "number"
+          },
+          "storage_pressure_critical_pct": {
+            "type": "number"
+          },
+          "storage_pressure_emergency_pct": {
+            "type": "number"
+          },
+          "generate_thumbnails": {
+            "type": "boolean"
+          },
+          "thumbnails_per_recording": {
+            "type": "number"
+          },
+          "db_path": {
+            "type": "string"
+          },
+          "db_backup_interval_minutes": {
+            "type": "number"
+          },
+          "db_backup_retention_count": {
+            "type": "number"
+          },
+          "db_backup_verify": {
+            "type": "string"
+          },
+          "db_post_backup_script": {
+            "type": "string"
+          },
+          "web_port": {
+            "type": "number"
+          },
+          "web_bind_ip": {
+            "type": "string"
+          },
+          "web_thread_pool_size": {
+            "type": "number"
+          },
+          "max_streams": {
+            "type": "number"
+          },
+          "max_streams_ceiling": {
+            "type": "number"
+          },
+          "web_auth_enabled": {
+            "type": "boolean"
+          },
+          "demo_mode": {
+            "type": "boolean"
+          },
+          "audio_disabled": {
+            "type": "boolean"
+          },
+          "auto_disabled": {
+            "type": "boolean"
+          },
+          "webrtc_disabled": {
+            "type": "boolean"
+          },
+          "hls_disabled": {
+            "type": "boolean"
+          },
+          "mse_disabled": {
+            "type": "boolean"
+          },
+          "auth_timeout_hours": {
+            "type": "number"
+          },
+          "auth_absolute_timeout_hours": {
+            "type": "number"
+          },
+          "trusted_device_days": {
+            "type": "number"
+          },
+          "trusted_proxy_cidrs": {
+            "type": "string"
+          },
+          "force_mfa_on_login": {
+            "type": "boolean"
+          },
+          "login_rate_limit_enabled": {
+            "type": "boolean"
+          },
+          "login_rate_limit_max_attempts": {
+            "type": "number"
+          },
+          "login_rate_limit_window_seconds": {
+            "type": "number"
+          },
+          "buffer_size": {
+            "type": "number"
+          },
+          "use_swap": {
+            "type": "boolean"
+          },
+          "swap_size": {
+            "type": "number"
+          },
+          "models_path": {
+            "type": "string"
+          },
+          "api_detection_url": {
+            "type": "string"
+          },
+          "api_detection_backend": {
+            "type": "string"
+          },
+          "api_detection_format": {
+            "type": "string"
+          },
+          "api_detection_detector_name": {
+            "type": "string"
+          },
+          "default_detection_threshold": {
+            "type": "number"
+          },
+          "pre_detection_buffer": {
+            "type": "number"
+          },
+          "post_detection_buffer": {
+            "type": "number"
+          },
+          "default_playback_transport": {
+            "type": "string"
+          },
+          "detection_grace_period": {
+            "type": "number"
+          },
+          "detection_engine_enabled": {
+            "type": "boolean"
+          },
+          "detection_engine_threads": {
+            "type": "number"
+          },
+          "detection_engine_delegate": {
+            "type": "string"
+          },
+          "go2rtc_enabled": {
+            "type": "boolean"
+          },
+          "go2rtc_binary_path": {
+            "type": "string"
+          },
+          "go2rtc_config_dir": {
+            "type": "string"
+          },
+          "go2rtc_api_port": {
+            "type": "number"
+          },
+          "go2rtc_rtsp_port": {
+            "type": "number"
+          },
+          "go2rtc_webrtc_enabled": {
+            "type": "boolean"
+          },
+          "go2rtc_webrtc_listen_port": {
+            "type": "number"
+          },
+          "go2rtc_stun_enabled": {
+            "type": "boolean"
+          },
+          "go2rtc_stun_server": {
+            "type": "string"
+          },
+          "go2rtc_external_ip": {
+            "type": "string"
+          },
+          "go2rtc_ice_servers": {
+            "type": "string"
+          },
+          "go2rtc_force_native_hls": {
+            "type": "boolean"
+          },
+          "go2rtc_config_override": {
+            "type": "string"
+          },
+          "go2rtc_config_override_disabled_reason": {
+            "type": "string"
+          },
+          "go2rtc_config_override_quarantined": {
+            "type": "string"
+          },
+          "mqtt_enabled": {
+            "type": "boolean"
+          },
+          "mqtt_broker_host": {
+            "type": "string"
+          },
+          "mqtt_broker_port": {
+            "type": "number"
+          },
+          "mqtt_username": {
+            "type": "string"
+          },
+          "mqtt_password": {
+            "type": "string",
+            "enum": [
+              "",
+              "********"
+            ]
+          },
+          "mqtt_client_id": {
+            "type": "string"
+          },
+          "mqtt_topic_prefix": {
+            "type": "string"
+          },
+          "mqtt_tls_enabled": {
+            "type": "boolean"
+          },
+          "mqtt_keepalive": {
+            "type": "number"
+          },
+          "mqtt_qos": {
+            "type": "number"
+          },
+          "mqtt_retain": {
+            "type": "boolean"
+          },
+          "mqtt_ha_discovery": {
+            "type": "boolean"
+          },
+          "mqtt_ha_discovery_prefix": {
+            "type": "string"
+          },
+          "mqtt_ha_snapshot_interval": {
+            "type": "number"
+          },
+          "turn_enabled": {
+            "type": "boolean"
+          },
+          "turn_server_url": {
+            "type": "string"
+          },
+          "turn_username": {
+            "type": "string"
+          },
+          "turn_password": {
+            "type": "string",
+            "enum": [
+              "",
+              "********"
+            ]
+          },
+          "onvif_discovery_enabled": {
+            "type": "boolean"
+          },
+          "onvif_discovery_interval": {
+            "type": "number"
+          },
+          "onvif_discovery_network": {
+            "type": "string"
+          },
+          "health_enabled": {
+            "type": "boolean"
+          },
+          "health_profile": {
+            "type": "string"
+          },
+          "health_fast_interval_seconds": {
+            "type": "number"
+          },
+          "health_normal_interval_seconds": {
+            "type": "number"
+          },
+          "health_slow_interval_seconds": {
+            "type": "number"
+          },
+          "health_device_interval_seconds": {
+            "type": "number"
+          },
+          "health_write_probe_enabled": {
+            "type": "boolean"
+          },
+          "health_hardware_provider": {
+            "type": "string"
+          },
+          "health_presence_interval_seconds": {
+            "type": "number"
+          },
+          "health_incident_retention_days": {
+            "type": "number"
+          },
+          "health_condition_overrides": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number"
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "profile": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "unit": {
+                          "type": "string"
+                        },
+                        "warning": {
+                          "type": "number"
+                        },
+                        "critical": {
+                          "type": "number"
+                        },
+                        "recovery": {
+                          "type": "number"
+                        },
+                        "warning_for_seconds": {
+                          "type": "number"
+                        },
+                        "critical_for_seconds": {
+                          "type": "number"
+                        },
+                        "recovery_for_seconds": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "additionalProperties": true
+                    }
+                  }
+                },
+                "additionalProperties": true
+              }
+            ]
+          },
+          "health_effective_policy": {
+            "type": "object",
+            "properties": {
+              "conditions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "warning": {
+                      "type": "number"
+                    },
+                    "critical": {
+                      "type": "number"
+                    },
+                    "recovery": {
+                      "type": "number"
+                    },
+                    "warning_for_seconds": {
+                      "type": "number"
+                    },
+                    "critical_for_seconds": {
+                      "type": "number"
+                    },
+                    "recovery_for_seconds": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "web_root": {
+            "type": "string"
+          },
+          "log_file": {
+            "type": "string"
+          },
+          "pid_file": {
+            "type": "string"
+          },
+          "go2rtc_base_path": {
+            "type": "string"
+          },
+          "lpr_retention_days": {
+            "type": "integer"
+          },
+          "webrtc_connection_timeout_ms": {
+            "type": "integer"
+          },
+          "webrtc_ice_recovery_timeout_ms": {
+            "type": "integer"
+          },
+          "mp4_faststart": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "log_level",
+          "syslog_enabled",
+          "syslog_ident",
+          "syslog_facility",
+          "storage_path",
+          "storage_path_hls",
+          "mp4_directory_format",
+          "max_storage_size",
+          "retention_days",
+          "auto_delete_oldest",
+          "storage_min_free_pct",
+          "storage_pressure_warning_pct",
+          "storage_pressure_critical_pct",
+          "storage_pressure_emergency_pct",
+          "generate_thumbnails",
+          "thumbnails_per_recording",
+          "db_path",
+          "db_backup_interval_minutes",
+          "db_backup_retention_count",
+          "db_backup_verify",
+          "db_post_backup_script",
+          "web_port",
+          "web_bind_ip",
+          "web_thread_pool_size",
+          "max_streams",
+          "max_streams_ceiling",
+          "web_auth_enabled",
+          "demo_mode",
+          "audio_disabled",
+          "auto_disabled",
+          "webrtc_disabled",
+          "hls_disabled",
+          "mse_disabled",
+          "auth_timeout_hours",
+          "auth_absolute_timeout_hours",
+          "trusted_device_days",
+          "trusted_proxy_cidrs",
+          "force_mfa_on_login",
+          "login_rate_limit_enabled",
+          "login_rate_limit_max_attempts",
+          "login_rate_limit_window_seconds",
+          "buffer_size",
+          "use_swap",
+          "swap_size",
+          "models_path",
+          "api_detection_url",
+          "api_detection_backend",
+          "api_detection_format",
+          "api_detection_detector_name",
+          "default_detection_threshold",
+          "pre_detection_buffer",
+          "post_detection_buffer",
+          "default_playback_transport",
+          "detection_grace_period",
+          "detection_engine_enabled",
+          "detection_engine_threads",
+          "detection_engine_delegate",
+          "go2rtc_enabled",
+          "go2rtc_binary_path",
+          "go2rtc_config_dir",
+          "go2rtc_api_port",
+          "go2rtc_rtsp_port",
+          "go2rtc_webrtc_enabled",
+          "go2rtc_webrtc_listen_port",
+          "go2rtc_stun_enabled",
+          "go2rtc_stun_server",
+          "go2rtc_external_ip",
+          "go2rtc_ice_servers",
+          "go2rtc_force_native_hls",
+          "go2rtc_config_override",
+          "go2rtc_config_override_disabled_reason",
+          "go2rtc_config_override_quarantined",
+          "mqtt_enabled",
+          "mqtt_broker_host",
+          "mqtt_broker_port",
+          "mqtt_username",
+          "mqtt_password",
+          "mqtt_client_id",
+          "mqtt_topic_prefix",
+          "mqtt_tls_enabled",
+          "mqtt_keepalive",
+          "mqtt_qos",
+          "mqtt_retain",
+          "mqtt_ha_discovery",
+          "mqtt_ha_discovery_prefix",
+          "mqtt_ha_snapshot_interval",
+          "turn_enabled",
+          "turn_server_url",
+          "turn_username",
+          "turn_password",
+          "onvif_discovery_enabled",
+          "onvif_discovery_interval",
+          "onvif_discovery_network",
+          "health_enabled",
+          "health_profile",
+          "health_fast_interval_seconds",
+          "health_normal_interval_seconds",
+          "health_slow_interval_seconds",
+          "health_device_interval_seconds",
+          "health_write_probe_enabled",
+          "health_hardware_provider",
+          "health_presence_interval_seconds",
+          "health_incident_retention_days",
+          "health_condition_overrides",
+          "web_root",
+          "log_file",
+          "pid_file",
+          "go2rtc_base_path",
+          "lpr_retention_days",
+          "webrtc_connection_timeout_ms",
+          "webrtc_ice_recovery_timeout_ms",
+          "mp4_faststart"
+        ]
+      },
+      "SystemSettingsUpdate": {
+        "type": "object",
+        "properties": {
+          "log_level": {
+            "type": "number"
+          },
+          "syslog_enabled": {
+            "type": "boolean"
+          },
+          "syslog_ident": {
+            "type": "string"
+          },
+          "syslog_facility": {
+            "type": "string"
+          },
+          "storage_path": {
+            "type": "string"
+          },
+          "storage_path_hls": {
+            "type": "string"
+          },
+          "mp4_directory_format": {
+            "type": "string"
+          },
+          "max_storage_size": {
+            "type": "number"
+          },
+          "retention_days": {
+            "type": "number"
+          },
+          "auto_delete_oldest": {
+            "type": "boolean"
+          },
+          "storage_min_free_pct": {
+            "type": "number"
+          },
+          "storage_pressure_warning_pct": {
+            "type": "number"
+          },
+          "storage_pressure_critical_pct": {
+            "type": "number"
+          },
+          "storage_pressure_emergency_pct": {
+            "type": "number"
+          },
+          "generate_thumbnails": {
+            "type": "boolean"
+          },
+          "thumbnails_per_recording": {
+            "type": "number"
+          },
+          "db_path": {
+            "type": "string"
+          },
+          "db_backup_interval_minutes": {
+            "type": "number"
+          },
+          "db_backup_retention_count": {
+            "type": "number"
+          },
+          "db_backup_verify": {
+            "type": "string"
+          },
+          "db_post_backup_script": {
+            "type": "string"
+          },
+          "web_port": {
+            "type": "number"
+          },
+          "web_bind_ip": {
+            "type": "string"
+          },
+          "web_thread_pool_size": {
+            "type": "number"
+          },
+          "max_streams": {
+            "type": "number"
+          },
+          "web_auth_enabled": {
+            "type": "boolean"
+          },
+          "demo_mode": {
+            "type": "boolean"
+          },
+          "audio_disabled": {
+            "type": "boolean"
+          },
+          "auto_disabled": {
+            "type": "boolean"
+          },
+          "webrtc_disabled": {
+            "type": "boolean"
+          },
+          "hls_disabled": {
+            "type": "boolean"
+          },
+          "mse_disabled": {
+            "type": "boolean"
+          },
+          "auth_timeout_hours": {
+            "type": "number"
+          },
+          "auth_absolute_timeout_hours": {
+            "type": "number"
+          },
+          "trusted_device_days": {
+            "type": "number"
+          },
+          "trusted_proxy_cidrs": {
+            "type": "string"
+          },
+          "force_mfa_on_login": {
+            "type": "boolean"
+          },
+          "login_rate_limit_enabled": {
+            "type": "boolean"
+          },
+          "login_rate_limit_max_attempts": {
+            "type": "number"
+          },
+          "login_rate_limit_window_seconds": {
+            "type": "number"
+          },
+          "buffer_size": {
+            "type": "number"
+          },
+          "use_swap": {
+            "type": "boolean"
+          },
+          "swap_size": {
+            "type": "number"
+          },
+          "models_path": {
+            "type": "string"
+          },
+          "api_detection_url": {
+            "type": "string"
+          },
+          "api_detection_backend": {
+            "type": "string"
+          },
+          "api_detection_format": {
+            "type": "string",
+            "enum": [
+              "light-object-detect",
+              "doods2"
+            ]
+          },
+          "api_detection_detector_name": {
+            "type": "string"
+          },
+          "default_detection_threshold": {
+            "type": "number"
+          },
+          "pre_detection_buffer": {
+            "type": "number"
+          },
+          "post_detection_buffer": {
+            "type": "number"
+          },
+          "default_playback_transport": {
+            "type": "string"
+          },
+          "detection_grace_period": {
+            "type": "number"
+          },
+          "detection_engine_enabled": {
+            "type": "boolean"
+          },
+          "detection_engine_threads": {
+            "type": "number"
+          },
+          "detection_engine_delegate": {
+            "type": "string"
+          },
+          "go2rtc_enabled": {
+            "type": "boolean"
+          },
+          "go2rtc_binary_path": {
+            "type": "string"
+          },
+          "go2rtc_config_dir": {
+            "type": "string"
+          },
+          "go2rtc_api_port": {
+            "type": "number"
+          },
+          "go2rtc_rtsp_port": {
+            "type": "number"
+          },
+          "go2rtc_webrtc_enabled": {
+            "type": "boolean"
+          },
+          "go2rtc_webrtc_listen_port": {
+            "type": "number"
+          },
+          "go2rtc_stun_enabled": {
+            "type": "boolean"
+          },
+          "go2rtc_stun_server": {
+            "type": "string"
+          },
+          "go2rtc_external_ip": {
+            "type": "string"
+          },
+          "go2rtc_ice_servers": {
+            "type": "string"
+          },
+          "go2rtc_force_native_hls": {
+            "type": "boolean"
+          },
+          "go2rtc_config_override": {
+            "type": "string"
+          },
+          "mqtt_enabled": {
+            "type": "boolean"
+          },
+          "mqtt_broker_host": {
+            "type": "string"
+          },
+          "mqtt_broker_port": {
+            "type": "number"
+          },
+          "mqtt_username": {
+            "type": "string"
+          },
+          "mqtt_password": {
+            "type": "string"
+          },
+          "mqtt_client_id": {
+            "type": "string"
+          },
+          "mqtt_topic_prefix": {
+            "type": "string"
+          },
+          "mqtt_tls_enabled": {
+            "type": "boolean"
+          },
+          "mqtt_keepalive": {
+            "type": "number"
+          },
+          "mqtt_qos": {
+            "type": "number"
+          },
+          "mqtt_retain": {
+            "type": "boolean"
+          },
+          "mqtt_ha_discovery": {
+            "type": "boolean"
+          },
+          "mqtt_ha_discovery_prefix": {
+            "type": "string"
+          },
+          "mqtt_ha_snapshot_interval": {
+            "type": "number"
+          },
+          "turn_enabled": {
+            "type": "boolean"
+          },
+          "turn_server_url": {
+            "type": "string"
+          },
+          "turn_username": {
+            "type": "string"
+          },
+          "turn_password": {
+            "type": "string"
+          },
+          "onvif_discovery_enabled": {
+            "type": "boolean"
+          },
+          "onvif_discovery_interval": {
+            "type": "number"
+          },
+          "onvif_discovery_network": {
+            "type": "string"
+          },
+          "health_enabled": {
+            "type": "boolean"
+          },
+          "health_profile": {
+            "type": "string"
+          },
+          "health_fast_interval_seconds": {
+            "type": "number"
+          },
+          "health_normal_interval_seconds": {
+            "type": "number"
+          },
+          "health_slow_interval_seconds": {
+            "type": "number"
+          },
+          "health_device_interval_seconds": {
+            "type": "number"
+          },
+          "health_write_probe_enabled": {
+            "type": "boolean"
+          },
+          "health_hardware_provider": {
+            "type": "string"
+          },
+          "health_presence_interval_seconds": {
+            "type": "number"
+          },
+          "health_incident_retention_days": {
+            "type": "number"
+          },
+          "health_condition_overrides": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number"
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "profile": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "unit": {
+                          "type": "string"
+                        },
+                        "warning": {
+                          "type": "number"
+                        },
+                        "critical": {
+                          "type": "number"
+                        },
+                        "recovery": {
+                          "type": "number"
+                        },
+                        "warning_for_seconds": {
+                          "type": "number"
+                        },
+                        "critical_for_seconds": {
+                          "type": "number"
+                        },
+                        "recovery_for_seconds": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "additionalProperties": true
+                    }
+                  }
+                },
+                "additionalProperties": true
+              }
+            ]
+          },
+          "web_root": {
+            "type": "string"
+          },
+          "log_file": {
+            "type": "string"
+          },
+          "pid_file": {
+            "type": "string"
+          },
+          "lpr_retention_days": {
+            "type": "integer"
+          },
+          "webrtc_connection_timeout_ms": {
+            "type": "integer"
+          },
+          "webrtc_ice_recovery_timeout_ms": {
+            "type": "integer"
+          },
+          "mp4_faststart": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Partial settings update; absent fields are retained. Secret mask values preserve the stored password."
+      },
+      "SystemSettingsSaved": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true,
+            "type": "boolean"
+          },
+          "restart_required": {
+            "type": "boolean"
+          },
+          "restart_required_message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "restart_required"
+        ],
+        "additionalProperties": true
+      },
+      "SystemInformation": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "git_commit": {
+            "type": "string"
+          },
+          "uptime": {
+            "type": "number"
+          },
+          "cpu": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "cores": {
+                "type": "number"
+              },
+              "usage": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "usageCapability": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "memory": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "used": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "free": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "capability": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "go2rtcMemory": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "used": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "free": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "capability": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "detectorMemory": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "used": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "free": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "capability": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "systemMemory": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "used": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "free": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "capability": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "disk": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "used": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "free": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "capability": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "systemDisk": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "used": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "free": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "capability": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "threads": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "webThreadPoolSize": {
+            "type": "number"
+          },
+          "global_retention_days": {
+            "type": "number"
+          },
+          "network": {
+            "type": "object",
+            "properties": {
+              "interfaces": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "address": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "ipv6": {
+                      "type": "string"
+                    },
+                    "mac": {
+                      "type": "string"
+                    },
+                    "up": {
+                      "type": "boolean"
+                    },
+                    "capability": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "streams": {
+            "type": "object",
+            "properties": {
+              "active": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "active",
+              "total"
+            ]
+          },
+          "recordings": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "number"
+              },
+              "size": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "count",
+              "size"
+            ]
+          },
+          "streamStorage": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "size": {
+                  "type": "number"
+                },
+                "count": {
+                  "type": "number"
+                },
+                "retention_days": {
+                  "type": "number"
+                },
+                "detection_retention_days": {
+                  "type": "number"
+                },
+                "max_storage_mb": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "name",
+                "size",
+                "count",
+                "retention_days",
+                "detection_retention_days",
+                "max_storage_mb"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "versions": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "category",
+                    "version"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "items"
+            ]
+          },
+          "uptimeCapability": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "version",
+          "git_commit",
+          "cpu",
+          "memory",
+          "threads",
+          "webThreadPoolSize",
+          "uptime",
+          "disk",
+          "systemDisk",
+          "global_retention_days",
+          "versions",
+          "network",
+          "streams",
+          "recordings",
+          "streamStorage"
+        ]
+      },
+      "SystemLogs": {
+        "type": "object",
+        "properties": {
+          "logs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "timestamp": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "file": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "logs",
+          "file",
+          "level"
+        ]
+      },
+      "HostHealth": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "number"
+          },
+          "monitoring": {
+            "type": "object",
+            "properties": {
+              "configured_enabled": {
+                "type": "boolean"
+              },
+              "initialized": {
+                "type": "boolean"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "worker_threads": {
+                "type": "number"
+              },
+              "restart_required": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "configured_enabled",
+              "initialized",
+              "enabled",
+              "worker_threads",
+              "restart_required"
+            ]
+          },
+          "overall_state": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "object",
+            "properties": {
+              "effective_scope": {
+                "type": "string"
+              },
+              "host_hardware_visible": {
+                "type": "boolean"
+              },
+              "coverage_boundary": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "effective_scope",
+              "host_hardware_visible",
+              "coverage_boundary"
+            ]
+          },
+          "snapshot": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "sequence": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "completed_at_ms": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "age_ms": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "freshness": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "available",
+              "sequence",
+              "completed_at_ms",
+              "age_ms",
+              "freshness"
+            ]
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "complete": {
+                "type": "boolean"
+              },
+              "incomplete_count": {
+                "type": "number"
+              },
+              "unavailable_observations": {
+                "type": "number"
+              },
+              "observations_dropped": {
+                "type": "number"
+              },
+              "collection_errors": {
+                "type": "number"
+              },
+              "collection_timeouts": {
+                "type": "number"
+              },
+              "abandoned_helpers": {
+                "type": "number"
+              },
+              "coverage_overflows": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "complete",
+              "incomplete_count",
+              "unavailable_observations",
+              "observations_dropped",
+              "collection_errors",
+              "collection_timeouts",
+              "abandoned_helpers",
+              "coverage_overflows"
+            ]
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "metric": {
+                  "type": "string"
+                },
+                "resource": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "capability": {
+                  "type": "string"
+                },
+                "freshness": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "sampled_monotonic_ms": {
+                  "type": "number"
+                },
+                "observed_at_ms": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "metric",
+                "resource",
+                "scope",
+                "capability",
+                "freshness",
+                "unit",
+                "value"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "condition": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "overridden": {
+                  "type": "boolean"
+                },
+                "direction": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "warning_threshold": {
+                  "type": "number"
+                },
+                "critical_threshold": {
+                  "type": "number"
+                },
+                "recovery_threshold": {
+                  "type": "number"
+                },
+                "warning_for_seconds": {
+                  "type": "number"
+                },
+                "critical_for_seconds": {
+                  "type": "number"
+                },
+                "recovery_for_seconds": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "condition",
+                "enabled",
+                "overridden",
+                "direction",
+                "unit",
+                "warning_threshold",
+                "critical_threshold",
+                "recovery_threshold",
+                "warning_for_seconds",
+                "critical_for_seconds",
+                "recovery_for_seconds"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "active_incidents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "incident_id": {
+                  "type": "string"
+                },
+                "condition": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                },
+                "first_observed_at_ms": {
+                  "type": "number"
+                },
+                "last_observed_at_ms": {
+                  "type": "number"
+                },
+                "persistence_pending": {
+                  "type": "boolean"
+                },
+                "observation": {
+                  "type": "object",
+                  "properties": {
+                    "metric": {
+                      "type": "string"
+                    },
+                    "resource": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "capability": {
+                      "type": "string"
+                    },
+                    "freshness": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "sampled_monotonic_ms": {
+                      "type": "number"
+                    },
+                    "observed_at_ms": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "metric",
+                    "resource",
+                    "scope",
+                    "capability",
+                    "freshness",
+                    "unit",
+                    "value"
+                  ],
+                  "additionalProperties": true
+                },
+                "thresholds": {
+                  "type": "object",
+                  "properties": {
+                    "condition": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "overridden": {
+                      "type": "boolean"
+                    },
+                    "direction": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "warning_threshold": {
+                      "type": "number"
+                    },
+                    "critical_threshold": {
+                      "type": "number"
+                    },
+                    "recovery_threshold": {
+                      "type": "number"
+                    },
+                    "warning_for_seconds": {
+                      "type": "number"
+                    },
+                    "critical_for_seconds": {
+                      "type": "number"
+                    },
+                    "recovery_for_seconds": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "condition",
+                    "enabled",
+                    "overridden",
+                    "direction",
+                    "unit",
+                    "warning_threshold",
+                    "critical_threshold",
+                    "recovery_threshold",
+                    "warning_for_seconds",
+                    "critical_for_seconds",
+                    "recovery_for_seconds"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "incident_id",
+                "condition",
+                "subject",
+                "scope",
+                "state",
+                "severity",
+                "first_observed_at_ms",
+                "last_observed_at_ms",
+                "persistence_pending",
+                "observation"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "recent_samples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sequence": {
+                  "type": "number"
+                },
+                "completed_at_ms": {
+                  "type": "number"
+                },
+                "observation_count": {
+                  "type": "number"
+                },
+                "observations_dropped": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "sequence",
+                "completed_at_ms",
+                "observation_count",
+                "observations_dropped"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "self_observability": {
+            "type": "object",
+            "properties": {
+              "collectors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collector": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "tier": {
+                      "type": "number"
+                    },
+                    "attempts": {
+                      "type": "number"
+                    },
+                    "completions": {
+                      "type": "number"
+                    },
+                    "failures": {
+                      "type": "number"
+                    },
+                    "timeouts": {
+                      "type": "number"
+                    },
+                    "overlap_skips": {
+                      "type": "number"
+                    },
+                    "last_duration_ms": {
+                      "type": "number"
+                    },
+                    "maximum_duration_ms": {
+                      "type": "number"
+                    },
+                    "busy": {
+                      "type": "boolean"
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "collector",
+                    "scope",
+                    "tier",
+                    "attempts",
+                    "completions",
+                    "failures",
+                    "timeouts",
+                    "overlap_skips",
+                    "last_duration_ms",
+                    "maximum_duration_ms",
+                    "busy",
+                    "stale"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "coverage_overflows": {
+                "type": "number"
+              },
+              "incident_persistence": {
+                "type": "object",
+                "properties": {
+                  "pending": {
+                    "type": "number"
+                  },
+                  "failures": {
+                    "type": "number"
+                  },
+                  "retries": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "event_delivery": {
+                "type": "object",
+                "properties": {
+                  "degraded": {
+                    "type": "boolean"
+                  },
+                  "circular_report_path": {
+                    "type": "boolean"
+                  },
+                  "outbox_full": {
+                    "type": "boolean"
+                  },
+                  "all_destinations_unavailable": {
+                    "type": "boolean"
+                  },
+                  "outbox": {
+                    "type": "object",
+                    "properties": {
+                      "available": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "collectors",
+              "coverage_overflows",
+              "incident_persistence",
+              "event_delivery"
+            ]
+          },
+          "evaluator": {
+            "type": "object",
+            "properties": {
+              "tracked_conditions": {
+                "type": "integer"
+              },
+              "active_incidents": {
+                "type": "integer"
+              },
+              "pending_persistence": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "tracked_conditions",
+              "active_incidents",
+              "pending_persistence"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "schema_version",
+          "monitoring",
+          "overall_state",
+          "visibility",
+          "snapshot",
+          "coverage",
+          "observations",
+          "thresholds",
+          "active_incidents",
+          "recent_samples",
+          "self_observability"
+        ]
+      },
+      "HostHealthIncidents": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "number"
+          },
+          "count": {
+            "type": "number"
+          },
+          "incidents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "incident_id": {
+                  "type": "string"
+                },
+                "condition": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                },
+                "first_observed_at_ms": {
+                  "type": "number"
+                },
+                "last_observed_at_ms": {
+                  "type": "number"
+                },
+                "closed_at_ms": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "reconciliation": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "number"
+                },
+                "observation": {
+                  "type": "object",
+                  "properties": {
+                    "metric": {
+                      "type": "string"
+                    },
+                    "resource": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "capability": {
+                      "type": "string"
+                    },
+                    "freshness": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "sampled_monotonic_ms": {
+                      "type": "number"
+                    },
+                    "observed_at_ms": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "metric",
+                    "resource",
+                    "scope",
+                    "capability",
+                    "freshness",
+                    "unit",
+                    "value"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "incident_id",
+                "condition",
+                "subject",
+                "scope",
+                "state",
+                "severity",
+                "first_observed_at_ms",
+                "last_observed_at_ms",
+                "closed_at_ms",
+                "reconciliation",
+                "revision",
+                "observation"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "schema_version",
+          "count",
+          "incidents",
+          "next_cursor"
+        ]
+      },
+      "Go2rtcConfigurationValidation": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          },
+          "libyaml_available": {
+            "type": "boolean"
+          },
+          "skipped": {
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "number"
+                  },
+                  "column": {
+                    "type": "number"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skip_reason": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "valid",
+          "libyaml_available",
+          "skipped",
+          "warnings"
+        ]
+      },
+      "Go2rtcConfigurationInput": {
+        "type": "object",
+        "properties": {
+          "override": {
+            "type": "string",
+            "maxLength": 65535
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "Go2rtcEffectiveConfiguration": {
+        "type": "object",
+        "properties": {
+          "go2rtc_initialized": {
+            "type": "boolean"
+          },
+          "redaction_available": {
+            "type": "boolean"
+          },
+          "base": {
+            "type": "string"
+          },
+          "override": {
+            "type": "string"
+          },
+          "managed_listener_policy": {
+            "type": "string"
+          },
+          "merged_source_order": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "override_in_use": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "go2rtc_initialized",
+          "redaction_available",
+          "base",
+          "override",
+          "managed_listener_policy",
+          "merged_source_order",
+          "override_in_use",
+          "warnings"
+        ],
+        "additionalProperties": true
+      },
+      "Go2rtcOverrideDiagnostics": {
+        "type": "object",
+        "properties": {
+          "expected_file_path": {
+            "type": "string"
+          },
+          "db_bytes": {
+            "type": "number"
+          },
+          "file_present": {
+            "type": "boolean"
+          },
+          "file_bytes": {
+            "type": "number"
+          },
+          "content_matches": {
+            "type": "boolean"
+          },
+          "quarantine_active": {
+            "type": "boolean"
+          },
+          "quarantine_reason": {
+            "type": "string"
+          },
+          "process_state_known": {
+            "type": "boolean"
+          },
+          "process_running": {
+            "type": "boolean"
+          },
+          "process_pid": {
+            "type": "number"
+          },
+          "file_read_error": {
+            "type": "string"
+          },
+          "quarantined_copy_bytes": {
+            "type": "integer"
+          },
+          "validated_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_file_path",
+          "db_bytes",
+          "file_present",
+          "file_bytes",
+          "content_matches",
+          "quarantine_active",
+          "process_state_known",
+          "process_running",
+          "process_pid",
+          "quarantined_copy_bytes",
+          "validated_version"
+        ],
+        "additionalProperties": true
+      },
+      "SetupStatus": {
+        "type": "object",
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "setup_completed_at": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "complete",
+          "setup_completed_at"
+        ],
+        "additionalProperties": true
+      },
+      "SetupUpdate": {
+        "type": "object",
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "SetupUpdated": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "additionalProperties": true
+      },
+      "SystemStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "additionalProperties": true
+      },
+      "SystemActionAccepted": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "additionalProperties": true
+      },
+      "SystemBackupCreated": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          },
+          "backupUrl": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message",
+          "backupUrl",
+          "filename"
+        ],
+        "additionalProperties": true
+      },
+      "WorkspacesResponse": {
+        "type": "object",
+        "properties": {
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "enum": [
+                    "live.navigator",
+                    "investigation"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "visible": {
+                  "type": "boolean"
+                },
+                "configurable": {
+                  "type": "boolean"
+                },
+                "authorization_unchanged": {
+                  "type": "boolean",
+                  "const": true
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "description",
+                "visible",
+                "configurable",
+                "authorization_unchanged"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "configurable": {
+            "type": "boolean"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "user",
+              "installation"
+            ]
+          }
+        },
+        "required": [
+          "workspaces",
+          "configurable",
+          "scope"
+        ],
+        "additionalProperties": true
+      },
+      "WorkspacesUpdate": {
+        "type": "object",
+        "properties": {
+          "workspaces": {
+            "type": "object",
+            "properties": {
+              "live.navigator": {
+                "type": "boolean"
+              },
+              "investigation": {
+                "type": "boolean"
+              }
+            },
+            "minProperties": 1,
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "workspaces"
+        ],
+        "additionalProperties": true
+      },
+      "StreamHealth": {
+        "type": "object",
+        "properties": {
+          "healthy": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "uptime": {
+            "type": "number"
+          },
+          "totalRequests": {
+            "type": "number"
+          },
+          "failedRequests": {
+            "type": "number"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "streams": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "number"
+              },
+              "up": {
+                "type": "number"
+              },
+              "degraded": {
+                "type": "number"
+              },
+              "down": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "total",
+              "up",
+              "degraded",
+              "down"
+            ],
+            "additionalProperties": true
+          },
+          "storage": {
+            "type": "object",
+            "properties": {
+              "used_bytes": {
+                "type": "number"
+              },
+              "available_bytes": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "used_bytes",
+              "available_bytes"
+            ]
+          },
+          "streams_detail": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "observed_fps": {
+                  "type": "number"
+                },
+                "current_fps": {
+                  "type": "number"
+                },
+                "expected_fps": {
+                  "type": "number"
+                },
+                "fps": {
+                  "type": "number"
+                },
+                "configured_fps": {
+                  "type": "number"
+                },
+                "bitrate_bps": {
+                  "type": "number"
+                },
+                "uptime_seconds": {
+                  "type": "number"
+                },
+                "reconnects": {
+                  "type": "number"
+                },
+                "last_packet_ts": {
+                  "type": "number"
+                },
+                "last_frame_ts": {
+                  "type": "number"
+                },
+                "last_completed_segment_ts": {
+                  "type": "number"
+                },
+                "frames_total": {
+                  "type": "number"
+                },
+                "frames_dropped": {
+                  "type": "number"
+                },
+                "connection_latency_ms": {
+                  "type": "number"
+                },
+                "source_connected": {
+                  "type": "boolean"
+                },
+                "video_advancing": {
+                  "type": "boolean"
+                },
+                "recorder_writing": {
+                  "type": "boolean"
+                },
+                "detector_operating": {
+                  "type": "boolean"
+                },
+                "recorder_session_active": {
+                  "type": "boolean"
+                },
+                "recording_active": {
+                  "type": "boolean"
+                },
+                "recording_gaps": {
+                  "type": "number"
+                },
+                "sparkline_fps": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "sparkline_bitrate": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "status",
+                "observed_fps",
+                "current_fps",
+                "expected_fps",
+                "fps",
+                "configured_fps",
+                "bitrate_bps",
+                "uptime_seconds",
+                "reconnects",
+                "last_packet_ts",
+                "last_frame_ts",
+                "last_completed_segment_ts",
+                "frames_total",
+                "frames_dropped",
+                "connection_latency_ms",
+                "source_connected",
+                "video_advancing",
+                "recorder_writing",
+                "detector_operating",
+                "recorder_session_active",
+                "recording_active",
+                "recording_gaps"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "healthy",
+          "uptime",
+          "totalRequests",
+          "failedRequests",
+          "timestamp",
+          "status",
+          "streams",
+          "storage",
+          "streams_detail"
+        ]
+      },
+      "ProcessLiveness": {
+        "type": "object",
+        "properties": {
+          "healthy": {
+            "type": "boolean"
+          },
+          "uptime": {
+            "type": "number"
+          },
+          "totalRequests": {
+            "type": "integer"
+          },
+          "failedRequests": {
+            "type": "integer"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "liveness": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "healthy",
+          "uptime",
+          "totalRequests",
+          "failedRequests",
+          "timestamp",
+          "liveness"
+        ],
+        "additionalProperties": true
+      },
+      "StreamHealthHistory": {
+        "type": "object",
+        "properties": {
+          "healthy": {
+            "type": "boolean"
+          },
+          "uptime": {
+            "type": "number"
+          },
+          "totalRequests": {
+            "type": "integer"
+          },
+          "failedRequests": {
+            "type": "integer"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "streams_detail": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "sparkline_fps": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "sparkline_bitrate": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "healthy",
+          "uptime",
+          "totalRequests",
+          "failedRequests",
+          "timestamp",
+          "streams_detail"
+        ],
+        "additionalProperties": true
+      },
+      "HealthResponse": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/StreamHealth"
+          },
+          {
+            "$ref": "#/components/schemas/ProcessLiveness"
+          },
+          {
+            "$ref": "#/components/schemas/StreamHealthHistory"
+          }
+        ]
+      },
+      "HlsHealth": {
+        "type": "object",
+        "properties": {
+          "healthy": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "watchdogRestartCount": {
+            "type": "integer"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "healthy",
+          "status",
+          "watchdogRestartCount",
+          "timestamp"
+        ],
+        "additionalProperties": true
+      },
+      "PlayerTelemetry": {
+        "type": "object",
+        "properties": {
+          "stream_name": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string"
+          },
+          "ttff_ms": {
+            "type": "number"
+          },
+          "rebuffer_count": {
+            "type": "integer"
+          },
+          "rebuffer_duration_ms": {
+            "type": "number"
+          },
+          "resolution_switches": {
+            "type": "integer"
+          },
+          "webrtc_rtt_ms": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "stream_name"
+        ],
+        "additionalProperties": true
       }
     }
   }

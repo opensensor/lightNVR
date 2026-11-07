@@ -571,6 +571,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get stream health */
+        get: operations["getStreamHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/health/hls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get hls health */
+        get: operations["getHlsHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/locations": {
         parameters: {
             query?: never;
@@ -603,6 +637,23 @@ export interface paths {
          * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["getFleetLocation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get metrics */
+        get: operations["getMetrics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1002,6 +1053,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system settings */
+        get: operations["getSystemSettings"];
+        put?: never;
+        /** Update system settings */
+        post: operations["updateSystemSettings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/go2rtc/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate go2rtc configuration */
+        post: operations["validateGo2rtcConfiguration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get setup status */
+        get: operations["getSetupStatus"];
+        put?: never;
+        /**
+         * Update setup status
+         * @description Before setup completion this bootstrap operation is public. Once complete it requires system.admin; resetting requires that authority. Malformed/absent optional fields retain the native default of completing setup.
+         */
+        post: operations["updateSetupStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/streams": {
         parameters: {
             query?: never;
@@ -1068,6 +1175,230 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system information legacy */
+        get: operations["getSystemInformationLegacy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create system backup */
+        post: operations["createSystemBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/go2rtc/effective-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get go2rtc effective configuration */
+        get: operations["getGo2rtcEffectiveConfiguration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/go2rtc/override-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get go2rtc override diagnostics */
+        get: operations["getGo2rtcOverrideDiagnostics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get host health */
+        get: operations["getHostHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/health/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get host health incidents */
+        get: operations["getHostHealthIncidents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system information */
+        get: operations["getSystemInformation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system logs */
+        get: operations["getSystemLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/logs/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Clear system logs */
+        post: operations["clearSystemLogs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart system */
+        post: operations["restartSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/shutdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Shutdown system */
+        post: operations["shutdownSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get system status */
+        get: operations["getSystemStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/player": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record player telemetry
+         * @description A named stream requires live.view on that stream. Empty/malformed unnamed telemetry is ignored with 204; an acknowledgment does not imply storage of an event.
+         */
+        post: operations["recordPlayerTelemetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/timeline/segments": {
         parameters: {
             query?: never;
@@ -1101,6 +1432,24 @@ export interface paths {
          */
         get: operations["getTimelineSegmentsByIds"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get workspaces */
+        get: operations["getWorkspaces"];
+        /** Update workspaces */
+        put: operations["updateWorkspaces"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1599,6 +1948,272 @@ export interface components {
             count: number;
             tags: components["schemas"]["FleetTag"][];
         };
+        Go2rtcConfigurationInput: {
+            override?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        Go2rtcConfigurationValidation: {
+            error?: null | ({
+                column?: number;
+                line?: number;
+                message?: string;
+            } & {
+                [key: string]: unknown;
+            });
+            libyaml_available: boolean;
+            skip_reason?: {
+                message: string;
+            } & {
+                [key: string]: unknown;
+            };
+            skipped: boolean;
+            valid: boolean;
+            warnings: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        Go2rtcEffectiveConfiguration: {
+            base: string;
+            go2rtc_initialized: boolean;
+            managed_listener_policy: string;
+            merged_source_order: string[];
+            override: string;
+            override_in_use: boolean;
+            redaction_available: boolean;
+            warnings: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        Go2rtcOverrideDiagnostics: {
+            content_matches: boolean;
+            db_bytes: number;
+            expected_file_path: string;
+            file_bytes: number;
+            file_present: boolean;
+            file_read_error?: string;
+            process_pid: number;
+            process_running: boolean;
+            process_state_known: boolean;
+            quarantine_active: boolean;
+            quarantine_reason?: string;
+            quarantined_copy_bytes: number;
+            validated_version: string;
+        } & {
+            [key: string]: unknown;
+        };
+        HealthResponse: components["schemas"]["StreamHealth"] | components["schemas"]["ProcessLiveness"] | components["schemas"]["StreamHealthHistory"];
+        HlsHealth: {
+            healthy: boolean;
+            status: string;
+            timestamp: string;
+            watchdogRestartCount: number;
+        } & {
+            [key: string]: unknown;
+        };
+        HostHealth: {
+            active_incidents: ({
+                condition: string;
+                first_observed_at_ms: number;
+                incident_id: string;
+                last_observed_at_ms: number;
+                observation: {
+                    capability: string;
+                    freshness: string;
+                    metric: string;
+                    observed_at_ms?: number;
+                    resource: string;
+                    sampled_monotonic_ms?: number;
+                    scope: string;
+                    unit: string;
+                    value: null | number;
+                } & {
+                    [key: string]: unknown;
+                };
+                persistence_pending: boolean;
+                scope: string;
+                severity: string;
+                state: string;
+                subject: string;
+                thresholds?: {
+                    condition: string;
+                    critical_for_seconds: number;
+                    critical_threshold: number;
+                    direction: string;
+                    enabled: boolean;
+                    overridden: boolean;
+                    recovery_for_seconds: number;
+                    recovery_threshold: number;
+                    unit: string;
+                    warning_for_seconds: number;
+                    warning_threshold: number;
+                } & {
+                    [key: string]: unknown;
+                };
+            } & {
+                [key: string]: unknown;
+            })[];
+            coverage: {
+                abandoned_helpers: number;
+                collection_errors: number;
+                collection_timeouts: number;
+                complete: boolean;
+                coverage_overflows: number;
+                incomplete_count: number;
+                observations_dropped: number;
+                unavailable_observations: number;
+            } & {
+                [key: string]: unknown;
+            };
+            evaluator?: {
+                active_incidents: number;
+                pending_persistence: number;
+                tracked_conditions: number;
+            } & {
+                [key: string]: unknown;
+            };
+            monitoring: {
+                configured_enabled: boolean;
+                enabled: boolean;
+                initialized: boolean;
+                restart_required: boolean;
+                worker_threads: number;
+            } & {
+                [key: string]: unknown;
+            };
+            observations: ({
+                capability: string;
+                freshness: string;
+                metric: string;
+                observed_at_ms?: number;
+                resource: string;
+                sampled_monotonic_ms?: number;
+                scope: string;
+                unit: string;
+                value: null | number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            overall_state: string;
+            recent_samples: ({
+                completed_at_ms: number;
+                observation_count: number;
+                observations_dropped: number;
+                sequence: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            schema_version: number;
+            self_observability: {
+                collectors: ({
+                    attempts: number;
+                    busy: boolean;
+                    collector: string;
+                    completions: number;
+                    failures: number;
+                    last_duration_ms: number;
+                    maximum_duration_ms: number;
+                    overlap_skips: number;
+                    scope: string;
+                    stale: boolean;
+                    tier: number;
+                    timeouts: number;
+                } & {
+                    [key: string]: unknown;
+                })[];
+                coverage_overflows: number;
+                event_delivery: {
+                    all_destinations_unavailable?: boolean;
+                    circular_report_path?: boolean;
+                    degraded?: boolean;
+                    outbox?: {
+                        available?: boolean;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                    outbox_full?: boolean;
+                } & {
+                    [key: string]: unknown;
+                };
+                incident_persistence: {
+                    failures?: number;
+                    pending?: number;
+                    retries?: number;
+                } & {
+                    [key: string]: unknown;
+                };
+            } & {
+                [key: string]: unknown;
+            };
+            snapshot: {
+                age_ms: null | number;
+                available: boolean;
+                completed_at_ms: null | number;
+                freshness: string;
+                sequence: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            thresholds: ({
+                condition: string;
+                critical_for_seconds: number;
+                critical_threshold: number;
+                direction: string;
+                enabled: boolean;
+                overridden: boolean;
+                recovery_for_seconds: number;
+                recovery_threshold: number;
+                unit: string;
+                warning_for_seconds: number;
+                warning_threshold: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            visibility: {
+                coverage_boundary: string;
+                effective_scope: string;
+                host_hardware_visible: boolean;
+            } & {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        HostHealthIncidents: {
+            count: number;
+            incidents: ({
+                closed_at_ms: null | number;
+                condition: string;
+                first_observed_at_ms: number;
+                incident_id: string;
+                last_observed_at_ms: number;
+                observation: {
+                    capability: string;
+                    freshness: string;
+                    metric: string;
+                    observed_at_ms?: number;
+                    resource: string;
+                    sampled_monotonic_ms?: number;
+                    scope: string;
+                    unit: string;
+                    value: null | number;
+                } & {
+                    [key: string]: unknown;
+                };
+                reconciliation: string;
+                revision: number;
+                scope: string;
+                severity: string;
+                state: string;
+                subject: string;
+            } & {
+                [key: string]: unknown;
+            })[];
+            next_cursor: null | string;
+            schema_version: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description summary=true, surface=live. Uses the same filtered pagination envelope, with playback-specific row fields. */
         LiveStreamSummaryPage: {
             page: number;
@@ -1784,6 +2399,29 @@ export interface components {
         };
         /** @enum {string} */
         PlaybackTransport: "auto" | "webrtc_only" | "mse_only" | "hls_only" | "webrtc_then_mse" | "mse_then_hls";
+        PlayerTelemetry: {
+            rebuffer_count?: number;
+            rebuffer_duration_ms?: number;
+            resolution_switches?: number;
+            session_id?: string;
+            stream_name: string;
+            transport?: string;
+            ttff_ms?: number;
+            webrtc_rtt_ms?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        ProcessLiveness: {
+            failedRequests: number;
+            healthy: boolean;
+            /** @constant */
+            liveness: true;
+            timestamp: string;
+            totalRequests: number;
+            uptime: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description Empty arrays are accepted. Invalid or missing IDs count as failures; an existing forbidden member rejects the entire request before writes. */
         RecordingBatchProtectionRequest: {
             ids: unknown[];
@@ -2102,6 +2740,23 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        SetupStatus: {
+            complete: boolean;
+            setup_completed_at: number;
+        } & {
+            [key: string]: unknown;
+        };
+        SetupUpdate: {
+            complete?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        SetupUpdated: {
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description Default GET /api/streams response. An empty array is valid. Each row is filtered and redacted using runtime plus go2rtc health observations. */
         StreamCompatibilityList: (components["schemas"]["StreamRedacted"] | components["schemas"]["StreamPrivileged"])[];
         /** @description Partial ordinary update. All fields are optional and omission preserves existing state. Unknown fields (including detected width/height/fps) are currently ignored. This typed contract describes intended values; existing handlers can ignore wrong types instead of returning 400. It does not promise every malformed value is rejected by C. */
@@ -2300,6 +2955,75 @@ export interface components {
         };
         /** @description Full details are wrapped in stream. Read authorization uses raw camera facts; privileged fields additionally use runtime-enriched facts on the same camera. */
         StreamFullResponse: components["schemas"]["StreamFullRedactedResponse"] | components["schemas"]["StreamFullPrivilegedResponse"];
+        StreamHealth: {
+            failedRequests: number;
+            healthy: boolean;
+            status: string;
+            storage: {
+                available_bytes: number;
+                used_bytes: number;
+            } & {
+                [key: string]: unknown;
+            };
+            streams: {
+                degraded: number;
+                down: number;
+                total: number;
+                up: number;
+            } & {
+                [key: string]: unknown;
+            };
+            streams_detail: ({
+                bitrate_bps: number;
+                configured_fps: number;
+                connection_latency_ms: number;
+                current_fps: number;
+                detector_operating: boolean;
+                expected_fps: number;
+                fps: number;
+                frames_dropped: number;
+                frames_total: number;
+                last_completed_segment_ts: number;
+                last_frame_ts: number;
+                last_packet_ts: number;
+                name: string;
+                observed_fps: number;
+                reconnects: number;
+                recorder_session_active: boolean;
+                recorder_writing: boolean;
+                recording_active: boolean;
+                recording_gaps: number;
+                source_connected: boolean;
+                sparkline_bitrate?: number[];
+                sparkline_fps?: number[];
+                status: string;
+                uptime_seconds: number;
+                video_advancing: boolean;
+            } & {
+                [key: string]: unknown;
+            })[];
+            timestamp: string;
+            totalRequests: number;
+            uptime: number;
+        } & {
+            [key: string]: unknown;
+        };
+        StreamHealthHistory: {
+            failedRequests: number;
+            healthy: boolean;
+            streams_detail: ({
+                name: string;
+                sparkline_bitrate?: number[];
+                sparkline_fps?: number[];
+            } & {
+                [key: string]: unknown;
+            })[];
+            timestamp: string;
+            totalRequests: number;
+            uptime: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description Select the response with the request query. Consumers validating an admin or live summary must use its specific page schema: the identity-only LPR variant is deliberately minimal. */
         StreamListResponse: components["schemas"]["StreamCompatibilityList"] | components["schemas"]["StreamSummaryPage"] | components["schemas"]["LiveStreamSummaryPage"] | components["schemas"]["LprStreamSummaryPage"];
         /** @description Synchronous lightweight privacy toggle. No other update fields may accompany it; unknown fields are rejected in this form. */
@@ -2442,6 +3166,447 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        SystemActionAccepted: {
+            message: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemBackupCreated: {
+            backupUrl: string;
+            filename: string;
+            message: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemInformation: {
+            cpu: {
+                cores?: number;
+                model?: string;
+                usage?: null | number;
+                usageCapability?: string;
+            } & {
+                [key: string]: unknown;
+            };
+            detectorMemory?: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            disk: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            git_commit: string;
+            global_retention_days: number;
+            go2rtcMemory?: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            memory: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            network: {
+                interfaces?: ({
+                    address?: null | string;
+                    capability?: string;
+                    ipv6?: string;
+                    mac?: string;
+                    name: string;
+                    up?: boolean;
+                } & {
+                    [key: string]: unknown;
+                })[];
+            } & {
+                [key: string]: unknown;
+            };
+            recordings: {
+                count: number;
+                size: number;
+            } & {
+                [key: string]: unknown;
+            };
+            streams: {
+                active: number;
+                total: number;
+            } & {
+                [key: string]: unknown;
+            };
+            streamStorage: ({
+                count: number;
+                detection_retention_days: number;
+                max_storage_mb: number;
+                name: string;
+                retention_days: number;
+                size: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            systemDisk: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            systemMemory?: {
+                capability?: string;
+                free?: null | number;
+                total?: null | number;
+                used?: null | number;
+            } & {
+                [key: string]: unknown;
+            };
+            threads: null | number;
+            uptime: number;
+            uptimeCapability?: string;
+            version: string;
+            versions: {
+                items: ({
+                    category: string;
+                    details?: string;
+                    name: string;
+                    version: string;
+                } & {
+                    [key: string]: unknown;
+                })[];
+            } & {
+                [key: string]: unknown;
+            };
+            webThreadPoolSize: number;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemLogs: {
+            file: string;
+            level: string;
+            logs: ({
+                level?: string;
+                message?: string;
+                timestamp?: string;
+            } & {
+                [key: string]: unknown;
+            })[];
+        } & {
+            [key: string]: unknown;
+        };
+        SystemSettings: {
+            api_detection_backend: string;
+            api_detection_detector_name: string;
+            api_detection_format: string;
+            api_detection_url: string;
+            audio_disabled: boolean;
+            auth_absolute_timeout_hours: number;
+            auth_timeout_hours: number;
+            auto_delete_oldest: boolean;
+            auto_disabled: boolean;
+            buffer_size: number;
+            db_backup_interval_minutes: number;
+            db_backup_retention_count: number;
+            db_backup_verify: string;
+            db_path: string;
+            db_post_backup_script: string;
+            default_detection_threshold: number;
+            default_playback_transport: string;
+            demo_mode: boolean;
+            detection_engine_delegate: string;
+            detection_engine_enabled: boolean;
+            detection_engine_threads: number;
+            detection_grace_period: number;
+            force_mfa_on_login: boolean;
+            generate_thumbnails: boolean;
+            go2rtc_api_port: number;
+            go2rtc_base_path: string;
+            go2rtc_binary_path: string;
+            go2rtc_config_dir: string;
+            go2rtc_config_override: string;
+            go2rtc_config_override_disabled_reason: string;
+            go2rtc_config_override_quarantined: string;
+            go2rtc_enabled: boolean;
+            go2rtc_external_ip: string;
+            go2rtc_force_native_hls: boolean;
+            go2rtc_ice_servers: string;
+            go2rtc_rtsp_port: number;
+            go2rtc_stun_enabled: boolean;
+            go2rtc_stun_server: string;
+            go2rtc_webrtc_enabled: boolean;
+            go2rtc_webrtc_listen_port: number;
+            health_condition_overrides: null | ({
+                conditions?: ({
+                    code: string;
+                    critical?: number;
+                    critical_for_seconds?: number;
+                    profile?: string;
+                    recovery?: number;
+                    recovery_for_seconds?: number;
+                    unit?: string;
+                    warning?: number;
+                    warning_for_seconds?: number;
+                } & {
+                    [key: string]: unknown;
+                })[];
+                version?: number;
+            } & {
+                [key: string]: unknown;
+            });
+            health_device_interval_seconds: number;
+            health_effective_policy?: {
+                conditions?: ({
+                    code: string;
+                    critical?: number;
+                    critical_for_seconds?: number;
+                    recovery?: number;
+                    recovery_for_seconds?: number;
+                    unit?: string;
+                    warning?: number;
+                    warning_for_seconds?: number;
+                } & {
+                    [key: string]: unknown;
+                })[];
+            } & {
+                [key: string]: unknown;
+            };
+            health_enabled: boolean;
+            health_fast_interval_seconds: number;
+            health_hardware_provider: string;
+            health_incident_retention_days: number;
+            health_normal_interval_seconds: number;
+            health_presence_interval_seconds: number;
+            health_profile: string;
+            health_slow_interval_seconds: number;
+            health_write_probe_enabled: boolean;
+            hls_disabled: boolean;
+            log_file: string;
+            log_level: number;
+            login_rate_limit_enabled: boolean;
+            login_rate_limit_max_attempts: number;
+            login_rate_limit_window_seconds: number;
+            lpr_retention_days: number;
+            max_storage_size: number;
+            max_streams: number;
+            max_streams_ceiling: number;
+            models_path: string;
+            mp4_directory_format: string;
+            mp4_faststart: boolean;
+            mqtt_broker_host: string;
+            mqtt_broker_port: number;
+            mqtt_client_id: string;
+            mqtt_enabled: boolean;
+            mqtt_ha_discovery: boolean;
+            mqtt_ha_discovery_prefix: string;
+            mqtt_ha_snapshot_interval: number;
+            mqtt_keepalive: number;
+            /** @enum {string} */
+            mqtt_password: "" | "********";
+            mqtt_qos: number;
+            mqtt_retain: boolean;
+            mqtt_tls_enabled: boolean;
+            mqtt_topic_prefix: string;
+            mqtt_username: string;
+            mse_disabled: boolean;
+            onvif_discovery_enabled: boolean;
+            onvif_discovery_interval: number;
+            onvif_discovery_network: string;
+            pid_file: string;
+            post_detection_buffer: number;
+            pre_detection_buffer: number;
+            retention_days: number;
+            storage_min_free_pct: number;
+            storage_path: string;
+            storage_path_hls: string;
+            storage_pressure_critical_pct: number;
+            storage_pressure_emergency_pct: number;
+            storage_pressure_warning_pct: number;
+            swap_size: number;
+            syslog_enabled: boolean;
+            syslog_facility: string;
+            syslog_ident: string;
+            thumbnails_per_recording: number;
+            trusted_device_days: number;
+            trusted_proxy_cidrs: string;
+            turn_enabled: boolean;
+            /** @enum {string} */
+            turn_password: "" | "********";
+            turn_server_url: string;
+            turn_username: string;
+            use_swap: boolean;
+            web_auth_enabled: boolean;
+            web_bind_ip: string;
+            web_port: number;
+            web_root: string;
+            web_thread_pool_size: number;
+            webrtc_connection_timeout_ms: number;
+            webrtc_disabled: boolean;
+            webrtc_ice_recovery_timeout_ms: number;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemSettingsSaved: {
+            restart_required: boolean;
+            restart_required_message?: string;
+            /** @constant */
+            success: true;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Partial settings update; absent fields are retained. Secret mask values preserve the stored password. */
+        SystemSettingsUpdate: {
+            api_detection_backend?: string;
+            api_detection_detector_name?: string;
+            /** @enum {string} */
+            api_detection_format?: "light-object-detect" | "doods2";
+            api_detection_url?: string;
+            audio_disabled?: boolean;
+            auth_absolute_timeout_hours?: number;
+            auth_timeout_hours?: number;
+            auto_delete_oldest?: boolean;
+            auto_disabled?: boolean;
+            buffer_size?: number;
+            db_backup_interval_minutes?: number;
+            db_backup_retention_count?: number;
+            db_backup_verify?: string;
+            db_path?: string;
+            db_post_backup_script?: string;
+            default_detection_threshold?: number;
+            default_playback_transport?: string;
+            demo_mode?: boolean;
+            detection_engine_delegate?: string;
+            detection_engine_enabled?: boolean;
+            detection_engine_threads?: number;
+            detection_grace_period?: number;
+            force_mfa_on_login?: boolean;
+            generate_thumbnails?: boolean;
+            go2rtc_api_port?: number;
+            go2rtc_binary_path?: string;
+            go2rtc_config_dir?: string;
+            go2rtc_config_override?: string;
+            go2rtc_enabled?: boolean;
+            go2rtc_external_ip?: string;
+            go2rtc_force_native_hls?: boolean;
+            go2rtc_ice_servers?: string;
+            go2rtc_rtsp_port?: number;
+            go2rtc_stun_enabled?: boolean;
+            go2rtc_stun_server?: string;
+            go2rtc_webrtc_enabled?: boolean;
+            go2rtc_webrtc_listen_port?: number;
+            health_condition_overrides?: null | ({
+                conditions?: ({
+                    code: string;
+                    critical?: number;
+                    critical_for_seconds?: number;
+                    profile?: string;
+                    recovery?: number;
+                    recovery_for_seconds?: number;
+                    unit?: string;
+                    warning?: number;
+                    warning_for_seconds?: number;
+                } & {
+                    [key: string]: unknown;
+                })[];
+                version?: number;
+            } & {
+                [key: string]: unknown;
+            });
+            health_device_interval_seconds?: number;
+            health_enabled?: boolean;
+            health_fast_interval_seconds?: number;
+            health_hardware_provider?: string;
+            health_incident_retention_days?: number;
+            health_normal_interval_seconds?: number;
+            health_presence_interval_seconds?: number;
+            health_profile?: string;
+            health_slow_interval_seconds?: number;
+            health_write_probe_enabled?: boolean;
+            hls_disabled?: boolean;
+            log_file?: string;
+            log_level?: number;
+            login_rate_limit_enabled?: boolean;
+            login_rate_limit_max_attempts?: number;
+            login_rate_limit_window_seconds?: number;
+            lpr_retention_days?: number;
+            max_storage_size?: number;
+            max_streams?: number;
+            models_path?: string;
+            mp4_directory_format?: string;
+            mp4_faststart?: boolean;
+            mqtt_broker_host?: string;
+            mqtt_broker_port?: number;
+            mqtt_client_id?: string;
+            mqtt_enabled?: boolean;
+            mqtt_ha_discovery?: boolean;
+            mqtt_ha_discovery_prefix?: string;
+            mqtt_ha_snapshot_interval?: number;
+            mqtt_keepalive?: number;
+            mqtt_password?: string;
+            mqtt_qos?: number;
+            mqtt_retain?: boolean;
+            mqtt_tls_enabled?: boolean;
+            mqtt_topic_prefix?: string;
+            mqtt_username?: string;
+            mse_disabled?: boolean;
+            onvif_discovery_enabled?: boolean;
+            onvif_discovery_interval?: number;
+            onvif_discovery_network?: string;
+            pid_file?: string;
+            post_detection_buffer?: number;
+            pre_detection_buffer?: number;
+            retention_days?: number;
+            storage_min_free_pct?: number;
+            storage_path?: string;
+            storage_path_hls?: string;
+            storage_pressure_critical_pct?: number;
+            storage_pressure_emergency_pct?: number;
+            storage_pressure_warning_pct?: number;
+            swap_size?: number;
+            syslog_enabled?: boolean;
+            syslog_facility?: string;
+            syslog_ident?: string;
+            thumbnails_per_recording?: number;
+            trusted_device_days?: number;
+            trusted_proxy_cidrs?: string;
+            turn_enabled?: boolean;
+            turn_password?: string;
+            turn_server_url?: string;
+            turn_username?: string;
+            use_swap?: boolean;
+            web_auth_enabled?: boolean;
+            web_bind_ip?: string;
+            web_port?: number;
+            web_root?: string;
+            web_thread_pool_size?: number;
+            webrtc_connection_timeout_ms?: number;
+            webrtc_disabled?: boolean;
+            webrtc_ice_recovery_timeout_ms?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        SystemStatus: {
+            message: string;
+            /** @constant */
+            status: "ok";
+        } & {
+            [key: string]: unknown;
+        };
         /** @description Existing fleet selector grammar. Server additionally enforces depth≤8, total nodes≤64, UTF-8 byte limits and serialized selector<8192 bytes. Evaluation and delegation containment remain server decisions. */
         TokenSelector: {
             expression: components["schemas"]["TokenSelectorExpression"];
@@ -2561,6 +3726,33 @@ export interface components {
         };
         /** @description Seven days × 24 hours, indexed day*24+hour. true permits recording in that slot; interpreted using the configured recorder schedule timezone. */
         WeeklySchedule: boolean[];
+        WorkspacesResponse: {
+            configurable: boolean;
+            /** @enum {string} */
+            scope: "user" | "installation";
+            workspaces: ({
+                /** @constant */
+                authorization_unchanged: true;
+                configurable: boolean;
+                description: string;
+                /** @enum {string} */
+                key: "live.navigator" | "investigation";
+                label: string;
+                visible: boolean;
+            } & {
+                [key: string]: unknown;
+            })[];
+        } & {
+            [key: string]: unknown;
+        };
+        WorkspacesUpdate: {
+            workspaces: {
+                investigation?: boolean;
+                "live.navigator"?: boolean;
+            };
+        } & {
+            [key: string]: unknown;
+        };
     };
     responses: never;
     parameters: never;
@@ -4490,6 +5682,143 @@ export interface operations {
             };
         };
     };
+    getStreamHealth: {
+        parameters: {
+            query?: {
+                /** @description Return authorized stream histories. */
+                history_only?: boolean;
+                /** @description Return only process liveness. */
+                liveness?: boolean;
+                /** @description Include stream history arrays. */
+                sparklines?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getHlsHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HlsHealth"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listFleetLocations: {
         parameters: {
             query?: never;
@@ -4613,6 +5942,71 @@ export interface operations {
             };
             /** @description Database, authorization or serialization failure. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6202,6 +7596,343 @@ export interface operations {
             };
         };
     };
+    getSystemSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemSettings"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateSystemSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemSettingsSaved"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    validateGo2rtcConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Go2rtcConfigurationInput"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Go2rtcConfigurationValidation"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SetupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupUpdated"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listStreams: {
         parameters: {
             query?: {
@@ -6435,6 +8166,862 @@ export interface operations {
             };
         };
     };
+    getSystemInformationLegacy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInformation"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createSystemBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemBackupCreated"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getGo2rtcEffectiveConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Go2rtcEffectiveConfiguration"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getGo2rtcOverrideDiagnostics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Go2rtcOverrideDiagnostics"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getHostHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostHealth"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getHostHealthIncidents: {
+        parameters: {
+            query?: {
+                /** @description Opaque versioned cursor from the preceding page; malformed cursors return 400. */
+                cursor?: string;
+                include_closed?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostHealthIncidents"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSystemInformation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInformation"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSystemLogs: {
+        parameters: {
+            query?: {
+                count?: number;
+                last_ts?: string;
+                level?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemLogs"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    clearSystemLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemActionAccepted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    restartSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemActionAccepted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    shutdownSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemActionAccepted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSystemStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemStatus"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    recordPlayerTelemetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PlayerTelemetry"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getTimelineSegments: {
         parameters: {
             query?: {
@@ -6550,6 +9137,140 @@ export interface operations {
             };
             /** @description Database, policy, media preparation or serialization failure. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacesResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspacesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. Process-control responses acknowledge a request; verify eventual completion independently. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacesResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Server or persistence failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

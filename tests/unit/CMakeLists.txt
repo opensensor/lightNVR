@@ -310,6 +310,7 @@ add_layer2_test(test_totp CI_UNIT CI_SANITIZER)
 add_layer2_test(test_authorization CI_UNIT)
 add_layer2_test(test_openapi_projection CI_UNIT CI_SANITIZER)
 target_link_options(test_openapi_projection PRIVATE
+    "-Wl,--wrap=authorization_snapshot_setup_complete"
     "-Wl,--wrap=authorization_snapshot_camera_count"
     "-Wl,--wrap=authorization_snapshot_allows_non_scoped_identity"
     "-Wl,--wrap=authorization_snapshot_evaluate")

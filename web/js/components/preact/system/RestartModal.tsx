@@ -1,3 +1,4 @@
+import {getSystemStatus} from '../../../api/system.ts';
 /**
  * RestartModal Component
  * A styled modal for confirming and showing restart progress
@@ -58,18 +59,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }: Resta
     // First, detect when the server goes down
     const detectShutdown = setInterval(async () => {
       try {
-        const response = await fetch('/api/system/status', {
-          method: 'GET',
-          cache: 'no-store',
-          signal: AbortSignal.timeout(1000)
-        });
-
-        if (!response.ok) {
-          // Server is shutting down
-          setServerDown(true);
-          setReconnectStatus(t('system.serverShuttingDown'));
-          clearInterval(detectShutdown);
-        }
+        await getSystemStatus({signal:AbortSignal.timeout(1000),retries:0});
       } catch (error) {
         // Server is down or unreachable
         setServerDown(true);
@@ -94,22 +84,12 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }: Resta
       }
 
       try {
-        const response = await fetch('/api/system/status', {
-          method: 'GET',
-          cache: 'no-store',
-          signal: AbortSignal.timeout(2000)
-        });
-
-        if (response.ok) {
+        await getSystemStatus({signal:AbortSignal.timeout(2000),retries:0});
+        if (serverDown) {
           setReconnectStatus(t('system.serverBackOnline'));
           clearInterval(detectShutdown);
           clearInterval(checkInterval);
-          setTimeout(() => {
-            window.location.reload();
-          }, 1000);
-        } else if (serverDown) {
-          // Server is down, waiting for it to come back
-          setReconnectStatus(t('system.waitingForServerRestart', { seconds: reconnectAttempts }));
+          setTimeout(() => window.location.reload(), 1000);
         }
       } catch (error) {
         if (serverDown) {

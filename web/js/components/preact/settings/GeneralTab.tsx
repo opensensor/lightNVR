@@ -1,3 +1,4 @@
+import {updateSetupStatus} from '../../../api/system.ts';
 /**
  * GeneralTab — General settings (log level, syslog, web port/bind IP,
  * web thread pool, max streams, rerun setup wizard).
@@ -192,12 +193,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
                 if (isResettingWizard) return;
                 setIsResettingWizard(true);
                 try {
-                  const res = await fetch('/api/setup/status', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ complete: false }),
-                  });
-                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                  await updateSetupStatus({complete:false});
                   window.location.href = 'index.html';
                 } catch (err) {
                   showStatusMessage(t('settings.resetWizardError', { message: (err as Error).message }), 'error');

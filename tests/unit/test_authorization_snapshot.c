@@ -187,6 +187,18 @@ void tearDown(void) {
     owned_count = 0;
 }
 
+static void test_setup_read_is_snapshot_bound_and_fails_closed(void) {
+    sql("INSERT OR REPLACE INTO system_settings(key,value) VALUES('setup_complete','0');");
+    authorization_snapshot_t *old = capture();
+    TEST_ASSERT_EQUAL_INT(0, authorization_snapshot_setup_complete(old));
+    sql("UPDATE system_settings SET value='1' WHERE key='setup_complete';");
+    TEST_ASSERT_EQUAL_INT(0, authorization_snapshot_setup_complete(old));
+    TEST_ASSERT_EQUAL_INT(1, authorization_snapshot_setup_complete(capture()));
+    sql_failure = "SELECT (SELECT value FROM system_settings";
+    TEST_ASSERT_EQUAL_INT(-1, authorization_snapshot_setup_complete(old));
+    TEST_ASSERT_EQUAL_INT(-1, authorization_snapshot_setup_complete(NULL));
+}
+
 static void test_refresh_identity_and_keep_snapshot_after_deactivation(void) {
     principal.role = USER_ROLE_ADMIN; /* Stale caller must not elevate DB viewer. */
     authorization_snapshot_t *old = capture();
@@ -394,6 +406,7 @@ int main(void) {
     snprintf(db_path, sizeof(db_path), "%s/db.sqlite", directory);
     if (init_database(db_path) != 0 || db_auth_init() != 0) return 1;
     UNITY_BEGIN();
+    RUN_TEST(test_setup_read_is_snapshot_bound_and_fails_closed);
     RUN_TEST(test_refresh_identity_and_keep_snapshot_after_deactivation);
     RUN_TEST(test_lazy_collection_membership_reads_use_original_transaction);
     RUN_TEST(test_policy_and_inventory_cannot_mix_across_commit);

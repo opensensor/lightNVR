@@ -1,3 +1,4 @@
+import {getSetupStatus} from '../api/system.ts';
 import '../sentry.ts';
 /**
  * LightNVR Web Interface Live View Page
@@ -31,12 +32,6 @@ interface IndexClientConfig extends ClientConfig {
     mseDisabled?: boolean;
 }
 
-/** GET /api/setup/status: api_handlers_setup.c */
-interface SetupStatusResponse {
-    complete: boolean;
-    setup_completed_at: number;
-}
-
 /**
  * Main App component. Renders the LiveView in its WebRTC-first variant unless
  * WebRTC is disabled in settings.
@@ -58,7 +53,7 @@ function App() {
             try {
                 const [settingsRes, setupRes] = await Promise.all([
                     fetch('/api/client-config'),
-                    fetch('/api/setup/status'),
+                    getSetupStatus(),
                 ]);
 
                 if (settingsRes.ok) {
@@ -80,9 +75,8 @@ function App() {
                     console.error('Failed to fetch settings:', settingsRes.status, settingsRes.statusText);
                 }
 
-                if (setupRes.ok) {
-                    const setupData: SetupStatusResponse = await setupRes.json();
-                    if (!setupData.complete) {
+                if (setupRes) {
+                    if (!setupRes.complete) {
                         setShowWizard(true);
                     }
                 }

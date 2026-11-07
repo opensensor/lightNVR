@@ -1,3 +1,4 @@
+import {getStreamHealth} from '../../../api/system.ts';
 /**
  * WebServiceInfo Component
  * Displays web server activity (request counts, health) and process thread info.
@@ -39,12 +40,7 @@ function StatusBadge({ healthy, t }: StatusBadgeProps) {
  */
 export function WebServiceInfo({ systemInfo }: WebServiceInfoProps) {
   const { t } = useI18n();
-  const { data: health, isLoading, error } = useQuery<StreamHealthResponse>(
-    ['webHealth'],
-    '/api/health',
-    { timeout: 5000, retries: 1 },
-    { refetchInterval: 30000 }
-  );
+  const { data: health, isLoading, error } = useQuery<StreamHealthResponse>({queryKey:['webHealth'],queryFn:({signal}) => getStreamHealth({signal,timeout:5000}),refetchInterval:30000});
 
   const threads      = systemInfo?.threads      ?? '—';
   const poolSize     = systemInfo?.webThreadPoolSize ?? '—';

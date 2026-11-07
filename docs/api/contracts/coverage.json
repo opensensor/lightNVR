@@ -19,8 +19,10 @@
       "handler": "handle_get_setup_status",
       "source": "src/web/libuv_api_handlers.c",
       "line": 96,
-      "coverage": "later",
-      "classification": "public-bootstrap"
+      "coverage": "system-settings",
+      "classification": "public-bootstrap",
+      "operation_id": "getSetupStatus",
+      "canonical_path": "/api/setup/status"
     },
     {
       "method": "POST",
@@ -28,8 +30,10 @@
       "handler": "handle_post_setup_complete",
       "source": "src/web/libuv_api_handlers.c",
       "line": 97,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateSetupStatus",
+      "canonical_path": "/api/setup/status"
     },
     {
       "method": "GET",
@@ -37,8 +41,10 @@
       "handler": "handle_get_health",
       "source": "src/web/libuv_api_handlers.c",
       "line": 100,
-      "coverage": "later",
-      "classification": "public-bootstrap"
+      "coverage": "system-settings",
+      "classification": "public-bootstrap",
+      "operation_id": "getStreamHealth",
+      "canonical_path": "/api/health"
     },
     {
       "method": "GET",
@@ -46,8 +52,10 @@
       "handler": "handle_get_hls_health",
       "source": "src/web/libuv_api_handlers.c",
       "line": 101,
-      "coverage": "later",
-      "classification": "public-bootstrap"
+      "coverage": "system-settings",
+      "classification": "public-bootstrap",
+      "operation_id": "getHlsHealth",
+      "canonical_path": "/api/health/hls"
     },
     {
       "method": "GET",
@@ -55,8 +63,10 @@
       "handler": "handle_get_metrics",
       "source": "src/web/libuv_api_handlers.c",
       "line": 104,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getMetrics",
+      "canonical_path": "/api/metrics"
     },
     {
       "method": "POST",
@@ -64,8 +74,10 @@
       "handler": "handle_post_player_telemetry",
       "source": "src/web/libuv_api_handlers.c",
       "line": 105,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "recordPlayerTelemetry",
+      "canonical_path": "/api/telemetry/player"
     },
     {
       "method": "POST",
@@ -798,8 +810,10 @@
       "handler": "handle_get_settings",
       "source": "src/web/libuv_api_handlers.c",
       "line": 261,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getSystemSettings",
+      "canonical_path": "/api/settings"
     },
     {
       "method": "GET",
@@ -817,8 +831,10 @@
       "handler": "handle_post_settings",
       "source": "src/web/libuv_api_handlers.c",
       "line": 264,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateSystemSettings",
+      "canonical_path": "/api/settings"
     },
     {
       "method": "POST",
@@ -826,8 +842,10 @@
       "handler": "handle_post_settings_go2rtc_validate",
       "source": "src/web/libuv_api_handlers.c",
       "line": 265,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "validateGo2rtcConfiguration",
+      "canonical_path": "/api/settings/go2rtc/validate"
     },
     {
       "method": "GET",
@@ -835,8 +853,10 @@
       "handler": "handle_get_ui_workspaces",
       "source": "src/web/libuv_api_handlers.c",
       "line": 267,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getWorkspaces",
+      "canonical_path": "/api/ui/workspaces"
     },
     {
       "method": "PUT",
@@ -844,8 +864,10 @@
       "handler": "handle_put_ui_workspaces",
       "source": "src/web/libuv_api_handlers.c",
       "line": 269,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateWorkspaces",
+      "canonical_path": "/api/ui/workspaces"
     },
     {
       "method": "GET",
@@ -862,8 +884,10 @@
       "handler": "handle_get_system_info",
       "source": "src/web/libuv_api_handlers.c",
       "line": 276,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getSystemInformationLegacy",
+      "canonical_path": "/api/system"
     },
     {
       "method": "GET",
@@ -871,8 +895,10 @@
       "handler": "handle_get_system_info",
       "source": "src/web/libuv_api_handlers.c",
       "line": 277,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getSystemInformation",
+      "canonical_path": "/api/system/info"
     },
     {
       "method": "GET",
@@ -880,8 +906,10 @@
       "handler": "handle_get_system_health_incidents",
       "source": "src/web/libuv_api_handlers.c",
       "line": 278,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getHostHealthIncidents",
+      "canonical_path": "/api/system/health/incidents"
     },
     {
       "method": "GET",
@@ -889,8 +917,10 @@
       "handler": "handle_get_system_health",
       "source": "src/web/libuv_api_handlers.c",
       "line": 280,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getHostHealth",
+      "canonical_path": "/api/system/health"
     },
     {
       "method": "GET",
@@ -898,8 +928,10 @@
       "handler": "handle_get_system_logs",
       "source": "src/web/libuv_api_handlers.c",
       "line": 282,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getSystemLogs",
+      "canonical_path": "/api/system/logs"
     },
     {
       "method": "POST",
@@ -907,8 +939,10 @@
       "handler": "handle_post_system_restart",
       "source": "src/web/libuv_api_handlers.c",
       "line": 283,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "restartSystem",
+      "canonical_path": "/api/system/restart"
     },
     {
       "method": "POST",
@@ -916,8 +950,10 @@
       "handler": "handle_post_system_shutdown",
       "source": "src/web/libuv_api_handlers.c",
       "line": 284,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "shutdownSystem",
+      "canonical_path": "/api/system/shutdown"
     },
     {
       "method": "POST",
@@ -925,8 +961,10 @@
       "handler": "handle_post_system_logs_clear",
       "source": "src/web/libuv_api_handlers.c",
       "line": 285,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "clearSystemLogs",
+      "canonical_path": "/api/system/logs/clear"
     },
     {
       "method": "POST",
@@ -934,8 +972,10 @@
       "handler": "handle_post_system_backup",
       "source": "src/web/libuv_api_handlers.c",
       "line": 286,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "createSystemBackup",
+      "canonical_path": "/api/system/backup"
     },
     {
       "method": "GET",
@@ -943,8 +983,10 @@
       "handler": "handle_get_system_status",
       "source": "src/web/libuv_api_handlers.c",
       "line": 287,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getSystemStatus",
+      "canonical_path": "/api/system/status"
     },
     {
       "method": "GET",
@@ -952,8 +994,10 @@
       "handler": "handle_get_system_go2rtc_effective_config",
       "source": "src/web/libuv_api_handlers.c",
       "line": 288,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getGo2rtcEffectiveConfiguration",
+      "canonical_path": "/api/system/go2rtc/effective-config"
     },
     {
       "method": "GET",
@@ -961,8 +1005,10 @@
       "handler": "handle_get_system_go2rtc_override_status",
       "source": "src/web/libuv_api_handlers.c",
       "line": 290,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "system-settings",
+      "classification": "protected-review-per-route",
+      "operation_id": "getGo2rtcOverrideDiagnostics",
+      "canonical_path": "/api/system/go2rtc/override-status"
     },
     {
       "method": "GET",

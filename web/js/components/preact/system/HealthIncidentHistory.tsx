@@ -1,3 +1,4 @@
+import {getHostHealthIncidents} from '../../../api/system.ts';
 import { useState } from 'preact/hooks';
 import { useQuery } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
@@ -44,12 +45,7 @@ export function HealthIncidentHistory() {
   const { t } = useI18n();
   const [cursor, setCursor] = useState('');
   const [previous, setPrevious] = useState<string[]>([]);
-  const query = useQuery<HealthIncidentsResponse>(
-    ['systemHealthIncidents', cursor],
-    buildIncidentHistoryUrl(cursor),
-    { timeout: 15000, retries: 1 },
-    { staleTime: 30000, refetchOnWindowFocus: false }
-  );
+  const query = useQuery<HealthIncidentsResponse>({queryKey:['systemHealthIncidents',cursor],queryFn:({signal}) => getHostHealthIncidents({limit:HISTORY_PAGE_SIZE,include_closed:true,cursor:cursor || undefined},{signal}),staleTime:30000,refetchOnWindowFocus:false});
   const incidents = query.data?.incidents || [];
   const nextCursor = query.data?.next_cursor || '';
   const goNext = () => {

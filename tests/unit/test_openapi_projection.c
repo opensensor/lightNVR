@@ -12,10 +12,10 @@ static cJSON *input, *output;
 static int mode, allocation_limit = -1, evaluation_error;
 static unsigned allowed[2];
 static const char *expected_resource;
-static int global_calls;
+static int global_calls, setup_complete;
 static bool non_scoped_identity = true;
 static bool global_allowed = true;
-void setUp(void) { input = output = NULL; mode = 0; non_scoped_identity = true; global_allowed = true; evaluation_error = 0; global_calls = 0; expected_resource = NULL; allowed[0] = allowed[1] = 0; }
+void setUp(void) { input = output = NULL; mode = 0; non_scoped_identity = true; global_allowed = true; evaluation_error = 0; global_calls = 0; setup_complete = 1; expected_resource = NULL; allowed[0] = allowed[1] = 0; }
 void tearDown(void) { allocation_limit = -1; cJSON_InitHooks(NULL); cJSON_Delete(input); cJSON_Delete(output); }
 static cJSON *get(const cJSON *j, const char *key) { return cJSON_GetObjectItemCaseSensitive(j, key); }
 static int access_rule(void *ctx, const cJSON *predicate) {
@@ -29,6 +29,7 @@ static int access_rule(void *ctx, const cJSON *predicate) {
     return 1;
 }
 bool __wrap_authorization_snapshot_allows_non_scoped_identity(const authorization_snapshot_t *s) { return s && non_scoped_identity; }
+int __wrap_authorization_snapshot_setup_complete(const authorization_snapshot_t *s) { return s ? setup_complete : -1; }
 int __wrap_authorization_snapshot_camera_count(const authorization_snapshot_t *s) { (void)s; return 2; }
 int __wrap_authorization_snapshot_evaluate(authorization_snapshot_t *s, authorization_action_t action,
         int index, const char *resource, authorization_evaluation_t *result) {
@@ -55,7 +56,7 @@ static cJSON *schemas(void) { return get(get(output, "components"), "schemas"); 
 static void test_canonical_admin_immutable(void) {
     canonical(); char *before = cJSON_PrintUnformatted(input); project();
     char *after = cJSON_PrintUnformatted(input); TEST_ASSERT_EQUAL_STRING(before, after); free(before); free(after);
-    TEST_ASSERT_EQUAL_INT(54, cJSON_GetArraySize(get(output, "paths")));
+    TEST_ASSERT_EQUAL_INT(cJSON_GetArraySize(get(input, "paths")), cJSON_GetArraySize(get(output, "paths")));
     TEST_ASSERT_NULL(get(output, "x-lightnvr-validators"));
     TEST_ASSERT_NOT_NULL(get(get(schemas(), "OpenApiDocument"), "properties"));
     TEST_ASSERT_NOT_NULL(get(get(get(schemas(), "OpenApiDocument"), "properties"), "x-lightnvr-coverage"));
@@ -267,8 +268,25 @@ static void test_identity_management_adapter(void) {
     TEST_ASSERT_EQUAL_INT(-1, openapi_snapshot_access(NULL, input));
 }
 
+static void test_bootstrap_setup_adapter(void) {
+    parse("{\"version\":1,\"kind\":\"bootstrap_setup\"}");
+    authorization_snapshot_t *snapshot = (authorization_snapshot_t *)&mode;
+    expected_resource = "raw";
+    TEST_ASSERT_EQUAL_INT(1, openapi_snapshot_access(snapshot, input));
+    global_allowed = false;
+    TEST_ASSERT_EQUAL_INT(0, openapi_snapshot_access(snapshot, input));
+    setup_complete = 0;
+    TEST_ASSERT_EQUAL_INT(1, openapi_snapshot_access(snapshot, input));
+    TEST_ASSERT_EQUAL_INT(2, global_calls);
+    setup_complete = -1;
+    TEST_ASSERT_EQUAL_INT(-1, openapi_snapshot_access(snapshot, input));
+    setup_complete = 1; evaluation_error = 1;
+    TEST_ASSERT_EQUAL_INT(-1, openapi_snapshot_access(snapshot, input));
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_bootstrap_setup_adapter);
     RUN_TEST(test_canonical_admin_immutable); RUN_TEST(test_viewer_prunes_variants); RUN_TEST(test_empty_valid);
     RUN_TEST(test_identity_management_adapter); RUN_TEST(test_non_scoped_identity_adapter); RUN_TEST(test_callback_failure); RUN_TEST(test_bad_predicates_even_hidden);
     RUN_TEST(test_cycles_pointers_literals_links_discriminator); RUN_TEST(test_missing_external_and_bad_escaped_refs);

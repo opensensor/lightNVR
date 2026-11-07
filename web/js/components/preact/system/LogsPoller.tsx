@@ -1,13 +1,13 @@
+import {getSystemLogs} from '../../../api/system.ts';
 /**
  * LogsPoller Component
  * Handles polling for logs via HTTP API
  */
 
 import { useEffect, useRef, useCallback } from 'preact/hooks';
-import { fetchJSON } from '../../../fetch-utils.ts';
 import { log_level_meets_minimum } from './SystemUtils.ts';
 import { toEpochMilliseconds } from '../../../utils/date-utils.ts';
-import type { SystemLogEntry, SystemLogsResponse } from '../../../types/system.ts';
+import type { SystemLogEntry } from '../../../types/system.ts';
 
 export interface LogsPollerProps {
   logLevel: string;
@@ -63,11 +63,7 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
     console.log(`Fetching logs via HTTP API with level=${normalizedLevel} (${normalizedLevel} and above); additional filtering will be applied on the frontend`);
 
     try {
-      const log_uri = `/api/system/logs?level=${encodeURIComponent(normalizedLevel)}&count=${encodeURIComponent(logCount)}`;
-      const response = await fetchJSON<SystemLogsResponse>(log_uri, {
-        timeout: 10000,
-        retries: 1
-      });
+      const response = await getSystemLogs({level:normalizedLevel,count:logCount},{timeout:10000});
 
       if (response && response.logs && Array.isArray(response.logs)) {
         // Clean and normalize logs

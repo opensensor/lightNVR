@@ -1,3 +1,4 @@
+import {getSystemSettings} from '../../api/system.ts';
 /**
  * LightNVR Web Interface StreamsView Component
  * React component for the streams page
@@ -970,7 +971,7 @@ export function StreamsView() {
     if (generation !== onvifGeneration.current) return;
     // Fetch the configured default network from settings
     try {
-      const settings = await fetchJSON<{ onvif_discovery_network?: string }>('/api/settings', { timeout: 5000 });
+      const settings = await getSystemSettings({timeout:5000});
       if (generation !== onvifGeneration.current) return;
       if (settings && settings.onvif_discovery_network) {
         setOnvifNetworkOverride(settings.onvif_discovery_network);

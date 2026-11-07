@@ -1,3 +1,4 @@
+import {getWorkspaces} from '../../../api/system.ts';
 import { listFleetLocations } from '../../../api/fleet.ts';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.ts';
@@ -135,7 +136,7 @@ export function LiveOperatorNavigator({
 
   const workspaceQuery = useQuery<WorkspacesResponse>({
     queryKey: ['ui-workspaces'],
-    queryFn: ({ signal }) => fetchJSON('/api/ui/workspaces', { signal }),
+    queryFn: ({ signal }) => getWorkspaces({signal}),
     staleTime: 60000,
   });
   const locationsQuery = useQuery<LiveLocationsResponse>({

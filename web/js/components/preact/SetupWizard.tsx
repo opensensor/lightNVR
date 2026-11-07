@@ -1,3 +1,4 @@
+import {getSystemSettings,getSystemInformation,updateSystemSettings,updateSetupStatus} from '../../api/system.ts';
 /**
  * SetupWizard.tsx
  * First-run setup wizard shown as a full-screen modal overlay.
@@ -23,20 +24,6 @@ interface WizardForm {
 }
 
 type WizardFormChange = (key: keyof WizardForm, value: string) => void;
-
-interface SettingsResponse {
-  storage_path?: string;
-  max_storage_size?: number;
-  db_path?: string;
-  web_thread_pool_size?: number;
-  max_streams?: number;
-  max_streams_ceiling?: number;
-}
-
-interface SystemInfoResponse {
-  system?: { cpu_cores?: number };
-  cpu_cores?: number;
-}
 
 interface SetupSettingsPayload {
   storage_path?: string;
@@ -251,9 +238,8 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   });
 
   useEffect(() => {
-    fetch('/api/settings')
-      .then(r => r.ok ? r.json() : null)
-      .then((data: SettingsResponse | null) => {
+    getSystemSettings()
+      .then((data) => {
         if (!data) return;
         setForm(f => ({
           ...f,
@@ -269,10 +255,9 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       })
       .catch(() => {});
 
-    fetch('/api/system/info')
-      .then(r => r.ok ? r.json() : null)
-      .then((data: SystemInfoResponse | null) => {
-        const cores = data?.system?.cpu_cores || data?.cpu_cores || 0;
+    getSystemInformation()
+      .then((data) => {
+        const cores = data.cpu.cores || 0;
         if (cores > 0) setCpuCores(cores);
       })
       .catch(() => {});
@@ -294,30 +279,31 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       };
       (Object.keys(payload) as (keyof SetupSettingsPayload)[]).forEach(k => payload[k] === undefined && delete payload[k]);
 
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await updateSystemSettings(payload);
 
-      setRestartRequired(!!(payload.web_thread_pool_size || payload.max_streams));
+      setRestartRequired(result.restart_required);
       setSaved(true);
+      return true;
     } catch (err) {
       showStatusMessage(t('setupWizard.saveFailed', { error: (err as Error).message }), 'error');
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
   const handleNext = async () => {
-    if (step === TOTAL_STEPS - 2) await saveSettings();
+    if (step === TOTAL_STEPS - 2 && !await saveSettings()) return;
     if (step < TOTAL_STEPS - 1) setStep(s => s + 1);
   };
 
   const handleComplete = async () => {
-    await fetch('/api/setup/status', { method: 'POST' }).catch(() => {});
-    onClose();
+    try {
+      await updateSetupStatus({complete:true});
+      onClose();
+    } catch (err) {
+      showStatusMessage(t('setupWizard.saveFailed', {error:(err as Error).message}), 'error');
+    }
   };
 
   const isLastDataStep = step === TOTAL_STEPS - 2;
@@ -364,10 +350,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
 
         {!isConfirmStep && (
           <p class="text-center mt-4 text-xs text-muted-foreground">
-            <button class="underline hover:text-foreground" onClick={async () => {
-              await fetch('/api/setup/status', { method: 'POST' }).catch(() => {});
-              onClose();
-            }}>
+            <button class="underline hover:text-foreground" onClick={handleComplete}>
               {t('setupWizard.skip')}
             </button>
           </p>
