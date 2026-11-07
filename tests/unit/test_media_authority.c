@@ -1,5 +1,18 @@
 #define _POSIX_C_SOURCE 200809L
+#include "utils/uuid.h"
+static int fixture_uuid_generate(char output[LIGHTNVR_UUID_STRING_SIZE]);
+#define lightnvr_uuid_generate_v4 fixture_uuid_generate
 #include "../../src/web/api_handlers_go2rtc_proxy.c"
+#undef lightnvr_uuid_generate_v4
+static int uuid_fault;
+static int fixture_uuid_generate(char output[LIGHTNVR_UUID_STRING_SIZE]) {
+    if (uuid_fault) {
+        memset(output, 'z', LIGHTNVR_UUID_STRING_SIZE);
+        if (uuid_fault == 1) output[36] = 0;
+        return 0;
+    }
+    return lightnvr_uuid_generate_v4(output);
+}
 #include "database/db_api_tokens.h"
 #include "database/db_authorization.h"
 #include "database/db_core.h"
@@ -17,6 +30,7 @@ static http_response_t response;
 static char lease[37];
 static const char *media_fixture;
 void setUp(void) {
+    uuid_fault = 0;
     load_default_config(&g_config);
     g_config.web_auth_enabled = true;
     strcpy(path, "/tmp/lightnvr-media-authority-XXXXXX");
@@ -96,6 +110,17 @@ static void rights(uint64_t mask) {
     int64_t version;
     TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
     TEST_ASSERT_EQUAL_INT(0, db_authorization_role_update(&role, version, &version));
+}
+void test_malformed_generated_lease_is_bounded_and_not_stored(void) {
+    for (uuid_fault = 1; uuid_fault <= 2; ++uuid_fault) {
+        TEST_ASSERT_TRUE(go2rtc_proxy_authorize_request(&original, &response));
+        TEST_ASSERT_FALSE(go2rtc_proxy_create_media_lease(&original, &response, lease));
+        TEST_ASSERT_EQUAL_INT(503, response.status_code);
+        TEST_ASSERT_EQUAL_CHAR(0, lease[0]);
+        for (int i = 0; i < MEDIA_LEASE_CAPACITY; ++i) {
+            TEST_ASSERT_NULL(media_leases[i].request);
+        }
+    }
 }
 void test_basic_audio_directions_and_live_revocation(void) {
     issue();
@@ -264,6 +289,7 @@ void test_owned_native_hls_segment_preserves_video_and_removes_audio(void) {
 int main(int argc, char **argv) {
     media_fixture = argc > 1 ? argv[1] : NULL;
     UNITY_BEGIN();
+    RUN_TEST(test_malformed_generated_lease_is_bounded_and_not_stored);
     RUN_TEST(test_basic_audio_directions_and_live_revocation);
     RUN_TEST(test_instance_audio_disable_overrides_granted_media_rights);
     RUN_TEST(test_instance_audio_disable_remuxes_native_hls_despite_cached_grant);

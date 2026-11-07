@@ -379,17 +379,19 @@ bool go2rtc_proxy_create_media_lease(const http_request_t *req,
         return false;
     }
     http_request_t *saved = calloc(1, sizeof(*saved));
-    if (!saved || lightnvr_uuid_generate_v4(token) != 0) {
+    if (!saved || lightnvr_uuid_generate_v4(token) != 0 ||
+        !lightnvr_uuid_is_valid(token)) {
         free(saved);
+        token[0] = 0;
         http_response_set_json_error(res, 503, "Media authority unavailable");
         return false;
     }
     /* Preserve only headers used by authentication plus principal binding. */
-    strcpy(saved->client_ip, req->client_ip);
-    strcpy(saved->user_agent, req->user_agent);
-    strcpy(saved->path, req->path);
+    safe_strcpy(saved->client_ip, req->client_ip, sizeof(saved->client_ip), 0);
+    safe_strcpy(saved->user_agent, req->user_agent, sizeof(saved->user_agent), 0);
+    safe_strcpy(saved->path, req->path, sizeof(saved->path), 0);
     saved->method = req->method;
-    strcpy(saved->method_str, req->method_str);
+    safe_strcpy(saved->method_str, req->method_str, sizeof(saved->method_str), 0);
     const char *names[] = {"Authorization", "Cookie", "X-API-Key"};
     for (size_t i = 0; i < sizeof(names)/sizeof(names[0]); ++i) {
         const char *value = http_request_get_header(req, names[i]);
@@ -410,11 +412,16 @@ bool go2rtc_proxy_create_media_lease(const http_request_t *req,
         if (!media_leases[i].request && slot < 0) slot = i;
     }
     if (slot >= 0) {
-        strcpy(media_leases[slot].token, token);
-        strcpy(media_leases[slot].source, source);
-        strcpy(media_leases[slot].camera_uuid, camera.camera_uuid);
+        /* UUID validation proves the terminator; fixed-size copy also makes
+         * the destination bound explicit to static analysis. */
+        memcpy(media_leases[slot].token, token, sizeof(media_leases[slot].token));
+        safe_strcpy(media_leases[slot].source, source,
+                    sizeof(media_leases[slot].source), 0);
+        safe_strcpy(media_leases[slot].camera_uuid, camera.camera_uuid,
+                    sizeof(media_leases[slot].camera_uuid), 0);
         media_leases[slot].principal_id = principal.id;
-        strcpy(media_leases[slot].authentication_method, principal.authentication_method);
+        safe_strcpy(media_leases[slot].authentication_method, principal.authentication_method,
+                    sizeof(media_leases[slot].authentication_method), 0);
         media_leases[slot].request = saved;
         media_leases[slot].touched = now;
     }
