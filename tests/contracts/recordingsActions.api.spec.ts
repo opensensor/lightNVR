@@ -275,19 +275,41 @@ test('real missing-source export reaches error and result409 without a partial a
   expect(state(server,[ids.playable,ids.sibling])).toEqual(before);
 });
 
-test('a bounded regular export source exposes running and not_ready before completing',async({server})=>{
-  const filesystem=statfsSync('/tmp');
-  const freeBytes=filesystem.bavail*filesystem.bsize;
-  expect(freeBytes,'256MiB export fixture requires at least 2GiB free space').toBeGreaterThanOrEqual(2*1024*1024*1024);
+for(const expanded of [false,true]) test(`export result readiness tolerates completion between requests (${expanded?'bounded large source':'already complete'})`,async({server})=>{
+  if(expanded) {
+    const filesystem=statfsSync('/tmp');
+    const freeBytes=filesystem.bavail*filesystem.bsize;
+    expect(freeBytes,'256MiB export fixture requires at least 2GiB free space').toBeGreaterThanOrEqual(2*1024*1024*1024);
+  }
   const fixture=seedRecordings(server);const exporter=await actor(server,'running_exporter',['recordings.export']);
-  // Real bounded work (256 MiB sparse suffix), rather than a native test hook
-  // or an arbitrary sleep, keeps CRC/archive generation observable over HTTP.
-  const source=path.join(fixture.directory,`${ids.playable}.mp4`);
-  const fd=openSync(source,'r+');try {ftruncateSync(fd,256*1024*1024);} finally {closeSync(fd);}
-  database(server,'UPDATE recordings SET size_bytes=? WHERE id=?',[256*1024*1024,ids.playable]);
+  if(expanded) {
+    // Bounded real work makes not_ready observable without relying on its duration.
+    const source=path.join(fixture.directory,`${ids.playable}.mp4`);
+    const fd=openSync(source,'r+');try {ftruncateSync(fd,256*1024*1024);} finally {closeSync(fd);}
+    database(server,'UPDATE recordings SET size_bytes=? WHERE id=?',[256*1024*1024,ids.playable]);
+  }
   const accepted=await jsonResult(server,'/api/recordings/batch-download',exporter,'POST',{ids:[ids.playable]},202,'RecordingExportAccepted');
-  await expect.poll(async()=>(await exportStatus(server,accepted.token,exporter)).status,{timeout:5000,intervals:[20,50,100]}).toMatch(/^(running|complete)$/);
-  const result=await jsonResult(server,`/api/recordings/batch-download/result/${accepted.token}`,exporter,'GET',undefined,409,'ApiError');expect(result.error).toBe('Job is not_ready');
+  if(!expanded) await exportDone(server,accepted.token,exporter);
+  let observed:Json={};
+  await expect.poll(async()=>{observed=await exportStatus(server,accepted.token,exporter);return observed.status;},
+    {timeout:5000,intervals:[20,50,100]}).toMatch(/^(running|complete)$/);
+  const result=await raw(server,`/api/recordings/batch-download/result/${accepted.token}`,exporter);
+  try {
+    // A running snapshot may finish before the next request; a complete one cannot regress.
+    expect(observed.status==='complete'?[200]:[200,409]).toContain(result.status);
+    if(result.status===409) {
+      const body=await result.json();valid('ApiError',body);expect(body.error).toBe('Job is not_ready');
+    } else {
+      expect(result.headers.get('content-type')).toMatch(/^application\/zip(?:;|$)/);
+      expect(result.headers.get('content-disposition')).toMatch(/attachment;.*filename=/);
+      if(!expanded) {
+        verifyZip(Buffer.from(await result.arrayBuffer()),path.join(fixture.directory,'already-complete.zip'),fixture,[`${ids.playable}.mp4`]);
+      }
+    }
+  } finally {
+    // Do not buffer the 256MiB archive; small completed exports validate actual ZIP contents.
+    if(!result.bodyUsed) await result.body?.cancel();
+  }
   expect(await exportDone(server,accepted.token,exporter)).toMatchObject({status:'complete',current:1,total:1,error:''});
 });
 
