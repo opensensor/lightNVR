@@ -228,3 +228,33 @@ test('native generation rejects path-item refs consistently with runtime project
   }
   assert.equal((await generateArtifacts(source)).size, 4);
 });
+
+test('native validation checks component containers before walking discriminator references', async () => {
+  const original = JSON.parse(await readFile(source, 'utf8'));
+  for (const field of ['components', 'schemas']) {
+    for (const value of [null, [], 'invalid', 42, true]) {
+      const doc = structuredClone(original);
+      doc.paths['/api/fixture'].get.responses['200'].content['application/json'].schema = {
+        discriminator: {propertyName: 'kind', mapping: {fixture: 'Fixture'}},
+      };
+      if (field === 'components') doc.components = value;
+      else doc.components.schemas = value;
+      const candidate = path.join(directory, 'native-component-container.json');
+      await writeFile(candidate, JSON.stringify(doc));
+      const result = spawnSync('python3', [path.join(root, 'scripts/contracts/generate_native.py'),
+        '--source', candidate, '--validate-only'], {encoding: 'utf8'});
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, field === 'components'
+        ? /ValueError: Contract components must be an object/
+        : /ValueError: Contract components.schemas must be an object/);
+      assert.doesNotMatch(result.stderr, /TypeError|AttributeError/);
+    }
+  }
+  for (const extra of [{}, {components: {}}, {components: {schemas: {}}}]) {
+    const candidate = path.join(directory, 'native-optional-components.json');
+    await writeFile(candidate, JSON.stringify({openapi: '3.1.1', paths: {}, ...extra}));
+    const result = spawnSync('python3', [path.join(root, 'scripts/contracts/generate_native.py'),
+      '--source', candidate, '--validate-only'], {encoding: 'utf8'});
+    assert.equal(result.status, 0, result.stderr);
+  }
+});
