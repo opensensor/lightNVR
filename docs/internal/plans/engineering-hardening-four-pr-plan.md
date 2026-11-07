@@ -22,7 +22,7 @@ remain recorded in the [expansion plan](engineering-api-expansion-plan.md);
 they do not block discussion of a C-authoritative, curated Rust conversion
 experiment. No Rust implementation is committed. F15 documentation reconciliation
 proceeds separately from full production acceptance. Mobile implementation and
-deferred qualification are tracked in the [mobile viewing plan](docs/prd/UXD_Mobile_Viewing.md).
+deferred qualification are tracked in the [mobile viewing plan](../../../docs/prd/UXD_Mobile_Viewing.md).
 
 ## Integration rules
 
@@ -116,7 +116,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Reconcile the current registered operations (240 at baseline, plus any new internal registrations), including explicit protocol/unsupported dispositions instead of blanket coverage. Integrate shared changes, run fresh full validation, and publish four reviewable PRs with base relationships and evidence. Reconcile stale planning headers.
 - **acceptance_criteria**: Four workstreams published separately, no missing/duplicate/stale inventory entries, drift and full suites pass, evidence distinguishes local/hosted/device limits, no PRs merged.
 - **validation**: Canonical/projected lint, generation/drift, native optimized/sanitizer, frontend/root/contract typing, API/browser/asset checks and relevant recovery/media suites. Inspect hosted failures and correct reproducible issues.
-- **status**: Complete — four PRs published and subsequently merged; combined local validation passed. Hosted results remain revision-specific; corrected old fixture failures are included in #838. See the [integration receipt](docs/api/contracts/integration-evidence.md).
+- **status**: Complete — four PRs published and subsequently merged; combined local validation passed. Hosted results remain revision-specific; corrected old fixture failures are included in #838. See the [integration receipt](../../../docs/api/contracts/integration-evidence.md).
 
 ## Integrated review inventory
 
@@ -129,7 +129,7 @@ source digest, unique operation identity, canonical mapping and explicit exclusi
 The combined run passed all 137 API cases, 44 browser contract cases, 956 web
 unit tests, 69 component browser tests, 98 Release native suites (including focused corrected projection
 reruns), and 75 sanitizer suites. Final browser status and measured asset sizes
-are recorded in the [integration receipt](docs/api/contracts/integration-evidence.md).
+are recorded in the [integration receipt](../../../docs/api/contracts/integration-evidence.md).
 Hosted results belong to their exact PR revisions; domain evidence records
 reproduced regressions, fixes and qualification limits.
 

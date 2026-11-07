@@ -14,7 +14,7 @@
     "F8 events: 13 operations; owned MQTT packet, retry and suppression evidence is separate from JSON acknowledgments.",
     "F9/F10: 15 stream lifecycle JSON operations, 22 ONVIF/device operations and eight explicit protocol dispositions. Owned media/SOAP evidence does not qualify physical cameras or multicast discovery.",
     "F11 evidence: 23 operations; captured UUID is authoritative where present, legacy identity fallback is explicitly bounded, and media/image/CSV bytes have independent evidence.",
-    "See engineering-hardening-four-pr-plan.md and docs/api/contracts/*-evidence.md for accepted behavior, exact validation and remaining limitations."
+    "See docs/internal/plans/engineering-hardening-four-pr-plan.md and docs/api/contracts/*-evidence.md for accepted behavior, exact validation and remaining limitations."
   ],
   "operations": [
     {

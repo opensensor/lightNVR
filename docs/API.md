@@ -38,7 +38,7 @@ jobs, that exact token. The recording jobs have no cancellation endpoint.
 Their detected error states are documented separately from completion. The
 current ZIP writer does not detect every filesystem read/write/close failure,
 so `complete` alone is not an archive-integrity guarantee; this is tracked in
-the [next hardening plan](../engineering-api-expansion-plan.md).
+the [next hardening plan](internal/plans/engineering-api-expansion-plan.md).
 
 ## API Overview
 

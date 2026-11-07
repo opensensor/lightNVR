@@ -252,6 +252,11 @@ mp4_retention_days = 30
 - `mp4_directory_format`: Recording folder layout: `flat`, `year_month` (`YYYY/MM`), or `year_month_day` (`YYYY/MM/DD`, default)
 - `mp4_segment_duration`: Duration of each MP4 segment in seconds
 - `mp4_retention_days`: Number of days to keep MP4 recordings
+- `path_hls`: Separate directory for live HLS segments (default: empty, meaning under `path`). Useful for putting short-lived segments on tmpfs or a faster disk.
+- `min_free_pct`: Keep at least this percentage of the recording volume free; storage cleanup deletes recordings to restore it (default: 10, range 0-90, 0 disables the cap).
+- `pressure_warning_pct`, `pressure_critical_pct`, `pressure_emergency_pct`: Free-space percentages below which the storage pressure level becomes warning, critical and emergency (defaults: 20, 10, 5). They must decrease strictly from warning to emergency; invalid values reset all three to the defaults.
+- `generate_thumbnails`: Generate preview thumbnails for recordings (default: true)
+- `thumbnails_per_recording`: `1` or `3` thumbnails per recording (default: 3; any other value rounds to the nearer of the two)
 
 ### Database Settings
 
@@ -259,8 +264,10 @@ mp4_retention_days = 30
 [database]
 path = /var/lib/lightnvr/data/database/lightnvr.db
 startup_check = off
+backup_interval_minutes = 0
 backup_retention_count = 6
 backup_verify = full
+; post_backup_script = /usr/local/bin/ship-backup
 ```
 
 - `path`: Path to the SQLite database file
@@ -286,6 +293,8 @@ backup_verify = full
   far fewer seeks; the backup is a page-level copy of a consistent snapshot, so
   index/table consistency is inherited from the source. `off` skips the scan.
   Every mode logs `Backup verification (<mode>) ... in N s`.
+- `backup_interval_minutes`: Take a timestamped database backup every N minutes while running (default: 0, disabled).
+- `post_backup_script`: Absolute path to an executable run after each successful backup, for example to copy it off the host. It receives three arguments: the backup file path, the live database path, and the backup directory. A non-zero exit is logged as an error.
 
 ### Web Server Settings
 
@@ -331,6 +340,16 @@ web_thread_pool_size = 8
   and calls to an external object detector run on separate camera threads;
   go2rtc HTTP proxies also use separate threads. Increasing this value cannot
   resolve a shared database lock or increase the detector's processing capacity.
+- `auth_absolute_timeout_hours`: Maximum session lifetime regardless of activity (default: 168, i.e. 7 days; minimum 1). `auth_timeout_hours` is the idle timeout.
+- `trusted_device_days`: How long a device marked as trusted after MFA skips the TOTP prompt (default: 30, 0 disables trusted devices).
+- `force_mfa_on_login`: Ask for the TOTP code on the same form as the password, so password guesses cannot be tested on their own (default: false).
+- `login_rate_limit_enabled`: Lock out repeated failed logins (default: true).
+- `login_rate_limit_max_attempts`: Failed attempts allowed per window before lockout (default: 5).
+- `login_rate_limit_window_seconds`: Length of the rate-limit window (default: 300, minimum 10).
+- `webrtc_disabled`, `hls_disabled`, `mse_disabled`: Hide that live-view transport on the dashboard (default: false for each).
+- `auto_disabled`: Hide the **Auto** view and use the first enabled transport instead (default: false).
+- `default_playback_transport`: Transport profile given to new streams: `auto` (default), `webrtc_only`, `mse_only` or `hls_only`.
+- `demo_mode`: Give unauthenticated visitors **viewer** access (default: false). Intended for public demonstration instances; never enable it on a recorder with private cameras.
 
 Slow-request logs distinguish `HTTP worker queue wait`, `handler execution`,
 and `event loop completion wait`, using the request path and request ID. Endpoint
@@ -405,6 +424,32 @@ detection_threshold = 50      ; Default confidence threshold (0-100%)
   it must match one of the detectors the server lists at `GET /detectors`.
 - `detection_threshold`: Default confidence threshold (0-100%) for streams that
   do not set their own.
+- `pre_detection_buffer`: Default seconds of video kept before a detection for streams that do not set their own (default: 5, range 0-60). See [Motion Buffer](MOTION_BUFFER.md).
+- `post_detection_buffer`: Default seconds recorded after the last detection (default: 10, range 0-300).
+
+### Detection Behaviour
+
+```ini
+[detection]
+grace_period = 2
+```
+
+- `grace_period`: Seconds after the last detection before the post-detection buffer starts counting down, so brief gaps in detections do not split one event into several (default: 2, range 0-60). Applies to every detection backend.
+
+### In-process LiteRT Engine
+
+Available in builds configured with `-DENABLE_LITERT=ON` (see [BUILD.md](BUILD.md)). Streams whose model path ends in `.tflite` run through this engine instead of an external API. Labels are read from a `<model>.labels.txt` file next to the model.
+
+```ini
+[detection_engine]
+enabled = false
+threads = 1
+delegate = xnnpack
+```
+
+- `enabled`: Enable the in-process engine (default: false)
+- `threads`: Interpreter threads (default: 1, range 1-16)
+- `delegate`: `xnnpack` (default), `gpu` (requires `-DLITERT_WITH_GPU=ON`) or `none`. Unknown values fall back to `xnnpack`.
 
 A stream whose only detection engine is an `api` engine may override `format`,
 `backend` and `detector_name` in that engine's `config` object via
@@ -496,6 +541,13 @@ stun_server = stun.l.google.com:19302
 - `external_ip`: External IP for complex NAT scenarios (leave empty for auto-detection)
 - `ice_servers`: Custom ICE servers, comma-separated (format: `stun:host:port` or `turn:host:port`)
 - `proxy_max_inflight`: Maximum concurrent HLS/snapshot proxy requests (default: 16, range: 1-128)
+- `binary_path`: go2rtc executable (default: `/usr/local/bin/go2rtc`, set at build time by `-DGO2RTC_BINARY_PATH`)
+- `config_dir`: Directory for the generated go2rtc configuration (default: `/etc/lightnvr/go2rtc`)
+- `api_port`: go2rtc API port (default: 1984). It is bound to loopback; never publish it.
+- `rtsp_port`: go2rtc RTSP restream port (default: 8554), also bound to loopback
+- `force_native_hls`: Make the web UI use LightNVR's FFmpeg-based HLS instead of go2rtc's, even while go2rtc is running (default: false)
+- `turn_enabled`, `turn_server_url`, `turn_username`, `turn_password`: Relay WebRTC through a TURN server when direct and STUN-assisted connections fail, for example for remote viewers behind symmetric NAT (default: disabled)
+- `webrtc_connection_timeout_ms`, `webrtc_ice_recovery_timeout_ms`: Browser-side WebRTC timeouts; see [Troubleshooting](TROUBLESHOOTING.md)
 
 To change go2rtc's API prefix, set **Config Override** in the go2rtc settings:
 
@@ -575,6 +627,9 @@ retain = false
 - `keepalive`: MQTT keepalive interval in seconds (default: 60)
 - `qos`: MQTT QoS level: 0 (at most once), 1 (at least once), 2 (exactly once)
 - `retain`: Retain detection messages on the broker (default: false)
+- `ha_discovery`: Publish Home Assistant MQTT discovery messages, so each camera appears in Home Assistant with its detection sensors (default: false; `ha_discovery_enabled` is accepted as an alias)
+- `ha_discovery_prefix`: Home Assistant discovery prefix (default: `homeassistant`)
+- `ha_snapshot_interval`: Seconds between JPEG snapshots published for each camera's Home Assistant camera entity (default: 30, 0 disables)
 
 See [MQTT_INTEGRATION.md](MQTT_INTEGRATION.md) for detailed MQTT documentation.
 

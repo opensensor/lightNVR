@@ -19,6 +19,9 @@ instead.
 | [SOD_UNIFIED_DETECTION.md](SOD_UNIFIED_DETECTION.md) | The unified interface over RealNet and CNN models |
 | [SOD_REALNET.md](SOD_REALNET.md) | RealNet face detection integration |
 | [SUMMARY_Recording_Retention.md](SUMMARY_Recording_Retention.md) | Summary of the retention policy work (the PRD is in [prd/](../prd/PRD_Recording_Retention_Policies.md)) |
+| [THUMBNAIL_QUEUE_SOLUTION.md](THUMBNAIL_QUEUE_SOLUTION.md) | Why thumbnail requests are queued instead of rejected with 503 |
+| [WEBRTC_ICE_FIXES.md](WEBRTC_ICE_FIXES.md) | Diagnosis of WebRTC connections stuck in ICE checking, and the fixes. For current WebRTC troubleshooting see [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) |
+| [plans/](plans/) | Engineering execution plans for the API contracts, identity and hardening work, and the host hardware health plan |
 
 Adding something here? If it describes a change you made rather than how the system
 behaves, say so in the opening line and date it — that is the difference between a useful
