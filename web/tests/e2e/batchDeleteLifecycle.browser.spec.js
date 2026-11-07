@@ -1,7 +1,7 @@
 /** Real modal lifecycle with deferred HTTP responses, including deliberately late replies. */
 const path = require('node:path');
 const {build} = require('esbuild');
-const {chromium} = require('../../../node_modules/playwright');
+const {chromium} = require('playwright');
 const english = require('../../public/locales/en.json');
 
 let bundle;
