@@ -382,26 +382,30 @@ void test_pipelined_request_buffered_in_tls_session_is_served(void) {
     char head[256];
     size_t body_size = 0;
     int head_length = 0;
-    // The header length depends on the digits of Content-Length; settle it.
-    for (int i = 0; i < 3; i++) {
-        head_length = snprintf(head, sizeof(head),
-            "POST /api/tls/echo HTTP/1.1\r\nHost: localhost:%d\r\nContent-Length: %zu\r\n\r\n",
-            web_port, body_size);
-        body_size = first_size - (size_t)head_length;
-    }
     char second[256];
     int second_length = snprintf(second, sizeof(second),
         "GET /api/tls/hello HTTP/1.1\r\nHost: localhost:%d\r\nContent-Length: 0\r\n\r\n",
         web_port);
 
-    size_t total = first_size + (size_t)second_length;
+    // The header length depends on the digits of Content-Length; settle it.
+    // Keep POST body + full GET within first_size to make buffering deterministic.
+    for (int i = 0; i < 3; i++) {
+        head_length = snprintf(head, sizeof(head),
+            "POST /api/tls/echo HTTP/1.1\r\nHost: localhost:%d\r\nContent-Length: %zu\r\n\r\n",
+            web_port, body_size);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(0, head_length);
+        TEST_ASSERT_LESS_OR_EQUAL_size_t(first_size, (size_t)head_length + (size_t)second_length);
+        body_size = first_size - (size_t)head_length - (size_t)second_length;
+    }
+
+    size_t total = first_size;
     char *pipelined = malloc(total);
     TEST_ASSERT_NOT_NULL(pipelined);
     memcpy(pipelined, head, (size_t)head_length);
     memset(pipelined + head_length, 'x', body_size);
-    memcpy(pipelined + first_size, second, (size_t)second_length);
-    TEST_ASSERT_EQUAL_size_t(first_size, (size_t)head_length + body_size);
-    TEST_ASSERT_TRUE(tls_send_all(&client, pipelined, total));  // One record
+    memcpy(pipelined + head_length + body_size, second, (size_t)second_length);
+    TEST_ASSERT_EQUAL_size_t(first_size, (size_t)head_length + body_size + (size_t)second_length);
+    TEST_ASSERT_TRUE(tls_send_all(&client, pipelined, total));
     free(pipelined);
 
     char headers[2048];
