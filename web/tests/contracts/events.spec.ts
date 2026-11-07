@@ -5,7 +5,14 @@ const destination={uuid,key:`mqtt:${uuid}`,name:'Fixture',description:'',enabled
 const body={name:'Fixture',broker:{host:'127.0.0.1'},authentication:{username:'fixture',password:secret}};
 function respond(value:unknown,status=200,contentType='application/json'){return jest.spyOn(global,'fetch').mockImplementation(async()=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':contentType}}));}
 beforeEach(()=>{for(const method of ['log','debug','warn','error'] as const)jest.spyOn(console,method).mockImplementation(()=>{});});
-afterEach(()=>{for(const method of ['log','debug','warn','error'] as const)expect(console[method]).not.toHaveBeenCalled();jest.restoreAllMocks();});
+afterEach(()=>{
+ try {
+  // Credential-bearing requests must not log URLs, payloads or errors.
+  for(const method of ['log','debug','warn','error'] as const)expect(console[method]).not.toHaveBeenCalled();
+ } finally {
+  jest.restoreAllMocks();
+ }
+});
 test('destination issuance sends credentials only in the authorized write and validates redacted response',async()=>{
  const fetch=respond(destination,201);await expect(eventJSON('/api/event-destinations',{method:'POST',body:JSON.stringify(body)})).resolves.toEqual(destination);
  expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)).toEqual(body);expect(fetch.mock.calls[0]?.[1]?.cache).toBe('no-store');
