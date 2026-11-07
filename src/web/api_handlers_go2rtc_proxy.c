@@ -35,6 +35,8 @@
 #include "utils/memory.h"
 #include "utils/strings.h"
 #include "web/audit_log.h"
+#include "database/db_fleet_query.h"
+#include "utils/uuid.h"
 
 #ifdef HTTP_BACKEND_LIBUV
 #include "web/libuv_connection.h"
@@ -68,6 +70,7 @@ typedef struct {
     size_t buffer_size;
     char content_type[256];
     long http_code;
+    bool media_policy_ack;
     bool error_occurred;
 } streaming_proxy_ctx_t;
 
@@ -123,6 +126,8 @@ static size_t buffered_header_cb(char *buffer, size_t size, size_t nitems, void 
     size_t total = size * nitems;
     streaming_proxy_ctx_t *ctx = (streaming_proxy_ctx_t *)userp;
 
+    if (total == sizeof("X-LightNVR-Media-Policy: 1\r\n") - 1 &&
+        strncasecmp(buffer, "X-LightNVR-Media-Policy: 1\r\n", total) == 0) ctx->media_policy_ack = true;
     // Parse Content-Type header
     if (total > 14 && strncasecmp(buffer, "Content-Type:", 13) == 0) {
         const char *val = buffer + 13;
@@ -325,6 +330,158 @@ static bool authorize_source(const http_request_t *req, http_response_t *res,
     http_response_free(res);
     http_response_init(res);
     return httpd_authorize_media_stream_action(req, res, action, parent) != 0;
+}
+
+/* Only opaque, short-lived leases cross the loopback boundary. Keep the
+ * original authentication context local so revocation re-evaluates the real
+ * session/Basic/key/token principal rather than trusting a fork-side identity. */
+#define MEDIA_LEASE_CAPACITY 256
+#define MEDIA_LEASE_IDLE_SECONDS 20
+static struct {
+    char token[37];
+    char source[MAX_STREAM_NAME];
+    char camera_uuid[CAMERA_UUID_STRING_SIZE];
+    int64_t principal_id;
+    char authentication_method[USER_AUTH_METHOD_MAX];
+    http_request_t *request;
+    time_t touched;
+} media_leases[MEDIA_LEASE_CAPACITY];
+static pthread_mutex_t media_lease_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int lease_camera(const char *source, fleet_camera_t *camera) {
+    int result = db_fleet_camera_find_by_name_readonly(source, camera);
+    size_t length = strlen(source);
+    if (result == 1 && length > 4 && !strcmp(source + length - 4, "_sub")) {
+        char parent[MAX_STREAM_NAME];
+        memcpy(parent, source, length - 4);
+        parent[length - 4] = 0;
+        result = db_fleet_camera_find_by_name_readonly(parent, camera);
+    }
+    return result;
+}
+
+bool go2rtc_proxy_create_media_lease(const http_request_t *req,
+                                    http_response_t *res, char token[37]) {
+    token[0] = 0;
+    if (strcmp(req->path, "/go2rtc/api/webrtc") &&
+        strcmp(req->path, "/go2rtc/api/ws") &&
+        strcmp(req->path, "/go2rtc/api/stream.m3u8")) return true;
+    char source[MAX_STREAM_NAME];
+    fleet_camera_t camera;
+    if (!go2rtc_proxy_parse_source(req, source, sizeof(source)) ||
+        lease_camera(source, &camera) != 0) {
+        http_response_set_json_error(res, 404, "Camera unavailable");
+        return false;
+    }
+    user_t principal;
+    if (!httpd_check_action_access(req, &principal)) {
+        http_response_set_json_error(res, 401, "Media principal unavailable");
+        return false;
+    }
+    http_request_t *saved = calloc(1, sizeof(*saved));
+    if (!saved || lightnvr_uuid_generate_v4(token) != 0) {
+        free(saved);
+        http_response_set_json_error(res, 503, "Media authority unavailable");
+        return false;
+    }
+    /* Preserve only headers used by authentication plus principal binding. */
+    strcpy(saved->client_ip, req->client_ip);
+    strcpy(saved->user_agent, req->user_agent);
+    strcpy(saved->path, req->path);
+    saved->method = req->method;
+    strcpy(saved->method_str, req->method_str);
+    const char *names[] = {"Authorization", "Cookie", "X-API-Key"};
+    for (size_t i = 0; i < sizeof(names)/sizeof(names[0]); ++i) {
+        const char *value = http_request_get_header(req, names[i]);
+        if (!value) continue;
+        http_header_t *header = &saved->headers[saved->num_headers++];
+        strcpy(header->name, names[i]);
+        safe_strcpy(header->value, value, sizeof(header->value), 0);
+    }
+    time_t now = time(NULL);
+    pthread_mutex_lock(&media_lease_mutex);
+    int slot = -1;
+    for (int i = 0; i < MEDIA_LEASE_CAPACITY; ++i) {
+        if (media_leases[i].request && now - media_leases[i].touched > MEDIA_LEASE_IDLE_SECONDS) {
+            memset(media_leases[i].request, 0, sizeof(*saved));
+            free(media_leases[i].request);
+            memset(&media_leases[i], 0, sizeof(media_leases[i]));
+        }
+        if (!media_leases[i].request && slot < 0) slot = i;
+    }
+    if (slot >= 0) {
+        strcpy(media_leases[slot].token, token);
+        strcpy(media_leases[slot].source, source);
+        strcpy(media_leases[slot].camera_uuid, camera.camera_uuid);
+        media_leases[slot].principal_id = principal.id;
+        strcpy(media_leases[slot].authentication_method, principal.authentication_method);
+        media_leases[slot].request = saved;
+        media_leases[slot].touched = now;
+    }
+    pthread_mutex_unlock(&media_lease_mutex);
+    if (slot >= 0) return true;
+    memset(saved, 0, sizeof(*saved));
+    free(saved);
+    token[0] = 0;
+    http_response_set_json_error(res, 503, "Media capacity reached");
+    return false;
+}
+
+void handle_internal_media_lease(const http_request_t *req, http_response_t *res) {
+    http_response_add_header(res, "Cache-Control", "private, no-store");
+    const char *token = http_request_get_header(req, "X-LightNVR-Media-Lease");
+    char source[MAX_STREAM_NAME], uuid[CAMERA_UUID_STRING_SIZE];
+    if ((strcmp(req->client_ip, "127.0.0.1") && strcmp(req->client_ip, "::1")) ||
+        !token || strlen(token) != 36 ||
+        http_request_get_query_param(req, "src", source, sizeof(source)) <= 0) {
+        http_response_set_json_error(res, 403, "Media lease denied");
+        return;
+    }
+    http_request_t *saved = malloc(sizeof(*saved));
+    if (!saved) { http_response_set_json_error(res, 503, "Media authority unavailable"); return; }
+    bool found = false;
+    int64_t principal_id = 0;
+    char authentication_method[USER_AUTH_METHOD_MAX] = {0};
+    pthread_mutex_lock(&media_lease_mutex);
+    time_t now = time(NULL);
+    for (int i = 0; i < MEDIA_LEASE_CAPACITY; ++i) {
+        if (media_leases[i].request && !strcmp(token, media_leases[i].token) &&
+            !strcmp(source, media_leases[i].source) &&
+            now - media_leases[i].touched <= MEDIA_LEASE_IDLE_SECONDS) {
+            *saved = *media_leases[i].request;
+            strcpy(uuid, media_leases[i].camera_uuid);
+            principal_id = media_leases[i].principal_id;
+            strcpy(authentication_method, media_leases[i].authentication_method);
+            media_leases[i].touched = now;
+            found = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&media_lease_mutex);
+    fleet_camera_t camera;
+    bool view = false, listen = false, talk = false;
+    if (found && lease_camera(source, &camera) == 0 && !strcmp(uuid, camera.camera_uuid)) {
+        /* Reauthenticate once per renewal, bypassing the segment cache. No
+         * repeated allowed audit rows or repeated Basic password hashing for
+         * each media direction; initial signaling already audits live access. */
+        user_t principal;
+        authorization_evaluation_t evaluation;
+        if (httpd_check_action_access(saved, &principal) && principal.id == principal_id &&
+            strcmp(principal.authentication_method, authentication_method) == 0) {
+            view = authorization_evaluate(&principal, AUTHZ_LIVE_VIEW, &camera, &evaluation) == 0 &&
+                   evaluation.decision == AUTHZ_DECISION_ALLOW;
+            listen = view && authorization_evaluate(&principal, AUTHZ_AUDIO_LISTEN, &camera, &evaluation) == 0 &&
+                     evaluation.decision == AUTHZ_DECISION_ALLOW;
+            talk = view && authorization_evaluate(&principal, AUTHZ_AUDIO_TALK, &camera, &evaluation) == 0 &&
+                   evaluation.decision == AUTHZ_DECISION_ALLOW;
+        }
+    }
+    memset(saved, 0, sizeof(*saved));
+    free(saved);
+    char body[80];
+    snprintf(body, sizeof(body), "{\"view\":%s,\"listen\":%s,\"talk\":%s}",
+             view ? "true" : "false", listen ? "true" : "false", talk ? "true" : "false");
+    http_response_set_json(res, view ? 200 : 403, body);
 }
 
 static bool authorize_hls_session_request(const http_request_t *req,
@@ -534,6 +691,12 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    char media_lease[37];
+    if (!go2rtc_proxy_create_media_lease(req, res, media_lease)) {
+        sem_post(g_proxy_semaphore);
+        return;
+    }
+
     log_debug("go2rtc proxy: %s %s -> %s", req->method_str, req->path, url);
 
     // Get connection handle (libuv-specific)
@@ -584,6 +747,12 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
 
     // Set method and body
     struct curl_slist *headers = NULL;
+    if (media_lease[0]) {
+        char header[80];
+        snprintf(header, sizeof(header), "X-LightNVR-Media-Lease: %s", media_lease);
+        headers = curl_slist_append(headers, header);
+        headers = curl_slist_append(headers, httpd_secure_cookies() ? "X-LightNVR-Media-TLS: 1" : "X-LightNVR-Media-TLS: 0");
+    }
     if (strcmp(req->method_str, "POST") == 0) {
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
         if (req->body && req->body_len > 0) {
@@ -622,7 +791,8 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     sem_post(g_proxy_semaphore);
 
     // Handle errors
-    if (cres != CURLE_OK || ctx.error_occurred) {
+    if (cres != CURLE_OK || ctx.error_occurred ||
+        (media_lease[0] && ctx.http_code < 300 && !ctx.media_policy_ack)) {
         log_warn("go2rtc proxy: curl request failed: %s", curl_easy_strerror(cres));
         if (ctx.buffer) free(ctx.buffer);
         http_response_set_json_error(res, 502, "Proxy error: go2rtc is not responding");

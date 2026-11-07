@@ -503,7 +503,7 @@ jobs:
       - name: Build go2rtc from vendored submodule
         run: |
           cd go2rtc
-          go test -race ./internal/http -count=1 -timeout=60s
+          go test -race ./internal/http ./internal/mediaauth ./internal/api/ws ./internal/webrtc ./internal/mp4 ./internal/hls -count=1 -timeout=180s
           CGO_ENABLED=0 go build -buildvcs=false -ldflags "-s -w" -trimpath -o go2rtc
           chmod +x go2rtc
           ./go2rtc --version
@@ -538,6 +538,7 @@ jobs:
             test_db_system_settings \
             test_go2rtc_process_detection \
             test_go2rtc_proxy_thread \
+            test_media_authority \
             test_go2rtc_proxy_routing \
             test_libuv_tls \
             test_go2rtc_process_config_generation \
@@ -555,7 +556,7 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure -V \
-            -R "test_yaml_validate|test_yaml_redact|test_db_system_settings|test_go2rtc_process_detection|test_go2rtc_proxy_thread|test_go2rtc_proxy_routing|test_libuv_tls|test_go2rtc_process_config_generation|test_go2rtc_process_lifecycle|test_go2rtc_process_ownership|test_go2rtc_substream_registration|test_go2rtc_live_transcode|test_go2rtc_binary_detection|test_go2rtc_two_config_merge|test_go2rtc_managed_listeners|test_go2rtc_server_info|test_ffmpeg_guard"
+            -R "test_media_authority|test_yaml_validate|test_yaml_redact|test_db_system_settings|test_go2rtc_process_detection|test_go2rtc_proxy_thread|test_go2rtc_proxy_routing|test_libuv_tls|test_go2rtc_process_config_generation|test_go2rtc_process_lifecycle|test_go2rtc_process_ownership|test_go2rtc_substream_registration|test_go2rtc_live_transcode|test_go2rtc_binary_detection|test_go2rtc_two_config_merge|test_go2rtc_managed_listeners|test_go2rtc_server_info|test_ffmpeg_guard"
 
       - name: Generate coverage report
         if: always()
