@@ -319,8 +319,10 @@
 /* One primary playback row; secondary controls keep their mounted state. */
 .timeline-primary-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; min-width: 0; }
 .timeline-mobile-toggle { display: none; }
+/* Above the playback status message (z-20) so fullscreen can always be entered
+   and, more importantly, exited when playback fails. */
 .timeline-fullscreen-button {
-    position: absolute; top: .5rem; inset-inline-end: .5rem; z-index: 5;
+    position: absolute; top: .5rem; inset-inline-end: .5rem; z-index: 25;
     display: flex; align-items: center; justify-content: center;
     width: 44px; height: 44px; border-radius: .5rem;
     color: white; background: rgb(0 0 0 / .6);
