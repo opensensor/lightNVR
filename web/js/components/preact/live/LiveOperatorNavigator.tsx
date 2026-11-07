@@ -85,7 +85,7 @@ function LiveEventThumbnail({ event }: LiveEventThumbnailProps) {
 }
 
 function formatEventTime(timestamp?: number) {
-  if (!timestamp) return '';
+  if (timestamp == null) return '';
   return new Intl.DateTimeFormat(undefined, {
     hour: 'numeric', minute: '2-digit', second: '2-digit',
   }).format(new Date(timestamp * 1000));
