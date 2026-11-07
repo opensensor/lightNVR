@@ -112,14 +112,38 @@ test('error variants and discovery envelope remain honest and non-mutating', asy
   invalid('OpenApiDocument',empty);
 });
 
-test('recording action requests preserve IDs precedence and positive fractional numeric input', () => {
+test('recording deletion requests preserve IDs precedence and count invalid members as failures', () => {
   invalid('RecordingDeletionRequest', {ids:[],filter:{stream:'A'}});
   valid('RecordingDeletionRequest', {ids:'ignored',filter:{stream:'A'}});
   valid('RecordingDeletionRequest', {filter:{stream:'A'}});
   valid('RecordingDeletionRequest', {ids:[101]});
-  for (const name of ['RecordingBatchTagsRequest','RecordingExportRequest']) {
-    invalid(name, {ids:[0]});
-    invalid(name, {ids:[-1]});
-    valid(name, {ids:[101.9]});
+  valid('RecordingDeletionRequest', {ids:[101.9,0,'bad-id']});
+  valid('RecordingDeletionRequest', {ids:[101],filter:{unknown:'ignored when IDs are supplied'}});
+});
+
+test('legacy batch tag requests retain positive fractional numeric input', () => {
+  invalid('RecordingBatchTagsRequest', {ids:[0]});
+  invalid('RecordingBatchTagsRequest', {ids:[-1]});
+  valid('RecordingBatchTagsRequest', {ids:[101.9]});
+});
+
+test('recording exports require exact IDs and preserve decimal strings above the safe numeric range', () => {
+  for (const id of [1,101,Number.MAX_SAFE_INTEGER,'9007199254740993','18446744073709551615']) {
+    const body={ids:[id]};
+    valid('RecordingExportRequest',body);
+    assert.deepEqual(body,{ids:[id]},'export validation changed the recording identity');
+  }
+  for (const id of [0,-1,101.9,Number.MAX_SAFE_INTEGER+1,null,{},'','1junk','1.5']) {
+    invalid('RecordingExportRequest',{ids:[id]});
+  }
+  invalid('RecordingExportRequest',{ids:[]});
+});
+
+test('deletion filter schemas accept supported selectors and reject ignored fields and invalid types', () => {
+  valid('RecordingDeletionRequest',{filter:{stream:'A',tag:'person',detection:1,protected:0,
+    capture_method:'continuous',detection_label:'person',Start:'2026-11-01T00:00:00Z',END:'2026-11-02T00:00:00Z'}});
+  for (const filter of [{camera_uuids:['unsupported']},{strat:'typo'},{stream:42},{stream:''},
+    {tag:false},{detection:0.5},{protected:2}]) {
+    invalid('RecordingDeletionRequest',{filter});
   }
 });
