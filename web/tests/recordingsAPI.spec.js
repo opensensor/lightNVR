@@ -384,3 +384,98 @@ describe('archive batch deletion outcomes', () => {
     await expect(recordingsAPI.pollBatchDeleteProgress('finished')).resolves.toEqual({ succeeded: 3, pending_deletions: 2, failed: 1 });
   });
 });
+
+describe('batch deletion polling deadline', () => {
+  let priorWindow;
+  beforeEach(() => {
+    jest.useFakeTimers();
+    fetchJSON.mockReset();
+    priorWindow = global.window;
+    global.window = {updateBatchDeleteProgress: jest.fn()};
+    for (const method of ['log', 'debug', 'warn', 'error']) {
+      jest.spyOn(console, method).mockImplementation(() => {});
+    }
+  });
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    global.window = priorWindow;
+  });
+
+  async function expiresAtDeadline() {
+    let settled = false;
+    const result = recordingsAPI.pollBatchDeleteProgress('slow-job').catch(error => error)
+      .then(value => { settled = true; return value; });
+    await jest.advanceTimersByTimeAsync(119999);
+    expect(settled).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(await result).toEqual(new Error('Batch delete operation timed out'));
+    const calls = fetchJSON.mock.calls.length;
+    await jest.advanceTimersByTimeAsync(60000);
+    expect(fetchJSON).toHaveBeenCalledTimes(calls);
+    expect(jest.getTimerCount()).toBe(0);
+  }
+
+  test('pending responses and exponential backoff share a two-minute deadline', async () => {
+    fetchJSON.mockResolvedValue({complete: false});
+    await expiresAtDeadline();
+    expect(fetchJSON.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  test('a stalled response is aborted and cannot publish a late completion', async () => {
+    let finish;
+    let signal;
+    fetchJSON.mockImplementation((_url, options) => {
+      signal = options.signal;
+      return new Promise(resolve => {finish = resolve;});
+    });
+    await expiresAtDeadline();
+    expect(signal.aborted).toBe(true);
+    finish({complete: true, succeeded: 1});
+    await jest.advanceTimersByTimeAsync(0);
+    expect(window.updateBatchDeleteProgress).not.toHaveBeenCalled();
+    expect(fetchJSON).toHaveBeenCalledTimes(1);
+  });
+
+  test('real fetch timeouts and internal retries cannot extend the deadline', async () => {
+    const actual = jest.requireActual('../js/fetch-utils.ts');
+    fetchJSON.mockImplementation(actual.fetchJSON);
+    const signals = [];
+    const fetch = jest.spyOn(global, 'fetch').mockImplementation((_url, {signal}) => {
+      signals.push(signal);
+      return new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {once: true});
+      });
+    });
+    await expiresAtDeadline();
+    expect(fetch.mock.calls.length).toBeGreaterThan(fetchJSON.mock.calls.length);
+    expect(signals.every(signal => signal.aborted)).toBe(true);
+  });
+
+  test('a completed job after a transient failure clears all deadline timers', async () => {
+    fetchJSON.mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce({complete: true, succeeded: 3, pending_deletions: 2, failed: 1});
+    const result = recordingsAPI.pollBatchDeleteProgress('recovered');
+    await jest.advanceTimersByTimeAsync(1000);
+    await expect(result).resolves.toEqual({succeeded: 3, pending_deletions: 2, failed: 1});
+    expect(jest.getTimerCount()).toBe(0);
+    await jest.advanceTimersByTimeAsync(120000);
+    expect(fetchJSON).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('recording detection URL encoding', () => {
+  afterEach(() => jest.restoreAllMocks());
+  test.each(['checkRecordingHasDetections', 'getRecordingDetections'])('%s encodes stream path characters', async method => {
+    enhancedFetch.mockReset();
+    enhancedFetch.mockImplementation(async () => detectionResponse([detection('person')]));
+    const stream = 'Front #1?zone=2%/east';
+    const recording = {id: 42, stream, start_time: '2026-02-18T05:00:00Z', end_time: '2026-02-18T05:01:00Z'};
+    const result = await recordingsAPI[method](recording);
+    expect(result).toEqual(method === 'checkRecordingHasDetections' ? true : [detection('person')]);
+    const url = enhancedFetch.mock.calls[0][0];
+    expect(url.split('?')[0]).toBe(`/api/detection/results/${encodeURIComponent(stream)}`);
+    expect(new URL(url, 'http://localhost').searchParams.has('zone')).toBe(false);
+  });
+});
