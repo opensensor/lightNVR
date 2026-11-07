@@ -62,8 +62,8 @@ export interface OnvifStreamCreatePayload {
   url: string;
   enabled: boolean;
   streaming_enabled: boolean;
-  protocol: string;
-  priority: string;
+  protocol: number;
+  priority: number;
   segment_duration: number;
   record: boolean;
   record_audio: boolean;

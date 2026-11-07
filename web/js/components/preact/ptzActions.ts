@@ -1,21 +1,9 @@
 import type { PtzActionResult, PtzCapabilities, PtzError, PtzPreset, PtzPresetsResponse } from '../../types/live.ts';
 
-const ptzUrl = (streamName: string, action: string) =>
-  `/api/streams/${encodeURIComponent(streamName)}/ptz/${action}`;
-
-async function ptzRequest<T extends PtzActionResult = PtzActionResult>(streamName: string, action: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(ptzUrl(streamName, action), options);
-  if (!response.ok) {
-    const error: PtzError = new Error(`PTZ ${action} failed (${response.status})`);
-    error.status = response.status;
-    throw error;
-  }
-
-  const data: T = await response.json();
-  if (data.success === false) {
-    throw new Error(`PTZ ${action} failed`);
-  }
-  return data;
+import {deviceRequest, type DeviceOperation} from '../../api/device.ts';
+const operations:Record<string,DeviceOperation>={capabilities:'getPtzCapabilities',presets:'getPtzPresets',preset:'setPtzPreset','set-home':'setPtzHome',move:'movePtz',stop:'stopPtz',home:'homePtz','goto-preset':'gotoPtzPreset'};
+async function ptzRequest<T extends PtzActionResult = PtzActionResult>(streamName:string,action:string,options?:RequestInit):Promise<T>{
+  return await deviceRequest(operations[action]!,{name:streamName,body:typeof options?.body==='string'?JSON.parse(options.body):undefined}) as T;
 }
 
 export function getPtzCapabilities(streamName: string) {

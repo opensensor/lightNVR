@@ -59,6 +59,10 @@
     {
       "name": "Evidence",
       "description": "Investigations, detections, bookmarks, LPR and recording media protocols."
+    },
+    {
+      "name": "Device controls",
+      "description": "PTZ, imaging and ONVIF inventory and device commands."
     }
   ],
   "x-lightnvr-coverage": {
@@ -259,7 +263,29 @@
       "getEvidenceSnapshot",
       "getEvidenceThumbnail",
       "getEvidenceManifest",
-      "redirectEvidencePlayback"
+      "redirectEvidencePlayback",
+      "getPtzCapabilities",
+      "getPtzPresets",
+      "movePtz",
+      "absolutePtz",
+      "relativePtz",
+      "stopPtz",
+      "homePtz",
+      "setPtzHome",
+      "gotoPtzPreset",
+      "setPtzPreset",
+      "getImagingSettings",
+      "setImagingSettings",
+      "getImagingOptions",
+      "getDaynight",
+      "setDaynight",
+      "getOnvifDiscoveryStatus",
+      "getOnvifDevices",
+      "discoverOnvifDevices",
+      "getOnvifProfiles",
+      "addOnvifDevice",
+      "claimOnvifDevice",
+      "testOnvifDevice"
     ],
     "description": "Reviewed operations are enumerated in covered_operations. Discovery is filtered independently by current authority; coverage never grants access."
   },
@@ -515,7 +541,38 @@
     "EvidenceLprSearchRequest",
     "EvidenceLprExportRequest",
     "EvidenceLprDeleted",
-    "EvidenceBookmarkDeleted"
+    "EvidenceBookmarkDeleted",
+    "DeviceFloatRange",
+    "DeviceCommandResult",
+    "DeviceSuccess",
+    "DeviceEmptyRequest",
+    "PtzAxesRequest",
+    "PtzPresetRequest",
+    "PtzGotoPresetRequest",
+    "PtzPresetResult",
+    "PtzPresets",
+    "PtzCapabilities",
+    "ImagingModeLevel",
+    "ImagingModeLevelUpdate",
+    "ImagingSettings",
+    "ImagingSettingsResponse",
+    "ImagingModeOptions",
+    "ImagingOptions",
+    "ImagingOptionsResponse",
+    "ImagingSettingsRequest",
+    "DaynightRequest",
+    "DaynightResponse",
+    "DaynightUpdated",
+    "OnvifDiscoveryStatus",
+    "OnvifDevice",
+    "OnvifDevicesResponse",
+    "OnvifDiscoveryRequest",
+    "OnvifProfile",
+    "OnvifProfilesResponse",
+    "OnvifTestRequest",
+    "OnvifAddRequest",
+    "OnvifAddResult",
+    "OnvifClaimRequest"
   ],
   "paths": {
     "/api/streams": {
@@ -24094,6 +24151,2860 @@
           }
         ]
       }
+    },
+    "/api/streams/{name}/ptz/capabilities": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getPtzCapabilities",
+        "summary": "getPtzCapabilities",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PtzCapabilities"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/presets": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getPtzPresets",
+        "summary": "getPtzPresets",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PtzPresets"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/move": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "movePtz",
+        "summary": "movePtz",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "ptz.control",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PtzAxesRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/absolute": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "absolutePtz",
+        "summary": "absolutePtz",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "ptz.control",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PtzAxesRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/relative": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "relativePtz",
+        "summary": "relativePtz",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "ptz.control",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PtzAxesRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/stop": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "stopPtz",
+        "summary": "stopPtz",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "ptz.control",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceEmptyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/home": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "homePtz",
+        "summary": "homePtz",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "ptz.control",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceEmptyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/set-home": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "setPtzHome",
+        "summary": "setPtzHome",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "ptz.control",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceEmptyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/goto-preset": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "gotoPtzPreset",
+        "summary": "gotoPtzPreset",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "ptz.control",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PtzGotoPresetRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/preset": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "put": {
+        "operationId": "setPtzPreset",
+        "summary": "setPtzPreset",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "ptz.control",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PtzPresetResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PtzPresetRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/imaging/settings": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getImagingSettings",
+        "summary": "getImagingSettings",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagingSettingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setImagingSettings",
+        "summary": "setImagingSettings",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImagingSettingsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/imaging/options": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getImagingOptions",
+        "summary": "getImagingOptions",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagingOptionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/daynight": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getDaynight",
+        "summary": "getDaynight",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DaynightResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setDaynight",
+        "summary": "setDaynight",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DaynightUpdated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DaynightRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onvif/discovery/status": {
+      "get": {
+        "operationId": "getOnvifDiscoveryStatus",
+        "summary": "getOnvifDiscoveryStatus",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnvifDiscoveryStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onvif/devices": {
+      "get": {
+        "operationId": "getOnvifDevices",
+        "summary": "getOnvifDevices",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnvifDevicesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onvif/discovery/discover": {
+      "post": {
+        "operationId": "discoverOnvifDevices",
+        "summary": "discoverOnvifDevices",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnvifDevicesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnvifDiscoveryRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onvif/device/profiles": {
+      "get": {
+        "operationId": "getOnvifProfiles",
+        "summary": "getOnvifProfiles",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnvifProfilesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Device-URL",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 511,
+              "minLength": 1
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Username",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 63,
+              "minLength": 0
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Password",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 63,
+              "minLength": 0
+            }
+          }
+        ]
+      }
+    },
+    "/api/onvif/device/add": {
+      "post": {
+        "operationId": "addOnvifDevice",
+        "summary": "addOnvifDevice",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnvifAddResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnvifAddRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onvif/device/claim": {
+      "post": {
+        "operationId": "claimOnvifDevice",
+        "summary": "claimOnvifDevice",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceSuccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnvifClaimRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onvif/device/test": {
+      "post": {
+        "operationId": "testOnvifDevice",
+        "summary": "testOnvifDevice",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnvifTestRequest"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -40359,6 +43270,1144 @@
         },
         "required": [
           "success"
+        ],
+        "additionalProperties": false
+      },
+      "DeviceFloatRange": {
+        "type": "object",
+        "properties": {
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "min",
+          "max"
+        ],
+        "additionalProperties": false
+      },
+      "DeviceCommandResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "DeviceSuccess": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "additionalProperties": false
+      },
+      "DeviceEmptyRequest": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "PtzAxesRequest": {
+        "type": "object",
+        "properties": {
+          "pan": {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          },
+          "tilt": {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          },
+          "zoom": {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "minProperties": 1,
+        "description": "Finite float-representable coordinates in the camera default space. Camera-advertised ranges vary; the server does not assume normalized position units. Omitted axes retain existing native zero/axis-presence semantics."
+      },
+      "PtzPresetRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 63
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "PtzGotoPresetRequest": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 63,
+            "minLength": 1
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "PtzPresetResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message",
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "PtzPresets": {
+        "type": "object",
+        "properties": {
+          "presets": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "properties": {
+                "token": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "token",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "presets",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "PtzCapabilities": {
+        "type": "object",
+        "properties": {
+          "ptz_enabled": {
+            "type": "boolean"
+          },
+          "onvif_queried": {
+            "type": "boolean"
+          },
+          "has_pan_tilt": {
+            "type": "boolean"
+          },
+          "has_zoom": {
+            "type": "boolean"
+          },
+          "has_continuous_move": {
+            "type": "boolean"
+          },
+          "has_absolute_move": {
+            "type": "boolean"
+          },
+          "has_relative_move": {
+            "type": "boolean"
+          },
+          "has_home_position": {
+            "type": "boolean"
+          },
+          "has_presets": {
+            "type": "boolean"
+          },
+          "has_home": {
+            "type": "boolean"
+          },
+          "pan_range": {
+            "$ref": "#/components/schemas/DeviceFloatRange"
+          },
+          "tilt_range": {
+            "$ref": "#/components/schemas/DeviceFloatRange"
+          },
+          "zoom_range": {
+            "$ref": "#/components/schemas/DeviceFloatRange"
+          },
+          "max_x": {
+            "type": "number"
+          },
+          "max_y": {
+            "type": "number"
+          },
+          "max_z": {
+            "type": "number"
+          },
+          "max_presets": {
+            "type": "integer"
+          },
+          "ptz_service_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ptz_enabled",
+          "onvif_queried",
+          "has_pan_tilt",
+          "has_zoom",
+          "has_continuous_move",
+          "has_absolute_move",
+          "has_relative_move",
+          "has_home_position",
+          "has_presets",
+          "has_home",
+          "pan_range",
+          "tilt_range",
+          "zoom_range",
+          "max_x",
+          "max_y",
+          "max_z",
+          "max_presets",
+          "ptz_service_url"
+        ],
+        "additionalProperties": false
+      },
+      "ImagingModeLevel": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "level": {
+            "type": "number"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "ImagingModeLevelUpdate": {
+        "oneOf": [
+          {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "maxLength": 31,
+                "minLength": 1
+              },
+              "level": {
+                "type": "number",
+                "minimum": -3.4028234663852886e+38,
+                "maximum": 3.4028234663852886e+38
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "minProperties": 1
+          }
+        ]
+      },
+      "ImagingSettings": {
+        "type": "object",
+        "properties": {
+          "video_source_token": {
+            "type": "string"
+          },
+          "brightness": {
+            "type": "number"
+          },
+          "color_saturation": {
+            "type": "number"
+          },
+          "contrast": {
+            "type": "number"
+          },
+          "sharpness": {
+            "type": "number"
+          },
+          "noise_reduction": {
+            "type": "number"
+          },
+          "backlight_compensation": {
+            "$ref": "#/components/schemas/ImagingModeLevel"
+          },
+          "wide_dynamic_range": {
+            "$ref": "#/components/schemas/ImagingModeLevel"
+          },
+          "tone_compensation": {
+            "$ref": "#/components/schemas/ImagingModeLevel"
+          },
+          "defogging": {
+            "$ref": "#/components/schemas/ImagingModeLevel"
+          },
+          "ir_cut_filter": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_source_token"
+        ],
+        "additionalProperties": false
+      },
+      "ImagingSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ImagingSettings"
+          }
+        },
+        "required": [
+          "success",
+          "settings"
+        ],
+        "additionalProperties": false
+      },
+      "ImagingModeOptions": {
+        "type": "object",
+        "properties": {
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "$ref": "#/components/schemas/DeviceFloatRange"
+          }
+        },
+        "required": [
+          "modes"
+        ],
+        "additionalProperties": false
+      },
+      "ImagingOptions": {
+        "type": "object",
+        "properties": {
+          "video_source_token": {
+            "type": "string"
+          },
+          "brightness": {
+            "$ref": "#/components/schemas/DeviceFloatRange"
+          },
+          "color_saturation": {
+            "$ref": "#/components/schemas/DeviceFloatRange"
+          },
+          "contrast": {
+            "$ref": "#/components/schemas/DeviceFloatRange"
+          },
+          "sharpness": {
+            "$ref": "#/components/schemas/DeviceFloatRange"
+          },
+          "noise_reduction": {
+            "$ref": "#/components/schemas/DeviceFloatRange"
+          },
+          "backlight_compensation": {
+            "$ref": "#/components/schemas/ImagingModeOptions"
+          },
+          "wide_dynamic_range": {
+            "$ref": "#/components/schemas/ImagingModeOptions"
+          },
+          "tone_compensation": {
+            "$ref": "#/components/schemas/ImagingModeOptions"
+          },
+          "defogging": {
+            "$ref": "#/components/schemas/ImagingModeOptions"
+          },
+          "ir_cut_filter_modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "video_source_token",
+          "ir_cut_filter_modes"
+        ],
+        "additionalProperties": false
+      },
+      "ImagingOptionsResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "options": {
+            "$ref": "#/components/schemas/ImagingOptions"
+          }
+        },
+        "required": [
+          "success",
+          "options"
+        ],
+        "additionalProperties": false
+      },
+      "ImagingSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "brightness": {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          },
+          "color_saturation": {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          },
+          "contrast": {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          },
+          "sharpness": {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          },
+          "noise_reduction": {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          },
+          "saturation": {
+            "type": "number",
+            "minimum": -3.4028234663852886e+38,
+            "maximum": 3.4028234663852886e+38
+          },
+          "backlight_compensation": {
+            "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+          },
+          "wide_dynamic_range": {
+            "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+          },
+          "tone_compensation": {
+            "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+          },
+          "defogging": {
+            "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+          },
+          "backlight": {
+            "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+          },
+          "wdr": {
+            "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+          },
+          "tone": {
+            "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+          },
+          "defog": {
+            "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+          },
+          "ir_cut_filter": {
+            "type": "string",
+            "maxLength": 15,
+            "minLength": 1
+          },
+          "ircut": {
+            "type": "string",
+            "maxLength": 15,
+            "minLength": 1
+          },
+          "force_persistence": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "minProperties": 1,
+        "description": "Known aliases remain accepted; force_persistence alone is rejected. Numeric limits come from the device options rather than an invented global range.",
+        "anyOf": [
+          {
+            "properties": {
+              "brightness": {
+                "type": "number",
+                "minimum": -3.4028234663852886e+38,
+                "maximum": 3.4028234663852886e+38
+              }
+            },
+            "required": [
+              "brightness"
+            ]
+          },
+          {
+            "properties": {
+              "color_saturation": {
+                "type": "number",
+                "minimum": -3.4028234663852886e+38,
+                "maximum": 3.4028234663852886e+38
+              }
+            },
+            "required": [
+              "color_saturation"
+            ]
+          },
+          {
+            "properties": {
+              "contrast": {
+                "type": "number",
+                "minimum": -3.4028234663852886e+38,
+                "maximum": 3.4028234663852886e+38
+              }
+            },
+            "required": [
+              "contrast"
+            ]
+          },
+          {
+            "properties": {
+              "sharpness": {
+                "type": "number",
+                "minimum": -3.4028234663852886e+38,
+                "maximum": 3.4028234663852886e+38
+              }
+            },
+            "required": [
+              "sharpness"
+            ]
+          },
+          {
+            "properties": {
+              "noise_reduction": {
+                "type": "number",
+                "minimum": -3.4028234663852886e+38,
+                "maximum": 3.4028234663852886e+38
+              }
+            },
+            "required": [
+              "noise_reduction"
+            ]
+          },
+          {
+            "properties": {
+              "saturation": {
+                "type": "number",
+                "minimum": -3.4028234663852886e+38,
+                "maximum": 3.4028234663852886e+38
+              }
+            },
+            "required": [
+              "saturation"
+            ]
+          },
+          {
+            "properties": {
+              "backlight_compensation": {
+                "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+              }
+            },
+            "required": [
+              "backlight_compensation"
+            ]
+          },
+          {
+            "properties": {
+              "wide_dynamic_range": {
+                "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+              }
+            },
+            "required": [
+              "wide_dynamic_range"
+            ]
+          },
+          {
+            "properties": {
+              "tone_compensation": {
+                "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+              }
+            },
+            "required": [
+              "tone_compensation"
+            ]
+          },
+          {
+            "properties": {
+              "defogging": {
+                "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+              }
+            },
+            "required": [
+              "defogging"
+            ]
+          },
+          {
+            "properties": {
+              "backlight": {
+                "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+              }
+            },
+            "required": [
+              "backlight"
+            ]
+          },
+          {
+            "properties": {
+              "wdr": {
+                "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+              }
+            },
+            "required": [
+              "wdr"
+            ]
+          },
+          {
+            "properties": {
+              "tone": {
+                "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+              }
+            },
+            "required": [
+              "tone"
+            ]
+          },
+          {
+            "properties": {
+              "defog": {
+                "$ref": "#/components/schemas/ImagingModeLevelUpdate"
+              }
+            },
+            "required": [
+              "defog"
+            ]
+          },
+          {
+            "properties": {
+              "ir_cut_filter": {
+                "type": "string",
+                "maxLength": 15,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "ir_cut_filter"
+            ]
+          },
+          {
+            "properties": {
+              "ircut": {
+                "type": "string",
+                "maxLength": 15,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "ircut"
+            ]
+          }
+        ]
+      },
+      "DaynightRequest": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "maxLength": 15,
+            "minLength": 1
+          },
+          "daynight": {
+            "type": "string",
+            "maxLength": 15,
+            "minLength": 1
+          },
+          "ir_cut_filter": {
+            "type": "string",
+            "maxLength": 15,
+            "minLength": 1
+          },
+          "ircut": {
+            "type": "string",
+            "maxLength": 15,
+            "minLength": 1
+          },
+          "force_persistence": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "properties": {
+              "mode": {
+                "type": "string",
+                "maxLength": 15,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          {
+            "properties": {
+              "daynight": {
+                "type": "string",
+                "maxLength": 15,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "daynight"
+            ]
+          },
+          {
+            "properties": {
+              "ir_cut_filter": {
+                "type": "string",
+                "maxLength": 15,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "ir_cut_filter"
+            ]
+          },
+          {
+            "properties": {
+              "ircut": {
+                "type": "string",
+                "maxLength": 15,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "ircut"
+            ]
+          }
+        ]
+      },
+      "DaynightResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "source": {
+            "const": "onvif-imaging"
+          },
+          "video_source_token": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "day",
+              "night",
+              "auto",
+              "unknown"
+            ]
+          },
+          "ir_cut_filter": {
+            "type": "string"
+          },
+          "supported_modes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "day",
+                "night",
+                "auto"
+              ]
+            }
+          },
+          "options_available": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "source",
+          "video_source_token",
+          "mode",
+          "supported_modes",
+          "options_available"
+        ],
+        "additionalProperties": false
+      },
+      "DaynightUpdated": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "source": {
+            "const": "onvif-imaging"
+          },
+          "mode": {
+            "enum": [
+              "day",
+              "night",
+              "auto"
+            ]
+          },
+          "ir_cut_filter": {
+            "enum": [
+              "On",
+              "Off",
+              "Auto"
+            ]
+          }
+        },
+        "required": [
+          "success",
+          "source",
+          "mode",
+          "ir_cut_filter"
+        ],
+        "additionalProperties": false
+      },
+      "OnvifDiscoveryStatus": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "network": {
+            "type": "string"
+          },
+          "interval": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "network",
+          "interval"
+        ],
+        "additionalProperties": false
+      },
+      "OnvifDevice": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string"
+          },
+          "device_service": {
+            "type": "string"
+          },
+          "media_service": {
+            "type": "string"
+          },
+          "ptz_service": {
+            "type": "string"
+          },
+          "imaging_service": {
+            "type": "string"
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "firmware_version": {
+            "type": "string"
+          },
+          "serial_number": {
+            "type": "string"
+          },
+          "hardware_id": {
+            "type": "string"
+          },
+          "ip_address": {
+            "type": "string"
+          },
+          "mac_address": {
+            "type": "string"
+          },
+          "inventory_uuid": {
+            "type": "string"
+          },
+          "last_scan_network": {
+            "type": "string"
+          },
+          "claim_state": {
+            "type": "string"
+          },
+          "claimed_camera_uuid": {
+            "type": "string"
+          },
+          "discovery_time": {
+            "type": "integer"
+          },
+          "first_seen_at": {
+            "type": "integer"
+          },
+          "last_seen_at": {
+            "type": "integer"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "duplicate_suspected": {
+            "type": "boolean"
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "endpoint",
+          "device_service",
+          "media_service",
+          "ptz_service",
+          "imaging_service",
+          "manufacturer",
+          "model",
+          "firmware_version",
+          "serial_number",
+          "hardware_id",
+          "ip_address",
+          "mac_address",
+          "inventory_uuid",
+          "last_scan_network",
+          "claim_state",
+          "claimed_camera_uuid",
+          "discovery_time",
+          "first_seen_at",
+          "last_seen_at",
+          "online",
+          "duplicate_suspected",
+          "addresses"
+        ],
+        "additionalProperties": false
+      },
+      "OnvifDevicesResponse": {
+        "type": "object",
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OnvifDevice"
+            }
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "additionalProperties": false
+      },
+      "OnvifDiscoveryRequest": {
+        "type": "object",
+        "properties": {
+          "network": {
+            "type": "string",
+            "maxLength": 255
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "OnvifProfile": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "video_source_token": {
+            "type": "string"
+          },
+          "ptz_configuration_token": {
+            "type": "string"
+          },
+          "snapshot_uri": {
+            "type": "string"
+          },
+          "stream_uri": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "fps": {
+            "type": "integer"
+          },
+          "bitrate": {
+            "type": "integer"
+          },
+          "ptz_supported": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "token",
+          "name",
+          "video_source_token",
+          "ptz_configuration_token",
+          "snapshot_uri",
+          "stream_uri",
+          "encoding",
+          "width",
+          "height",
+          "fps",
+          "bitrate",
+          "ptz_supported"
+        ],
+        "additionalProperties": false
+      },
+      "OnvifProfilesResponse": {
+        "type": "object",
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/OnvifProfile"
+            }
+          }
+        },
+        "required": [
+          "profiles"
+        ],
+        "additionalProperties": false
+      },
+      "OnvifTestRequest": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 511,
+            "minLength": 1
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 63
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 63
+          },
+          "insecure": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      },
+      "OnvifAddRequest": {
+        "type": "object",
+        "properties": {
+          "device_url": {
+            "type": "string",
+            "maxLength": 511,
+            "minLength": 1
+          },
+          "profile_token": {
+            "type": "string",
+            "maxLength": 63,
+            "minLength": 1
+          },
+          "stream_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 63
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 63
+          }
+        },
+        "required": [
+          "device_url",
+          "profile_token",
+          "stream_name"
+        ],
+        "additionalProperties": false
+      },
+      "OnvifAddResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          },
+          "stream_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message",
+          "stream_name"
+        ],
+        "additionalProperties": false
+      },
+      "OnvifClaimRequest": {
+        "type": "object",
+        "properties": {
+          "inventory_uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stream_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        },
+        "required": [
+          "inventory_uuid",
+          "stream_name"
         ],
         "additionalProperties": false
       }

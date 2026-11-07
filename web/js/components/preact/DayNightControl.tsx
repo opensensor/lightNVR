@@ -1,3 +1,4 @@
+import {deviceRequest} from '../../api/device.ts';
 /**
  * Day/Night mode control for ONVIF cameras (IR cut filter)
  *
@@ -71,11 +72,7 @@ export function DayNightControl({ stream }: DayNightControlProps) {
   const fetchMode = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/streams/${encodeURIComponent(stream.name)}/daynight`);
-      const data: DayNightResponse | null = await response.json().catch(() => null);
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || `HTTP ${response.status}`);
-      }
+      const data = await deviceRequest('getDaynight',{name:stream.name});
       setMode(data.mode || 'unknown');
     } catch (err) {
       setMode('unknown');
@@ -97,15 +94,7 @@ export function DayNightControl({ stream }: DayNightControlProps) {
     if (pending) return;
     setPending(nextMode);
     try {
-      const response = await fetch(`/api/streams/${encodeURIComponent(stream.name)}/daynight`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: nextMode })
-      });
-      const data: DayNightResponse | null = await response.json().catch(() => null);
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || `HTTP ${response.status}`);
-      }
+      const data = await deviceRequest('setDaynight',{name:stream.name,body:{mode:nextMode}});
       setMode(data.mode || nextMode);
       showStatusMessage(t('live.dayNightApplied', { mode: t(`live.dayNightMode_${data.mode || nextMode}`) }), 'success', 3000);
     } catch (err) {

@@ -629,3 +629,7 @@ if(MQTT_SNAPSHOT_TEST_INCLUDE AND MQTT_SNAPSHOT_TEST_LIBRARY)
         -Wl,--wrap=get_stream_config_by_name -Wl,--wrap=go2rtc_get_snapshot
         -Wl,--wrap=mosquitto_publish)
 endif()
+add_layer2_test(test_api_handlers_device CI_UNIT CI_SANITIZER)
+target_link_options(test_api_handlers_device PRIVATE
+    "-Wl,--wrap=discover_onvif_devices" "-Wl,--wrap=get_onvif_device_profiles"
+    "-Wl,--wrap=add_onvif_device_as_stream")

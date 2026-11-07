@@ -14,7 +14,8 @@
     "Fleet write/workspace slice adds 31 operations. Background GET/PUT contracts are binary PNG/JPEG, verified independently from JSON plan responses.",
     "F3 covers 20 user administration, authorization policy and audit operations. Non-scoped management is explicit; scoped users.manage never issues unrestricted legacy credentials. CSV exports are paginated byte contracts. Total 77 covered operations, 163 residual.",
     "Storage slice covers 28 registrations. Migration, archive retry and cleanup acknowledgements do not imply completed file operations. Local fixtures qualify local lifecycle; remote providers remain separately qualified.",
-    "F11/P4e covers23 investigation/bookmark/detection/LPR/recording residual routes, including JSON attachments, JPEG, playlist and playback redirect protocols. Captured UUIDs take precedence over mutable names; legacy missing capture UUIDs retain name fallback."
+    "F11/P4e covers23 investigation/bookmark/detection/LPR/recording residual routes, including JSON attachments, JPEG, playlist and playback redirect protocols. Captured UUIDs take precedence over mutable names; legacy missing capture UUIDs retain name fallback.",
+    "F9/F10 device slice adds 22 PTZ/imaging/daynight/ONVIF operations; camera-specific ranges and physical multicast/vendor qualification remain explicit device limits."
   ],
   "operations": [
     {
@@ -702,8 +703,10 @@
       "handler": "handle_ptz_capabilities",
       "source": "src/web/libuv_api_handlers.c",
       "line": 236,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "getPtzCapabilities",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -711,8 +714,10 @@
       "handler": "handle_ptz_get_presets",
       "source": "src/web/libuv_api_handlers.c",
       "line": 237,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "getPtzPresets",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -720,8 +725,10 @@
       "handler": "handle_ptz_move",
       "source": "src/web/libuv_api_handlers.c",
       "line": 238,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "movePtz",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -729,8 +736,10 @@
       "handler": "handle_ptz_stop",
       "source": "src/web/libuv_api_handlers.c",
       "line": 239,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "stopPtz",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -738,8 +747,10 @@
       "handler": "handle_ptz_absolute",
       "source": "src/web/libuv_api_handlers.c",
       "line": 240,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "absolutePtz",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -747,8 +758,10 @@
       "handler": "handle_ptz_relative",
       "source": "src/web/libuv_api_handlers.c",
       "line": 241,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "relativePtz",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -756,8 +769,10 @@
       "handler": "handle_ptz_home",
       "source": "src/web/libuv_api_handlers.c",
       "line": 242,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "homePtz",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -765,8 +780,10 @@
       "handler": "handle_ptz_set_home",
       "source": "src/web/libuv_api_handlers.c",
       "line": 243,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "setPtzHome",
+      "eligibility": "camera"
     },
     {
       "method": "POST",
@@ -774,8 +791,10 @@
       "handler": "handle_ptz_goto_preset",
       "source": "src/web/libuv_api_handlers.c",
       "line": 244,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "gotoPtzPreset",
+      "eligibility": "camera"
     },
     {
       "method": "PUT",
@@ -783,8 +802,10 @@
       "handler": "handle_ptz_set_preset",
       "source": "src/web/libuv_api_handlers.c",
       "line": 245,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "setPtzPreset",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -792,8 +813,10 @@
       "handler": "handle_imaging_get_settings",
       "source": "src/web/libuv_api_handlers.c",
       "line": 248,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "getImagingSettings",
+      "eligibility": "camera"
     },
     {
       "method": "PUT",
@@ -801,8 +824,10 @@
       "handler": "handle_imaging_put_settings",
       "source": "src/web/libuv_api_handlers.c",
       "line": 249,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "setImagingSettings",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -810,8 +835,10 @@
       "handler": "handle_imaging_get_options",
       "source": "src/web/libuv_api_handlers.c",
       "line": 250,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "getImagingOptions",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -819,8 +846,10 @@
       "handler": "handle_daynight_get",
       "source": "src/web/libuv_api_handlers.c",
       "line": 251,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "getDaynight",
+      "eligibility": "camera"
     },
     {
       "method": "PUT",
@@ -828,8 +857,10 @@
       "handler": "handle_daynight_put",
       "source": "src/web/libuv_api_handlers.c",
       "line": 252,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "setDaynight",
+      "eligibility": "camera"
     },
     {
       "method": "GET",
@@ -1988,8 +2019,10 @@
       "handler": "handle_get_onvif_discovery_status",
       "source": "src/web/libuv_api_handlers.c",
       "line": 451,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "getOnvifDiscoveryStatus",
+      "eligibility": "global"
     },
     {
       "method": "GET",
@@ -1997,8 +2030,10 @@
       "handler": "handle_get_discovered_onvif_devices",
       "source": "src/web/libuv_api_handlers.c",
       "line": 452,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "getOnvifDevices",
+      "eligibility": "global"
     },
     {
       "method": "POST",
@@ -2006,8 +2041,10 @@
       "handler": "handle_post_discover_onvif_devices",
       "source": "src/web/libuv_api_handlers.c",
       "line": 453,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "discoverOnvifDevices",
+      "eligibility": "global"
     },
     {
       "method": "GET",
@@ -2015,8 +2052,10 @@
       "handler": "handle_get_onvif_device_profiles",
       "source": "src/web/libuv_api_handlers.c",
       "line": 454,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "getOnvifProfiles",
+      "eligibility": "global"
     },
     {
       "method": "POST",
@@ -2024,8 +2063,10 @@
       "handler": "handle_post_add_onvif_device_as_stream",
       "source": "src/web/libuv_api_handlers.c",
       "line": 455,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "addOnvifDevice",
+      "eligibility": "global"
     },
     {
       "method": "POST",
@@ -2033,8 +2074,10 @@
       "handler": "handle_post_claim_onvif_device",
       "source": "src/web/libuv_api_handlers.c",
       "line": 456,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "claimOnvifDevice",
+      "eligibility": "global"
     },
     {
       "method": "POST",
@@ -2042,8 +2085,10 @@
       "handler": "handle_post_test_onvif_connection",
       "source": "src/web/libuv_api_handlers.c",
       "line": 457,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "pilot",
+      "classification": "protected-review-per-route",
+      "operation_id": "testOnvifDevice",
+      "eligibility": "global"
     },
     {
       "method": "GET",
