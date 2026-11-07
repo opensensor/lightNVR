@@ -22,6 +22,31 @@ test('invalid routes, revisions and preview intent fail before transport',async(
  await expect(eventJSON('/api/event-routes/preview',{method:'POST',body:JSON.stringify({name:'Preview',event_types:['io.lightnvr.detection.object.v1'],revision:1})})).rejects.toMatchObject({phase:'request'});
  expect(fetch).not.toHaveBeenCalled();
 });
+test.each(['event-routes','event-destinations'])('%s DELETE rejects extra or malformed query parameters before transport',async family=>{
+ const fetch=respond({success:true});
+ const suffixes=[
+  '', '?revision=', '?revision=0', '?revision=-1', '?revision=01', '?revision=1.5',
+  '?revision=9007199254740992', '?revision=1&revision=2', '?revision=1&%72evision=2',
+  '?revision=1&force=true', '?force=true&revision=1', '?revision=1&extra',
+  '?revision=1?force=true', '?revision=1?&force=true', '?revision=1?revision=2',
+ ];
+ for(const suffix of suffixes){
+  await expect(eventJSON(`/api/${family}/${uuid}${suffix}`,{method:'DELETE'}))
+   .rejects.toMatchObject({name:'ContractValidationError',phase:'request',schema:'EventRevision'});
+  expect(fetch).not.toHaveBeenCalled();
+ }
+});
+test.each(['event-routes','event-destinations'])('%s DELETE sends a sole positive safe revision once',async family=>{
+ const fetch=respond({success:true});
+ for(const revision of [1,42,Number.MAX_SAFE_INTEGER]){
+  fetch.mockClear();
+  const url=`/api/${family}/${uuid}?revision=${revision}`;
+  await expect(eventJSON(url,{method:'DELETE',retries:6})).resolves.toEqual({success:true});
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0]?.[0]).toBe(url);
+  expect(fetch.mock.calls[0]?.[1]).toMatchObject({method:'DELETE',redirect:'error',credentials:'same-origin'});
+ }
+});
 test('writes never retry secret-bearing failures',async()=>{
  const fetch=respond({error:secret},503);
  try{await eventJSON('/api/event-destinations',{method:'POST',body:JSON.stringify(body),retries:6});throw new Error('expected rejection');}
