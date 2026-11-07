@@ -323,15 +323,15 @@ Camera (RTSP/ONVIF)
                                        ▼                     ▼
                                HLS Segments (.ts)      MP4 Files
                                        │                     │
-                               (Detection Thread          Database
-                                analyzes segments)        Metadata
+                               (Detection uses             Database
+                                go2rtc frame.jpeg)       Metadata
 ```
 
 1. **Camera → go2rtc**: go2rtc connects to cameras via RTSP/ONVIF/HTTP
 2. **go2rtc → Browser**: WebRTC for low-latency live viewing
 3. **go2rtc → HLS Writer**: Consumes go2rtc's RTSP output, writes .ts segments
 4. **go2rtc → MP4 Recorder**: Consumes go2rtc's RTSP output, writes MP4 files
-5. **HLS Segments → Detection**: Detection thread analyzes newest segments
+5. **go2rtc frame.jpeg → Detection**: Detection thread analyzes JPEG frames from go2rtc snapshots
 6. **Detection → Recording Trigger**: Detections can start/stop MP4 recordings
 
 ### Web Interface Flow
@@ -560,7 +560,7 @@ See [API.md](API.md) for detailed API documentation.
 
 ## Frontend Architecture
 
-The frontend is a multi-page application with Preact components, built with Vite:
+The frontend is a single-page application (SPA) with Preact components, built with Vite, where the files under `web/js/pages/` represent route views/feature entry modules rather than separate HTML documents:
 
 - **Preact** for component-based UI development
 - **Tailwind CSS** for styling and responsive design with theme customization
