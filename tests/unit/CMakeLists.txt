@@ -644,3 +644,13 @@ add_layer2_test(test_api_handlers_device CI_UNIT CI_SANITIZER)
 target_link_options(test_api_handlers_device PRIVATE
     "-Wl,--wrap=discover_onvif_devices" "-Wl,--wrap=get_onvif_device_profiles"
     "-Wl,--wrap=add_onvif_device_as_stream")
+
+# Pulse registry reclamation uses a complete inventory snapshot and unique tokens.
+add_layer3_test(test_motion_generation_registry CI_UNIT CI_SANITIZER)
+target_link_options(test_motion_generation_registry PRIVATE
+    "-Wl,--wrap=db_open_readonly_connection"
+    "-Wl,--wrap=db_close_readonly_connection"
+    "-Wl,--wrap=close_external_motion_detections"
+    "-Wl,--wrap=unified_detection_notify_motion"
+    "-Wl,--wrap=process_motion_event")
+set_tests_properties(test_motion_generation_registry PROPERTIES TIMEOUT 10)
