@@ -165,11 +165,15 @@ void test_has_detections_in_time_range_not_found(void) {
 void test_delete_old_detections(void) {
     time_t now = time(NULL);
     detection_result_t r = make_result("cat", 0.6f);
-    /* Insert with a very old timestamp by directly inserting via raw SQL */
-    store_detections_in_db("cam4", &r, now - 10000, 0);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam4", &r, now - 10000, 0));
+    detection_result_t recent = make_result("dog", 0.8f);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam4", &recent, now, 0));
 
     int deleted = delete_old_detections(100); /* max_age = 100 seconds */
-    TEST_ASSERT_GREATER_OR_EQUAL(0, deleted);
+    TEST_ASSERT_EQUAL_INT(1, deleted);
+    detection_result_t remaining;
+    TEST_ASSERT_EQUAL_INT(1, get_detections_from_db("cam4", &remaining, 0));
+    TEST_ASSERT_EQUAL_STRING("dog", remaining.detections[0].label);
 }
 
 /* get_detection_labels_summary */
@@ -361,8 +365,9 @@ void test_get_recording_detection_summaries_batches_linked_and_fallback_rows(voi
 /* update_detections_recording_id */
 void test_update_detections_recording_id(void) {
     time_t now = time(NULL);
+    time_t det_ts = now - 5;
     detection_result_t r = make_result("person", 0.95f);
-    store_detections_in_db("cam6", &r, now - 5, 0);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam6", &r, det_ts, 0));
 
     /* Create a real recording entry to satisfy the FK constraint */
     recording_metadata_t rec;
@@ -384,7 +389,27 @@ void test_update_detections_recording_id(void) {
     TEST_ASSERT_NOT_EQUAL(0, rec_id);
 
     int updated = update_detections_recording_id("cam6", rec_id, now - 10);
-    TEST_ASSERT_GREATER_OR_EQUAL(0, updated);
+    TEST_ASSERT_EQUAL_INT(1, updated);
+
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        get_db_handle(),
+        "SELECT recording_id FROM detections WHERE stream_name = ? AND timestamp = ? LIMIT 1;",
+        -1, &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    TEST_ASSERT_NOT_NULL(stmt);
+
+    rc = sqlite3_bind_text(stmt, 1, "cam6", -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    rc = sqlite3_bind_int64(stmt, 2, (sqlite3_int64)det_ts);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+
+    rc = sqlite3_step(stmt);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, rc);
+    TEST_ASSERT_EQUAL_UINT64(rec_id, (uint64_t)sqlite3_column_int64(stmt, 0));
+
+    rc = sqlite3_finalize(stmt);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
 }
 
 /* Regression for #547: a detection can arrive after the continuous writer
@@ -448,8 +473,14 @@ void test_store_max_detections(void) {
         r.detections[i].confidence = 0.5f;
         r.detections[i].track_id = -1;
     }
-    int rc = store_detections_in_db("cam7", &r, time(NULL), 0);
+    time_t ts = time(NULL);
+    int rc = store_detections_in_db("cam7", &r, ts, 0);
     TEST_ASSERT_EQUAL_INT(0, rc);
+
+    detection_result_t out;
+    memset(&out, 0, sizeof(out));
+    int count = get_detections_from_db_time_range("cam7", &out, 0, ts - 1, ts + 1);
+    TEST_ASSERT_EQUAL_INT(MAX_DETECTIONS, count);
 }
 
 void test_external_motion_interval_spans_later_recording_segment(void) {
