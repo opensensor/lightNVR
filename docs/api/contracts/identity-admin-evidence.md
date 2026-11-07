@@ -53,3 +53,22 @@ Commands run from the isolated worktree; fixtures use ephemeral loopback ports a
 - **PASS:** Canonical/projected OpenAPI lint (four existing path-ambiguity warnings), generator drift check, twelve tooling tests including optimized/unmodified Ajv equivalence over 9,988 valid/invalid cases.
 
 The native CRUD-plus-lock sequence is deliberately not claimed atomic. A lock failure after a successful save returns an explicit partial-result message and refreshes current users. Audit retention/pruning/mode changes likewise retain the native documented partial-failure behavior. API/UI tests use owned fixtures; no external cameras or production users were mutated.
+
+## Personal credential transport follow-up
+
+The older session/trusted-device adapter now forces `redirect: error`,
+`credentials: same-origin` and `cache: no-store` after caller options, and requires
+JSON response content type before exposing session metadata or acknowledging
+revocation. Authentication semantics, external abort propagation and zero mutation
+retries are unchanged. The administration adapter already enforced the redirect
+and credential invariants and needed no change.
+
+The shared owned-loopback redirect harness exercises real 307/308 responses for
+both session and trusted-device revocations with a synthetic API-key header. Each
+mutation reaches only its intended application origin once; the redirect target
+receives no request, even when caller options request following redirects,
+including credentials, caching and seven retries. Invalid MIME checks cover both
+session reads and successful-looking revocation bodies. Five new cases failed
+before the fix; all 26 focused identity cases now pass, with TypeScript and
+adapter ESLint clean. Evidence: ignored
+`build/evidence-contracts/identity-transport-{red,green,typecheck,eslint}.log`.
