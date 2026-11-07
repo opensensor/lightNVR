@@ -28,6 +28,11 @@ beforeAll(async () => {
   const output = await build({
     stdin: {resolveDir: path.resolve(__dirname, '../..'), loader: 'jsx', contents: FIXTURE},
     bundle: true, write: false, format: 'iife', jsx: 'automatic', jsxImportSource: 'preact',
+    plugins: [{name: 'i18n-fixture', setup(builder) {
+      builder.onResolve({filter: /\/i18n\.ts$/}, args => ({path: args.path, namespace: 'fixture'}));
+      builder.onLoad({filter: /.*/, namespace: 'fixture'}, () => ({contents:
+        "export const useI18n=()=>({t:key=>key==='common.close'?'Close':key});", loader: 'js'}));
+    }}],
   });
   bundle = output.outputFiles[0].text;
   browser = await chromium.launch({headless: true});
@@ -99,4 +104,46 @@ test('a detached toast root is remounted and its old expiry timers are cleared',
   expect(await page.evaluate(() => window.oldTimerFired)).toBe(false);
   expect(await page.locator('#toast-container-root').count()).toBe(1);
   expect(await toast('Replacement root').count()).toBe(1);
+});
+
+async function pauseClock() {
+  await page.clock.install({time: new Date('2026-01-01T00:00:00Z')});
+  await page.clock.pauseAt(new Date('2026-01-01T00:00:01Z'));
+}
+
+test('automatic dismissal enters the exit animation before its deadline', async () => {
+  await pauseClock();
+  await page.evaluate(() => window.toastApi.showToast('Automatic fade', 'info', 1000));
+  await page.clock.runFor(100);
+  expect(await toast('Automatic fade').evaluate(el => el.style.opacity)).toBe('1');
+  await page.clock.runFor(600);
+  expect(await toast('Automatic fade').evaluate(el => el.style.opacity)).toBe('0');
+  expect(await toast('Automatic fade').evaluate(el => el.style.transitionDuration)).toBe('300ms, 300ms');
+  await page.clock.runFor(299);
+  expect(await toast('Automatic fade').count()).toBe(1);
+  await page.clock.runFor(1);
+  expect(await toast('Automatic fade').count()).toBe(0);
+});
+
+test('a short duration bounds both the animation and removal deadline', async () => {
+  await pauseClock();
+  await page.evaluate(() => window.toastApi.showToast('Short fade', 'info', 100));
+  await page.clock.runFor(1);
+  expect(await toast('Short fade').evaluate(el => el.style.opacity)).toBe('0');
+  expect(await toast('Short fade').evaluate(el => el.style.transitionDuration)).toBe('100ms, 100ms');
+  await page.clock.runFor(98);
+  expect(await toast('Short fade').count()).toBe(1);
+  await page.clock.runFor(1);
+  expect(await toast('Short fade').count()).toBe(0);
+});
+
+test('persistent notifications expose a named close control and stay until dismissed', async () => {
+  await pauseClock();
+  await page.clock.runFor(10000);
+  expect(await toast('Immediate import toast').count()).toBe(1);
+  await toast('Immediate import toast').getByRole('button', {name: 'Close'}).click();
+  await page.clock.runFor(299);
+  expect(await toast('Immediate import toast').count()).toBe(1);
+  await page.clock.runFor(1);
+  expect(await toast('Immediate import toast').count()).toBe(0);
 });
