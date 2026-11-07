@@ -11,6 +11,7 @@
 
 #include <cjson/cJSON.h>
 #include <string.h>
+#include <stdio.h>
 #include "unity.h"
 #include "web/request_response.h"
 #include "web/libuv_connection.h"
@@ -47,6 +48,34 @@ void test_url_decode_no_encoding(void) {
     char out[64];
     TEST_ASSERT_EQUAL_INT(0, url_decode("plain", out, sizeof(out)));
     TEST_ASSERT_EQUAL_STRING("plain", out);
+}
+
+void test_url_decode_requires_two_hex_digits(void) {
+    const struct { const char *encoded; const char *expected; } cases[] = {
+        {"101%0Gjunk", "101%0Gjunk"}, {"101%0xjunk", "101%0xjunk"},
+        {"101%-0junk", "101%-0junk"}, {"101%+0junk", "101% 0junk"},
+        {"101% 0junk", "101% 0junk"}, {"101%1Gjunk", "101%1Gjunk"},
+        {"101%GGjunk", "101%GGjunk"}, {"101%0", "101%0"}, {"101%", "101%"},
+        {"101%2500", "101%00"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        char out[64];
+        TEST_ASSERT_EQUAL_INT(0, url_decode(cases[i].encoded, out, sizeof(out)));
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(cases[i].expected, out, cases[i].encoded);
+    }
+}
+
+void test_url_decode_preserves_every_valid_encoded_byte(void) {
+    for (unsigned int byte = 0; byte <= 255; byte++) {
+        for (int uppercase = 0; uppercase < 2; uppercase++) {
+            char encoded[16], out[16];
+            snprintf(encoded, sizeof(encoded), uppercase ? "%%%02Xtail" : "%%%02xtail", byte);
+            memset(out, 0x7f, sizeof(out));
+            TEST_ASSERT_EQUAL_INT(0, url_decode(encoded, out, sizeof(out)));
+            TEST_ASSERT_EQUAL_UINT8(byte, (unsigned char)out[0]);
+            TEST_ASSERT_EQUAL_MEMORY("tail", out + 1, 5);
+        }
+    }
 }
 
 /* ================================================================
@@ -281,6 +310,8 @@ int main(void) {
     RUN_TEST(test_url_decode_percent_2F);
     RUN_TEST(test_url_decode_plus_as_space);
     RUN_TEST(test_url_decode_no_encoding);
+    RUN_TEST(test_url_decode_requires_two_hex_digits);
+    RUN_TEST(test_url_decode_preserves_every_valid_encoded_byte);
 
     RUN_TEST(test_get_header_found);
     RUN_TEST(test_get_header_case_insensitive);

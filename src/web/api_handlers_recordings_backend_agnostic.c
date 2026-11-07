@@ -45,34 +45,6 @@
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "storage/storage_manager_streams_cache.h"
 
-static int hex_value(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    c = (char)tolower((unsigned char)c);
-    if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
-    return -1;
-}
-
-static int contains_encoded_nul_before_query(const char *path) {
-    if (!path) {
-        return 0;
-    }
-
-    for (const char *p = path; *p && *p != '?'; ++p) {
-        if (*p == '%' && p[1] && p[2]) {
-            int hi = hex_value(p[1]);
-            int lo = hex_value(p[2]);
-            if (hi >= 0 && lo >= 0) {
-                if (((hi << 4) | lo) == 0x00) {
-                    return 1;
-                }
-                p += 2;
-            }
-        }
-    }
-
-    return 0;
-}
-
 static void audit_recording_delete_operation(
     const http_request_t *req, const user_t *user,
     const fleet_camera_t *camera, uint64_t recording_id,
@@ -115,8 +87,10 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     }
 
     // Check the raw path too: a decoded NUL can hide a suffix from validation.
+    const char *encoded_nul = strstr(req->path, "%00");
+    const char *query = strchr(req->path, '?');
     uint64_t id;
-    if (contains_encoded_nul_before_query(req->path) ||
+    if ((encoded_nul && (!query || encoded_nul < query)) ||
         !recording_id_parse_decimal(id_str, &id)) {
         log_error("Invalid recording ID: %s", id_str);
         http_response_set_json_error(res, 400, "Invalid recording ID");
@@ -928,16 +902,9 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
             cJSON_Delete(json);
             return;
         }
-        cJSON *start_item = cJSON_GetObjectItem(filter, "start");
-        if (!start_item) start_item = cJSON_GetObjectItem(filter, "Start");
-        if (!start_item) start_item = cJSON_GetObjectItem(filter, "START");
-
-        cJSON *end_item = cJSON_GetObjectItem(filter, "end");
-        if (!end_item) end_item = cJSON_GetObjectItem(filter, "End");
-        if (!end_item) end_item = cJSON_GetObjectItem(filter, "END");
-
-        if (!parse_delete_time_bound(start_item, &start_time) ||
-            !parse_delete_time_bound(end_item, &end_time) ||
+        // cJSON_GetObjectItem is case-insensitive; duplicate date aliases were rejected above.
+        if (!parse_delete_time_bound(cJSON_GetObjectItem(filter, "start"), &start_time) ||
+            !parse_delete_time_bound(cJSON_GetObjectItem(filter, "end"), &end_time) ||
             (start_time && end_time && start_time > end_time)) {
             cJSON_Delete(json);
             http_response_set_json_error(res, 400, "Invalid deletion date range");

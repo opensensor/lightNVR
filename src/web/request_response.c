@@ -58,6 +58,13 @@ static void generate_request_id(char output[REQUEST_ID_MAX]) {
              (unsigned long long)(counter ^ (uint64_t)getpid()));
 }
 
+static int hex_digit_value(unsigned char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
 // URL decode function
 int url_decode(const char *src, char *dst, size_t dst_size) {
     if (!src || !dst || dst_size == 0) {
@@ -69,9 +76,12 @@ int url_decode(const char *src, char *dst, size_t dst_size) {
 
     for (i = 0; i < src_len && j < dst_size - 1; i++) {
         if (src[i] == '%' && i + 2 < src_len) {
-            unsigned int value;
-            if (sscanf(src + i + 1, "%2x", &value) == 1) { // NOLINT(cert-err34-c)
-                dst[j++] = (char)value;
+            int high = hex_digit_value((unsigned char)src[i + 1]);
+            int low = hex_digit_value((unsigned char)src[i + 2]);
+            // scanf accepts partial/signed values (e.g. %0G or %-0), which can
+            // manufacture a NUL and hide the rest of a path identity.
+            if (high >= 0 && low >= 0) {
+                dst[j++] = (char)((high << 4) | low);
                 i += 2;
             } else {
                 dst[j++] = src[i];
