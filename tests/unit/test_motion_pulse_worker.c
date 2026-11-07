@@ -299,6 +299,30 @@ static void test_task_allocation_failure_serializes_rollback(void) {
     fail_task_alloc = true;
     assert_pulse_failure_rolls_back_before_new_action();
 }
+static void test_pulse_success_schedules_detached_worker_and_completes_deferred_stop(void) {
+    TEST_ASSERT_EQUAL_INT(202, run_handler("pulse"));
+    TEST_ASSERT_EQUAL_INT(1, attr_init_calls);
+    TEST_ASSERT_EQUAL_INT(1, attr_detach_calls);
+    TEST_ASSERT_EQUAL_INT(1, worker_create_calls);
+    TEST_ASSERT_EQUAL_INT(0, attr_destroy_calls);
+    TEST_ASSERT_EQUAL_INT(0, accepted_actions);
+
+    attempt_new_action(NULL);
+    TEST_ASSERT_EQUAL_INT(0, accepted_actions);
+
+    run_captured_worker();
+
+    TEST_ASSERT_EQUAL_INT(2, close_calls);
+    TEST_ASSERT_EQUAL_INT(1, store_calls);
+    TEST_ASSERT_EQUAL_INT(2, notify_calls);
+    TEST_ASSERT_EQUAL_INT(2, fanout_calls);
+    TEST_ASSERT_FALSE(last_notify_active);
+    TEST_ASSERT_FALSE(last_fanout_active);
+    TEST_ASSERT_EQUAL_INT(1, attr_destroy_calls);
+
+    attempt_new_action(NULL);
+    TEST_ASSERT_EQUAL_INT(1, accepted_actions);
+}
 static void test_worker_creation_failure_serializes_rollback(void) {
     fail_worker_create = true;
     assert_pulse_failure_rolls_back_before_new_action();
@@ -342,6 +366,7 @@ int main(void) {
     RUN_TEST(test_start_serializes_all_dispatch_effects);
     RUN_TEST(test_stop_serializes_all_dispatch_effects);
     RUN_TEST(test_task_allocation_failure_serializes_rollback);
+    RUN_TEST(test_pulse_success_schedules_detached_worker_and_completes_deferred_stop);
     RUN_TEST(test_worker_creation_failure_serializes_rollback);
     RUN_TEST(test_unauthorized_request_has_no_motion_effects);
     RUN_TEST(test_attribute_init_failure_rolls_back_without_using_attributes);
