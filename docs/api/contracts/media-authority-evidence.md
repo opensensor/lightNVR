@@ -108,7 +108,7 @@ GO2RTC_TEST_BINARY="$PWD/build/media-authority/go2rtc" \
   -R 'test_go2rtc_managed_listeners|test_go2rtc_two_config_merge'
 ```
 
-Focused native tests passed, including all nine policy/remux cases. Managed
+Focused native tests passed, including all ten policy/remux cases. Managed
 fork process checks passed (2/2). Fork validation passed:
 
 ```sh
@@ -135,3 +135,14 @@ already received or buffered by a client cannot be revoked. Native HLS retains
 the separately documented 30-second authorization-cache bound. Tests establish
 protocol/media enforcement with owned sources; they do not claim interoperability
 with any particular physical camera's microphone/backchannel implementation.
+
+### Explicit bounded lease copy follow-up
+
+CodeQL identified the lease token `strcpy` as an unbounded copy of entropy-derived
+input. The UUID generator already emits 36 fixed-alphabet characters and a
+terminator; the authority boundary now independently validates that canonical
+shape and uses a fixed-size 37-byte copy. Invalid output clears the caller token,
+returns 503 and never inserts a lease. Request metadata copies are bounded too.
+An injected malformed generator output failed the new rejection test before the
+fix. Both invalid-character and unterminated 37-byte outputs now fail closed;
+the ten-case owned-fixture suite passes under ASan/UBSan.
