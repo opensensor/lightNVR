@@ -191,6 +191,9 @@ static void trim_copy_value(char *dest, size_t dest_size, const char *src) {
     }
 
     const char *start = ltrim_pos(src);
+    if (*start == '\0') {
+        return;
+    }
     // rtrim_pos returns an exclusive end pointer (one past last non-whitespace).
     const char *end = rtrim_pos(src, 0);
 
@@ -495,6 +498,16 @@ static void add_versions_to_json(cJSON *info) {
     cJSON_AddItemToObject(info, "versions", versions);
 }
 
+// Match argv[0], not arbitrary arguments containing the detector name.
+// /proc/PID/comm truncates names to 15 bytes, so it cannot identify this name.
+static bool is_detector_command(const char *cmdline, size_t bytes) {
+    if (!cmdline || !memchr(cmdline, '\0', bytes)) {
+        return false; // Empty reads or a truncated executable path.
+    }
+    const char *name = strrchr(cmdline, '/');
+    return strcmp(name ? name + 1 : cmdline, "light-object-detect") == 0;
+}
+
 /**
  * @brief Get memory usage of light-object-detect process
  *
@@ -527,24 +540,16 @@ static bool get_detector_memory_usage(unsigned long long *memory_usage) {
         pid_t candidate = (pid_t)strtol(d, &ep, 10);
         if (*ep != '\0' || candidate <= 0 || candidate == self) continue;
 
-        char comm_path[64];
-        snprintf(comm_path, sizeof(comm_path), "/proc/%d/comm", candidate);
-        FILE *cf = fopen(comm_path, "r");
+        char cmdline_path[64];
+        snprintf(cmdline_path, sizeof(cmdline_path), "/proc/%d/cmdline", candidate);
+        FILE *cf = fopen(cmdline_path, "r");
         if (!cf) continue;
 
-        char comm[256] = {0};
-        if (!fgets(comm, sizeof(comm), cf)) {
-            fclose(cf);
-            continue;
-        }
+        char cmdline[PATH_MAX];
+        size_t bytes = fread(cmdline, 1, sizeof(cmdline), cf);
         fclose(cf);
 
-        size_t len = strlen(comm);
-        if (len > 0 && comm[len - 1] == '\n') {
-            comm[len - 1] = '\0';
-        }
-
-        if (strcmp(comm, "light-object-detect") == 0) {
+        if (is_detector_command(cmdline, bytes)) {
             pid = candidate;
             break;
         }
