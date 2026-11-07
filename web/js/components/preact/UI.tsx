@@ -356,11 +356,12 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
 
   // Fetch recording data and detections
   useEffect(() => {
-    if (!isOpen || !videoUrl) return;
-
-    // Reset recording-specific state so stale detections/status are not shown while loading a new URL.
+    // Clear all data owned by the previous recording before loading another.
+    setRecordingData(null);
+    setIsProtected(false);
     setDetections([]);
     setDetectionStatus('');
+    if (!isOpen || !videoUrl) return;
 
     const abortController = new AbortController();
     let isStale = false;
@@ -383,6 +384,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
         if (!response.ok) throw new Error('Failed to fetch recording data');
 
         const data = await response.json() as RecordingDetails;
+        if (isStale) return;
         setRecordingData(data);
         setIsProtected(!!data.protected);
 
@@ -410,7 +412,8 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
           const detectionsUrl = `/api/detection/results/${data.stream}?start=${startTime}&end=${endTime}`;
           console.log('[VideoModal] Fetching detections from:', detectionsUrl);
 
-          const detectionsData = await evidenceJSON<{detections:DetectionResult[]}>(detectionsUrl);
+          const detectionsData = await evidenceJSON<{detections:DetectionResult[]}>(detectionsUrl, { signal: abortController.signal });
+          if (isStale) return;
           console.log('[VideoModal] Detections response:', detectionsData);
           const fetchedDetections = detectionsData.detections || [];
           setDetections(fetchedDetections);
@@ -1086,6 +1089,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
                       : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                   }`}
                   onClick={handleToggleProtection}
+                  disabled={!recordingData}
                   title={t(isProtected ? 'recordings.unprotect' : 'recordings.protect')}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 me-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
