@@ -200,8 +200,8 @@ void test_request_init_generates_unique_correlation_ids(void) {
     http_request_init(&first);
     http_request_init(&second);
 
-    size_t first_length = strnlen(first.request_id, sizeof(first.request_id));
-    size_t second_length = strnlen(second.request_id, sizeof(second.request_id));
+    TEST_ASSERT_TRUE(strlen(first.request_id) > 0);
+    TEST_ASSERT_TRUE(strlen(second.request_id) > 0);
     TEST_ASSERT_GREATER_THAN_UINT(0, first_length);
     TEST_ASSERT_GREATER_THAN_UINT(0, second_length);
     TEST_ASSERT_LESS_THAN_UINT(REQUEST_ID_MAX, first_length);
