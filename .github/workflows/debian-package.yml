@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
   packages: read
 
@@ -16,7 +17,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-preflight:
+    uses: ./.github/workflows/release-preflight.yml
+
   build-deb:
+    needs: release-preflight
     name: Build .deb (${{ matrix.debian_suite }}/${{ matrix.deb_arch }})
     runs-on: ${{ matrix.runner }}
     strategy:

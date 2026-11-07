@@ -1,0 +1,23 @@
+name: Release preflight
+
+# Every tag publisher uses the same gate, including manually pushed tags.
+# Branch workflow_dispatch builds remain available for testing packaging.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 245
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify release tag and exact-commit CI
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/release.py "${RELEASE_TAG#v}" --verify-tag "$RELEASE_TAG"

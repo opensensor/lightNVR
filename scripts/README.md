@@ -58,10 +58,15 @@ bash scripts/bump-version.sh <new_version>   # e.g. 0.13.0
 ```
 
 ### `release.sh`
-Automates the release process (bump, build, tag, push).
+Prepares the version bump, waits for Rust regeneration and successful CI on the
+final commit, then pushes only the release tag. Requires Python 3 and authenticated
+`gh`. See [the release process](../docs/RELEASE_PROCESS.md).
 
 ```bash
-bash scripts/release.sh <new_version> [--no-push]
+bash scripts/release.sh <new_version>
+bash scripts/release.sh <new_version> --prepare-only
+bash scripts/release.sh <new_version> --publish-only  # resume after preparation
+bash scripts/release.sh <new_version> --no-push       # local commit, no tag
 ```
 
 ## Screenshot & Demo Capture

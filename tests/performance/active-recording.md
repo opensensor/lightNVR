@@ -14,7 +14,7 @@ descriptors and cumulative native-process CPU ticks once per second. Source
 FFmpeg processes share the host; their CPU/memory are not included in the native
 process samples. Streams start sequentially before the sampling interval.
 
-After manual stop, every catalogued file must pass ffprobe and full FFmpeg
+After the harness automatically stops recordings at the configured duration, every catalogued file must pass ffprobe and full FFmpeg
 `-xerror` decoding, with footage present for every stream. Ordinary FFmpeg exit
 status alone is insufficient: it can report corrupt frames while exiting zero.
 The regression in `mediaLifecycle.api.spec.ts` uses one stream for ten seconds;
