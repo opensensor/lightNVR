@@ -355,7 +355,7 @@ void test_recording_filters_match_unlinked_points_and_spanning_intervals(void) {
     TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
         "cam_interval", &interval, now - 120, 0));
     TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(
-        "cam_interval", now - 10));
+        "11111111-1111-4111-8111-111111111111", "cam_interval", now - 10));
 
     TEST_ASSERT_EQUAL_INT(1, get_recording_count(
         0, 0, "cam_point", 1, "person", -1, NULL, 0, NULL, NULL, false));

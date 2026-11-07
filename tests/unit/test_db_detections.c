@@ -317,7 +317,7 @@ void test_get_recording_detection_summaries_batches_linked_and_fallback_rows(voi
     TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
         "batch_cam", &interval, now - 100, recordings[0].id));
     TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(
-        "batch_cam", now - 20));
+        "11111111-1111-4111-8111-111111111111", "batch_cam", now - 20));
 
     recording_detection_summary_t summaries[2];
     TEST_ASSERT_EQUAL_INT(0, get_recording_detection_summaries(
@@ -443,7 +443,7 @@ void test_external_motion_interval_spans_later_recording_segment(void) {
     TEST_ASSERT_TRUE(active_intervals[0].end_time >= now);
 
     TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(
-        "cam_interval", now - 10));
+        "11111111-1111-4111-8111-111111111111", "cam_interval", now - 10));
 
     /* The detection began before this segment but remained active inside it. */
     TEST_ASSERT_EQUAL_INT(1, has_detections_in_time_range(
@@ -472,6 +472,59 @@ void test_external_motion_interval_spans_later_recording_segment(void) {
     TEST_ASSERT_EQUAL_INT(1, count);
     TEST_ASSERT_EQUAL_INT64(now - 120, intervals[0].start_time);
     TEST_ASSERT_EQUAL_INT64(now - 10, intervals[0].end_time);
+}
+
+/* A stop follows immutable identity across renames and must not close a
+ * replacement camera's interval just because it reused the display name. */
+void test_close_external_motion_uses_captured_identity(void) {
+    const char *uuid = "11111111-1111-4111-8111-111111111111";
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "INSERT INTO detections "
+        "(stream_name, camera_uuid, timestamp, confidence, label, source, event_end_time) VALUES "
+        "('old_name', '11111111-1111-4111-8111-111111111111', 100, 1.0, 'renamed', 'external_motion', NULL),"
+        "('reused', '11111111-1111-4111-8111-111111111111', 300, 1.0, 'clamped', 'external_motion', NULL),"
+        "('reused', '22222222-2222-4222-8222-222222222222', 100, 1.0, 'replacement', 'external_motion', NULL),"
+        "('reused', NULL, 100, 1.0, 'legacy_null', 'external_motion', NULL),"
+        "('reused', '', 100, 1.0, 'legacy_empty', 'external_motion', NULL),"
+        "('elsewhere', NULL, 100, 1.0, 'other_legacy', 'external_motion', NULL),"
+        "('reused', '11111111-1111-4111-8111-111111111111', 100, 1.0, 'closed', 'external_motion', 150),"
+        "('reused', '11111111-1111-4111-8111-111111111111', 100, 1.0, 'point', '', NULL);",
+        NULL, NULL, NULL));
+
+    TEST_ASSERT_EQUAL_INT(-1, close_external_motion_detections(NULL, "reused", 200));
+    TEST_ASSERT_EQUAL_INT(-1, close_external_motion_detections("", "reused", 200));
+    TEST_ASSERT_EQUAL_INT(-1, close_external_motion_detections(uuid, NULL, 200));
+    TEST_ASSERT_EQUAL_INT(-1, close_external_motion_detections(uuid, "", 200));
+    TEST_ASSERT_EQUAL_INT(4, close_external_motion_detections(uuid, "reused", 200));
+    TEST_ASSERT_EQUAL_INT(0, close_external_motion_detections(uuid, "reused", 400));
+
+    const char *labels[] = {"clamped", "closed", "legacy_empty", "legacy_null",
+                            "other_legacy", "point", "renamed", "replacement"};
+    const int ends[] = {300, 150, 200, 200, 0, 0, 200, 0};
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+        "SELECT label, event_end_time FROM detections ORDER BY label;", -1, &stmt, NULL));
+    for (size_t i = 0; i < sizeof(ends) / sizeof(ends[0]); i++) {
+        TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+        TEST_ASSERT_EQUAL_STRING(labels[i], sqlite3_column_text(stmt, 0));
+        if (ends[i] == 0) {
+            TEST_ASSERT_EQUAL_INT(SQLITE_NULL, sqlite3_column_type(stmt, 1));
+        } else {
+            TEST_ASSERT_EQUAL_INT64(ends[i], sqlite3_column_int64(stmt, 1));
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+}
+
+void test_store_detection_treats_quoted_stream_name_as_data(void) {
+    const char *stream = "cam'; DELETE FROM detections; --";
+    detection_result_t r = make_result("person", 0.9f);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("existing", &r, 100, 0));
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(stream, &r, 100, 0));
+    detection_result_t out;
+    TEST_ASSERT_EQUAL_INT(1, get_detections_from_db(stream, &out, 0));
+    TEST_ASSERT_EQUAL_INT(1, get_detections_from_db("existing", &out, 0));
 }
 
 /* Regression for #491: point-detection lookups must seek to the beginning of
@@ -577,6 +630,8 @@ int main(void) {
     RUN_TEST(test_completed_recording_backfills_contained_detection_links);
     RUN_TEST(test_store_max_detections);
     RUN_TEST(test_external_motion_interval_spans_later_recording_segment);
+    RUN_TEST(test_close_external_motion_uses_captured_identity);
+    RUN_TEST(test_store_detection_treats_quoted_stream_name_as_data);
     RUN_TEST(test_recent_detection_queries_do_not_scan_full_stream_history);
     int result = UNITY_END();
     shutdown_database();

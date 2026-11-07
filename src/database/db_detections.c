@@ -79,8 +79,6 @@ static int store_detections_with_source(const char *camera_uuid,
     // Note: detections table is created by SQL migrations (see db/migrations/)
     // No need for runtime table existence checks or fallback creation.
     char *err_msg = NULL;
-    char **query_result;
-    int rows, cols;
 
     // Begin transaction for better performance when inserting multiple detections
     rc = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &err_msg);
