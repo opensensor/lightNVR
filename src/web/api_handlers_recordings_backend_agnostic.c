@@ -256,9 +256,11 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Convert ID to integer
-    uint64_t id = strtoull(id_str, NULL, 10);
-    if (id == 0) {
+    // Convert ID to integer (strict validation: full string, non-zero, no overflow)
+    errno = 0;
+    char *endptr = NULL;
+    uint64_t id = strtoull(id_str, &endptr, 10);
+    if (id_str[0] == '\0' || endptr == id_str || *endptr != '\0' || errno == ERANGE || id == 0) {
         log_error("Invalid recording ID: %s", id_str);
         http_response_set_json_error(res, 400, "Invalid recording ID");
         return;
