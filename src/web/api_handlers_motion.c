@@ -407,6 +407,11 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     }
 
     char stream_name[MAX_STREAM_NAME];
+    if (strlen(j_stream->valuestring) >= sizeof(stream_name)) {
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 400, "Invalid stream name");
+        return;
+    }
     safe_strcpy(stream_name, j_stream->valuestring, sizeof(stream_name), 0);
     cJSON_Delete(body);
 
