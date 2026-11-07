@@ -2929,7 +2929,7 @@ validate192.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_AdminRoleWrite = validate188, func0 = require_equal().default, pattern57 = new RegExp("\\S", "u");
+var __contract_AdminRoleWrite = validate188, func0 = require_equal().default, pattern61 = new RegExp("\\S", "u");
 
 function validate188(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate188.evaluated;
@@ -3026,7 +3026,7 @@ function validate188(data, {instancePath: instancePath = "", parentData: parentD
             limit: 1
           }
         } ], !1;
-        if (!pattern57.test(data1)) return validate188.errors = [ {
+        if (!pattern61.test(data1)) return validate188.errors = [ {
           instancePath: instancePath + "/name",
           schemaPath: "#/properties/name/pattern",
           keyword: "pattern",
@@ -13117,7 +13117,7 @@ validate428.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_DetectionZone = validate452, pattern186 = new RegExp("^#[0-9a-fA-F]{6}$", "u");
+var __contract_DetectionZone = validate452, pattern190 = new RegExp("^#[0-9a-fA-F]{6}$", "u");
 
 function validate452(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate452.evaluated;
@@ -13272,7 +13272,7 @@ function validate452(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern186.test(data3)) return validate452.errors = [ {
+            if (!pattern190.test(data3)) return validate452.errors = [ {
               instancePath: instancePath + "/color",
               schemaPath: "#/properties/color/pattern",
               keyword: "pattern",
@@ -13602,7 +13602,7 @@ function validate451(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern186.test(data3)) return validate451.errors = [ {
+            if (!pattern190.test(data3)) return validate451.errors = [ {
               instancePath: instancePath + "/color",
               schemaPath: "#/properties/color/pattern",
               keyword: "pattern",
@@ -18899,7 +18899,7 @@ var __contract_EventRoute = validate293, schema318 = {
   },
   required: [ "uuid", "name", "description", "enabled", "destination", "event_types", "camera_scope", "predicate", "schedule", "suppression", "revision", "created_at", "updated_at" ],
   additionalProperties: !1
-}, pattern95 = new RegExp("^(?:[01][0-9]|2[0-3]):[0-5][0-9]$", "u");
+}, pattern99 = new RegExp("^(?:[01][0-9]|2[0-3]):[0-5][0-9]$", "u");
 
 function validate293(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let vErrors = [], errors = 0, evaluated0 = validate293.evaluated;
@@ -19911,7 +19911,7 @@ function validate293(data, {instancePath: instancePath = "", parentData: parentD
                                                           type: "string"
                                                         }
                                                       } ], !1;
-                                                      if (!pattern95.test(data28)) return validate293.errors = [ {
+                                                      if (!pattern99.test(data28)) return validate293.errors = [ {
                                                         instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
                                                         schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
                                                         keyword: "pattern",
@@ -19933,7 +19933,7 @@ function validate293(data, {instancePath: instancePath = "", parentData: parentD
                                                           type: "string"
                                                         }
                                                       } ], !1;
-                                                      if (!pattern95.test(data29)) return validate293.errors = [ {
+                                                      if (!pattern99.test(data29)) return validate293.errors = [ {
                                                         instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
                                                         schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
                                                         keyword: "pattern",
@@ -21218,7 +21218,7 @@ function validate297(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern95.test(data27)) return validate297.errors = [ {
+                                                    if (!pattern99.test(data27)) return validate297.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
                                                       keyword: "pattern",
@@ -21240,7 +21240,7 @@ function validate297(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern95.test(data28)) return validate297.errors = [ {
+                                                    if (!pattern99.test(data28)) return validate297.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
                                                       keyword: "pattern",
@@ -22981,7 +22981,7 @@ function validate301(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern95.test(data27)) return validate301.errors = [ {
+                                                    if (!pattern99.test(data27)) return validate301.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
                                                       keyword: "pattern",
@@ -23003,7 +23003,7 @@ function validate301(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern95.test(data28)) return validate301.errors = [ {
+                                                    if (!pattern99.test(data28)) return validate301.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
                                                       keyword: "pattern",
@@ -24172,7 +24172,7 @@ function validate299(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern95.test(data27)) return validate299.errors = [ {
+                                                    if (!pattern99.test(data27)) return validate299.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
                                                       keyword: "pattern",
@@ -24194,7 +24194,7 @@ function validate299(data, {instancePath: instancePath = "", parentData: parentD
                                                         type: "string"
                                                       }
                                                     } ], !1;
-                                                    if (!pattern95.test(data28)) return validate299.errors = [ {
+                                                    if (!pattern99.test(data28)) return validate299.errors = [ {
                                                       instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
                                                       schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
                                                       keyword: "pattern",
@@ -24812,7 +24812,7 @@ function validate292(data, {instancePath: instancePath = "", parentData: parentD
                               type: "string"
                             }
                           } ], !1;
-                          if (!pattern95.test(data6)) return validate292.errors = [ {
+                          if (!pattern99.test(data6)) return validate292.errors = [ {
                             instancePath: instancePath + "/windows/" + i0 + "/start",
                             schemaPath: "#/properties/windows/items/properties/start/pattern",
                             keyword: "pattern",
@@ -24833,7 +24833,7 @@ function validate292(data, {instancePath: instancePath = "", parentData: parentD
                             type: "string"
                           }
                         } ], !1;
-                        if (!pattern95.test(data7)) return validate292.errors = [ {
+                        if (!pattern99.test(data7)) return validate292.errors = [ {
                           instancePath: instancePath + "/windows/" + i0 + "/end",
                           schemaPath: "#/properties/windows/items/properties/end/pattern",
                           keyword: "pattern",
@@ -37738,7 +37738,7 @@ var __contract_EvidenceSearchRequest = validate386, schema449 = {
     required: [ "start_time", "end_time", "selector" ],
     additionalProperties: !0
   } ]
-}, pattern164 = new RegExp("^v1-[0-9a-fA-F]+-[0-9a-fA-F]+$", "u");
+}, pattern168 = new RegExp("^v1-[0-9a-fA-F]+-[0-9a-fA-F]+$", "u");
 
 function validate386(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let vErrors = [], errors = 0, evaluated0 = validate386.evaluated;
@@ -37976,7 +37976,7 @@ function validate386(data, {instancePath: instancePath = "", parentData: parentD
               if (void 0 !== data.cursor) {
                 let data6 = data.cursor, _errs14 = errors, _errs15 = errors, valid9 = !1, _errs16 = errors;
                 if (errors === _errs16) if ("string" == typeof data6) {
-                  if (!pattern164.test(data6)) {
+                  if (!pattern168.test(data6)) {
                     let err17 = {
                       instancePath: instancePath + "/cursor",
                       schemaPath: "#/oneOf/0/properties/cursor/anyOf/0/pattern",
@@ -39127,7 +39127,7 @@ function validate386(data, {instancePath: instancePath = "", parentData: parentD
               if (void 0 !== data.cursor) {
                 let data40 = data.cursor, _errs88 = errors, _errs89 = errors, valid44 = !1, _errs90 = errors;
                 if (errors === _errs90) if ("string" == typeof data40) {
-                  if (!pattern164.test(data40)) {
+                  if (!pattern168.test(data40)) {
                     let err103 = {
                       instancePath: instancePath + "/cursor",
                       schemaPath: "#/oneOf/1/properties/cursor/anyOf/0/pattern",
@@ -51924,7 +51924,7 @@ validate165.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_FleetTagCreate = validate212, pattern72 = new RegExp("^(|#[0-9a-fA-F]{6})$", "u");
+var __contract_FleetTagCreate = validate212, pattern76 = new RegExp("^(|#[0-9a-fA-F]{6})$", "u");
 
 function validate212(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate212.evaluated;
@@ -51998,7 +51998,7 @@ function validate212(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern72.test(data1)) return validate212.errors = [ {
+            if (!pattern76.test(data1)) return validate212.errors = [ {
               instancePath: instancePath + "/color",
               schemaPath: "#/properties/color/pattern",
               keyword: "pattern",
@@ -52286,7 +52286,7 @@ function validate213(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern72.test(data1)) return validate213.errors = [ {
+            if (!pattern76.test(data1)) return validate213.errors = [ {
               instancePath: instancePath + "/color",
               schemaPath: "#/properties/color/pattern",
               keyword: "pattern",
@@ -77272,7 +77272,69 @@ validate118.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_RecordingDeletionFilter = validate120;
+var __contract_RecordingDeletionFilter = validate120, schema127 = {
+  type: "object",
+  properties: {
+    stream_name: {
+      type: "string",
+      minLength: 1,
+      maxLength: 255
+    },
+    stream: {
+      type: "string",
+      minLength: 1,
+      maxLength: 255
+    },
+    collection_uuid: {
+      type: "string",
+      minLength: 1,
+      maxLength: 36
+    },
+    start: {
+      type: "string",
+      minLength: 1,
+      maxLength: 64
+    },
+    end: {
+      type: "string",
+      minLength: 1,
+      maxLength: 64
+    },
+    detection: {
+      type: "integer",
+      enum: [ -1, 0, 1 ]
+    },
+    detection_label: {
+      type: "string",
+      minLength: 1,
+      maxLength: 255
+    },
+    tag: {
+      type: "string",
+      minLength: 1,
+      maxLength: 511
+    },
+    capture_method: {
+      type: "string",
+      minLength: 1,
+      maxLength: 127
+    },
+    protected: {
+      type: "integer",
+      enum: [ -1, 0, 1 ]
+    }
+  },
+  required: [],
+  additionalProperties: !1,
+  description: "stream_name (or stream fallback) selects comma-separated current camera names. Without a nonempty stream filter, all-fleet recording.delete authority is required. Authorized camera UUIDs and collection membership are captured before dispatch; caller-supplied camera UUID fields do not grant scope. Supplied start/end must be valid UTC YYYY-MM-DDTHH:mm:ss strings, optionally followed by fractional seconds and/or Z; fractions are truncated to whole seconds. Bounds must be after the Unix epoch and start must not exceed end. Invalid types, calendar dates, suffixes, or ranges return400 before job creation. Omitted bounds are unbounded. detection/protected must be -1, 0, or 1. Unknown keys, duplicate keys (including date-case aliases), simultaneous stream and stream_name, invalid types, and empty selectors return400. Date key spelling is case-insensitive; other keys are case-sensitive. Caller-supplied camera/stream UUID selectors are unsupported and rejected. In-progress rows are excluded.",
+  patternProperties: {
+    "^(?!start$|end$)([sS][tT][aA][rR][tT]|[eE][nN][dD])$": {
+      type: "string",
+      minLength: 1,
+      maxLength: 64
+    }
+  }
+}, pattern20 = new RegExp("^(?!start$|end$)([sS][tT][aA][rR][tT]|[eE][nN][dD])$", "u");
 
 function validate120(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate120.evaluated;
@@ -77285,132 +77347,338 @@ function validate120(data, {instancePath: instancePath = "", parentData: parentD
       type: "object"
     }
   } ], !1;
-  if (void 0 !== data.stream_name) {
-    let _errs2 = 0;
-    if ("string" != typeof data.stream_name) return validate120.errors = [ {
-      instancePath: instancePath + "/stream_name",
-      schemaPath: "#/properties/stream_name/type",
-      keyword: "type",
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if (!func5.call(schema127.properties, key0) && !pattern20.test(key0)) return validate120.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
       params: {
-        type: "string"
+        additionalProperty: key0
       }
     } ], !1;
-    var valid0 = 0 === _errs2;
-  } else valid0 = !0;
-  if (valid0) {
-    if (void 0 !== data.stream) {
-      let _errs4 = 0;
-      if ("string" != typeof data.stream) return validate120.errors = [ {
-        instancePath: instancePath + "/stream",
-        schemaPath: "#/properties/stream/type",
-        keyword: "type",
-        params: {
-          type: "string"
-        }
-      } ], !1;
-      var valid1 = 0 === _errs4;
-    } else valid1 = !0;
-    if (valid1) {
-      if (void 0 !== data.collection_uuid) {
-        let _errs6 = 0;
-        if ("string" != typeof data.collection_uuid) return validate120.errors = [ {
-          instancePath: instancePath + "/collection_uuid",
-          schemaPath: "#/properties/collection_uuid/type",
-          keyword: "type",
-          params: {
-            type: "string"
-          }
-        } ], !1;
-        var valid2 = 0 === _errs6;
-      } else valid2 = !0;
-      if (valid2) {
-        if (void 0 !== data.start) {
-          let _errs8 = 0;
-          if ("string" != typeof data.start) return validate120.errors = [ {
-            instancePath: instancePath + "/start",
-            schemaPath: "#/properties/start/type",
+    if (0 === _errs1) {
+      if (void 0 !== data.stream_name) {
+        let data0 = data.stream_name, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate120.errors = [ {
+            instancePath: instancePath + "/stream_name",
+            schemaPath: "#/properties/stream_name/type",
             keyword: "type",
             params: {
               type: "string"
             }
           } ], !1;
-          var valid3 = 0 === _errs8;
-        } else valid3 = !0;
-        if (valid3) {
-          if (void 0 !== data.end) {
-            let _errs10 = 0;
-            if ("string" != typeof data.end) return validate120.errors = [ {
-              instancePath: instancePath + "/end",
-              schemaPath: "#/properties/end/type",
+          if (func1(data0) > 255) return validate120.errors = [ {
+            instancePath: instancePath + "/stream_name",
+            schemaPath: "#/properties/stream_name/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 255
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate120.errors = [ {
+            instancePath: instancePath + "/stream_name",
+            schemaPath: "#/properties/stream_name/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.stream) {
+          let data1 = data.stream, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("string" != typeof data1) return validate120.errors = [ {
+              instancePath: instancePath + "/stream",
+              schemaPath: "#/properties/stream/type",
               keyword: "type",
               params: {
                 type: "string"
               }
             } ], !1;
-            var valid4 = 0 === _errs10;
-          } else valid4 = !0;
-          if (valid4) {
-            if (void 0 !== data.detection) {
-              let data5 = data.detection, _errs12 = 0;
-              if ("number" != typeof data5 || !isFinite(data5)) return validate120.errors = [ {
-                instancePath: instancePath + "/detection",
-                schemaPath: "#/properties/detection/type",
+            if (func1(data1) > 255) return validate120.errors = [ {
+              instancePath: instancePath + "/stream",
+              schemaPath: "#/properties/stream/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 255
+              }
+            } ], !1;
+            if (func1(data1) < 1) return validate120.errors = [ {
+              instancePath: instancePath + "/stream",
+              schemaPath: "#/properties/stream/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.collection_uuid) {
+            let data2 = data.collection_uuid, _errs6 = 0;
+            if (0 === _errs6) {
+              if ("string" != typeof data2) return validate120.errors = [ {
+                instancePath: instancePath + "/collection_uuid",
+                schemaPath: "#/properties/collection_uuid/type",
                 keyword: "type",
                 params: {
-                  type: "number"
+                  type: "string"
                 }
               } ], !1;
-              var valid5 = 0 === _errs12;
-            } else valid5 = !0;
-            if (valid5) {
-              if (void 0 !== data.detection_label) {
-                let _errs14 = 0;
-                if ("string" != typeof data.detection_label) return validate120.errors = [ {
-                  instancePath: instancePath + "/detection_label",
-                  schemaPath: "#/properties/detection_label/type",
+              if (func1(data2) > 36) return validate120.errors = [ {
+                instancePath: instancePath + "/collection_uuid",
+                schemaPath: "#/properties/collection_uuid/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 36
+                }
+              } ], !1;
+              if (func1(data2) < 1) return validate120.errors = [ {
+                instancePath: instancePath + "/collection_uuid",
+                schemaPath: "#/properties/collection_uuid/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              } ], !1;
+            }
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.start) {
+              let data3 = data.start, _errs8 = 0;
+              if (0 === _errs8) {
+                if ("string" != typeof data3) return validate120.errors = [ {
+                  instancePath: instancePath + "/start",
+                  schemaPath: "#/properties/start/type",
                   keyword: "type",
                   params: {
                     type: "string"
                   }
                 } ], !1;
-                var valid6 = 0 === _errs14;
-              } else valid6 = !0;
-              if (valid6) {
-                if (void 0 !== data.tag) {
-                  let _errs16 = 0;
-                  if ("string" != typeof data.tag) return validate120.errors = [ {
-                    instancePath: instancePath + "/tag",
-                    schemaPath: "#/properties/tag/type",
+                if (func1(data3) > 64) return validate120.errors = [ {
+                  instancePath: instancePath + "/start",
+                  schemaPath: "#/properties/start/maxLength",
+                  keyword: "maxLength",
+                  params: {
+                    limit: 64
+                  }
+                } ], !1;
+                if (func1(data3) < 1) return validate120.errors = [ {
+                  instancePath: instancePath + "/start",
+                  schemaPath: "#/properties/start/minLength",
+                  keyword: "minLength",
+                  params: {
+                    limit: 1
+                  }
+                } ], !1;
+              }
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.end) {
+                let data4 = data.end, _errs10 = 0;
+                if (0 === _errs10) {
+                  if ("string" != typeof data4) return validate120.errors = [ {
+                    instancePath: instancePath + "/end",
+                    schemaPath: "#/properties/end/type",
                     keyword: "type",
                     params: {
                       type: "string"
                     }
                   } ], !1;
-                  var valid7 = 0 === _errs16;
-                } else valid7 = !0;
-                if (valid7) {
-                  if (void 0 !== data.capture_method) {
-                    let _errs18 = 0;
-                    if ("string" != typeof data.capture_method) return validate120.errors = [ {
-                      instancePath: instancePath + "/capture_method",
-                      schemaPath: "#/properties/capture_method/type",
-                      keyword: "type",
-                      params: {
-                        type: "string"
+                  if (func1(data4) > 64) return validate120.errors = [ {
+                    instancePath: instancePath + "/end",
+                    schemaPath: "#/properties/end/maxLength",
+                    keyword: "maxLength",
+                    params: {
+                      limit: 64
+                    }
+                  } ], !1;
+                  if (func1(data4) < 1) return validate120.errors = [ {
+                    instancePath: instancePath + "/end",
+                    schemaPath: "#/properties/end/minLength",
+                    keyword: "minLength",
+                    params: {
+                      limit: 1
+                    }
+                  } ], !1;
+                }
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.detection) {
+                  let data5 = data.detection, _errs12 = 0;
+                  if ("number" != typeof data5 || data5 % 1 || isNaN(data5) || !isFinite(data5)) return validate120.errors = [ {
+                    instancePath: instancePath + "/detection",
+                    schemaPath: "#/properties/detection/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  } ], !1;
+                  if (-1 !== data5 && 0 !== data5 && 1 !== data5) return validate120.errors = [ {
+                    instancePath: instancePath + "/detection",
+                    schemaPath: "#/properties/detection/enum",
+                    keyword: "enum",
+                    params: {
+                      allowedValues: schema127.properties.detection.enum
+                    }
+                  } ], !1;
+                  var valid5 = 0 === _errs12;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.detection_label) {
+                    let data6 = data.detection_label, _errs14 = 0;
+                    if (0 === _errs14) {
+                      if ("string" != typeof data6) return validate120.errors = [ {
+                        instancePath: instancePath + "/detection_label",
+                        schemaPath: "#/properties/detection_label/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      if (func1(data6) > 255) return validate120.errors = [ {
+                        instancePath: instancePath + "/detection_label",
+                        schemaPath: "#/properties/detection_label/maxLength",
+                        keyword: "maxLength",
+                        params: {
+                          limit: 255
+                        }
+                      } ], !1;
+                      if (func1(data6) < 1) return validate120.errors = [ {
+                        instancePath: instancePath + "/detection_label",
+                        schemaPath: "#/properties/detection_label/minLength",
+                        keyword: "minLength",
+                        params: {
+                          limit: 1
+                        }
+                      } ], !1;
+                    }
+                    var valid6 = 0 === _errs14;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data.tag) {
+                      let data7 = data.tag, _errs16 = 0;
+                      if (0 === _errs16) {
+                        if ("string" != typeof data7) return validate120.errors = [ {
+                          instancePath: instancePath + "/tag",
+                          schemaPath: "#/properties/tag/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        if (func1(data7) > 511) return validate120.errors = [ {
+                          instancePath: instancePath + "/tag",
+                          schemaPath: "#/properties/tag/maxLength",
+                          keyword: "maxLength",
+                          params: {
+                            limit: 511
+                          }
+                        } ], !1;
+                        if (func1(data7) < 1) return validate120.errors = [ {
+                          instancePath: instancePath + "/tag",
+                          schemaPath: "#/properties/tag/minLength",
+                          keyword: "minLength",
+                          params: {
+                            limit: 1
+                          }
+                        } ], !1;
                       }
-                    } ], !1;
-                    var valid8 = 0 === _errs18;
-                  } else valid8 = !0;
-                  if (valid8 && void 0 !== data.protected) {
-                    let data9 = data.protected;
-                    if ("number" != typeof data9 || !isFinite(data9)) return validate120.errors = [ {
-                      instancePath: instancePath + "/protected",
-                      schemaPath: "#/properties/protected/type",
-                      keyword: "type",
-                      params: {
-                        type: "number"
+                      var valid7 = 0 === _errs16;
+                    } else valid7 = !0;
+                    if (valid7) {
+                      if (void 0 !== data.capture_method) {
+                        let data8 = data.capture_method, _errs18 = 0;
+                        if (0 === _errs18) {
+                          if ("string" != typeof data8) return validate120.errors = [ {
+                            instancePath: instancePath + "/capture_method",
+                            schemaPath: "#/properties/capture_method/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (func1(data8) > 127) return validate120.errors = [ {
+                            instancePath: instancePath + "/capture_method",
+                            schemaPath: "#/properties/capture_method/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 127
+                            }
+                          } ], !1;
+                          if (func1(data8) < 1) return validate120.errors = [ {
+                            instancePath: instancePath + "/capture_method",
+                            schemaPath: "#/properties/capture_method/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          } ], !1;
+                        }
+                        var valid8 = 0 === _errs18;
+                      } else valid8 = !0;
+                      if (valid8) {
+                        if (void 0 !== data.protected) {
+                          let data9 = data.protected, _errs20 = 0;
+                          if ("number" != typeof data9 || data9 % 1 || isNaN(data9) || !isFinite(data9)) return validate120.errors = [ {
+                            instancePath: instancePath + "/protected",
+                            schemaPath: "#/properties/protected/type",
+                            keyword: "type",
+                            params: {
+                              type: "integer"
+                            }
+                          } ], !1;
+                          if (-1 !== data9 && 0 !== data9 && 1 !== data9) return validate120.errors = [ {
+                            instancePath: instancePath + "/protected",
+                            schemaPath: "#/properties/protected/enum",
+                            keyword: "enum",
+                            params: {
+                              allowedValues: schema127.properties.protected.enum
+                            }
+                          } ], !1;
+                          var valid9 = 0 === _errs20;
+                        } else valid9 = !0;
+                        if (valid9) for (let key1 in data) if (pattern20.test(key1)) {
+                          let data10 = data[key1], _errs22 = 0;
+                          if (0 === _errs22) {
+                            if ("string" != typeof data10) return validate120.errors = [ {
+                              instancePath: instancePath + "/" + key1.replace(/~/g, "~0").replace(/\//g, "~1"),
+                              schemaPath: "#/patternProperties/%5E(%3F!start%24%7Cend%24)(%5BsS%5D%5BtT%5D%5BaA%5D%5BrR%5D%5BtT%5D%7C%5BeE%5D%5BnN%5D%5BdD%5D)%24/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (func1(data10) > 64) return validate120.errors = [ {
+                              instancePath: instancePath + "/" + key1.replace(/~/g, "~0").replace(/\//g, "~1"),
+                              schemaPath: "#/patternProperties/%5E(%3F!start%24%7Cend%24)(%5BsS%5D%5BtT%5D%5BaA%5D%5BrR%5D%5BtT%5D%7C%5BeE%5D%5BnN%5D%5BdD%5D)%24/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 64
+                              }
+                            } ], !1;
+                            if (func1(data10) < 1) return validate120.errors = [ {
+                              instancePath: instancePath + "/" + key1.replace(/~/g, "~0").replace(/\//g, "~1"),
+                              schemaPath: "#/patternProperties/%5E(%3F!start%24%7Cend%24)(%5BsS%5D%5BtT%5D%5BaA%5D%5BrR%5D%5BtT%5D%7C%5BeE%5D%5BnN%5D%5BdD%5D)%24/minLength",
+                              keyword: "minLength",
+                              params: {
+                                limit: 1
+                              }
+                            } ], !1;
+                          }
+                          if (0 !== _errs22) break;
+                        }
                       }
-                    } ], !1;
+                    }
                   }
                 }
               }
@@ -77912,161 +78180,414 @@ function validate121(data, {instancePath: instancePath = "", parentData: parentD
     if (void 0 !== data.filter) {
       let data1 = data.filter, _errs9 = errors;
       if (errors == errors) if (data1 && "object" == typeof data1 && !Array.isArray(data1)) {
-        if (void 0 !== data1.stream_name) {
-          let _errs13 = errors;
-          if ("string" != typeof data1.stream_name) {
-            let err5 = {
-              instancePath: instancePath + "/filter/stream_name",
-              schemaPath: "#/$defs/RecordingDeletionFilter/properties/stream_name/type",
-              keyword: "type",
-              params: {
-                type: "string"
+        let _errs12 = errors;
+        for (let key0 in data1) if (!func5.call(schema127.properties, key0) && !pattern20.test(key0)) {
+          let err5 = {
+            instancePath: instancePath + "/filter",
+            schemaPath: "#/$defs/RecordingDeletionFilter/additionalProperties",
+            keyword: "additionalProperties",
+            params: {
+              additionalProperty: key0
+            }
+          };
+          vErrors.push(err5), errors++;
+          break;
+        }
+        if (_errs12 === errors) {
+          if (void 0 !== data1.stream_name) {
+            let data2 = data1.stream_name, _errs13 = errors;
+            if (errors === _errs13) if ("string" == typeof data2) {
+              if (func1(data2) > 255) {
+                let err6 = {
+                  instancePath: instancePath + "/filter/stream_name",
+                  schemaPath: "#/$defs/RecordingDeletionFilter/properties/stream_name/maxLength",
+                  keyword: "maxLength",
+                  params: {
+                    limit: 255
+                  }
+                };
+                vErrors.push(err6), errors++;
+              } else if (func1(data2) < 1) {
+                let err7 = {
+                  instancePath: instancePath + "/filter/stream_name",
+                  schemaPath: "#/$defs/RecordingDeletionFilter/properties/stream_name/minLength",
+                  keyword: "minLength",
+                  params: {
+                    limit: 1
+                  }
+                };
+                vErrors.push(err7), errors++;
               }
-            };
-            vErrors.push(err5), errors++;
-          }
-          var valid4 = _errs13 === errors;
-        } else valid4 = !0;
-        if (valid4) {
-          if (void 0 !== data1.stream) {
-            let _errs15 = errors;
-            if ("string" != typeof data1.stream) {
-              let err6 = {
-                instancePath: instancePath + "/filter/stream",
-                schemaPath: "#/$defs/RecordingDeletionFilter/properties/stream/type",
+            } else {
+              let err8 = {
+                instancePath: instancePath + "/filter/stream_name",
+                schemaPath: "#/$defs/RecordingDeletionFilter/properties/stream_name/type",
                 keyword: "type",
                 params: {
                   type: "string"
                 }
               };
-              vErrors.push(err6), errors++;
+              vErrors.push(err8), errors++;
             }
-            var valid5 = _errs15 === errors;
-          } else valid5 = !0;
-          if (valid5) {
-            if (void 0 !== data1.collection_uuid) {
-              let _errs17 = errors;
-              if ("string" != typeof data1.collection_uuid) {
-                let err7 = {
-                  instancePath: instancePath + "/filter/collection_uuid",
-                  schemaPath: "#/$defs/RecordingDeletionFilter/properties/collection_uuid/type",
+            var valid4 = _errs13 === errors;
+          } else valid4 = !0;
+          if (valid4) {
+            if (void 0 !== data1.stream) {
+              let data3 = data1.stream, _errs15 = errors;
+              if (errors === _errs15) if ("string" == typeof data3) {
+                if (func1(data3) > 255) {
+                  let err9 = {
+                    instancePath: instancePath + "/filter/stream",
+                    schemaPath: "#/$defs/RecordingDeletionFilter/properties/stream/maxLength",
+                    keyword: "maxLength",
+                    params: {
+                      limit: 255
+                    }
+                  };
+                  vErrors.push(err9), errors++;
+                } else if (func1(data3) < 1) {
+                  let err10 = {
+                    instancePath: instancePath + "/filter/stream",
+                    schemaPath: "#/$defs/RecordingDeletionFilter/properties/stream/minLength",
+                    keyword: "minLength",
+                    params: {
+                      limit: 1
+                    }
+                  };
+                  vErrors.push(err10), errors++;
+                }
+              } else {
+                let err11 = {
+                  instancePath: instancePath + "/filter/stream",
+                  schemaPath: "#/$defs/RecordingDeletionFilter/properties/stream/type",
                   keyword: "type",
                   params: {
                     type: "string"
                   }
                 };
-                vErrors.push(err7), errors++;
+                vErrors.push(err11), errors++;
               }
-              var valid6 = _errs17 === errors;
-            } else valid6 = !0;
-            if (valid6) {
-              if (void 0 !== data1.start) {
-                let _errs19 = errors;
-                if ("string" != typeof data1.start) {
-                  let err8 = {
-                    instancePath: instancePath + "/filter/start",
-                    schemaPath: "#/$defs/RecordingDeletionFilter/properties/start/type",
+              var valid5 = _errs15 === errors;
+            } else valid5 = !0;
+            if (valid5) {
+              if (void 0 !== data1.collection_uuid) {
+                let data4 = data1.collection_uuid, _errs17 = errors;
+                if (errors === _errs17) if ("string" == typeof data4) {
+                  if (func1(data4) > 36) {
+                    let err12 = {
+                      instancePath: instancePath + "/filter/collection_uuid",
+                      schemaPath: "#/$defs/RecordingDeletionFilter/properties/collection_uuid/maxLength",
+                      keyword: "maxLength",
+                      params: {
+                        limit: 36
+                      }
+                    };
+                    vErrors.push(err12), errors++;
+                  } else if (func1(data4) < 1) {
+                    let err13 = {
+                      instancePath: instancePath + "/filter/collection_uuid",
+                      schemaPath: "#/$defs/RecordingDeletionFilter/properties/collection_uuid/minLength",
+                      keyword: "minLength",
+                      params: {
+                        limit: 1
+                      }
+                    };
+                    vErrors.push(err13), errors++;
+                  }
+                } else {
+                  let err14 = {
+                    instancePath: instancePath + "/filter/collection_uuid",
+                    schemaPath: "#/$defs/RecordingDeletionFilter/properties/collection_uuid/type",
                     keyword: "type",
                     params: {
                       type: "string"
                     }
                   };
-                  vErrors.push(err8), errors++;
+                  vErrors.push(err14), errors++;
                 }
-                var valid7 = _errs19 === errors;
-              } else valid7 = !0;
-              if (valid7) {
-                if (void 0 !== data1.end) {
-                  let _errs21 = errors;
-                  if ("string" != typeof data1.end) {
-                    let err9 = {
-                      instancePath: instancePath + "/filter/end",
-                      schemaPath: "#/$defs/RecordingDeletionFilter/properties/end/type",
+                var valid6 = _errs17 === errors;
+              } else valid6 = !0;
+              if (valid6) {
+                if (void 0 !== data1.start) {
+                  let data5 = data1.start, _errs19 = errors;
+                  if (errors === _errs19) if ("string" == typeof data5) {
+                    if (func1(data5) > 64) {
+                      let err15 = {
+                        instancePath: instancePath + "/filter/start",
+                        schemaPath: "#/$defs/RecordingDeletionFilter/properties/start/maxLength",
+                        keyword: "maxLength",
+                        params: {
+                          limit: 64
+                        }
+                      };
+                      vErrors.push(err15), errors++;
+                    } else if (func1(data5) < 1) {
+                      let err16 = {
+                        instancePath: instancePath + "/filter/start",
+                        schemaPath: "#/$defs/RecordingDeletionFilter/properties/start/minLength",
+                        keyword: "minLength",
+                        params: {
+                          limit: 1
+                        }
+                      };
+                      vErrors.push(err16), errors++;
+                    }
+                  } else {
+                    let err17 = {
+                      instancePath: instancePath + "/filter/start",
+                      schemaPath: "#/$defs/RecordingDeletionFilter/properties/start/type",
                       keyword: "type",
                       params: {
                         type: "string"
                       }
                     };
-                    vErrors.push(err9), errors++;
+                    vErrors.push(err17), errors++;
                   }
-                  var valid8 = _errs21 === errors;
-                } else valid8 = !0;
-                if (valid8) {
-                  if (void 0 !== data1.detection) {
-                    let data7 = data1.detection, _errs23 = errors;
-                    if ("number" != typeof data7 || !isFinite(data7)) {
-                      let err10 = {
-                        instancePath: instancePath + "/filter/detection",
-                        schemaPath: "#/$defs/RecordingDeletionFilter/properties/detection/type",
-                        keyword: "type",
-                        params: {
-                          type: "number"
-                        }
-                      };
-                      vErrors.push(err10), errors++;
-                    }
-                    var valid9 = _errs23 === errors;
-                  } else valid9 = !0;
-                  if (valid9) {
-                    if (void 0 !== data1.detection_label) {
-                      let _errs25 = errors;
-                      if ("string" != typeof data1.detection_label) {
-                        let err11 = {
-                          instancePath: instancePath + "/filter/detection_label",
-                          schemaPath: "#/$defs/RecordingDeletionFilter/properties/detection_label/type",
-                          keyword: "type",
+                  var valid7 = _errs19 === errors;
+                } else valid7 = !0;
+                if (valid7) {
+                  if (void 0 !== data1.end) {
+                    let data6 = data1.end, _errs21 = errors;
+                    if (errors === _errs21) if ("string" == typeof data6) {
+                      if (func1(data6) > 64) {
+                        let err18 = {
+                          instancePath: instancePath + "/filter/end",
+                          schemaPath: "#/$defs/RecordingDeletionFilter/properties/end/maxLength",
+                          keyword: "maxLength",
                           params: {
-                            type: "string"
+                            limit: 64
                           }
                         };
-                        vErrors.push(err11), errors++;
+                        vErrors.push(err18), errors++;
+                      } else if (func1(data6) < 1) {
+                        let err19 = {
+                          instancePath: instancePath + "/filter/end",
+                          schemaPath: "#/$defs/RecordingDeletionFilter/properties/end/minLength",
+                          keyword: "minLength",
+                          params: {
+                            limit: 1
+                          }
+                        };
+                        vErrors.push(err19), errors++;
                       }
-                      var valid10 = _errs25 === errors;
-                    } else valid10 = !0;
-                    if (valid10) {
-                      if (void 0 !== data1.tag) {
-                        let _errs27 = errors;
-                        if ("string" != typeof data1.tag) {
-                          let err12 = {
-                            instancePath: instancePath + "/filter/tag",
-                            schemaPath: "#/$defs/RecordingDeletionFilter/properties/tag/type",
+                    } else {
+                      let err20 = {
+                        instancePath: instancePath + "/filter/end",
+                        schemaPath: "#/$defs/RecordingDeletionFilter/properties/end/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      };
+                      vErrors.push(err20), errors++;
+                    }
+                    var valid8 = _errs21 === errors;
+                  } else valid8 = !0;
+                  if (valid8) {
+                    if (void 0 !== data1.detection) {
+                      let data7 = data1.detection, _errs23 = errors;
+                      if ("number" != typeof data7 || data7 % 1 || isNaN(data7) || !isFinite(data7)) {
+                        let err21 = {
+                          instancePath: instancePath + "/filter/detection",
+                          schemaPath: "#/$defs/RecordingDeletionFilter/properties/detection/type",
+                          keyword: "type",
+                          params: {
+                            type: "integer"
+                          }
+                        };
+                        vErrors.push(err21), errors++;
+                      }
+                      if (-1 !== data7 && 0 !== data7 && 1 !== data7) {
+                        let err22 = {
+                          instancePath: instancePath + "/filter/detection",
+                          schemaPath: "#/$defs/RecordingDeletionFilter/properties/detection/enum",
+                          keyword: "enum",
+                          params: {
+                            allowedValues: schema127.properties.detection.enum
+                          }
+                        };
+                        vErrors.push(err22), errors++;
+                      }
+                      var valid9 = _errs23 === errors;
+                    } else valid9 = !0;
+                    if (valid9) {
+                      if (void 0 !== data1.detection_label) {
+                        let data8 = data1.detection_label, _errs25 = errors;
+                        if (errors === _errs25) if ("string" == typeof data8) {
+                          if (func1(data8) > 255) {
+                            let err23 = {
+                              instancePath: instancePath + "/filter/detection_label",
+                              schemaPath: "#/$defs/RecordingDeletionFilter/properties/detection_label/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 255
+                              }
+                            };
+                            vErrors.push(err23), errors++;
+                          } else if (func1(data8) < 1) {
+                            let err24 = {
+                              instancePath: instancePath + "/filter/detection_label",
+                              schemaPath: "#/$defs/RecordingDeletionFilter/properties/detection_label/minLength",
+                              keyword: "minLength",
+                              params: {
+                                limit: 1
+                              }
+                            };
+                            vErrors.push(err24), errors++;
+                          }
+                        } else {
+                          let err25 = {
+                            instancePath: instancePath + "/filter/detection_label",
+                            schemaPath: "#/$defs/RecordingDeletionFilter/properties/detection_label/type",
                             keyword: "type",
                             params: {
                               type: "string"
                             }
                           };
-                          vErrors.push(err12), errors++;
+                          vErrors.push(err25), errors++;
                         }
-                        var valid11 = _errs27 === errors;
-                      } else valid11 = !0;
-                      if (valid11) {
-                        if (void 0 !== data1.capture_method) {
-                          let _errs29 = errors;
-                          if ("string" != typeof data1.capture_method) {
-                            let err13 = {
-                              instancePath: instancePath + "/filter/capture_method",
-                              schemaPath: "#/$defs/RecordingDeletionFilter/properties/capture_method/type",
+                        var valid10 = _errs25 === errors;
+                      } else valid10 = !0;
+                      if (valid10) {
+                        if (void 0 !== data1.tag) {
+                          let data9 = data1.tag, _errs27 = errors;
+                          if (errors === _errs27) if ("string" == typeof data9) {
+                            if (func1(data9) > 511) {
+                              let err26 = {
+                                instancePath: instancePath + "/filter/tag",
+                                schemaPath: "#/$defs/RecordingDeletionFilter/properties/tag/maxLength",
+                                keyword: "maxLength",
+                                params: {
+                                  limit: 511
+                                }
+                              };
+                              vErrors.push(err26), errors++;
+                            } else if (func1(data9) < 1) {
+                              let err27 = {
+                                instancePath: instancePath + "/filter/tag",
+                                schemaPath: "#/$defs/RecordingDeletionFilter/properties/tag/minLength",
+                                keyword: "minLength",
+                                params: {
+                                  limit: 1
+                                }
+                              };
+                              vErrors.push(err27), errors++;
+                            }
+                          } else {
+                            let err28 = {
+                              instancePath: instancePath + "/filter/tag",
+                              schemaPath: "#/$defs/RecordingDeletionFilter/properties/tag/type",
                               keyword: "type",
                               params: {
                                 type: "string"
                               }
                             };
-                            vErrors.push(err13), errors++;
+                            vErrors.push(err28), errors++;
                           }
-                          var valid12 = _errs29 === errors;
-                        } else valid12 = !0;
-                        if (valid12 && void 0 !== data1.protected) {
-                          let data11 = data1.protected;
-                          if ("number" != typeof data11 || !isFinite(data11)) {
-                            let err14 = {
-                              instancePath: instancePath + "/filter/protected",
-                              schemaPath: "#/$defs/RecordingDeletionFilter/properties/protected/type",
-                              keyword: "type",
-                              params: {
-                                type: "number"
+                          var valid11 = _errs27 === errors;
+                        } else valid11 = !0;
+                        if (valid11) {
+                          if (void 0 !== data1.capture_method) {
+                            let data10 = data1.capture_method, _errs29 = errors;
+                            if (errors === _errs29) if ("string" == typeof data10) {
+                              if (func1(data10) > 127) {
+                                let err29 = {
+                                  instancePath: instancePath + "/filter/capture_method",
+                                  schemaPath: "#/$defs/RecordingDeletionFilter/properties/capture_method/maxLength",
+                                  keyword: "maxLength",
+                                  params: {
+                                    limit: 127
+                                  }
+                                };
+                                vErrors.push(err29), errors++;
+                              } else if (func1(data10) < 1) {
+                                let err30 = {
+                                  instancePath: instancePath + "/filter/capture_method",
+                                  schemaPath: "#/$defs/RecordingDeletionFilter/properties/capture_method/minLength",
+                                  keyword: "minLength",
+                                  params: {
+                                    limit: 1
+                                  }
+                                };
+                                vErrors.push(err30), errors++;
                               }
-                            };
-                            vErrors.push(err14), errors++;
+                            } else {
+                              let err31 = {
+                                instancePath: instancePath + "/filter/capture_method",
+                                schemaPath: "#/$defs/RecordingDeletionFilter/properties/capture_method/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              };
+                              vErrors.push(err31), errors++;
+                            }
+                            var valid12 = _errs29 === errors;
+                          } else valid12 = !0;
+                          if (valid12) {
+                            if (void 0 !== data1.protected) {
+                              let data11 = data1.protected, _errs31 = errors;
+                              if ("number" != typeof data11 || data11 % 1 || isNaN(data11) || !isFinite(data11)) {
+                                let err32 = {
+                                  instancePath: instancePath + "/filter/protected",
+                                  schemaPath: "#/$defs/RecordingDeletionFilter/properties/protected/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                };
+                                vErrors.push(err32), errors++;
+                              }
+                              if (-1 !== data11 && 0 !== data11 && 1 !== data11) {
+                                let err33 = {
+                                  instancePath: instancePath + "/filter/protected",
+                                  schemaPath: "#/$defs/RecordingDeletionFilter/properties/protected/enum",
+                                  keyword: "enum",
+                                  params: {
+                                    allowedValues: schema127.properties.protected.enum
+                                  }
+                                };
+                                vErrors.push(err33), errors++;
+                              }
+                              var valid13 = _errs31 === errors;
+                            } else valid13 = !0;
+                            if (valid13) for (let key1 in data1) if (pattern20.test(key1)) {
+                              let data12 = data1[key1], _errs33 = errors;
+                              if (errors === _errs33) if ("string" == typeof data12) {
+                                if (func1(data12) > 64) {
+                                  let err34 = {
+                                    instancePath: instancePath + "/filter/" + key1.replace(/~/g, "~0").replace(/\//g, "~1"),
+                                    schemaPath: "#/$defs/RecordingDeletionFilter/patternProperties/%5E(%3F!start%24%7Cend%24)(%5BsS%5D%5BtT%5D%5BaA%5D%5BrR%5D%5BtT%5D%7C%5BeE%5D%5BnN%5D%5BdD%5D)%24/maxLength",
+                                    keyword: "maxLength",
+                                    params: {
+                                      limit: 64
+                                    }
+                                  };
+                                  vErrors.push(err34), errors++;
+                                } else if (func1(data12) < 1) {
+                                  let err35 = {
+                                    instancePath: instancePath + "/filter/" + key1.replace(/~/g, "~0").replace(/\//g, "~1"),
+                                    schemaPath: "#/$defs/RecordingDeletionFilter/patternProperties/%5E(%3F!start%24%7Cend%24)(%5BsS%5D%5BtT%5D%5BaA%5D%5BrR%5D%5BtT%5D%7C%5BeE%5D%5BnN%5D%5BdD%5D)%24/minLength",
+                                    keyword: "minLength",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  };
+                                  vErrors.push(err35), errors++;
+                                }
+                              } else {
+                                let err36 = {
+                                  instancePath: instancePath + "/filter/" + key1.replace(/~/g, "~0").replace(/\//g, "~1"),
+                                  schemaPath: "#/$defs/RecordingDeletionFilter/patternProperties/%5E(%3F!start%24%7Cend%24)(%5BsS%5D%5BtT%5D%5BaA%5D%5BrR%5D%5BtT%5D%7C%5BeE%5D%5BnN%5D%5BdD%5D)%24/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                };
+                                vErrors.push(err36), errors++;
+                              }
+                              if (_errs33 !== errors) break;
+                            }
                           }
                         }
                       }
@@ -78078,7 +78599,7 @@ function validate121(data, {instancePath: instancePath = "", parentData: parentD
           }
         }
       } else {
-        let err15 = {
+        let err37 = {
           instancePath: instancePath + "/filter",
           schemaPath: "#/$defs/RecordingDeletionFilter/type",
           keyword: "type",
@@ -78086,15 +78607,15 @@ function validate121(data, {instancePath: instancePath = "", parentData: parentD
             type: "object"
           }
         };
-        vErrors.push(err15), errors++;
+        vErrors.push(err37), errors++;
       }
       var valid2 = _errs9 === errors;
     } else valid2 = !0;
     if (valid2 && void 0 !== data.ids) {
-      let data12 = data.ids, _errs34 = errors, valid15 = !1, _errs35 = errors;
-      if (errors === _errs35) if (Array.isArray(data12)) {
-        if (data12.length < 1) {
-          let err16 = {
+      let data13 = data.ids, _errs36 = errors, valid16 = !1, _errs37 = errors;
+      if (errors === _errs37) if (Array.isArray(data13)) {
+        if (data13.length < 1) {
+          let err38 = {
             instancePath: instancePath + "/ids",
             schemaPath: "#/anyOf/1/properties/ids/anyOf/0/minItems",
             keyword: "minItems",
@@ -78102,10 +78623,10 @@ function validate121(data, {instancePath: instancePath = "", parentData: parentD
               limit: 1
             }
           };
-          vErrors.push(err16), errors++;
+          vErrors.push(err38), errors++;
         }
       } else {
-        let err17 = {
+        let err39 = {
           instancePath: instancePath + "/ids",
           schemaPath: "#/anyOf/1/properties/ids/anyOf/0/type",
           keyword: "type",
@@ -78113,13 +78634,13 @@ function validate121(data, {instancePath: instancePath = "", parentData: parentD
             type: "array"
           }
         };
-        vErrors.push(err17), errors++;
+        vErrors.push(err39), errors++;
       }
-      var _valid1 = _errs35 === errors;
-      valid15 = valid15 || _valid1;
-      let _errs37 = errors;
-      if (null !== data12 && "boolean" != typeof data12 && (!data12 || "object" != typeof data12 || Array.isArray(data12)) && ("number" != typeof data12 || !isFinite(data12)) && "string" != typeof data12) {
-        let err18 = {
+      var _valid1 = _errs37 === errors;
+      valid16 = valid16 || _valid1;
+      let _errs39 = errors;
+      if (null !== data13 && "boolean" != typeof data13 && (!data13 || "object" != typeof data13 || Array.isArray(data13)) && ("number" != typeof data13 || !isFinite(data13)) && "string" != typeof data13) {
+        let err40 = {
           instancePath: instancePath + "/ids",
           schemaPath: "#/anyOf/1/properties/ids/anyOf/1/type",
           keyword: "type",
@@ -78127,21 +78648,21 @@ function validate121(data, {instancePath: instancePath = "", parentData: parentD
             type: schema128.anyOf[1].properties.ids.anyOf[1].type
           }
         };
-        vErrors.push(err18), errors++;
+        vErrors.push(err40), errors++;
       }
-      if (_valid1 = _errs37 === errors, valid15 = valid15 || _valid1, valid15) errors = _errs34,
-      vErrors.length = _errs34; else {
-        let err19 = {
+      if (_valid1 = _errs39 === errors, valid16 = valid16 || _valid1, valid16) errors = _errs36,
+      vErrors.length = _errs36; else {
+        let err41 = {
           instancePath: instancePath + "/ids",
           schemaPath: "#/anyOf/1/properties/ids/anyOf",
           keyword: "anyOf",
           params: {}
         };
-        vErrors.push(err19), errors++;
+        vErrors.push(err41), errors++;
       }
     }
   } else {
-    let err20 = {
+    let err42 = {
       instancePath: instancePath,
       schemaPath: "#/anyOf/1/type",
       keyword: "type",
@@ -78149,17 +78670,17 @@ function validate121(data, {instancePath: instancePath = "", parentData: parentD
         type: "object"
       }
     };
-    vErrors.push(err20), errors++;
+    vErrors.push(err42), errors++;
   }
   if (_valid0 = _errs6 === errors, valid0 = valid0 || _valid0, _valid0 && !0 !== props0 && (props0 = !0),
   !valid0) {
-    let err21 = {
+    let err43 = {
       instancePath: instancePath,
       schemaPath: "#/anyOf",
       keyword: "anyOf",
       params: {}
     };
-    return vErrors.push(err21), errors++, validate121.errors = vErrors, !1;
+    return vErrors.push(err43), errors++, validate121.errors = vErrors, !1;
   }
   return errors = _errs0, vErrors.length = _errs0, validate121.errors = vErrors, evaluated0.props = props0,
   0 === errors;
@@ -85062,7 +85583,7 @@ var __contract_StorageMigration = validate345, schema396 = {
   },
   required: [ "uuid", "source_target_uuid", "destination_target_uuid", "recording_id", "operation", "source_object_key", "destination_object_key", "last_error", "state", "checksum_mode", "checksum", "bytes_total", "bytes_copied", "attempt_count", "max_attempts", "bandwidth_limit_bps", "progress", "next_attempt_at", "cancel_requested", "window_start_minute", "window_end_minute", "revision", "created_at", "updated_at", "started_at", "completed_at" ],
   additionalProperties: !1
-}, pattern145 = new RegExp("^[0-9a-f]{64}$", "u");
+}, pattern149 = new RegExp("^[0-9a-f]{64}$", "u");
 
 function validate345(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let vErrors = [], errors = 0, evaluated0 = validate345.evaluated;
@@ -85491,7 +86012,7 @@ function validate345(data, {instancePath: instancePath = "", parentData: parentD
                             if (void 0 !== data.checksum) {
                               let data10 = data.checksum, _errs25 = errors, _errs26 = errors, valid14 = !1, _errs27 = errors;
                               if (errors === _errs27) if ("string" == typeof data10) {
-                                if (!pattern145.test(data10)) {
+                                if (!pattern149.test(data10)) {
                                   let err0 = {
                                     instancePath: instancePath + "/checksum",
                                     schemaPath: "#/properties/checksum/anyOf/0/pattern",
@@ -98074,7 +98595,7 @@ var __contract_StreamCreateRequest = validate442, schema531 = {
       }
     }
   }
-}, pattern185 = new RegExp("^[A-Za-z0-9_.-]+$", "u");
+}, pattern189 = new RegExp("^[A-Za-z0-9_.-]+$", "u");
 
 function validate442(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let vErrors = [], errors = 0, evaluated0 = validate442.evaluated;
@@ -99007,7 +99528,7 @@ function validate442(data, {instancePath: instancePath = "", parentData: parentD
                                                                                                                 limit: 1
                                                                                                               }
                                                                                                             } ], !1;
-                                                                                                            if (!pattern185.test(data54)) return validate442.errors = [ {
+                                                                                                            if (!pattern189.test(data54)) return validate442.errors = [ {
                                                                                                               instancePath: instancePath + "/name",
                                                                                                               schemaPath: "#/properties/name/pattern",
                                                                                                               keyword: "pattern",
@@ -99378,7 +99899,7 @@ var __contract_StreamDetectionEngine = validate460, schema554 = {
   },
   required: [ "key", "type", "model_path", "enabled", "threshold", "interval_seconds", "sort_order", "config", "managed_by_legacy_stream_fields" ],
   additionalProperties: !0
-}, pattern190 = new RegExp("^[a-z0-9_-]+$", "u");
+}, pattern194 = new RegExp("^[a-z0-9_-]+$", "u");
 
 function validate460(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate460.evaluated;
@@ -99490,7 +100011,7 @@ function validate460(data, {instancePath: instancePath = "", parentData: parentD
           limit: 1
         }
       } ], !1;
-      if (!pattern190.test(data0)) return validate460.errors = [ {
+      if (!pattern194.test(data0)) return validate460.errors = [ {
         instancePath: instancePath + "/key",
         schemaPath: "#/properties/key/pattern",
         keyword: "pattern",
@@ -99809,7 +100330,7 @@ function validate459(data, {instancePath: instancePath = "", parentData: parentD
           limit: 1
         }
       } ], !1;
-      if (!pattern190.test(data0)) return validate459.errors = [ {
+      if (!pattern194.test(data0)) return validate459.errors = [ {
         instancePath: instancePath + "/key",
         schemaPath: "#/properties/key/pattern",
         keyword: "pattern",
@@ -100190,7 +100711,7 @@ function validate462(data, {instancePath: instancePath = "", parentData: parentD
                     limit: 1
                   }
                 } ], !1;
-                if (!pattern190.test(data3)) return validate462.errors = [ {
+                if (!pattern194.test(data3)) return validate462.errors = [ {
                   instancePath: instancePath + "/engines/" + i0 + "/key",
                   schemaPath: "#/$defs/StreamDetectionEngine/properties/key/pattern",
                   keyword: "pattern",
@@ -100555,7 +101076,7 @@ function validate461(data, {instancePath: instancePath = "", parentData: parentD
                 limit: 1
               }
             } ], !1;
-            if (!pattern190.test(data2)) return validate461.errors = [ {
+            if (!pattern194.test(data2)) return validate461.errors = [ {
               instancePath: instancePath + "/engines/" + i0 + "/key",
               schemaPath: "#/$defs/StreamDetectionEngineWrite/properties/key/pattern",
               keyword: "pattern",
@@ -105314,7 +105835,7 @@ function validate453(data, {instancePath: instancePath = "", parentData: parentD
                       type: "string"
                     }
                   } ], !1;
-                  if (!pattern186.test(data5)) return validate453.errors = [ {
+                  if (!pattern190.test(data5)) return validate453.errors = [ {
                     instancePath: instancePath + "/zones/" + i0 + "/color",
                     schemaPath: "#/$defs/DetectionZone/properties/color/pattern",
                     keyword: "pattern",
@@ -105751,7 +106272,7 @@ function validate454(data, {instancePath: instancePath = "", parentData: parentD
                       type: "string"
                     }
                   } ], !1;
-                  if (!pattern186.test(data5)) return validate454.errors = [ {
+                  if (!pattern190.test(data5)) return validate454.errors = [ {
                     instancePath: instancePath + "/zones/" + i0 + "/color",
                     schemaPath: "#/$defs/DetectionZoneWrite/properties/color/pattern",
                     keyword: "pattern",
@@ -113921,7 +114442,7 @@ validate137.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_TotpCodeRequest = validate134, pattern21 = new RegExp("^[0-9]{6}$", "u");
+var __contract_TotpCodeRequest = validate134, pattern25 = new RegExp("^[0-9]{6}$", "u");
 
 function validate134(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate134.evaluated;
@@ -113962,7 +114483,7 @@ function validate134(data, {instancePath: instancePath = "", parentData: parentD
           type: "string"
         }
       } ], !1;
-      if (!pattern21.test(data0)) return validate134.errors = [ {
+      if (!pattern25.test(data0)) return validate134.errors = [ {
         instancePath: instancePath + "/code",
         schemaPath: "#/properties/code/pattern",
         keyword: "pattern",
@@ -114055,7 +114576,7 @@ function validate132(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern21.test(data1)) return validate132.errors = [ {
+            if (!pattern25.test(data1)) return validate132.errors = [ {
               instancePath: instancePath + "/code",
               schemaPath: "#/properties/code/pattern",
               keyword: "pattern",
@@ -114157,7 +114678,7 @@ validate133.evaluated = {
   dynamicItems: !1
 };
 
-var __contract_TotpSetupResponse = validate135, pattern23 = new RegExp("^[A-Z2-7]{32}$", "u"), pattern24 = new RegExp("^otpauth://totp/", "u"), formats0 = require_formats().fullFormats.uri;
+var __contract_TotpSetupResponse = validate135, pattern27 = new RegExp("^[A-Z2-7]{32}$", "u"), pattern28 = new RegExp("^otpauth://totp/", "u"), formats0 = require_formats().fullFormats.uri;
 
 function validate135(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let evaluated0 = validate135.evaluated;
@@ -114237,7 +114758,7 @@ function validate135(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if (!pattern23.test(data1)) return validate135.errors = [ {
+            if (!pattern27.test(data1)) return validate135.errors = [ {
               instancePath: instancePath + "/secret",
               schemaPath: "#/properties/secret/pattern",
               keyword: "pattern",
@@ -114260,7 +114781,7 @@ function validate135(data, {instancePath: instancePath = "", parentData: parentD
                   type: "string"
                 }
               } ], !1;
-              if (!pattern24.test(data2)) return validate135.errors = [ {
+              if (!pattern28.test(data2)) return validate135.errors = [ {
                 instancePath: instancePath + "/otpauth_uri",
                 schemaPath: "#/properties/otpauth_uri/pattern",
                 keyword: "pattern",

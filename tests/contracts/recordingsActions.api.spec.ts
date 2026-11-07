@@ -375,3 +375,34 @@ test('filtered deletion rejects invalid date bounds before dispatch and honors v
   expect(state(server,[ids.playable])[0]).toMatchObject({row:undefined,exists:false});
   expect(state(server,all.slice(1))).toEqual(before.slice(1));
 });
+
+
+test('deletion filters reject unsupported or ambiguous selectors and retain real UI filters',async({server})=>{
+  const fixture=seedRecordings(server);const before=state(server,[ids.playable,ids.sibling,ids.hidden]);
+  for(const filter of [
+    {strat:'2026-01-01T00:00:00Z'},{camera_uuid:server.cameras.A.camera_uuid},
+    {camera_uuids:[server.cameras.A.camera_uuid]},{stream_uuid:'ignored'},{stream_uuids:[]},
+    {stream:42},{stream:''},{stream:'A',stream_name:'B'}, {Stream:'A'},
+    {collection_uuid:null},{tag:false},{tag:', , '},{tag:'x'.repeat(512)},
+    {capture_method:[]},{detection_label:{}},{detection:2},{detection:0.5},{protected:-2},
+  ]) await deniedUnchanged(server,[ids.playable,ids.sibling,ids.hidden],'/api/recordings/batch-delete',admin,'POST',{filter},400);
+  for(const filter of [
+    '{"start":"2099-01-01T00:00:00Z","Start":"2026-01-01T00:00:00Z"}',
+    '{"tag":"visible-tag","tag":"hidden-tag"}',
+  ]) {
+    const response=await fetch(`${server.baseURL}/api/recordings/batch-delete`,{method:'POST',headers:{...admin.headers,'Content-Type':'application/json'},body:`{"filter":${filter}}`});
+    expect(response.status).toBe(400);expect(await response.json()).not.toHaveProperty('job_id');
+  }
+  expect(state(server,[ids.playable,ids.sibling,ids.hidden])).toEqual(before);
+  const owner=await actor(server,'supported_filter_owner',['recording.delete']);
+  const collection=await ok(server,'/api/camera-collections',admin,'POST',{name:'Delete filter collection',type:'static',shared:true});
+  await ok(server,`/api/camera-collections/${collection.uuid}/members`,admin,'PUT',{camera_uuids:[server.cameras.A.camera_uuid]});
+  const accepted=await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',{filter:{
+    stream_name:'A',collection_uuid:collection.uuid,tag:'visible-tag',detection:1,
+    detection_label:'visible-person',capture_method:'continuous',protected:0,
+    Start:new Date((fixture.start-1)*1000).toISOString(),END:new Date((fixture.end+1)*1000).toISOString(),
+  }},202,'RecordingDeletionJobAccepted');
+  expect(await deletionDone(server,accepted.job_id,owner)).toMatchObject({total:1,succeeded:1,failed:0});
+  expect(state(server,[ids.playable])[0]).toMatchObject({row:undefined,exists:false});
+  expect(state(server,[ids.sibling,ids.hidden])).toEqual(before.slice(1));
+});

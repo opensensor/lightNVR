@@ -32385,39 +32385,72 @@
         "type": "object",
         "properties": {
           "stream_name": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
           },
           "stream": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
           },
           "collection_uuid": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 36
           },
           "start": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
           },
           "end": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
           },
           "detection": {
-            "type": "number"
+            "type": "integer",
+            "enum": [
+              -1,
+              0,
+              1
+            ]
           },
           "detection_label": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
           },
           "tag": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 511
           },
           "capture_method": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
           },
           "protected": {
-            "type": "number"
+            "type": "integer",
+            "enum": [
+              -1,
+              0,
+              1
+            ]
           }
         },
         "required": [],
-        "additionalProperties": true,
-        "description": "stream_name (or stream fallback) selects comma-separated current camera names. Without a nonempty stream filter, all-fleet recording.delete authority is required. Authorized camera UUIDs and collection membership are captured before dispatch; caller-supplied camera UUID fields do not grant scope. Supplied start/end must be valid UTC YYYY-MM-DDTHH:mm:ss strings, optionally followed by fractional seconds and/or Z; fractions are truncated to whole seconds. Bounds must be after the Unix epoch and start must not exceed end. Invalid types, calendar dates, suffixes, or ranges return400 before job creation. Omitted bounds are unbounded. detection/protected numeric values use C integer conversion; protected is clamped to -1..1. In-progress rows are excluded."
+        "additionalProperties": false,
+        "description": "stream_name (or stream fallback) selects comma-separated current camera names. Without a nonempty stream filter, all-fleet recording.delete authority is required. Authorized camera UUIDs and collection membership are captured before dispatch; caller-supplied camera UUID fields do not grant scope. Supplied start/end must be valid UTC YYYY-MM-DDTHH:mm:ss strings, optionally followed by fractional seconds and/or Z; fractions are truncated to whole seconds. Bounds must be after the Unix epoch and start must not exceed end. Invalid types, calendar dates, suffixes, or ranges return400 before job creation. Omitted bounds are unbounded. detection/protected must be -1, 0, or 1. Unknown keys, duplicate keys (including date-case aliases), simultaneous stream and stream_name, invalid types, and empty selectors return400. Date key spelling is case-insensitive; other keys are case-sensitive. Caller-supplied camera/stream UUID selectors are unsupported and rejected. In-progress rows are excluded.",
+        "patternProperties": {
+          "^(?!start$|end$)([sS][tT][aA][rR][tT]|[eE][nN][dD])$": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
       },
       "RecordingDeletionRequest": {
         "anyOf": [
