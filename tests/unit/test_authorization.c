@@ -52,6 +52,20 @@
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
 
+static int timeline_summary_calls;
+static int timeline_summary_count;
+static bool fail_timeline_summary;
+
+int __real_get_recording_detection_summaries_for_cameras(
+    const recording_metadata_t *, int, recording_detection_summary_t *);
+int __wrap_get_recording_detection_summaries_for_cameras(
+    const recording_metadata_t *records, int count, recording_detection_summary_t *summaries) {
+    timeline_summary_calls++;
+    timeline_summary_count = count;
+    if (fail_timeline_summary) return -1;
+    return __real_get_recording_detection_summaries_for_cameras(records, count, summaries);
+}
+
 static char test_directory[] = "/tmp/lightnvr-authorization-XXXXXX";
 static char test_db_path[sizeof(test_directory) + sizeof("/authorization.db")];
 static char *saved_lpr_master_key;
@@ -3259,6 +3273,112 @@ void test_timeline_uuid_link_survives_rename_and_enforces_replay_scope(void) {
     cJSON_Delete(json);
 }
 
+void test_timeline_ids_batch_only_authorized_recordings_and_keep_open_detection_bounds(void) {
+    stream_config_t camera = create_camera("timeline_batch", "");
+    stream_config_t denied = create_camera("timeline_denied", "");
+    time_t now = time(NULL);
+    recording_metadata_t rec = {0};
+    safe_strcpy(rec.stream_name, camera.name, sizeof(rec.stream_name), 0);
+    safe_strcpy(rec.camera_uuid, camera.camera_uuid, sizeof(rec.camera_uuid), 0);
+    safe_strcpy(rec.file_path, "/tmp/timeline-batch-open.mp4", sizeof(rec.file_path), 0);
+    rec.start_time = now - 100;
+    rec.end_time = 0;
+    rec.is_complete = false;
+    uint64_t open_id = add_recording_metadata(&rec);
+    TEST_ASSERT_NOT_EQUAL(0, open_id);
+    detection_result_t detection = {0};
+    detection.count = 1;
+    safe_strcpy(detection.detections[0].label, "person", sizeof(detection.detections[0].label), 0);
+    detection.detections[0].confidence = 1.0f;
+    // Unlinked detections require the effective current end time for matching.
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db_for_camera(
+        camera.camera_uuid, camera.name, &detection, now - 10, 0));
+
+    safe_strcpy(rec.file_path, "/tmp/timeline-batch-complete.mp4", sizeof(rec.file_path), 0);
+    rec.start_time = now - 300;
+    rec.end_time = now - 200;
+    rec.is_complete = true;
+    uint64_t complete_id = add_recording_metadata(&rec);
+    TEST_ASSERT_NOT_EQUAL(0, complete_id);
+    safe_strcpy(rec.stream_name, denied.name, sizeof(rec.stream_name), 0);
+    safe_strcpy(rec.camera_uuid, denied.camera_uuid, sizeof(rec.camera_uuid), 0);
+    safe_strcpy(rec.file_path, "/tmp/timeline-batch-denied.mp4", sizeof(rec.file_path), 0);
+    uint64_t denied_id = add_recording_metadata(&rec);
+    TEST_ASSERT_NOT_EQUAL(0, denied_id);
+
+    char api_key[128] = {0};
+    create_camera_action_user("timeline_batch_user", camera.camera_uuid,
+        authorization_action_bit(AUTHZ_RECORDINGS_REPLAY), api_key);
+    g_config.web_auth_enabled = true;
+    char path[512];
+    snprintf(path, sizeof(path), "/api/timeline/segments-by-ids?ids=%llu,%llu,99999999,%llu,%llu",
+        (unsigned long long)open_id, (unsigned long long)denied_id,
+        (unsigned long long)complete_id, (unsigned long long)open_id);
+    timeline_summary_calls = timeline_summary_count = 0;
+    cJSON *json = call_handler_path(handle_get_timeline_segments_by_ids, HTTP_METHOD_GET,
+                                   path, NULL, api_key, 200);
+    TEST_ASSERT_EQUAL_INT(1, timeline_summary_calls);
+    TEST_ASSERT_EQUAL_INT(3, timeline_summary_count);
+    const cJSON *segments = cJSON_GetObjectItemCaseSensitive(json, "segments");
+    TEST_ASSERT_EQUAL_INT(3, cJSON_GetArraySize(segments));
+    for (int i = 0; i < 3; i++) {
+        const cJSON *segment = cJSON_GetArrayItem(segments, i);
+        TEST_ASSERT_EQUAL_UINT64(i == 1 ? complete_id : open_id,
+            (uint64_t)cJSON_GetObjectItemCaseSensitive(segment, "id")->valuedouble);
+        TEST_ASSERT_EQUAL_INT(i != 1,
+            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(segment, "has_detection")));
+        TEST_ASSERT_EQUAL_INT(i != 1,
+            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(segment, "in_progress")));
+        if (i != 1) TEST_ASSERT_TRUE(
+            cJSON_GetObjectItemCaseSensitive(segment, "end_timestamp")->valuedouble >= (double)now);
+    }
+    cJSON_Delete(json);
+
+    fail_timeline_summary = true;
+    json = call_handler_path(handle_get_timeline_segments_by_ids, HTTP_METHOD_GET,
+                             path, NULL, api_key, 500);
+    fail_timeline_summary = false;
+    TEST_ASSERT_EQUAL_STRING("Failed to get recording detections",
+        cJSON_GetObjectItemCaseSensitive(json, "error")->valuestring);
+    cJSON_Delete(json);
+
+    snprintf(path, sizeof(path), "/api/timeline/segments-by-ids?ids=%llu,99999999",
+        (unsigned long long)denied_id);
+    timeline_summary_calls = 0;
+    json = call_handler_path(handle_get_timeline_segments_by_ids, HTTP_METHOD_GET,
+                             path, NULL, api_key, 200);
+    TEST_ASSERT_EQUAL_INT(0, timeline_summary_calls);
+    TEST_ASSERT_EQUAL_INT(0, cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(json, "segments")));
+    cJSON_Delete(json);
+}
+
+void test_timeline_manifest_rejects_invalid_bounds_before_querying_recordings(void) {
+    stream_config_t camera = create_camera("manifest_bounds", "");
+    char api_key[128] = {0};
+    create_camera_action_user("manifest_bounds_user", camera.camera_uuid,
+        authorization_action_bit(AUTHZ_RECORDINGS_REPLAY), api_key);
+    g_config.web_auth_enabled = true;
+    const char *invalid[] = {"not-a-date", "2026-02-30", "2026-08-28T00:00:00Zjunk"};
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        for (int end = 0; end < 2; end++) {
+            char path[512];
+            snprintf(path, sizeof(path), "/api/timeline/manifest?stream=%s&%s=%s",
+                camera.name, end ? "end" : "start", invalid[i]);
+            cJSON *json = call_handler_path(handle_timeline_manifest, HTTP_METHOD_GET,
+                                            path, NULL, api_key, 400);
+            TEST_ASSERT_EQUAL_STRING(end ? "Invalid end time format" : "Invalid start time format",
+                cJSON_GetObjectItemCaseSensitive(json, "error")->valuestring);
+            cJSON_Delete(json);
+        }
+    }
+    cJSON *json = call_handler_path(handle_timeline_manifest, HTTP_METHOD_GET,
+        "/api/timeline/manifest?stream=manifest_bounds&start=2026-08-28T00:00:00.123Z&end=2026-08-28T23:59:59.999Z",
+        NULL, api_key, 404);
+    TEST_ASSERT_EQUAL_STRING("No recordings found for the specified time range",
+        cJSON_GetObjectItemCaseSensitive(json, "error")->valuestring);
+    cJSON_Delete(json);
+}
+
 void test_timeline_segments_reject_unparseable_time_bounds(void) {
     stream_config_t camera = create_camera("timeline_bounds", "");
     char api_key[128] = {0};
@@ -3356,6 +3476,8 @@ int main(void) {
     RUN_TEST(test_lpr_camera_summary_uses_lpr_permissions_and_scope);
     RUN_TEST(test_timeline_uuid_link_survives_rename_and_enforces_replay_scope);
     RUN_TEST(test_timeline_segments_reject_unparseable_time_bounds);
+    RUN_TEST(test_timeline_ids_batch_only_authorized_recordings_and_keep_open_detection_bounds);
+    RUN_TEST(test_timeline_manifest_rejects_invalid_bounds_before_querying_recordings);
     RUN_TEST(test_legacy_role_compatibility_has_no_runtime_allowed_tags_path);
     RUN_TEST(test_legacy_principals_migrate_to_idempotent_selector_grants);
     RUN_TEST(test_policy_mode_defaults_deny_and_matches_selector_grant);
