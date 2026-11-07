@@ -567,7 +567,11 @@ set_tests_properties(test_motion_pulse_worker PROPERTIES TIMEOUT 10)
 target_link_options(test_motion_pulse_worker PRIVATE
     "-Wl,--wrap=get_stream_by_name"
     "-Wl,--wrap=get_stream_config"
-    "-Wl,--wrap=httpd_authorize_stream_action")
+    "-Wl,--wrap=httpd_authorize_stream_action"
+    "-Wl,--wrap=store_external_motion_detections"
+    "-Wl,--wrap=get_current_recording_id_for_stream"
+    "-Wl,--wrap=calloc"
+    "-Wl,--wrap=pthread_create")
 add_layer3_test(test_annotation_writer_registry)  # Layer 3: continuous-writer probe behind annotation mode (#547)
 add_layer3_test(test_detection_current_frame CI_UNIT CI_SANITIZER)
 target_compile_definitions(test_detection_current_frame PRIVATE

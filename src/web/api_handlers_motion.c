@@ -449,14 +449,13 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     safe_strcpy(stream_name, j_stream->valuestring, sizeof(stream_name), 0);
     cJSON_Delete(body);
 
-    /* Increment the per-stream generation counter before dispatching and keep
-     * the same lock held while this action's side effects are applied. This
-     * preserves ordering: once a newer generation is accepted, an older action
-     * cannot run later and overwrite it. */
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
+                                       stream_name)) return;
+
     /* ---- Validate target stream ----------------------------------------- */
     stream_handle_t handle = get_stream_by_name(stream_name);
+    if (!handle) {
         http_response_set_json_error(res, 404, "Stream not found");
-        pthread_mutex_unlock(&g_pulse_gen_mutex);
         return;
     }
 
@@ -486,19 +485,22 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     }
 
     /* ---- Dispatch -------------------------------------------------------- */
-    time_t now = time(NULL);
     bool active = (action != MOTION_ACTION_STOP);
 
     /* Increment the per-stream generation counter before dispatching.  This
      * invalidates any in-flight pulse worker for this stream so it will not
-     * emit a spurious stop that could cut short the new motion activity. */
+     * emit a spurious stop that could cut short the new motion activity. Keep
+     * the lock through dispatch and any rollback: accepting a newer generation
+     * must not allow an older request to overwrite its motion state. */
     pthread_mutex_lock(&g_pulse_gen_mutex);
     uint64_t new_gen = pulse_gen_increment(stream_name);
-    pthread_mutex_unlock(&g_pulse_gen_mutex);
     if (new_gen == 0) {
+        pthread_mutex_unlock(&g_pulse_gen_mutex);
         http_response_set_json_error(res, 500, "Motion trigger tracking capacity exhausted");
         return;
     }
+
+    time_t now = time(NULL);
 
     /* Record the reported objects before arming motion so a detection-triggered
      * recording can pick them up via the existing update_detections_recording_id
@@ -544,18 +546,13 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
                 if (event_producer_publish_detection(
                         cfg.camera_uuid, stream_name, &detections, now,
                         event_error, sizeof(event_error)) != 0) {
-            /* We already armed motion-start; unwind only if this request is
-             * still current, so we don't stop a newer trigger. */
-            pthread_mutex_lock(&g_pulse_gen_mutex);
-            bool rollback_allowed = (pulse_generation_get_locked(stream_name) == new_gen);
-            if (rollback_allowed) {
-                if (can_trigger_recording) {
-                    unified_detection_notify_motion(stream_name, false);
+                    log_debug("Detection event enqueue failed for stream '%s': %s",
+                              stream_name, event_error);
                 }
-                close_external_motion_detections(cfg.camera_uuid, stream_name, now);
-                process_motion_event(stream_name, false, now, false);
+            }
         }
-            pthread_mutex_unlock(&g_pulse_gen_mutex);
+    } else {
+        close_external_motion_detections(cfg.camera_uuid, stream_name, now);
     }
 
     /* Tags attach to whatever recording is currently open for the stream. With
@@ -575,16 +572,11 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
                      stream_name, tag_count);
         }
     }
-            pthread_mutex_lock(&g_pulse_gen_mutex);
-            bool rollback_allowed = (pulse_generation_get_locked(stream_name) == new_gen);
-            if (rollback_allowed) {
-                if (can_trigger_recording) {
-                    unified_detection_notify_motion(stream_name, false);
-                }
-                close_external_motion_detections(cfg.camera_uuid, stream_name, now);
-                process_motion_event(stream_name, false, now, false);
+
+    if (can_trigger_recording) {
         unified_detection_notify_motion(stream_name, active);
-            pthread_mutex_unlock(&g_pulse_gen_mutex);
+    }
+    process_motion_event(stream_name, active, now, false);
 
     const char *action_str =
         (action == MOTION_ACTION_START) ? "start" :
@@ -600,6 +592,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             }
             close_external_motion_detections(cfg.camera_uuid, stream_name, now);
             process_motion_event(stream_name, false, now, false);
+            pthread_mutex_unlock(&g_pulse_gen_mutex);
             http_response_set_json_error(res, 500, "Out of memory");
             return;
         }
@@ -625,6 +618,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             close_external_motion_detections(cfg.camera_uuid, stream_name, now);
             process_motion_event(stream_name, false, now, false);
             free(task);
+            pthread_mutex_unlock(&g_pulse_gen_mutex);
             http_response_set_json_error(res, 500,
                 "Failed to schedule pulse end");
             return;
@@ -633,6 +627,8 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     } else {
         log_info("Motion %s for stream '%s'", action_str, stream_name);
     }
+
+    pthread_mutex_unlock(&g_pulse_gen_mutex);
 
     /* ---- Response -------------------------------------------------------- */
     cJSON *resp = cJSON_CreateObject();

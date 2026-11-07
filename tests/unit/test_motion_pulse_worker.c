@@ -1,12 +1,31 @@
-/* Exercise the real deferred worker with a competing trigger at each stop
- * side effect. No camera, database, or timing-dependent sleeps are needed. */
+/* Exercise the real request handler and deferred worker with a competing
+ * trigger at each side effect. No camera, database, or timing-dependent sleeps are needed. */
 #include "../../src/web/api_handlers_motion.c"
 #include "unity.h"
 #include <errno.h>
 
 static int close_calls, notify_calls, fanout_calls;
 static int concurrent_attempts, accepted_actions, unexpected_lock_errors;
-static int fixture_errors;
+static int fixture_errors, store_calls;
+static bool testing_handler, allow_authorization, fail_task_alloc, fail_worker_create;
+static bool last_notify_active, last_fanout_active;
+static stream_config_t fixture_camera;
+
+void *__real_calloc(size_t, size_t);
+void *__wrap_calloc(size_t count, size_t size) {
+    if (fail_task_alloc && count == 1 && size == sizeof(motion_pulse_task_t)) return NULL;
+    return __real_calloc(count, size);
+}
+int __real_pthread_create(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);
+int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
+                          void *(*start)(void *), void *arg) {
+    if (fail_worker_create && start == motion_pulse_worker) return EAGAIN;
+    return __real_pthread_create(thread, attr, start, arg);
+}
+uint64_t __wrap_get_current_recording_id_for_stream(const char *stream) {
+    if (strcmp(stream, "camera")) fixture_errors++;
+    return 0;
+}
 
 static void *attempt_new_action(void *unused) {
     (void)unused;
@@ -21,7 +40,7 @@ static void *attempt_new_action(void *unused) {
     return NULL;
 }
 
-static void compete_with_stop(void) {
+static void compete_with_action(void) {
     pthread_t thread;
     concurrent_attempts++;
     if (pthread_create(&thread, NULL, attempt_new_action, NULL) != 0) {
@@ -34,24 +53,42 @@ static void compete_with_stop(void) {
 int __wrap_close_external_motion_detections(const char *uuid, const char *stream, time_t end) {
     if (strcmp(uuid, "captured-camera") || strcmp(stream, "camera") || end <= 0) fixture_errors++;
     close_calls++;
-    compete_with_stop();
+    compete_with_action();
     return 0;
 }
 
 void __wrap_unified_detection_notify_motion(const char *stream, bool active) {
-    if (strcmp(stream, "camera") || active) fixture_errors++;
+    if (strcmp(stream, "camera") || (!testing_handler && active)) fixture_errors++;
+    last_notify_active = active;
     notify_calls++;
-    compete_with_stop();
+    compete_with_action();
 }
 
 int __wrap_process_motion_event(const char *stream, bool active, time_t timestamp, bool propagated) {
-    if (strcmp(stream, "camera") || active || propagated || timestamp <= 0) fixture_errors++;
+    if (strcmp(stream, "camera") || (!testing_handler && active) || propagated || timestamp <= 0) fixture_errors++;
+    last_fanout_active = active;
     fanout_calls++;
-    compete_with_stop();
+    compete_with_action();
+    return 0;
+}
+
+int __wrap_store_external_motion_detections(const char *stream, const detection_result_t *result,
+                                            time_t timestamp, uint64_t recording_id) {
+    if (strcmp(stream, "camera") || result->count != 1 || timestamp <= 0 || recording_id != 0) fixture_errors++;
+    store_calls++;
+    compete_with_action();
     return 0;
 }
 
 void setUp(void) {
+    store_calls = 0;
+    testing_handler = fail_task_alloc = fail_worker_create = false;
+    last_notify_active = last_fanout_active = false;
+    allow_authorization = true;
+    memset(&fixture_camera, 0, sizeof(fixture_camera));
+    safe_strcpy(fixture_camera.name, "camera", sizeof(fixture_camera.name), 0);
+    safe_strcpy(fixture_camera.camera_uuid, "captured-camera", sizeof(fixture_camera.camera_uuid), 0);
+    fixture_camera.detection_based_recording = true;
     close_calls = notify_calls = fanout_calls = 0;
     concurrent_attempts = accepted_actions = unexpected_lock_errors = fixture_errors = 0;
     memset(g_pulse_gen, 0, sizeof(g_pulse_gen));
@@ -120,7 +157,6 @@ static void test_untracked_stale_pulse_has_no_stop_effects_after_newer_action(vo
     TEST_ASSERT_EQUAL_INT(0, accepted_actions);
 }
 
-static stream_config_t fixture_camera;
 stream_handle_t __wrap_get_stream_by_name(const char *name) {
     return strcmp(name, "camera") == 0 ? (stream_handle_t)&fixture_camera : NULL;
 }
@@ -131,8 +167,10 @@ int __wrap_get_stream_config(stream_handle_t handle, stream_config_t *config) {
 }
 int __wrap_httpd_authorize_stream_action(const http_request_t *req, http_response_t *res,
                                          authorization_action_t action, const char *name) {
-    (void)req; (void)res; (void)action; (void)name;
-    return 1;
+    (void)req;
+    if (action != AUTHZ_CAMERA_CONFIGURE || strcmp(name, "camera")) fixture_errors++;
+    if (!allow_authorization) http_response_set_json_error(res, 403, "Forbidden");
+    return allow_authorization;
 }
 
 static void test_full_table_rejects_request_before_motion_side_effects(void) {
@@ -171,6 +209,74 @@ static void test_annotation_only_pulse_skips_recording_notification(void) {
     TEST_ASSERT_EQUAL_INT(0, accepted_actions);
 }
 
+
+static int run_handler(const char *action) {
+    testing_handler = true;
+    char body[128];
+    snprintf(body, sizeof(body), "{\"stream\":\"camera\",\"action\":\"%s\"}", action);
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    req.method = HTTP_METHOD_POST;
+    req.body = body;
+    req.body_len = strlen(body);
+    handle_post_motion_trigger(&req, &res);
+    int status = res.status_code;
+    http_response_free(&res);
+    return status;
+}
+static void test_start_serializes_all_dispatch_effects(void) {
+    TEST_ASSERT_EQUAL_INT(202, run_handler("start"));
+    TEST_ASSERT_EQUAL_INT(1, close_calls);
+    TEST_ASSERT_EQUAL_INT(1, store_calls);
+    TEST_ASSERT_EQUAL_INT(1, notify_calls);
+    TEST_ASSERT_EQUAL_INT(1, fanout_calls);
+    TEST_ASSERT_TRUE(last_notify_active);
+    TEST_ASSERT_TRUE(last_fanout_active);
+    TEST_ASSERT_EQUAL_INT(4, concurrent_attempts);
+    TEST_ASSERT_EQUAL_INT(0, accepted_actions);
+}
+static void test_stop_serializes_all_dispatch_effects(void) {
+    TEST_ASSERT_EQUAL_INT(202, run_handler("stop"));
+    TEST_ASSERT_EQUAL_INT(1, close_calls);
+    TEST_ASSERT_EQUAL_INT(0, store_calls);
+    TEST_ASSERT_EQUAL_INT(1, notify_calls);
+    TEST_ASSERT_EQUAL_INT(1, fanout_calls);
+    TEST_ASSERT_FALSE(last_notify_active);
+    TEST_ASSERT_FALSE(last_fanout_active);
+    TEST_ASSERT_EQUAL_INT(3, concurrent_attempts);
+    TEST_ASSERT_EQUAL_INT(0, accepted_actions);
+}
+static void assert_pulse_failure_rolls_back_before_new_action(void) {
+    TEST_ASSERT_EQUAL_INT(500, run_handler("pulse"));
+    TEST_ASSERT_EQUAL_INT(2, close_calls);
+    TEST_ASSERT_EQUAL_INT(1, store_calls);
+    TEST_ASSERT_EQUAL_INT(2, notify_calls);
+    TEST_ASSERT_EQUAL_INT(2, fanout_calls);
+    TEST_ASSERT_FALSE(last_notify_active);
+    TEST_ASSERT_FALSE(last_fanout_active);
+    TEST_ASSERT_EQUAL_INT(7, concurrent_attempts);
+    TEST_ASSERT_EQUAL_INT(0, accepted_actions);
+    attempt_new_action(NULL);
+    TEST_ASSERT_EQUAL_INT(1, accepted_actions);
+}
+static void test_task_allocation_failure_serializes_rollback(void) {
+    fail_task_alloc = true;
+    assert_pulse_failure_rolls_back_before_new_action();
+}
+static void test_worker_creation_failure_serializes_rollback(void) {
+    fail_worker_create = true;
+    assert_pulse_failure_rolls_back_before_new_action();
+}
+static void test_unauthorized_request_has_no_motion_effects(void) {
+    allow_authorization = false;
+    TEST_ASSERT_EQUAL_INT(403, run_handler("start"));
+    TEST_ASSERT_EQUAL_UINT64(1, g_pulse_gen_sequence);
+    TEST_ASSERT_EQUAL_INT(0, close_calls + store_calls + notify_calls + fanout_calls);
+    TEST_ASSERT_EQUAL_INT(0, concurrent_attempts);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_current_pulse_serializes_every_stop_effect);
@@ -179,5 +285,10 @@ int main(void) {
     RUN_TEST(test_untracked_stale_pulse_has_no_stop_effects_after_newer_action);
     RUN_TEST(test_full_table_rejects_request_before_motion_side_effects);
     RUN_TEST(test_annotation_only_pulse_skips_recording_notification);
+    RUN_TEST(test_start_serializes_all_dispatch_effects);
+    RUN_TEST(test_stop_serializes_all_dispatch_effects);
+    RUN_TEST(test_task_allocation_failure_serializes_rollback);
+    RUN_TEST(test_worker_creation_failure_serializes_rollback);
+    RUN_TEST(test_unauthorized_request_has_no_motion_effects);
     return UNITY_END();
 }
