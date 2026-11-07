@@ -66,7 +66,11 @@ static void test_canonical_admin_immutable(void) {
 }
 static void test_viewer_prunes_variants(void) {
     canonical(); mode = 1; project();
-    TEST_ASSERT_NULL(get(get(output, "paths"), "/api/streams/{name}"));
+    cJSON *stream_path = get(get(output, "paths"), "/api/streams/{name}");
+    TEST_ASSERT_NOT_NULL(get(stream_path, "get"));
+    TEST_ASSERT_NULL(get(stream_path, "put"));
+    TEST_ASSERT_NULL(get(stream_path, "delete"));
+    TEST_ASSERT_NULL(get(schemas(), "StreamPrivileged"));
     TEST_ASSERT_NOT_NULL(get(get(output, "paths"), "/api/streams/{name}/full"));
     char *text = cJSON_PrintUnformatted(output); TEST_ASSERT_NULL(strstr(text, "\"x-lightnvr-visibility\":")); free(text);
     emit("viewer");
