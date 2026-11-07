@@ -301,8 +301,19 @@ int get_timeline_coverage_by_camera_uuid(
      * get_timeline_segments for the freshness/self-expiry rationale. */
     const char *sql =
         "SELECT r.id, r.start_time, r.end_time, r.size_bytes, "
-        "r.trigger_type = 'detection' OR EXISTS ("
-        "  SELECT 1 FROM detections d WHERE d.recording_id = r.id), "
+        "CASE WHEN r.trigger_type = 'detection' THEN 1 "
+        "     WHEN EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND " DB_CAPTURE_CAMERA_MATCH_SQL("d", "r") ") THEN 1 "
+        "     WHEN EXISTS (SELECT 1 FROM detections d "
+        "                  WHERE " DB_CAPTURE_CAMERA_FILTER_SQL("d", "?1") " "
+        "                    AND d.source != 'external_motion' "
+        "                    AND d.timestamp >= r.start_time "
+        "                    AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER))) THEN 1 "
+        "     WHEN EXISTS (SELECT 1 FROM detections d "
+        "                  WHERE " DB_CAPTURE_CAMERA_FILTER_SQL("d", "?1") " "
+        "                    AND d.source = 'external_motion' "
+        "                    AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) "
+        "                    AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1 "
+        "     ELSE 0 END AS has_detection, "
         "r.protected, r.is_complete "
         "FROM recordings r "
         "LEFT JOIN streams s ON s.name = r.stream_name "
@@ -344,8 +355,13 @@ int get_timeline_coverage_by_camera_uuid(
         time_t clipped_start = segment_start < start_time
             ? start_time : segment_start;
         time_t clipped_end = segment_end > end_time ? end_time : segment_end;
+        /* Half-open interval [clipped_start, clipped_end): skip empty coverage. */
+        if (clipped_end <= clipped_start) {
+            continue;
+        }
         int first = (int)(((int64_t)clipped_start - start_time) / resolution);
-        int last = (int)(((int64_t)clipped_end - start_time) / resolution);
+        /* Use the final covered instant to avoid spilling into the next bucket. */
+        int last = (int)((((int64_t)clipped_end - 1) - start_time) / resolution);
         if (first < 0) first = 0;
         if (last >= bucket_count) last = bucket_count - 1;
         for (int index = first; index <= last; index++) {
