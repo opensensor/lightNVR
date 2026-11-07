@@ -861,6 +861,7 @@ export function RecordingsView() {
 
     if (mode === 'selected') {
       const result = await recordingsAPI.deleteSelectedRecordings(selectedRecordings);
+      if (result.status === 'cancelled') return;
 
       setSelectedRecordings({});
       setSelectAll(false);
@@ -870,7 +871,8 @@ export function RecordingsView() {
         reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
       }
     } else {
-      await recordingsAPI.deleteAllFilteredRecordings(filters);
+      const result = await recordingsAPI.deleteAllFilteredRecordings(filters);
+      if (result.status === 'cancelled') return;
 
       setSelectedRecordings({});
       setSelectAll(false);

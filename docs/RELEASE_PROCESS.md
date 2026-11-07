@@ -164,6 +164,20 @@ inspect the remote before retrying.
 `--no-push` is local preparation, not a dry run: it updates version files and
 creates a commit. Preflight still reads the remote to check main and existing tags.
 
+#### Rust regeneration follow-up
+
+A source or version change may need one generated Rust commit. Its main-push CI
+runs queue behind the source runs instead of cancelling them. Normal development
+pushes still cancel superseded work. The generated commit still gets its own full
+CI validation; this is required before tagging.
+
+On a generated main commit, Rust CI runs generation with `--check`, builds with
+`--locked`, and cannot push another regeneration commit. If the generated output
+is unstable, that verification fails instead of starting another regeneration
+cycle. The release coordinator continues to require the successful freshness
+step on the final commit. These rules cover the six repository-managed release
+CI workflows; GitHub-managed Code Quality scheduling is configured separately.
+
 #### Tag publication gate
 
 Docker, Debian, Rust and changelog workflows all call `release-preflight.yml`
