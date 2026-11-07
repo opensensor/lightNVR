@@ -15,6 +15,10 @@ REQUIRED_WORKFLOWS = {
     'static-analysis.yml', 'codeql-analysis.yml', 'container-scan.yml',
 }
 FRESHNESS_STEP = 'Verify checked-in Rust is current'
+# Only allow checked-in generated Rust outputs between anchor and head.
+ALLOWED_GENERATED_RUST_PATH_PREFIXES = (
+    'rust/gen/',
+)
 
 
 class ReleaseError(Exception):
@@ -73,9 +77,10 @@ def check_descendants(anchor, head):
     for commit in git('rev-list', f'{anchor}..{head}').splitlines():
         parents = git('rev-list', '--parents', '-n', '1', commit).split()
         paths = git('diff-tree', '--no-commit-id', '--name-only', '-r', commit).splitlines()
-        if len(parents) != 2 or not paths or any(not p.startswith('rust/') for p in paths):
+        if (len(parents) != 2 or not paths
+                or any(not p.startswith(ALLOWED_GENERATED_RUST_PATH_PREFIXES) for p in paths)):
             raise ReleaseError(
-                f'main changed outside generated rust/ at {commit[:12]}. '
+                f'main changed outside generated Rust outputs at {commit[:12]}. '
                 'Review and pull those changes, then rerun with --publish-only.')
 
 
