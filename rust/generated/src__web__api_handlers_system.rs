@@ -22,12 +22,6 @@ unsafe extern "C" {
         __stream: *mut FILE,
     ) -> *mut ::core::ffi::c_char;
     unsafe fn fputs(__s: *const ::core::ffi::c_char, __stream: *mut FILE) -> ::core::ffi::c_int;
-    unsafe fn fread(
-        __ptr: *mut ::core::ffi::c_void,
-        __size: size_t,
-        __n: size_t,
-        __stream: *mut FILE,
-    ) -> ::core::ffi::c_ulong;
     unsafe fn __ctype_b_loc() -> *mut *const ::core::ffi::c_ushort;
     unsafe fn close(__fd: ::core::ffi::c_int) -> ::core::ffi::c_int;
     unsafe fn sysconf(__name: ::core::ffi::c_int) -> ::core::ffi::c_long;
@@ -65,6 +59,7 @@ unsafe extern "C" {
     unsafe fn uv_version_string() -> *const ::core::ffi::c_char;
     unsafe fn mbedtls_version_get_string_full(string: *mut ::core::ffi::c_char);
     unsafe fn avutil_version() -> ::core::ffi::c_uint;
+    unsafe fn av_version_info() -> *const ::core::ffi::c_char;
     unsafe fn avcodec_version() -> ::core::ffi::c_uint;
     unsafe fn avformat_version() -> ::core::ffi::c_uint;
     unsafe fn swscale_version() -> ::core::ffi::c_uint;
@@ -202,10 +197,6 @@ unsafe extern "C" {
         __n: size_t,
     ) -> ::core::ffi::c_int;
     unsafe fn strdup(__s: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
-    unsafe fn strstr(
-        __haystack: *const ::core::ffi::c_char,
-        __needle: *const ::core::ffi::c_char,
-    ) -> *mut ::core::ffi::c_char;
     unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
     unsafe fn strnlen(__string: *const ::core::ffi::c_char, __maxlen: size_t) -> size_t;
     unsafe fn strerror(__errnum: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
@@ -1442,13 +1433,17 @@ unsafe extern "C" fn trim_copy_value(
         return;
     }
     let mut start: *const ::core::ffi::c_char = ltrim_pos(src);
-    let mut end: *const ::core::ffi::c_char =
-        rtrim_pos(src, 0 as size_t).offset(-(1 as ::core::ffi::c_int as isize));
+    let mut end: *const ::core::ffi::c_char = rtrim_pos(src, 0 as size_t);
+    if end <= start {
+        return;
+    }
     if end.offset_from(start) >= 2isize
         && (*start as ::core::ffi::c_int == '"' as ::core::ffi::c_int
-            && *end as ::core::ffi::c_int == '"' as ::core::ffi::c_int
+            && *end.offset(-(1 as ::core::ffi::c_int as isize)) as ::core::ffi::c_int
+                == '"' as ::core::ffi::c_int
             || *start as ::core::ffi::c_int == '\'' as ::core::ffi::c_int
-                && *end as ::core::ffi::c_int == '\'' as ::core::ffi::c_int)
+                && *end.offset(-(1 as ::core::ffi::c_int as isize)) as ::core::ffi::c_int
+                    == '\'' as ::core::ffi::c_int)
     {
         start = start.offset(1);
         end = end.offset(-1);
@@ -3257,6 +3252,13 @@ unsafe extern "C" fn add_versions_to_json(mut info: *mut cJSON) {
         &raw mut llhttp_version as *mut ::core::ffi::c_char,
         ::core::ptr::null::<::core::ffi::c_char>(),
     );
+    add_version_entry(
+        items,
+        b"FFmpeg\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Library\0".as_ptr() as *const ::core::ffi::c_char,
+        av_version_info(),
+        b"Linked FFmpeg runtime\0".as_ptr() as *const ::core::ffi::c_char,
+    );
     let mut version_buf: [::core::ffi::c_char; 32] = [
         0 as ::core::ffi::c_char,
         0,
@@ -3403,21 +3405,21 @@ unsafe extern "C" fn get_detector_memory_usage(
         {
             continue;
         }
-        let mut cmdline_path: [::core::ffi::c_char; 64] = [0; 64];
+        let mut comm_path: [::core::ffi::c_char; 64] = [0; 64];
         snprintf(
-            &raw mut cmdline_path as *mut ::core::ffi::c_char,
+            &raw mut comm_path as *mut ::core::ffi::c_char,
             ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
-            b"/proc/%d/cmdline\0".as_ptr() as *const ::core::ffi::c_char,
+            b"/proc/%d/comm\0".as_ptr() as *const ::core::ffi::c_char,
             candidate,
         );
         let mut cf: *mut FILE = fopen(
-            &raw mut cmdline_path as *mut ::core::ffi::c_char,
+            &raw mut comm_path as *mut ::core::ffi::c_char,
             b"r\0".as_ptr() as *const ::core::ffi::c_char,
         );
         if cf.is_null() {
             continue;
         }
-        let mut cmdline: [::core::ffi::c_char; 512] = [
+        let mut comm: [::core::ffi::c_char; 256] = [
             0 as ::core::ffi::c_char,
             0,
             0,
@@ -3674,287 +3676,34 @@ unsafe extern "C" fn get_detector_memory_usage(
             0,
             0,
             0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
         ];
-        let mut bytes: size_t = fread(
-            &raw mut cmdline as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void,
-            1 as size_t,
-            ::core::mem::size_of::<[::core::ffi::c_char; 512]>().wrapping_sub(1 as size_t),
+        if fgets(
+            &raw mut comm as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 256]>() as ::core::ffi::c_int,
             cf,
-        ) as size_t;
-        fclose(cf);
-        let mut i: size_t = 0 as size_t;
-        while i < bytes {
-            if cmdline[i] as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
-                cmdline[i] = ' ' as ::core::ffi::c_char;
-            }
-            i = i.wrapping_add(1);
-        }
-        if strstr(
-            &raw mut cmdline as *mut ::core::ffi::c_char,
-            b"light-object-detect\0".as_ptr() as *const ::core::ffi::c_char,
         )
         .is_null()
         {
-            continue;
+            fclose(cf);
+        } else {
+            fclose(cf);
+            let mut len: size_t = strlen(&raw mut comm as *mut ::core::ffi::c_char);
+            if len > 0 as size_t
+                && comm[len.wrapping_sub(1 as size_t)] as ::core::ffi::c_int
+                    == '\n' as ::core::ffi::c_int
+            {
+                comm[len.wrapping_sub(1 as size_t)] = '\0' as ::core::ffi::c_char;
+            }
+            if strcmp(
+                &raw mut comm as *mut ::core::ffi::c_char,
+                b"light-object-detect\0".as_ptr() as *const ::core::ffi::c_char,
+            ) != 0 as ::core::ffi::c_int
+            {
+                continue;
+            }
+            pid = candidate;
+            break;
         }
-        pid = candidate;
-        break;
     }
     closedir(proc_dir);
     if pid <= 0 as ::core::ffi::c_int {
