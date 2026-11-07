@@ -12,6 +12,9 @@ static bool last_notify_active, last_fanout_active;
 static bool fail_attr_init, fail_attr_detach;
 static int attr_init_calls, attr_detach_calls, attr_destroy_calls, worker_create_calls;
 static pthread_attr_t *initialized_attr;
+static bool capture_worker;
+static void *(*captured_worker)(void *);
+static motion_pulse_task_t *captured_task;
 
 int __real_pthread_attr_init(pthread_attr_t *);
 int __wrap_pthread_attr_init(pthread_attr_t *attr) {
@@ -49,6 +52,14 @@ int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
         worker_create_calls++;
         if (attr != initialized_attr || fail_attr_init || fail_attr_detach) fixture_errors++;
         if (fail_worker_create) return EAGAIN;
+        if (capture_worker) {
+            int detach_state = 0;
+            if (pthread_attr_getdetachstate(attr, &detach_state) != 0 ||
+                detach_state != PTHREAD_CREATE_DETACHED || captured_task) fixture_errors++;
+            captured_worker = start;
+            captured_task = arg;
+            return 0;
+        }
     }
     return __real_pthread_create(thread, attr, start, arg);
 }
@@ -112,6 +123,9 @@ int __wrap_store_external_motion_detections(const char *stream, const detection_
 
 void setUp(void) {
     store_calls = 0;
+    capture_worker = false;
+    captured_worker = NULL;
+    captured_task = NULL;
     fail_attr_init = fail_attr_detach = false;
     attr_init_calls = attr_detach_calls = attr_destroy_calls = worker_create_calls = 0;
     initialized_attr = NULL;
@@ -133,6 +147,11 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    /* Release a captured task even if a preceding assertion aborted the test. */
+    bool pending_task = captured_task != NULL;
+    free(captured_task);
+    captured_task = NULL;
+    TEST_ASSERT_FALSE(pending_task);
     // All worker paths must release the generation mutex.
     int rc = pthread_mutex_trylock(&g_pulse_gen_mutex);
     if (rc == 0) pthread_mutex_unlock(&g_pulse_gen_mutex);
@@ -299,29 +318,65 @@ static void test_task_allocation_failure_serializes_rollback(void) {
     fail_task_alloc = true;
     assert_pulse_failure_rolls_back_before_new_action();
 }
+static void run_captured_worker(void) {
+    TEST_ASSERT_NOT_NULL(captured_task);
+    TEST_ASSERT_TRUE(captured_worker == motion_pulse_worker);
+    TEST_ASSERT_EQUAL_INT(MOTION_PULSE_DEFAULT_MS, captured_task->duration_ms);
+    TEST_ASSERT_EQUAL_UINT64(2, captured_task->generation);
+    TEST_ASSERT_EQUAL_STRING("camera", captured_task->stream_name);
+    TEST_ASSERT_EQUAL_STRING("captured-camera", captured_task->camera_uuid);
+    TEST_ASSERT_TRUE(captured_task->trigger_recording);
+    motion_pulse_task_t *task = captured_task;
+    captured_task = NULL;
+    /* Exercise deferred dispatch synchronously; timing has separate tests. */
+    task->duration_ms = 0;
+    captured_worker(task);
+    captured_worker = NULL;
+}
 static void test_pulse_success_schedules_detached_worker_and_completes_deferred_stop(void) {
+    capture_worker = true;
     TEST_ASSERT_EQUAL_INT(202, run_handler("pulse"));
     TEST_ASSERT_EQUAL_INT(1, attr_init_calls);
     TEST_ASSERT_EQUAL_INT(1, attr_detach_calls);
     TEST_ASSERT_EQUAL_INT(1, worker_create_calls);
-    TEST_ASSERT_EQUAL_INT(0, attr_destroy_calls);
+    TEST_ASSERT_EQUAL_INT(1, attr_destroy_calls);
+    TEST_ASSERT_NULL(initialized_attr);
+    TEST_ASSERT_EQUAL_INT(1, close_calls);
+    TEST_ASSERT_EQUAL_INT(1, store_calls);
+    TEST_ASSERT_EQUAL_INT(1, notify_calls);
+    TEST_ASSERT_EQUAL_INT(1, fanout_calls);
+    TEST_ASSERT_TRUE(last_notify_active);
+    TEST_ASSERT_TRUE(last_fanout_active);
     TEST_ASSERT_EQUAL_INT(0, accepted_actions);
-
-    attempt_new_action(NULL);
-    TEST_ASSERT_EQUAL_INT(0, accepted_actions);
+    /* The handler must release its mutex before the deferred worker runs. */
+    TEST_ASSERT_EQUAL_INT(0, pthread_mutex_trylock(&g_pulse_gen_mutex));
+    pthread_mutex_unlock(&g_pulse_gen_mutex);
 
     run_captured_worker();
-
     TEST_ASSERT_EQUAL_INT(2, close_calls);
     TEST_ASSERT_EQUAL_INT(1, store_calls);
     TEST_ASSERT_EQUAL_INT(2, notify_calls);
     TEST_ASSERT_EQUAL_INT(2, fanout_calls);
     TEST_ASSERT_FALSE(last_notify_active);
     TEST_ASSERT_FALSE(last_fanout_active);
-    TEST_ASSERT_EQUAL_INT(1, attr_destroy_calls);
-
+    TEST_ASSERT_EQUAL_INT(7, concurrent_attempts);
+    TEST_ASSERT_EQUAL_INT(0, accepted_actions);
     attempt_new_action(NULL);
     TEST_ASSERT_EQUAL_INT(1, accepted_actions);
+}
+static void test_scheduled_pulse_is_superseded_before_deferred_stop(void) {
+    capture_worker = true;
+    TEST_ASSERT_EQUAL_INT(202, run_handler("pulse"));
+    attempt_new_action(NULL);
+    TEST_ASSERT_EQUAL_INT(1, accepted_actions);
+    run_captured_worker();
+    TEST_ASSERT_EQUAL_INT(1, close_calls);
+    TEST_ASSERT_EQUAL_INT(1, store_calls);
+    TEST_ASSERT_EQUAL_INT(1, notify_calls);
+    TEST_ASSERT_EQUAL_INT(1, fanout_calls);
+    TEST_ASSERT_TRUE(last_notify_active);
+    TEST_ASSERT_TRUE(last_fanout_active);
+    TEST_ASSERT_EQUAL_INT(4, concurrent_attempts);
 }
 static void test_worker_creation_failure_serializes_rollback(void) {
     fail_worker_create = true;
@@ -367,6 +422,7 @@ int main(void) {
     RUN_TEST(test_stop_serializes_all_dispatch_effects);
     RUN_TEST(test_task_allocation_failure_serializes_rollback);
     RUN_TEST(test_pulse_success_schedules_detached_worker_and_completes_deferred_stop);
+    RUN_TEST(test_scheduled_pulse_is_superseded_before_deferred_stop);
     RUN_TEST(test_worker_creation_failure_serializes_rollback);
     RUN_TEST(test_unauthorized_request_has_no_motion_effects);
     RUN_TEST(test_attribute_init_failure_rolls_back_without_using_attributes);
