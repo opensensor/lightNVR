@@ -172,6 +172,7 @@ const Toast = ({ id, message, type, onRemove }: ToastItemProps) => {
       <button 
         style={closeButtonStyle} 
         onClick={handleRemove}
+        aria-label="Close notification"
         onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
         onFocus={(e) => e.currentTarget.style.opacity = '1'}
         onMouseOut={(e) => e.currentTarget.style.opacity = '0.7'}
