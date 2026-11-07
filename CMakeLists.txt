@@ -954,7 +954,7 @@ install(TARGETS lightnvr rebuild_recordings DESTINATION bin)
 if(TARGET lightnvr-ffmpeg-guard)
     install(TARGETS lightnvr-ffmpeg-guard DESTINATION bin)
 endif()
-install(DIRECTORY config/ DESTINATION /etc/lightnvr)
+install(DIRECTORY config/ DESTINATION etc/lightnvr)
 install(DIRECTORY db/migrations/ DESTINATION share/lightnvr/migrations
         FILES_MATCHING PATTERN "*.sql")
 
