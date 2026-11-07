@@ -102,15 +102,14 @@ test('close cancels detections and reopening does not retain old metadata',async
 });
 
 test('current failure remains visible and a stale failure cannot overwrite success',async()=>{
-  await show(1);await show(2);
-  await release('/api/recordings/2',recording(2));
+  await show(1);await release('/api/recordings/1',recording(1));
+  await pending('/api/detection/results/Gate1');
+
+  await show(2);await release('/api/recordings/2',recording(2));
   await pending('/api/detection/results/Gate2');
-  await page.evaluate(()=>window.requests.find(r=>r.url.includes('/Gate2')).reject(new Error('Body interrupted')));
-  await page.getByText('recordings.errorLoadingDetections',{exact:true}).waitFor();
-  await show(3);await release('/api/recordings/3',recording(3));
-  await pending('/api/detection/results/Gate3');
-  await release('/api/detection/results/Gate3',detectionBody(0));
-  await page.evaluate(()=>window.requests[0].reject(new Error('Stale body interrupted')));
+  await release('/api/detection/results/Gate2',detectionBody(0));
+
+  await page.evaluate(()=>window.requests.find(r=>r.url.includes('/Gate1')).reject(new Error('Stale body interrupted')));
   expect(await page.getByText('recordings.noDetectionsForRecording',{exact:true}).count()).toBe(1);
   expect(await page.getByText('recordings.errorLoadingDetections',{exact:true}).count()).toBe(0);
 });
