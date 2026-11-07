@@ -97,6 +97,14 @@ class RepositoryTests(unittest.TestCase):
         self.remote = Path(self.tmp.name) / 'remote.git'
         subprocess.run(['git', 'init', '--bare', '-q', str(self.remote)], check=True)
         subprocess.run(['git', 'init', '-q', '-b', 'main', str(self.root)], check=True)
+        # Push/fetch/commit can launch detached maintenance that outlives Git
+        # and races TemporaryDirectory cleanup. Disable it in both disposable
+        # repositories before creating objects or pushing to the bare remote.
+        for repo in (self.root, self.remote):
+            for key, value in (('maintenance.auto', 'false'),
+                               ('receive.autogc', 'false'), ('gc.auto', '0')):
+                subprocess.run(['git', '-C', str(repo), 'config', '--local', key, value],
+                               check=True)
         self.root_patch = patch.object(release, 'ROOT', self.root)
         self.root_patch.start()
         self.addCleanup(self.root_patch.stop)
