@@ -65,13 +65,12 @@ static int hex_digit_value(unsigned char c) {
     return -1;
 }
 
-// URL decode function
-int url_decode(const char *src, char *dst, size_t dst_size) {
+// Decode only this input span; output size must not define input boundaries.
+static int url_decode_span(const char *src, size_t src_len, char *dst, size_t dst_size) {
     if (!src || !dst || dst_size == 0) {
         return -1;
     }
 
-    size_t src_len = strlen(src);
     size_t i, j = 0;
 
     for (i = 0; i < src_len && j < dst_size - 1; i++) {
@@ -95,6 +94,11 @@ int url_decode(const char *src, char *dst, size_t dst_size) {
 
     dst[j] = '\0';
     return 0;
+}
+
+int url_decode(const char *src, char *dst, size_t dst_size) {
+    if (!src) return -1;
+    return url_decode_span(src, strlen(src), dst, dst_size);
 }
 
 void http_request_init(http_request_t *req) {
@@ -162,21 +166,7 @@ int http_request_get_query_param(const http_request_t *req, const char *name,
             const char *val_end = strchr(val_start, '&');
             size_t val_len = val_end ? (size_t)(val_end - val_start) : strlen(val_start);
 
-            if (val_len >= value_len) {
-                val_len = value_len - 1;
-            }
-
-            // URL decode the value
-            char *encoded = malloc(val_len + 1);
-            if (encoded) {
-                memcpy(encoded, val_start, val_len);
-                encoded[val_len] = '\0';
-                url_decode(encoded, value, value_len);
-                free(encoded);
-            } else {
-                memcpy(value, val_start, val_len);
-                value[val_len] = '\0';
-            }
+            url_decode_span(val_start, val_len, value, value_len);
 
             return (int)strlen(value);
         }
@@ -223,11 +213,7 @@ int http_request_extract_path_param(const http_request_t *req, const char *prefi
 
     if (param_len == 0 || param_len >= buf_size) return -1;
 
-    // Decode param_len bytes into the output buffer. The +1 is needed because
-    // url_decode expects the length to include a null byte, but does not actually
-    // copy that null byte. Limiting url_decode to param_len ensures that the
-    // query string is not decoded or copied into *param.
-    url_decode(param, param_buf, param_len+1);
+    url_decode_span(param, param_len, param_buf, buf_size);
     return 0;
 }
 

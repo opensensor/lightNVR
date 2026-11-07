@@ -89,7 +89,7 @@ const char* http_request_get_header(const http_request_t *req, const char *name)
  * @param name Parameter name
  * @param value Buffer to store the value
  * @param value_len Size of value buffer
- * @return Length of value on success, -1 if not found
+ * @return Decoded length (truncated to value_len - 1), -1 if not found or invalid
  */
 int http_request_get_query_param(const http_request_t *req, const char *name, char *value, size_t value_len);
 

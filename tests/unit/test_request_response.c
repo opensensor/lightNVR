@@ -19,8 +19,15 @@
 #include "utils/strings.h"
 
 /* ---- Unity boilerplate ---- */
-void setUp(void)    {}
-void tearDown(void) {}
+static bool fail_next_allocation;
+void *__real_malloc(size_t size);
+void *__wrap_malloc(size_t size) {
+    if (fail_next_allocation) { fail_next_allocation = false; return NULL; }
+    return __real_malloc(size);
+}
+
+void setUp(void)    { fail_next_allocation = false; }
+void tearDown(void) { fail_next_allocation = false; }
 
 /* ================================================================
  * url_decode
@@ -76,6 +83,76 @@ void test_url_decode_preserves_every_valid_encoded_byte(void) {
             TEST_ASSERT_EQUAL_MEMORY("tail", out + 1, 5);
         }
     }
+}
+
+void test_query_decode_uses_full_input_and_bounds_output(void) {
+    http_request_t req;
+    http_request_init(&req);
+    safe_strcpy(req.query_string, "value=%41%42%43%44&next=ignored", sizeof(req.query_string), 0);
+    char out[4];
+    TEST_ASSERT_EQUAL_INT(3, http_request_get_query_param(&req, "value", out, sizeof(out)));
+    TEST_ASSERT_EQUAL_STRING("ABC", out);
+    char one[1] = {'x'};
+    TEST_ASSERT_EQUAL_INT(0, http_request_get_query_param(&req, "value", one, sizeof(one)));
+    TEST_ASSERT_EQUAL_CHAR('\0', one[0]);
+    char larger[32];
+    TEST_ASSERT_EQUAL_INT(4, http_request_get_query_param(&req, "value", larger, sizeof(larger)));
+    TEST_ASSERT_EQUAL_STRING("ABCD", larger);
+    safe_strcpy(req.query_string, "value=%4&next=1", sizeof(req.query_string), 0);
+    TEST_ASSERT_EQUAL_INT(2, http_request_get_query_param(&req, "value", larger, sizeof(larger)));
+    TEST_ASSERT_EQUAL_STRING("%4", larger);
+}
+
+void test_query_decode_near_request_capacity_needs_no_allocation(void) {
+    http_request_t req;
+    http_request_init(&req);
+    memcpy(req.query_string, "value=", 6);
+    for (int i = 0; i < 330; i++) memcpy(req.query_string + 6 + i * 3, "%41", 3);
+    memcpy(req.query_string + 996, "&next=ignored", 14);
+    char out[331];
+    fail_next_allocation = true;
+    int length = http_request_get_query_param(&req, "value", out, sizeof(out));
+    bool allocation_unused = fail_next_allocation;
+    fail_next_allocation = false;
+    TEST_ASSERT_EQUAL_INT(330, length);
+    TEST_ASSERT_TRUE(allocation_unused);
+    for (int i = 0; i < 330; i++) TEST_ASSERT_EQUAL_CHAR('A', out[i]);
+    TEST_ASSERT_EQUAL_CHAR('\0', out[330]);
+}
+
+void test_path_decode_does_not_consume_query_or_trimmed_slash(void) {
+    http_request_t req;
+    http_request_init(&req);
+    char out[32];
+    safe_strcpy(req.path, "/api/streams/%34%32/?note=ignored", sizeof(req.path), 0);
+    TEST_ASSERT_EQUAL_INT(0, http_request_extract_path_param(&req, "/api/streams/", out, sizeof(out)));
+    TEST_ASSERT_EQUAL_STRING("42", out);
+    safe_strcpy(req.path, "/api/streams/%4?2=ignored", sizeof(req.path), 0);
+    TEST_ASSERT_EQUAL_INT(0, http_request_extract_path_param(&req, "/api/streams/", out, sizeof(out)));
+    TEST_ASSERT_EQUAL_STRING("%4", out);
+}
+
+void test_response_body_replacement_supports_aliases_and_allocation_failure(void) {
+    http_response_t res;
+    http_response_init(&res);
+    TEST_ASSERT_EQUAL_INT(0, http_response_set_body(&res, "prefix payload"));
+    TEST_ASSERT_EQUAL_INT(0, http_response_set_body(&res, res.body));
+    TEST_ASSERT_EQUAL_STRING("prefix payload", res.body);
+    TEST_ASSERT_EQUAL_INT(0, http_response_set_body(&res, (char *)res.body + 7));
+    TEST_ASSERT_EQUAL_STRING("payload", res.body);
+    void *previous = res.body;
+    size_t previous_length = res.body_length;
+    fail_next_allocation = true;
+    int result = http_response_set_body(&res, "replacement");
+    fail_next_allocation = false;
+    TEST_ASSERT_EQUAL_INT(-1, result);
+    TEST_ASSERT_EQUAL_PTR(previous, res.body);
+    TEST_ASSERT_EQUAL_UINT(previous_length, res.body_length);
+    TEST_ASSERT_TRUE(res.body_allocated);
+    TEST_ASSERT_EQUAL_STRING("payload", res.body);
+    http_response_free(&res);
+    TEST_ASSERT_NULL(res.body);
+    http_response_free(&res);
 }
 
 /* ================================================================
@@ -265,8 +342,21 @@ void test_response_add_cors_headers(void) {
     http_response_t res;
     http_response_init(&res);
     http_response_add_cors_headers(&res);
-    /* Expect at least one CORS header added */
-    TEST_ASSERT_GREATER_THAN_INT(0, res.num_headers);
+    bool wildcard = false, exposed = false;
+    for (int i = 0; i < res.num_headers; i++) {
+        TEST_ASSERT_NOT_EQUAL(0, strcmp("Access-Control-Allow-Credentials", res.headers[i].name));
+        if (strcmp("Access-Control-Allow-Origin", res.headers[i].name) == 0) {
+            TEST_ASSERT_EQUAL_STRING("*", res.headers[i].value);
+            wildcard = true;
+        }
+        if (strcmp("Access-Control-Expose-Headers", res.headers[i].name) == 0) {
+            TEST_ASSERT_NOT_NULL(strstr(res.headers[i].value, "X-Request-ID"));
+            TEST_ASSERT_NOT_NULL(strstr(res.headers[i].value, "Content-Disposition"));
+            exposed = true;
+        }
+    }
+    TEST_ASSERT_TRUE(wildcard);
+    TEST_ASSERT_TRUE(exposed);
     http_response_free(&res);
 }
 
@@ -310,6 +400,10 @@ int main(void) {
     RUN_TEST(test_url_decode_percent_2F);
     RUN_TEST(test_url_decode_plus_as_space);
     RUN_TEST(test_url_decode_no_encoding);
+    RUN_TEST(test_query_decode_uses_full_input_and_bounds_output);
+    RUN_TEST(test_query_decode_near_request_capacity_needs_no_allocation);
+    RUN_TEST(test_path_decode_does_not_consume_query_or_trimmed_slash);
+    RUN_TEST(test_response_body_replacement_supports_aliases_and_allocation_failure);
     RUN_TEST(test_url_decode_requires_two_hex_digits);
     RUN_TEST(test_url_decode_preserves_every_valid_encoded_byte);
 
