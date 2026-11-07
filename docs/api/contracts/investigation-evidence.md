@@ -63,3 +63,9 @@ npm --prefix web run build
 - Type checks, changed-consumer ESLint, Vite production build and canonical lint passed. Lint retains the legitimate no-2xx warning for the playback operation whose successful response is 302.
 
 Local evidence is under `build/evidence-contracts/`: `red.log` / `green.log` establish the capture regression; `final-api.log`, `ui.log`, `native.log`, `sanitize.log`, `webtests.log`, `tooling.log`, `typecheck.log`, `contracts-typecheck.log`, `eslint.log` and `webbuild.log` and `mqtt-compile.log` record validation. Transient fixture state and build output are not committed. The existing contracts CI automatically discovers the added API/browser files.
+
+## Follow-up: name reuse during the blocking MQTT snapshot fetch
+
+Review identified a second capture-identity window: the producer resolved UUID A, then called go2rtc by mutable name; if the name became camera B while that request was in flight, B's returned bytes could be stored under A's namespace. The producer now requires a valid identity before requesting media and re-resolves the same name after capture. A missing or different identity drops all returned snapshot bytes before either disk or MQTT publication, and omits all snapshot metadata. Detection metadata itself still follows the existing producer contract.
+
+`test_mqtt_snapshot_identity` includes the actual MQTT producer with controlled go2rtc/database/broker calls. Its stable case checks the stored bytes and UUID URL. Three negative cases (reused name during capture, removed camera during capture, invalid initial identity) initially failed because the old producer published bytes; all four now pass in Release and ASan/UBSan. The test is registered in `ci-unit` and `ci-sanitizer` when Mosquitto development dependencies are present, including no-MQTT application configurations. It uses unique temporary storage and no live broker/camera. Evidence: `mqtt-race-red.log`, `mqtt-race-green.log`, `mqtt-race-sanitize.log`.
