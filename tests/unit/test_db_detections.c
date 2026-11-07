@@ -169,7 +169,7 @@ void test_delete_old_detections(void) {
     store_detections_in_db("cam4", &r, now - 10000, 0);
 
     int deleted = delete_old_detections(100); /* max_age = 100 seconds */
-    TEST_ASSERT_GREATER_OR_EQUAL(0, deleted);
+    TEST_ASSERT_GREATER_THAN(0, deleted);
 }
 
 /* get_detection_labels_summary */
