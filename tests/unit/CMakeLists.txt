@@ -571,7 +571,10 @@ target_link_options(test_motion_pulse_worker PRIVATE
     "-Wl,--wrap=store_external_motion_detections"
     "-Wl,--wrap=get_current_recording_id_for_stream"
     "-Wl,--wrap=calloc"
-    "-Wl,--wrap=pthread_create")
+    "-Wl,--wrap=pthread_create"
+    "-Wl,--wrap=pthread_attr_init"
+    "-Wl,--wrap=pthread_attr_setdetachstate"
+    "-Wl,--wrap=pthread_attr_destroy")
 add_layer3_test(test_annotation_writer_registry)  # Layer 3: continuous-writer probe behind annotation mode (#547)
 add_layer3_test(test_detection_current_frame CI_UNIT CI_SANITIZER)
 target_compile_definitions(test_detection_current_frame PRIVATE

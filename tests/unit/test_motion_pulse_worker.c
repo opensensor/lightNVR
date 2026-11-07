@@ -9,6 +9,32 @@ static int concurrent_attempts, accepted_actions, unexpected_lock_errors;
 static int fixture_errors, store_calls;
 static bool testing_handler, allow_authorization, fail_task_alloc, fail_worker_create;
 static bool last_notify_active, last_fanout_active;
+static bool fail_attr_init, fail_attr_detach;
+static int attr_init_calls, attr_detach_calls, attr_destroy_calls, worker_create_calls;
+static pthread_attr_t *initialized_attr;
+
+int __real_pthread_attr_init(pthread_attr_t *);
+int __wrap_pthread_attr_init(pthread_attr_t *attr) {
+    attr_init_calls++;
+    if (fail_attr_init) return ENOMEM;
+    int rc = __real_pthread_attr_init(attr);
+    if (rc == 0) initialized_attr = attr;
+    return rc;
+}
+int __real_pthread_attr_setdetachstate(pthread_attr_t *, int);
+int __wrap_pthread_attr_setdetachstate(pthread_attr_t *attr, int state) {
+    attr_detach_calls++;
+    if (attr != initialized_attr || state != PTHREAD_CREATE_DETACHED) { fixture_errors++; return EINVAL; }
+    if (fail_attr_detach) return EINVAL;
+    return __real_pthread_attr_setdetachstate(attr, state);
+}
+int __real_pthread_attr_destroy(pthread_attr_t *);
+int __wrap_pthread_attr_destroy(pthread_attr_t *attr) {
+    attr_destroy_calls++;
+    if (attr != initialized_attr) { fixture_errors++; return EINVAL; }
+    initialized_attr = NULL;
+    return __real_pthread_attr_destroy(attr);
+}
 static stream_config_t fixture_camera;
 
 void *__real_calloc(size_t, size_t);
@@ -19,7 +45,11 @@ void *__wrap_calloc(size_t count, size_t size) {
 int __real_pthread_create(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);
 int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
                           void *(*start)(void *), void *arg) {
-    if (fail_worker_create && start == motion_pulse_worker) return EAGAIN;
+    if (start == motion_pulse_worker) {
+        worker_create_calls++;
+        if (attr != initialized_attr || fail_attr_init || fail_attr_detach) fixture_errors++;
+        if (fail_worker_create) return EAGAIN;
+    }
     return __real_pthread_create(thread, attr, start, arg);
 }
 uint64_t __wrap_get_current_recording_id_for_stream(const char *stream) {
@@ -82,6 +112,9 @@ int __wrap_store_external_motion_detections(const char *stream, const detection_
 
 void setUp(void) {
     store_calls = 0;
+    fail_attr_init = fail_attr_detach = false;
+    attr_init_calls = attr_detach_calls = attr_destroy_calls = worker_create_calls = 0;
+    initialized_attr = NULL;
     testing_handler = fail_task_alloc = fail_worker_create = false;
     last_notify_active = last_fanout_active = false;
     allow_authorization = true;
@@ -106,6 +139,7 @@ void tearDown(void) {
     TEST_ASSERT_EQUAL_INT(0, rc);
     TEST_ASSERT_EQUAL_INT(0, fixture_errors);
     TEST_ASSERT_EQUAL_INT(0, unexpected_lock_errors);
+    TEST_ASSERT_NULL(initialized_attr);
 }
 
 static void run_worker(uint64_t generation, bool recording) {
@@ -268,6 +302,26 @@ static void test_task_allocation_failure_serializes_rollback(void) {
 static void test_worker_creation_failure_serializes_rollback(void) {
     fail_worker_create = true;
     assert_pulse_failure_rolls_back_before_new_action();
+    TEST_ASSERT_EQUAL_INT(1, attr_init_calls);
+    TEST_ASSERT_EQUAL_INT(1, attr_detach_calls);
+    TEST_ASSERT_EQUAL_INT(1, worker_create_calls);
+    TEST_ASSERT_EQUAL_INT(1, attr_destroy_calls);
+}
+static void test_attribute_init_failure_rolls_back_without_using_attributes(void) {
+    fail_attr_init = fail_worker_create = true;
+    assert_pulse_failure_rolls_back_before_new_action();
+    TEST_ASSERT_EQUAL_INT(1, attr_init_calls);
+    TEST_ASSERT_EQUAL_INT(0, attr_detach_calls);
+    TEST_ASSERT_EQUAL_INT(0, worker_create_calls);
+    TEST_ASSERT_EQUAL_INT(0, attr_destroy_calls);
+}
+static void test_attribute_detach_failure_destroys_attributes_and_rolls_back(void) {
+    fail_attr_detach = fail_worker_create = true;
+    assert_pulse_failure_rolls_back_before_new_action();
+    TEST_ASSERT_EQUAL_INT(1, attr_init_calls);
+    TEST_ASSERT_EQUAL_INT(1, attr_detach_calls);
+    TEST_ASSERT_EQUAL_INT(0, worker_create_calls);
+    TEST_ASSERT_EQUAL_INT(1, attr_destroy_calls);
 }
 static void test_unauthorized_request_has_no_motion_effects(void) {
     allow_authorization = false;
@@ -290,5 +344,7 @@ int main(void) {
     RUN_TEST(test_task_allocation_failure_serializes_rollback);
     RUN_TEST(test_worker_creation_failure_serializes_rollback);
     RUN_TEST(test_unauthorized_request_has_no_motion_effects);
+    RUN_TEST(test_attribute_init_failure_rolls_back_without_using_attributes);
+    RUN_TEST(test_attribute_detach_failure_destroys_attributes_and_rolls_back);
     return UNITY_END();
 }

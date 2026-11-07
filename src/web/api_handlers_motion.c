@@ -606,10 +606,14 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
 
         pthread_t tid;
         pthread_attr_t attr;
-        pthread_attr_init(&attr);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-        int rc = pthread_create(&tid, &attr, motion_pulse_worker, task);
-        pthread_attr_destroy(&attr);
+        int rc = pthread_attr_init(&attr);
+        if (rc == 0) {
+            rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+            if (rc == 0) {
+                rc = pthread_create(&tid, &attr, motion_pulse_worker, task);
+            }
+            pthread_attr_destroy(&attr);
+        }
 
         if (rc != 0) {
             if (can_trigger_recording) {
