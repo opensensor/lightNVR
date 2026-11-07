@@ -102,6 +102,16 @@ export function BatchDeleteModal() {
    * Cancel during the confirmation phase (before delete starts)
    */
   const cancelConfirm = useCallback(() => {
+    const resolve = pendingResolveRef.current;
+    if (resolve) {
+      resolve({
+        status: 'completed',
+        totalCount: 0,
+        completedCount: 0,
+        deletedCount: 0,
+        failedCount: 0,
+      } as BatchDeleteProgressResponse);
+    }
     closeModal();
     showStatusMessage(t('recordings.batchDeleteCancelled'), 'info', 3000);
   }, [closeModal]);
