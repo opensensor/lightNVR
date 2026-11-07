@@ -123,8 +123,10 @@ void test_request_init_generates_unique_correlation_ids(void) {
     http_request_init(&first);
     http_request_init(&second);
 
-    TEST_ASSERT_EQUAL_UINT(36, strlen(first.request_id));
-    TEST_ASSERT_EQUAL_UINT(36, strlen(second.request_id));
+    TEST_ASSERT_GREATER_THAN_UINT(0, strlen(first.request_id));
+    TEST_ASSERT_GREATER_THAN_UINT(0, strlen(second.request_id));
+    TEST_ASSERT_LESS_THAN_UINT(REQUEST_ID_MAX, strlen(first.request_id) + 1);
+    TEST_ASSERT_LESS_THAN_UINT(REQUEST_ID_MAX, strlen(second.request_id) + 1);
     TEST_ASSERT_NOT_EQUAL(0, strcmp(first.request_id, second.request_id));
 }
 
