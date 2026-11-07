@@ -9,6 +9,7 @@
  * @file go2rtc_process.c
  * @brief Implementation of the go2rtc process management module
  */
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1767,19 +1768,18 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
     }
 
     /* Write to a private temporary file first, then atomically rename it over
-     * override.yaml. This preserves the previous valid file on failures. */
+     * override.yaml. I/O failures leave the previous file intact. Randomized
+     * exclusive creation also tolerates abandoned files after a crash. */
     char override_tmp_path[PATH_MAX];
-    if (snprintf(override_tmp_path, sizeof(override_tmp_path), "%s.tmp.%ld",
-                 override_path, (long)getpid()) >= (int)sizeof(override_tmp_path)) {
+    if (snprintf(override_tmp_path, sizeof(override_tmp_path), "%s.tmp.XXXXXX",
+                 override_path) >= (int)sizeof(override_tmp_path)) {
         log_error("Temporary path for go2rtc override file is too long: %s",
                   override_path);
         free(content);
         return -1;
     }
 
-    int fd = open(override_tmp_path,
-                  O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
-                  0600);
+    int fd = mkostemp(override_tmp_path, O_CLOEXEC);
     if (fd < 0) {
         log_error("Failed to open temporary go2rtc override file %s for writing: %s",
                   override_tmp_path, strerror(errno));
@@ -1814,10 +1814,12 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
     }
 
     if (fsync(fd) != 0) {
-        log_warn("fsync on temporary go2rtc override file %s failed: %s",
+        log_error("fsync on temporary go2rtc override file %s failed: %s",
                  override_tmp_path, strerror(errno));
-        /* Non-fatal: the data is in the page cache and go2rtc will read it
-         * via the same kernel; only durability across crashes is at risk. */
+        close(fd);
+        unlink(override_tmp_path);
+        free(content);
+        return -1;
     }
 
     if (close(fd) != 0) {
@@ -2518,16 +2520,20 @@ static bool go2rtc_process_start_locked(int api_port) {
         sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 
         // Redirect stdout and stderr to the go2rtc log file
-        int log_fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+        int log_fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW | O_NONBLOCK, 0600);
         if (log_fd == -1) {
             _exit(EXIT_FAILURE);
         }
-        if (fchmod(log_fd, 0600) == -1) {
+        struct stat log_stat;
+        if (fstat(log_fd, &log_stat) != 0 || !S_ISREG(log_stat.st_mode) ||
+            log_stat.st_nlink != 1 || fchmod(log_fd, 0600) != 0) {
             close(log_fd);
             _exit(EXIT_FAILURE);
         }
-        dup2(log_fd, STDOUT_FILENO);
-        dup2(log_fd, STDERR_FILENO);
+        if (dup2(log_fd, STDOUT_FILENO) < 0 || dup2(log_fd, STDERR_FILENO) < 0) {
+            close(log_fd);
+            _exit(EXIT_FAILURE);
+        }
         if (log_fd > STDERR_FILENO) {
             close(log_fd);
         }

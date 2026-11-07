@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -127,6 +128,12 @@ static void *start_worker(void *arg) {
 
 void test_concurrent_starts_launch_one_verified_serving_child(void) {
     initialize_manager();
+    char log_path[160];
+    snprintf(log_path, sizeof(log_path), "%s/go2rtc.log", config_dir);
+    FILE *old_log = fopen(log_path, "w");
+    TEST_ASSERT_NOT_NULL(old_log);
+    fclose(old_log);
+    TEST_ASSERT_EQUAL_INT(0, chmod(log_path, 0666));
 
     enum { WORKERS = 6 };
     pthread_t threads[WORKERS];
@@ -143,6 +150,9 @@ void test_concurrent_starts_launch_one_verified_serving_child(void) {
     pid_t serving_pid = (pid_t)go2rtc_process_get_pid();
     TEST_ASSERT_GREATER_THAN_INT(0, serving_pid);
     TEST_ASSERT_EQUAL_INT(1, count_starts(NULL));
+    struct stat private_log;
+    TEST_ASSERT_EQUAL_INT(0, stat(log_path, &private_log));
+    TEST_ASSERT_EQUAL_UINT(0600, private_log.st_mode & 0777);
 
     TEST_ASSERT_TRUE(go2rtc_process_stop());
     errno = 0;
@@ -166,11 +176,40 @@ void test_failed_candidate_is_reaped_and_never_tracked(void) {
     TEST_ASSERT_EQUAL_INT(ECHILD, errno);
 }
 
+void test_unsafe_log_paths_never_launch_or_modify_link_targets(void) {
+    initialize_manager();
+    char log_path[160], target[160];
+    snprintf(log_path, sizeof(log_path), "%s/go2rtc.log", config_dir);
+    snprintf(target, sizeof(target), "%s/untouched", config_dir);
+    FILE *file = fopen(target, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    fputs("keep", file);
+    fclose(file);
+    TEST_ASSERT_EQUAL_INT(0, chmod(target, 0644));
+    for (int kind = 0; kind < 4; kind++) {
+        int result = kind == 0 ? symlink(target, log_path) :
+                     kind == 1 ? link(target, log_path) :
+                     kind == 2 ? mkfifo(log_path, 0600) : mkdir(log_path, 0700);
+        TEST_ASSERT_EQUAL_INT(0, result);
+        bool started = go2rtc_process_start(api_port);
+        int removed = kind == 3 ? rmdir(log_path) : unlink(log_path);
+        TEST_ASSERT_FALSE(started);
+        TEST_ASSERT_EQUAL_INT(0, removed);
+        TEST_ASSERT_EQUAL_INT(0, count_starts(NULL));
+        struct stat unchanged;
+        TEST_ASSERT_EQUAL_INT(0, stat(target, &unchanged));
+        TEST_ASSERT_EQUAL_UINT(0644, unchanged.st_mode & 0777);
+        TEST_ASSERT_EQUAL_INT(4, unchanged.st_size);
+    }
+    unlink(target);
+}
+
 int main(void) {
     init_logger();
     UNITY_BEGIN();
     RUN_TEST(test_concurrent_starts_launch_one_verified_serving_child);
     RUN_TEST(test_failed_candidate_is_reaped_and_never_tracked);
+    RUN_TEST(test_unsafe_log_paths_never_launch_or_modify_link_targets);
     int result = UNITY_END();
     shutdown_logger();
     return result;
