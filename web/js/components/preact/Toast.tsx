@@ -266,6 +266,7 @@ class ToastContainer extends Component<ToastContainerProps, ToastContainerState>
             id={toast.id}
             message={toast.message}
             type={toast.type}
+            exiting={!!toast.exiting}
             onRemove={() => this.removeToast(toast.id)}
           />
         ))}
