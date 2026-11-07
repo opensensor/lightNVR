@@ -469,6 +469,9 @@ static void add_versions_to_json(cJSON *info) {
              LLHTTP_VERSION_MAJOR, LLHTTP_VERSION_MINOR, LLHTTP_VERSION_PATCH);
     add_version_entry(items, "llhttp", "Library", llhttp_version, NULL);
 
+    add_version_entry(items, "FFmpeg", "Library", av_version_info(),
+                      "Linked FFmpeg runtime");
+
     char version_buf[32] = {0};
     format_triplet_version(avformat_version(), version_buf, sizeof(version_buf));
     add_version_entry(items, "libavformat", "Library", version_buf, NULL);
