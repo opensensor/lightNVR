@@ -1,16 +1,22 @@
 # Engineering API expansion: next bounded slices
 
-Status: F0 checkpoint, F12 and F16 merged in PR #805; recording security
-follow-up merged in PR #807. F1 boundary correction merged in PR #808. The four-operation session/device
-contract and Settings slice merged in PR #809; the other seven F1
-operations remain pending. Other slices remain proposed.
+Status (2026-11-07): F1 authentication/MFA and F2 fleet reads are merged;
+F12/F16 recording integrity and the later security corrections are merged.
+S1, F3 and F4 are in review as [#835](https://github.com/opensensor/lightNVR/pull/835),
+[#836](https://github.com/opensensor/lightNVR/pull/836), and
+[#837](https://github.com/opensensor/lightNVR/pull/837). F5–F11 are being integrated
+as the fourth PR in [the current execution plan](engineering-hardening-four-pr-plan.md).
+F13 capacity measurements and F14 extended qualification remain outstanding;
+F15's final production-level acceptance depends on those measurements.
 
-Continue from [the executed hardening plan](engineering-api-contracts-plan.md)
-and [the PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md). Baseline:
-`7aa0968045cc427e1a1eb018290c1706a83873ef` on main (2026-11-06), after
-PR #805 recording integrity, PR #806 minimatch remediation, PR #807 recording security
-PR #808 MFA/session separation and PR #809 session/device contracts. TS/TSX conversion is complete. Automated Rust conversion,
-synchronization with C and a second backend remain deferred.
+Current review baseline: main `84ed0174` (57 accepted operations, 183 residual
+registrations). The historical receipts below retain their original revisions and
+counts; they are not present-day coverage claims. Continue from
+[the original hardening plan](engineering-api-contracts-plan.md) and
+[the PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
+TS/TSX conversion is complete. Automated Rust conversion, synchronization with C,
+a second backend and at-rest encryption remain deferred. Preserve Basic/key
+compatibility, HTTP cameras and `/etc/lightnvr` defaults.
 
 ## Ownership and acceptance
 
@@ -82,63 +88,63 @@ F1..F14,F16 -> F15
 - **ownership**: User/authorization/audit handlers and tests; one UsersView owner.
 - **description**: User CRUD, legacy-key issuance, password/login locks, actions/simulation, role CRUD, user-policy GET/PUT and audit events/export/settings.
 - **validation**: Policy/revocation changes affect discovery and handlers; preserve self-lockout/revision behavior; no secret leaks or token privilege expansion; validate actual audit export bytes.
-- **status**: Not started
+- **status**: In review — [#836](https://github.com/opensensor/lightNVR/pull/836); 20 operations, see identity-admin evidence.
 
 ### F4: Fleet organization and live workspace objects
 - **depends_on**: [F2]
 - **ownership**: Collections separate from location/tag handlers; saved views/layouts/plans/favorites as distinct sub-slices.
 - **description**: Location CRUD/assignment, tag CRUD/merge/assignment, collection CRUD/membership/preview and saved views. Explicitly enumerate live layouts, floor plans and favorites.
 - **validation**: Cross-owner/shared access, selector transitions, reference deletion, revision failures and unauthorized bulk no-effects; real uploaded image/content checks.
-- **status**: Not started
+- **status**: In review — [#837](https://github.com/opensensor/lightNVR/pull/837); 31 operations, see fleet-writes evidence.
 
 ### F5: Storage configuration and preview
 - **depends_on**: [F4]
 - **ownership**: Target/pool/policy handlers and tests; single StorageTab owner.
 - **description**: Target CRUD/probe, pool CRUD, policy CRUD/preview, storage health/compliance. Use owned destinations for probes.
 - **validation**: Revision conflicts, credential redaction, invalid destinations, protected references and scoped selectors. Separate local filesystem evidence from remote-provider qualification.
-- **status**: Not started
+- **status**: Implemented locally with F6 — 28 operations; storage evidence and fourth-PR integration track acceptance.
 
 ### F6: Storage jobs and lifecycle actions
 - **depends_on**: [F5]
 - **ownership**: Migration/archive/cleanup handlers and tests; shared recovery harness coordinated centrally.
 - **description**: Policy apply; migration list/create/detail/cancel/retry; archive list/retry; storage cleanup. Reuse recording mutation test techniques while documenting each storage handler's actual policy. Migration get/cancel/retry currently require global `storage.configure`, without recording-job owner/token matching; changing that requires a separate behavior decision.
 - **validation**: Denials create no jobs/files; retry/cancel preserve protection and catalog/file consistency. Reuse publication/deletion-ledger tests and real injected full/read-only/unavailable storage faults; distinguish acknowledgement from completion.
-- **status**: Not started
+- **status**: Implemented locally with F5; owned local migration/archive/cleanup lifecycle qualified, remote providers excluded.
 
 ### F7: Settings, system and public bootstrap
 - **depends_on**: [F1]
 - **ownership**: Settings/system/workspace/health handlers; one SettingsView/SystemView owner.
 - **description**: Settings GET/POST, go2rtc validation, workspace GET/PUT, system info/status/health/incidents/logs, effective-config/override-status. Separate restart/shutdown/log-clear/backup from reads; explicitly classify health, metrics, telemetry and setup/public routes.
 - **validation**: Zero values, credentials, revisions/errors; isolated process-control acknowledgements/restarts and real backup contents. HTTP success alone does not establish completion.
-- **status**: Not started
+- **status**: Implemented locally — 23 operations; system evidence and fourth-PR integration track acceptance.
 
 ### F8: Event routing
 - **depends_on**: [F4, F7]
 - **ownership**: Event catalog/destination/route handlers, EventRoutingView and owned local sinks.
 - **description**: Catalog, destination CRUD, route CRUD, preview and POST `/api/motion/trigger`, using accepted selector and health-setting shapes.
 - **validation**: Secret redaction, stale revisions, private collection references, suppression/retry and denied no-delivery effects; observe actual local deliveries separately from mocks.
-- **status**: Not started
+- **status**: Implemented locally — 13 operations with real owned MQTT delivery; fourth-PR integration tracks acceptance.
 
 ### F9: Stream lifecycle and ONVIF discovery
 - **depends_on**: [F0]
 - **ownership**: Stream/ONVIF discovery handlers; sole StreamsView owner.
 - **description**: Stream single read/create/test/delete/refresh/recording controls; zones GET/POST/DELETE, retention GET/PUT and detection-engines GET/PUT; seven ONVIF discovery/device operations. Preserve captured UUIDs, create-after-edit intent and pending-state guards.
 - **validation**: Owned SOAP/discovery fixtures, invalid/denied configuration no-effects; multicast/vendor behavior remains unqualified until observed on identified hardware.
-- **status**: Not started
+- **status**: In progress in the fourth PR; stream/media and device workers use separate owned fixtures.
 
 ### F10: Device control and streaming protocols
 - **depends_on**: [F9]
 - **ownership**: PTZ/imaging and HLS/go2rtc boundaries as separately reviewed sub-slices.
 - **description**: PTZ capabilities/presets/movement, imaging/daynight, GET `/api/ice-servers`, HLS and direct signaling/proxy routes. Address the documented direct go2rtc audio authorization gap before claiming action isolation.
 - **validation**: SOAP fixtures plus authorized device checks; media bytes, signaling permissions and reconnect behavior alongside JSON schemas.
-- **status**: Not started
+- **status**: In progress with F9 and S1; physical-device/vendor qualification remains outside this wave.
 
 ### F11: Investigations, detections and residual recording routes
 - **depends_on**: [F2]
 - **ownership**: Investigation/bookmark, detection/model/snapshot and LPR sub-slices; residual recording work coordinated with storage.
 - **description**: Investigation timeline/segment-at/search/preview/thumbnails/bookmarks; detection results/models/snapshots; LPR search/export/delete; recording files/check/delete, protected-list/sync and timeline manifest/play excluded from the current UI contract slice.
 - **validation**: Captured UUID/name-reuse/legacy fallback through every aggregate/enrichment route; hidden counts/facets remain hidden. Independently validate actual images, ZIP/media bytes and ranges.
-- **status**: Not started
+- **status**: In progress in the fourth PR; captured-identity authorization and concrete media/export evidence required.
 
 ### F12: Recording pathname collision safety
 - **depends_on**: [F0]
@@ -188,7 +194,7 @@ F1..F14,F16 -> F15
 - **validation**: Denied listen/talk cannot negotiate or receive media through
   alternate direct/proxy paths. Test owner/token/camera intersections and revoked
   access with an owned go2rtc fixture; browser hiding alone is not enforcement.
-- **status**: Prioritized for a separate bounded plan; not implemented here.
+- **status**: In review — [#835](https://github.com/opensensor/lightNVR/pull/835) and [go2rtc #4](https://github.com/opensensor/go2rtc/pull/4). See media-authority evidence for actual transport tests, revocation bounds and deployment limits.
 
 ## Recording integrity execution receipt (2026-11-06)
 
