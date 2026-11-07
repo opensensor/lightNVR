@@ -305,6 +305,12 @@ export function BatchDeleteModal() {
                 <div
                   className={getProgressBarClasses()}
                   style={{ width: `${getProgressPercentage()}%` }}
+                  role="progressbar"
+                  aria-label={t('recordings.batchDeleteProgress')}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={getProgressPercentage()}
+                  aria-valuetext={getPercentageText()}
                 ></div>
               </div>
 
