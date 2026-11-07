@@ -17,24 +17,10 @@
 #include "database/db_camera_tags.h"
 #include "database/db_fleet_query.h"
 #include "utils/strings.h"
+#include "utils/uuid.h"
 #include "web/api_handlers_camera_tags.h"
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
-
-static bool valid_uuid_string(const char *uuid) {
-    if (!uuid) return false;
-    if (strlen(uuid) != CAMERA_UUID_STRING_SIZE - 1) return false;
-
-    for (int i = 0; i < CAMERA_UUID_STRING_SIZE - 1; i++) {
-        if (i == 8 || i == 13 || i == 18 || i == 23) {
-            if (uuid[i] != '-') return false;
-        } else if (!isxdigit((unsigned char)uuid[i])) {
-            return false;
-        }
-    }
-
-    return true;
-}
 
 static bool valid_color(const char *color) {
     if (!color || color[0] == '\0') return true;
@@ -151,7 +137,7 @@ static bool extract_tag_uuid(const http_request_t *req, char *uuid,
     }
     char *slash = strchr(path_value, '/');
     if (slash) *slash = '\0';
-    if (!valid_uuid_string(path_value) || strlen(path_value) >= uuid_size) {
+    if (!lightnvr_uuid_is_valid(path_value) || strlen(path_value) >= uuid_size) {
         http_response_set_json_error(res, 400, "Invalid camera tag UUID");
         return false;
     }
@@ -169,7 +155,7 @@ static bool extract_camera_uuid(const http_request_t *req, char *uuid,
     }
     char *slash = strchr(path_value, '/');
     if (slash) *slash = '\0';
-    if (!valid_uuid_string(path_value) || strlen(path_value) >= uuid_size) {
+    if (!lightnvr_uuid_is_valid(path_value) || strlen(path_value) >= uuid_size) {
         http_response_set_json_error(res, 400, "Invalid camera UUID");
         return false;
     }
@@ -383,7 +369,7 @@ void handle_post_camera_tag_merge(const http_request_t *req,
     cJSON *target = body ?
         cJSON_GetObjectItemCaseSensitive(body, "target_uuid") : NULL;
     if (!body || !cJSON_IsObject(body) || !cJSON_IsString(target) ||
-        !valid_uuid_string(target->valuestring)) {
+        !lightnvr_uuid_is_valid(target->valuestring)) {
         cJSON_Delete(body);
         http_response_set_json_error(res, 400, "A valid target_uuid is required");
         return;
@@ -504,7 +490,7 @@ void handle_put_camera_tag_assignments(const http_request_t *req,
     const char *tag_uuids[CAMERA_TAG_MAX_ASSIGNMENTS];
     for (int i = 0; i < count; i++) {
         cJSON *item = cJSON_GetArrayItem(items, i);
-        if (!cJSON_IsString(item) || !valid_uuid_string(item->valuestring)) {
+        if (!cJSON_IsString(item) || !lightnvr_uuid_is_valid(item->valuestring)) {
             cJSON_Delete(body);
             http_response_set_json_error(res, 400,
                                          "tag_uuids contains an invalid UUID");
