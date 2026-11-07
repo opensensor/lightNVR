@@ -638,17 +638,17 @@ endif()
 include_directories(${LIGHTNVR_INCLUDE_DIRS})
 
 # Define source files, excluding SOD sources which are built separately
-file(GLOB CORE_SOURCES "src/core/*.c")
+file(GLOB CONFIGURE_DEPENDS CORE_SOURCES "src/core/*.c")
 # Exclude main.c from CORE_SOURCES so it is not compiled into lightnvr_lib.
 # Test executables link against lightnvr_lib and provide their own main(); having
 # main.c.o inside the library would produce a duplicate-symbol link error.
 # main.c is compiled directly into the lightnvr executable via add_executable().
 list(FILTER CORE_SOURCES EXCLUDE REGEX ".*core/main\\.c$")
 message(STATUS "Excluding main.c from CORE_SOURCES (library build)")
-file(GLOB DATABASE_SOURCES "src/database/*.c")
-file(GLOB STORAGE_SOURCES "src/storage/*.c")
-file(GLOB UTILS_SOURCES "src/utils/*.c")
-file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
+file(GLOB CONFIGURE_DEPENDS DATABASE_SOURCES "src/database/*.c")
+file(GLOB CONFIGURE_DEPENDS STORAGE_SOURCES "src/storage/*.c")
+file(GLOB CONFIGURE_DEPENDS UTILS_SOURCES "src/utils/*.c")
+file(GLOB_RECURSE CONFIGURE_DEPENDS WEB_SOURCES "src/web/*.c")
 
 # Filter web sources - exclude libuv sources (they're added separately via LIBUV_SERVER_SOURCES)
 list(FILTER WEB_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
