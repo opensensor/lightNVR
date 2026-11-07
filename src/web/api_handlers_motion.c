@@ -191,8 +191,14 @@ static void *motion_pulse_worker(void *arg) {
         req.tv_sec = chunk_ms / 1000;
         req.tv_nsec = (long)(chunk_ms % 1000) * 1000000L;
 
-        while (nanosleep(&req, &req) == -1 && errno == EINTR) {
-            /* Retry sleeping the remaining time in req. */
+        int rc;
+        do {
+            rc = nanosleep(&req, &req);
+        } while (rc == -1 && errno == EINTR);
+        if (rc == -1) {
+            log_warn("Pulse sleep failed for '%s': %s; ending pulse",
+                     task->stream_name, strerror(errno));
+            break;
         }
 
         remaining_ms -= chunk_ms;

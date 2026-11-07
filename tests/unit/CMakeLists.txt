@@ -665,3 +665,12 @@ target_link_options(test_motion_generation_registry PRIVATE
     "-Wl,--wrap=unified_detection_notify_motion"
     "-Wl,--wrap=process_motion_event")
 set_tests_properties(test_motion_generation_registry PROPERTIES TIMEOUT 10)
+
+add_layer3_test(test_motion_pulse_sleep CI_UNIT CI_SANITIZER)
+target_link_options(test_motion_pulse_sleep PRIVATE
+    "-Wl,--wrap=nanosleep"
+    "-Wl,--wrap=usleep"
+    "-Wl,--wrap=close_external_motion_detections"
+    "-Wl,--wrap=unified_detection_notify_motion"
+    "-Wl,--wrap=process_motion_event")
+set_tests_properties(test_motion_pulse_sleep PROPERTIES TIMEOUT 10)
