@@ -253,12 +253,14 @@ export function TextInputDialog({
   const [value, setValue] = useState(initialValue);
   const [checked, setChecked] = useState(checkboxInitialValue);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     setValue(initialValue);
     setChecked(checkboxInitialValue);
     setSubmitting(false);
+    setSubmitError(null);
   }, [checkboxInitialValue, initialValue, isOpen]);
 
   const submit = async (event: Event) => {
@@ -266,9 +268,12 @@ export function TextInputDialog({
     const trimmed = value.trim();
     if (!trimmed || submitting) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const result = await onSubmit(trimmed, checked);
       if (result !== false) onClose();
+    } catch {
+      setSubmitError('Failed to save changes. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -312,13 +317,16 @@ export function TextInputDialog({
             </label>
           )}
         </div>
-        <footer className="flex justify-end gap-3 border-t border-border px-5 py-4">
-          <button type="button" className="btn-secondary" disabled={submitting} onClick={onClose}>
-            {cancelLabel}
-          </button>
-          <button type="submit" className="btn-primary" disabled={submitting || !value.trim()}>
-            {confirmLabel}
-          </button>
+        <footer className="border-t border-border px-5 py-4">
+          {submitError && <p className="mb-3 text-sm text-destructive">{submitError}</p>}
+          <div className="flex justify-end gap-3">
+            <button type="button" className="btn-secondary" disabled={submitting} onClick={onClose}>
+              {cancelLabel}
+            </button>
+            <button type="submit" className="btn-primary" disabled={submitting || !value.trim()}>
+              {confirmLabel}
+            </button>
+          </div>
         </footer>
       </form>
     </ModalShell>
