@@ -1,3 +1,4 @@
+import { administrationJSON } from '../../../api/administration.ts';
 import { listCameraCollections, listFleetLocations, listFleetTags } from '../../../api/fleet.ts';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
@@ -198,7 +199,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }: ApiKeyModa
     setLoadError('');
     try {
       const [actionResponse, tokenResponse, collectionResponse, locationResponse, tagResponse] = await Promise.all([
-        fetchJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
+        administrationJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
         fetchJSON<ApiTokensResponse>(`/api/authorization/users/${encodeURIComponent(currentUser.id)}/tokens`, { headers: getAuthHeaders(), cache: 'no-store' }),
         listCameraCollections({headers: getAuthHeaders(), cache: 'no-store'}),
         listFleetLocations({headers: getAuthHeaders(), cache: 'no-store'}),
@@ -294,7 +295,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }: ApiKeyModa
   const generateLegacyKey = async () => {
     setLegacyGenerating(true);
     try {
-      const response = await fetchJSON<LegacyApiKeyResponse>(`/api/auth/users/${encodeURIComponent(currentUser.id)}/api-key`, {
+      const response = await administrationJSON<LegacyApiKeyResponse>(`/api/auth/users/${encodeURIComponent(currentUser.id)}/api-key`, {
         method: 'POST',
         headers: getAuthHeaders(),
         timeout: 20000,

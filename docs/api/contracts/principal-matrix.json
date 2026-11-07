@@ -347,5 +347,59 @@
       "Malformed query/catalog responses never render payloads; explicit Retry recovers.",
       "Basic and legacy keys preserve existing access; scoped tokens intersect owner authority."
     ]
+  },
+  "identity_administration": {
+    "operations": [
+      "listAdminUsers",
+      "createAdminUser",
+      "getAdminUser",
+      "updateAdminUser",
+      "deleteAdminUser",
+      "createLegacyApiKey",
+      "setUserPasswordLock",
+      "clearUserLoginLockout",
+      "listAuthorizationActions",
+      "simulateAuthorization",
+      "listAuthorizationRoles",
+      "createAuthorizationRole",
+      "updateAuthorizationRole",
+      "deleteAuthorizationRole",
+      "getUserAuthorizationPolicy",
+      "setUserAuthorizationPolicy",
+      "listAuditEvents",
+      "exportAuditEvents",
+      "getAuditSettings",
+      "updateAuditSettings"
+    ],
+    "cases": [
+      {
+        "principal": "session / Basic / legacy key owner",
+        "access": "self username/email and legacy-key rotation; other targets require users.manage"
+      },
+      {
+        "principal": "non-scoped users.manage",
+        "access": "user CRUD, locks, roles/policy and simulation; delegation limited by caller actions/scope; stale revision and self-lockout rejected"
+      },
+      {
+        "principal": "scoped users.manage",
+        "access": "user read/update/delete/locks, catalog and simulation intersect owner authority; no create-user, role/policy or legacy-key operation"
+      },
+      {
+        "principal": "effective system.admin, including scoped token intersection",
+        "access": "audit list/export/settings; users.manage alone does not grant audit"
+      },
+      {
+        "principal": "anonymous / invalid / revoked token",
+        "access": "401; no operation projection or mutation"
+      }
+    ],
+    "acceptance": [
+      "Every one of the twenty operation IDs has independently authored projection and real response checks.",
+      "Lists omit credentials; unrestricted legacy-key issuance cannot escape scoped-token bounds.",
+      "Denied policy/user writes preserve durable state except expected authentication activity/audit.",
+      "CSV exports return real quoted paginated bytes and neutralize spreadsheet formulas.",
+      "UsersView and policy/roles/audit consumers reject malformed payloads and never automatically retry writes.",
+      "User CRUD and password lock are separate writes; partial lock failure refreshes users and never claims complete success."
+    ]
   }
 }
