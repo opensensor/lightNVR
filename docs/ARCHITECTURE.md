@@ -345,7 +345,7 @@ Camera (RTSP/ONVIF)
 
 ## Database Schema
 
-LightNVR uses SQLite for data storage. The schema is managed via numbered migration files in `db/migrations/` (0001 through 0022). Below is the cumulative schema after all migrations.
+LightNVR uses SQLite for data storage. The schema is managed via numbered migration files in `db/migrations/` (currently 0001 through 0094). The migration files are the source of truth for the exact current schema; the SQL excerpts below are representative for architectural context.
 
 ### Streams Table
 
