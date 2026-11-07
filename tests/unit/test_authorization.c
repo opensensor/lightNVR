@@ -1871,9 +1871,9 @@ void test_investigation_recording_preview_explains_action_permissions(void) {
 
 /*
  * The effective mask is what stops a policy manager from minting authority it
- * does not hold, so it must reflect grants, legacy roles, and token narrowing.
+ * does not hold, so it must reflect grants and legacy roles.
  */
-void test_effective_action_mask_reflects_grants_and_tokens(void) {
+void test_effective_action_mask_reflects_grants_and_roles(void) {
     int64_t user_id = 0;
     TEST_ASSERT_EQUAL_INT(
         0, db_auth_create_user("maskuser", "password123", NULL,
