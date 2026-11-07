@@ -343,33 +343,73 @@ export function useToast() {
   return context;
 }
 
-// Singleton instance for use outside of React components
-let toastInstance: ToastContainer | null = null;
+// Imperative bridge for use outside React components
+let enqueueToast: ((message: string, type: string, duration: number) => number) | null = null;
+let toastIdCounter = 0;
+
+function setToastEnqueuer(fn: (message: string, type: string, duration: number) => number) {
+  enqueueToast = fn;
+}
+
+function clearToastEnqueuer(fn: (message: string, type: string, duration: number) => number) {
+  if (enqueueToast === fn) {
+    enqueueToast = null;
+  }
+}
+
+function ToastBridge() {
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    const enqueuer = (message: string, type: string, duration: number) => {
+      addToast({
+        id: ++toastIdCounter,
+        message,
+        type,
+        duration,
+      });
+      return toastIdCounter;
+    };
+
+    setToastEnqueuer(enqueuer);
+    return () => clearToastEnqueuer(enqueuer);
+  }, [addToast]);
+
+  return null;
+}
 
 /**
  * Initialize the toast system
  * This should be called once at app startup
  */
-export function initToasts(): ToastContainer {
-  if (!toastInstance) {
-    // Create a container element for the toast container
-    const containerElement = document.createElement('div');
+export function initToasts() {
+  let containerElement = document.getElementById('toast-container-root');
+  if (!containerElement) {
+    containerElement = document.createElement('div');
     containerElement.id = 'toast-container-root';
     document.body.appendChild(containerElement);
-    
-    // Render the ToastContainer into the DOM
-    // render() returns nothing; this code assumes it returns the instance (bug logged in the migration plan).
-    toastInstance = render(<ToastContainer />, containerElement) as unknown as ToastContainer;
-    
+
+    render(
+      <ToastProvider>
+        <ToastBridge />
+        <ToastContainer />
+      </ToastProvider>,
+      containerElement
+    );
+
     console.log('Toast system initialized');
   }
-  return toastInstance;
 }
 
 // Export functions for use outside of React components
 export function showToast(message: string, type: string = 'info', duration: number = 4000) {
-  const instance = toastInstance || initToasts();
-  return instance.addToast(message, type, duration);
+  if (!enqueueToast) {
+    initToasts();
+  }
+  if (!enqueueToast) {
+    throw new Error('Toast system is not ready. Ensure ToastProvider is mounted before calling showToast.');
+  }
+  return enqueueToast(message, type, duration);
 }
 
 export function showSuccessToast(message: string, duration: number = 4000) {
