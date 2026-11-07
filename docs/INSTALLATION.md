@@ -691,7 +691,9 @@ docker rm lightnvr
 # Remove the image
 docker rmi ghcr.io/opensensor/lightnvr:latest
 
-# Remove volumes (optional - this will delete all data)
-rm -rf /path/to/config
-rm -rf /path/to/data
+# Remove named volumes (optional - this will delete all data)
+docker volume rm lightnvr-config
+docker volume rm lightnvr-database
+docker volume rm lightnvr-recordings
+docker volume rm lightnvr-models
 ```
