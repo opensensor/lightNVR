@@ -29,6 +29,8 @@ void setUp(void) {
     log_capture[0] = '\0';
 }
 void tearDown(void) {
+    if (subscriptions[0].curl) curl_easy_cleanup(subscriptions[0].curl);
+    memset(&subscriptions[0], 0, sizeof(subscriptions[0]));
     initialized = false;
     if (curl_handle) { curl_easy_cleanup(curl_handle); curl_handle = NULL; }
     if (origin >= 0) close(origin);
@@ -279,6 +281,85 @@ static void test_invalid_operation_is_rejected_before_transfer(void) {
     TEST_ASSERT_EQUAL_INT(0, poll(&pending, 1, 0));
 }
 
+static void test_subscription_origin_requires_matching_scheme_host_and_effective_port(void) {
+    const struct { const char *camera; const char *endpoint; bool allowed; } cases[] = {
+        {"http://camera", "http://CAMERA:80/pull", true},
+        {"https://camera:443", "https://camera/pull", true},
+        {"http://[::1]:8080", "http://[::1]:8080/pull", true},
+        {"https://camera:443", "http://camera:443/pull", false},
+        {"http://camera:80", "https://camera:80/pull", false},
+        {"http://camera", "http://camera:8080/pull", false},
+        {"http://camera", "http://other/pull", false},
+        {"http://camera", "http://user:secret@camera/pull", false},
+        {"http://camera", "http://camera/pull\r\nInjected: x", false},
+        {"http://camera", "ftp://camera:80/pull", false},
+        {"http://camera", "//camera/pull", false},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+        TEST_ASSERT_EQUAL_INT_MESSAGE(cases[i].allowed,
+            subscription_address_matches_camera_origin(cases[i].camera, cases[i].endpoint), cases[i].endpoint);
+}
+
+static void test_rejected_subscription_never_contacts_target_or_legacy_fallback(void) {
+    unsigned short port;
+    origin = listen_local(&port);
+    destination = listen_local(&destination_port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, destination);
+    onvif_subscription_t *sub = &subscriptions[0];
+    memset(sub, 0, sizeof(*sub));
+    snprintf(sub->camera_url, sizeof(sub->camera_url), "http://127.0.0.1:%u", port);
+    strcpy(sub->username, "fixture-user");
+    strcpy(sub->password, "fixture-password");
+    const onvif_operation_t operations[] = {ONVIF_OPERATION_PULL_MESSAGES, ONVIF_OPERATION_RENEW, ONVIF_OPERATION_UNSUBSCRIBE};
+    for (int variant = 0; variant < 4; variant++) {
+        snprintf(sub->subscription_address, sizeof(sub->subscription_address),
+                 variant == 0 ? "http://127.0.0.1:%u/stolen" :
+                 variant == 1 ? "https://127.0.0.1:%u/stolen" :
+                 variant == 2 ? "ftp://127.0.0.1:%u/stolen" : "//127.0.0.1:%u/stolen",
+                 variant == 1 ? port : destination_port);
+        for (size_t i = 0; i < sizeof(operations) / sizeof(operations[0]); i++) {
+            bool dropped = true;
+            TEST_ASSERT_NULL(send_subscription_request(sub, "<Fixture/>", operations[i], &dropped));
+            TEST_ASSERT_FALSE(dropped);
+        }
+    }
+    struct pollfd pending[] = {{.fd = origin, .events = POLLIN}, {.fd = destination, .events = POLLIN}};
+    TEST_ASSERT_EQUAL_INT(0, poll(pending, 2, 0));
+    TEST_ASSERT_NULL(sub->curl);
+}
+
+static void assert_subscription_request_target(bool relative) {
+    unsigned short port;
+    origin = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    snprintf(advertised_endpoint, sizeof(advertised_endpoint), "http://127.0.0.1:%u", port);
+    onvif_subscription_t *sub = &subscriptions[0];
+    memset(sub, 0, sizeof(*sub));
+    strcpy(sub->camera_url, advertised_endpoint);
+    snprintf(sub->subscription_address, sizeof(sub->subscription_address), "%s/onvif/fixture?x=1&y=2", advertised_endpoint);
+    if (relative) strcpy(sub->subscription_address, "/legacy/fixture?x=1&y=2");
+    pthread_t worker;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, operation_server, NULL));
+    bool ok = true;
+    for (size_t i = 0; i < sizeof(fixture_operations) / sizeof(fixture_operations[0]); i++) {
+        char *response = send_subscription_request(sub, "<Fixture/>", fixture_operations[i], NULL);
+        if (!response || strcmp(response, "<Envelope/>") != 0) ok = false;
+        free(response);
+    }
+    pthread_join(worker, NULL);
+    TEST_ASSERT_EQUAL_INT(0, server_failed);
+    TEST_ASSERT_TRUE(ok);
+}
+
+static void test_same_origin_subscription_keeps_full_request_target(void) {
+    assert_subscription_request_target(false);
+}
+
+static void test_relative_subscription_preserves_camera_local_fallback(void) {
+    assert_subscription_request_target(true);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_every_operation_preserves_action_headers_and_transport_destination);
@@ -288,5 +369,9 @@ int main(void) {
     RUN_TEST(test_invalid_endpoint_is_rejected_before_transfer);
     RUN_TEST(test_trace_never_logs_headers_or_curl_notes);
     RUN_TEST(test_duplicate_fallback_logs_only_fixed_service_name);
+    RUN_TEST(test_subscription_origin_requires_matching_scheme_host_and_effective_port);
+    RUN_TEST(test_rejected_subscription_never_contacts_target_or_legacy_fallback);
+    RUN_TEST(test_same_origin_subscription_keeps_full_request_target);
+    RUN_TEST(test_relative_subscription_preserves_camera_local_fallback);
     return UNITY_END();
 }
