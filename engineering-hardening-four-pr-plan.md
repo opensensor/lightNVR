@@ -25,7 +25,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Complete S1 after merged S1a. Reproduce audio negotiation by live-only/listen/talk/combined principals and scoped tokens. Enforce actual directions for HTTP/WebSocket WebRTC, MSE and HLS; bind camera/substream identity and established peers to bounded authority, including expiry/revocation. Close alternate paths using the parser/fork rather than untrusted browser flags. Preserve video-only and authorized audio playback.
 - **acceptance_criteria**: Real owned media proves denied receive/transmit and no alternate negotiation bypass; established peers cease access within a documented bound after session/token/policy revocation. No unenforced action is advertised as enforced without all-path evidence. Record external-go2rtc deployment limits.
 - **validation**: RED behavioral evidence followed by GREEN media/protocol tests, relevant native sanitizer suites, fork Go tests/race checks if changed, and browser compatibility tests.
-- **status**: Published for review — [#835](https://github.com/opensensor/lightNVR/pull/835), supported by [go2rtc #4](https://github.com/opensensor/go2rtc/pull/4). Hosted review follow-up in progress.
+- **status**: Published for review — [#835](https://github.com/opensensor/lightNVR/pull/835), supported by [go2rtc #4](https://github.com/opensensor/go2rtc/pull/4). Coverage follow-up pushed: local changed-line coverage 215/218 (98.62%); all 144 originally highlighted proxy/thread/WebSocket lines covered. Hosted aggregation pending.
 - **log**: Real HTTP/WebSocket WebRTC directions and bounded revocation, MSE/HLS filtering, native HLS demux and global audio-disable enforcement qualified with owned fixtures. See media-authority evidence receipt.
 
 ### P2: Identity administration, policy and audit contracts (F3)
@@ -52,7 +52,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Enumerate every corresponding residual route. Separate reads from backup/process-control/log-clear writes, public/bootstrap behavior from authenticated policy, and acknowledgement from completion. Exercise process control in isolated child processes.
 - **acceptance_criteria**: Preserve zeros/credentials/revisions and deployment feature variants; validate backup bytes, process outcomes and consumer failure handling. No tests affect an operator instance.
 - **validation**: Real-server principal matrix, owned backup/process fixtures, native regressions and schema/consumer checks.
-- **status**: Integrated locally; final combined validation and publication in progress.
+- **status**: Published for review in [#838](https://github.com/opensensor/lightNVR/pull/838); integrated validation recorded below.
 - **log**: 23 operations; actual restart/re-exec and shutdown, isolated backup bytes, 23-operation credential matrix, settings/system browser rejection and recovery, snapshot-bound bootstrap discovery, optimized+ASan snapshot/projection tests. See `docs/api/contracts/system-evidence.md`.
 
 ### P4b: Stream lifecycle, ONVIF and device/protocol contracts (F9/F10)
@@ -61,7 +61,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Enumerate all residual stream/device/media registrations. Use owned SOAP/media fixtures for create/test/delete/refresh/recording controls, discovery/device operations, PTZ/imaging/daynight and protocol response variants. Preserve captured identities and create/edit intent.
 - **acceptance_criteria**: Invalid/denied requests have no configuration or device effects; actual protocol bodies/ranges/signaling align with the contract. Physical multicast/vendor interoperability remains separately qualified.
 - **validation**: Independent SOAP/media bytes, real-server negative mutations, typed consumer tests, native/sanitizer checks.
-- **status**: Integrated — device `dd490a9d`, media lifecycle `3deff6c1`, with redirect/fixture follow-ups; final validation in progress.
+- **status**: Integrated — device `dd490a9d`, media lifecycle `3deff6c1`, with redirect/fixture follow-ups; published in #838.
 
 - **decomposition**: P4b-media owns 23 registrations (15 typed JSON operations and eight explicit media-protocol dispositions); P4b-device owns 22 PTZ, imaging/daynight and ONVIF operations. Each worker uses an isolated worktree and shared outputs are reconciled serially.
 
@@ -71,7 +71,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Cover every residual storage registration using owned destinations. Preserve current global storage.configure policy for migration operations; do not invent job-owner/cancellation semantics. Test asynchronous completion independently of acknowledgements.
 - **acceptance_criteria**: Credential redaction, revisions, reference integrity, protected media, denial no-job/no-file effects and retry/cancel catalog consistency. Remote-provider qualification remains explicit.
 - **validation**: Real-server schemas/principals, owned local storage fault/recovery fixtures, UI adapters, native sanitizers.
-- **status**: Integrated — `fe32298a` via `6a30f30b`; final validation in progress.
+- **status**: Integrated — `fe32298a` via `6a30f30b`; published in #838.
 - **log**: 28 operations; cleanup rejects malformed/trailing JSON before scheduling; owned target/policy/migration/archive bytes and lifecycle, browser and sanitizer checks pass. See storage evidence receipt.
 
 ### P4d: Event routing contracts (F8)
@@ -80,7 +80,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Cover all residual event operations. Reuse selector and settings semantics; observe actual delivery with an owned local sink.
 - **acceptance_criteria**: Secret redaction, stale revisions/private collection references, suppression/retry and denied no-delivery behavior; validate actual consumer boundaries.
 - **validation**: Real delivery and negative-effect fixtures, schema projection, domain/native/browser tests.
-- **status**: Integrated locally; final combined validation and publication in progress.
+- **status**: Published for review in [#838](https://github.com/opensensor/lightNVR/pull/838); integrated validation recorded below.
 - **log**: 13 operations; real MQTT bytes/PUBACK retry/cooldown; native no-effects and browser malformed-ack/revision-preview cases; 12 optimized +3 sanitizer suites. See events evidence receipt.
 
 ### P4e: Investigations and residual recordings/detections (F11)
@@ -89,7 +89,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Enumerate each residual operation; preserve captured UUID and legacy fallback across aggregation/enrichment. Validate concrete media/image/export bytes and ranges beside JSON.
 - **acceptance_criteria**: Hidden rows/counts/facets remain hidden, name reuse cannot widen authority, invalid/denied writes have no durable effects, file and streaming responses are independently verified.
 - **validation**: Real-server principal/no-effects tests, media/image/export fixtures, typed consumers, native sanitizers.
-- **status**: Integrated — `e106f7f8` and snapshot capture revalidation `54f8fdce`; final validation in progress.
+- **status**: Integrated — `e106f7f8` and snapshot capture revalidation `54f8fdce`; published in #838.
 
 ### P4f: Final integration and four-PR publication
 - **depends_on**: [P1, P2, P3, P4a, P4b, P4c, P4d, P4e]
@@ -97,7 +97,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Reconcile the current registered operations (240 at baseline, plus any new internal registrations), including explicit protocol/unsupported dispositions instead of blanket coverage. Integrate shared changes, run fresh full validation, and publish four reviewable PRs with base relationships and evidence. Reconcile stale planning headers.
 - **acceptance_criteria**: Four workstreams published separately, no missing/duplicate/stale inventory entries, drift and full suites pass, evidence distinguishes local/hosted/device limits, no PRs merged.
 - **validation**: Canonical/projected lint, generation/drift, native optimized/sanitizer, frontend/root/contract typing, API/browser/asset checks and relevant recovery/media suites. Inspect hosted failures and correct reproducible issues.
-- **status**: In progress — first three PRs published; remaining family integration and hosted follow-up continue.
+- **status**: Complete — four PRs published and combined local validation passed. Hosted results remain revision-specific; corrected old fixture failures are included in #838. See the [integration receipt](docs/api/contracts/integration-evidence.md).
 
 ## Integrated review inventory
 
@@ -107,11 +107,12 @@ one internal lease callback. `coverage-inventory.test.mjs` checks registration,
 source digest, unique operation identity, canonical mapping and explicit exclusions.
 `partial=true` remains because those nine routes are outside projected OpenAPI.
 
-The local combined checkpoint passed 117 pre-device/evidence API cases, then
-14 device/evidence cases; 98 Release native suites and 75 sanitizer suites passed.
-The final run includes the remaining stream lifecycle changes and review fixes.
-Evidence is indexed in `docs/api/contracts/*-evidence.md`. Hosted results belong
-to their exact PR revisions; earlier failures and their fixes are recorded there.
+The combined run passed all 137 API cases, 44 browser contract cases, 956 web
+unit tests, 69 component browser tests, 98 Release native suites (including focused corrected projection
+reruns), and 75 sanitizer suites. Final browser status and measured asset sizes
+are recorded in the [integration receipt](docs/api/contracts/integration-evidence.md).
+Hosted results belong to their exact PR revisions; domain evidence records
+reproduced regressions, fixes and qualification limits.
 
 Remaining beyond this wave: representative active-media capacity measurements
 (F13), longer recovery/storage/upgrade and physical-device qualification (F14),

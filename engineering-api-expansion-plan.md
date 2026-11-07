@@ -4,8 +4,10 @@ Status (2026-11-07): F1 authentication/MFA and F2 fleet reads are merged;
 F12/F16 recording integrity and the later security corrections are merged.
 S1, F3 and F4 are in review as [#835](https://github.com/opensensor/lightNVR/pull/835),
 [#836](https://github.com/opensensor/lightNVR/pull/836), and
-[#837](https://github.com/opensensor/lightNVR/pull/837). F5–F11 are implemented locally
-as the fourth PR in [the current execution plan](engineering-hardening-four-pr-plan.md).
+[#837](https://github.com/opensensor/lightNVR/pull/837). F5–F11 are in review as
+[#838](https://github.com/opensensor/lightNVR/pull/838); the
+[current execution plan](engineering-hardening-four-pr-plan.md) and
+[integration receipt](docs/api/contracts/integration-evidence.md) record validation.
 F13 capacity measurements and F14 extended qualification remain outstanding;
 F15's final production-level acceptance depends on those measurements.
 

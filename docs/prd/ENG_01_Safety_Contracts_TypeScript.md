@@ -4,9 +4,11 @@
 recording integrity and fleet reads are merged. The four-workstream follow-up is
 in review: [media authority #835](https://github.com/opensensor/lightNVR/pull/835),
 [identity administration #836](https://github.com/opensensor/lightNVR/pull/836),
-and [fleet writes #837](https://github.com/opensensor/lightNVR/pull/837); remaining
-API families are implemented in the fourth PR and undergoing combined validation. These review branches are
-not yet claims about released main.
+[fleet writes #837](https://github.com/opensensor/lightNVR/pull/837), and
+[remaining API families #838](https://github.com/opensensor/lightNVR/pull/838).
+The [integration receipt](../api/contracts/integration-evidence.md) records local
+validation and qualification limits. These review branches are not yet claims
+about released main.
 **Created**: 2026-10-31
 **Reconciled**: 2026-11-07 against main at `84ed0174` and the current review stack.
 **Owner**: LightNVR maintainers; name an owner when starting each implementation slice.
