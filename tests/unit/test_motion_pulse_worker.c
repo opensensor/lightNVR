@@ -102,9 +102,10 @@ static void test_superseded_pulse_has_no_stop_effects(void) {
     TEST_ASSERT_EQUAL_INT(0, concurrent_attempts);
 }
 
-static void test_untracked_pulse_still_serializes_stop_effects(void) {
+static void test_untracked_pulse_has_no_stop_effects(void) {
     run_worker(0, true);
-    TEST_ASSERT_EQUAL_INT(3, concurrent_attempts);
+    TEST_ASSERT_EQUAL_INT(0, close_calls + notify_calls + fanout_calls);
+    TEST_ASSERT_EQUAL_INT(0, concurrent_attempts);
     TEST_ASSERT_EQUAL_INT(0, accepted_actions);
 }
 
@@ -116,6 +117,48 @@ static void test_untracked_stale_pulse_has_no_stop_effects_after_newer_action(vo
     TEST_ASSERT_EQUAL_INT(0, close_calls + notify_calls + fanout_calls);
     TEST_ASSERT_EQUAL_INT(0, concurrent_attempts);
     TEST_ASSERT_EQUAL_INT(0, accepted_actions);
+}
+
+static stream_config_t fixture_camera;
+stream_handle_t __wrap_get_stream_by_name(const char *name) {
+    return strcmp(name, "camera") == 0 ? (stream_handle_t)&fixture_camera : NULL;
+}
+int __wrap_get_stream_config(stream_handle_t handle, stream_config_t *config) {
+    if (handle != (stream_handle_t)&fixture_camera) return -1;
+    *config = fixture_camera;
+    return 0;
+}
+int __wrap_httpd_authorize_stream_action(const http_request_t *req, http_response_t *res,
+                                         authorization_action_t action, const char *name) {
+    (void)req; (void)res; (void)action; (void)name;
+    return 1;
+}
+
+static void test_full_table_rejects_request_before_motion_side_effects(void) {
+    pthread_mutex_lock(&g_pulse_gen_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        snprintf(g_pulse_gen[i].name, sizeof(g_pulse_gen[i].name), "occupied-%d", i);
+        g_pulse_gen[i].generation = 1;
+    }
+    g_pulse_gen_count = MAX_STREAMS;
+    pthread_mutex_unlock(&g_pulse_gen_mutex);
+    memset(&fixture_camera, 0, sizeof(fixture_camera));
+    safe_strcpy(fixture_camera.name, "camera", sizeof(fixture_camera.name), 0);
+    safe_strcpy(fixture_camera.camera_uuid, "captured-camera", sizeof(fixture_camera.camera_uuid), 0);
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    char body[] = "{\"stream\":\"camera\",\"action\":\"start\"}";
+    req.method = HTTP_METHOD_POST;
+    req.body = body;
+    req.body_len = strlen(body);
+    handle_post_motion_trigger(&req, &res);
+    int status = res.status_code;
+    http_response_free(&res);
+    TEST_ASSERT_EQUAL_INT(503, status);
+    TEST_ASSERT_EQUAL_INT(0, close_calls + notify_calls + fanout_calls);
+    TEST_ASSERT_EQUAL_INT(0, concurrent_attempts);
 }
 
 static void test_annotation_only_pulse_skips_recording_notification(void) {
@@ -131,8 +174,9 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_current_pulse_serializes_every_stop_effect);
     RUN_TEST(test_superseded_pulse_has_no_stop_effects);
-    RUN_TEST(test_untracked_pulse_still_serializes_stop_effects);
+    RUN_TEST(test_untracked_pulse_has_no_stop_effects);
     RUN_TEST(test_untracked_stale_pulse_has_no_stop_effects_after_newer_action);
+    RUN_TEST(test_full_table_rejects_request_before_motion_side_effects);
     RUN_TEST(test_annotation_only_pulse_skips_recording_notification);
     return UNITY_END();
 }

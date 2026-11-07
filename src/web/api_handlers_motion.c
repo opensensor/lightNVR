@@ -117,11 +117,8 @@ static uint64_t pulse_gen_increment(const char *stream_name) {
         g_pulse_gen[i].generation = 1;
         return 1;
     }
-    /* Table full (shouldn't happen with at most MAX_STREAMS streams).
-     * Return 0 — the reserved "generation tracking disabled" sentinel.
-     * The pulse worker treats generation==0 as "always fire the stop",
-     * which is safer than leaving the stream permanently in motion-active. */
-    log_warn("pulse_gen table full; pulse stop for '%s' will fire unconditionally",
+    /* Reject before dispatch when supersession cannot be tracked. */
+    log_warn("pulse_gen table full; cannot track motion action for '%s'",
              stream_name);
     return 0;
 }
@@ -130,9 +127,8 @@ typedef struct {
     char     stream_name[MAX_STREAM_NAME];
     char     camera_uuid[CAMERA_UUID_STRING_SIZE];
     int      duration_ms;
-    /* Generation counter snapshot taken when this pulse was scheduled.
-     * 0 is the reserved sentinel meaning "generation tracking disabled":
-     * the worker will fire the stop unconditionally in that case. */
+    /* Nonzero generation snapshot taken when this pulse was scheduled.
+     * Zero is invalid: an untracked worker must never stop newer motion. */
     uint64_t generation;
     /* False when the stream has no detection-based recording: there is no UDT
      * to notify, so the worker only does the cross-stream fan-out. */
@@ -155,19 +151,13 @@ static void *motion_pulse_worker(void *arg) {
         usec -= chunk;
     }
 
-    /* Check whether a newer action has superseded this pulse.
-     * generation==0 means tracking was disabled (table-full fallback);
-     * in that case always fire the stop rather than leave motion active. */
+    /* Only a tracked, current generation may emit a deferred stop. */
     bool still_current;
     // Keep validation and all stop effects atomic with respect to a new
     // trigger incrementing the generation; otherwise a stale stop can win.
     pthread_mutex_lock(&g_pulse_gen_mutex);
-    if (task->generation == 0) {
-        still_current = true;
-    } else {
-        uint64_t current_gen = pulse_gen_get(task->stream_name);
-        still_current = (current_gen == task->generation);
-    }
+    uint64_t current_gen = pulse_gen_get(task->stream_name);
+    still_current = task->generation != 0 && current_gen == task->generation;
 
     if (still_current) {
         time_t now = time(NULL);
@@ -465,6 +455,10 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     pthread_mutex_lock(&g_pulse_gen_mutex);
     uint64_t new_gen = pulse_gen_increment(stream_name);
     pthread_mutex_unlock(&g_pulse_gen_mutex);
+    if (new_gen == 0) {
+        http_response_set_json_error(res, 503, "Motion trigger tracking capacity exhausted");
+        return;
+    }
 
     /* Record the reported objects before arming motion so a detection-triggered
      * recording can pick them up via the existing update_detections_recording_id
