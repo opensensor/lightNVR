@@ -498,13 +498,16 @@ export function LiveOperatorNavigator({
                     toggleExpanded(node.uuid);
                   }
                 }}
-                onClick={() => selectLocation(node.uuid)}
+                onClick={() => {
+                  selectLocation(node.uuid);
+                  if (node.children.length > 0) toggleExpanded(node.uuid);
+                }}
                 onDblClick={() => loadLocation(node.uuid)}>
                 <span className="live-location-name">
                   {node.children.length > 0 && (
-                    <span aria-hidden="true" onClick={(event) => {
-                      event.stopPropagation(); toggleExpanded(node.uuid);
-                    }}>{expanded.has(node.uuid) ? '▾' : <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">▸</span>}</span>
+                    <span aria-hidden="true">
+                      {expanded.has(node.uuid) ? '▾' : <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">▸</span>}
+                    </span>
                   )}
                   <span dir="ltr" className="rtl-flip inline-block">{locationIcon(node.type)}</span><span>{node.name}</span>
                 </span>
