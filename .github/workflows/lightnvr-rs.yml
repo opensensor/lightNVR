@@ -103,7 +103,7 @@ jobs:
       - name: Build lightnvr-rs
         run: *in_image
         env:
-          STEP: cargo build --release --manifest-path rust/Cargo.toml
+          STEP: cd rust && cargo build --release && cd .. && python3 tools/rust-transpile/abi-audit.py
 
       - name: Smoke and API contract tests against lightnvr-rs
         # /tmp is tmpfs: overlay storage trips storage placement for C and Rust alike.
@@ -115,6 +115,14 @@ jobs:
             LIGHTNVR_CONTRACT_BIN=/work/rust/target/release/lightnvr-rs
             npx playwright test -c tests/contracts/playwright.config.ts --project=api
             --workers=1 --retries=0 --forbid-only --reporter=list
+
+      - name: Upload contract results and server logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lightnvr-rs-contract-results
+          path: test-results/
+          retention-days: 14
 
       - name: Detect regenerated changes
         id: diff

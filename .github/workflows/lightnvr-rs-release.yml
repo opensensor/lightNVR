@@ -70,7 +70,8 @@ jobs:
             -e HOME=/tmp -e CARGO_HOME=/tmp/cargo-home -e LIGHTNVR_GIT_COMMIT="${GITHUB_SHA::7}" \
             -v "$GITHUB_WORKSPACE:/work" -w /work "$TRANSPILE_IMAGE" bash -euo pipefail -c '
               python3 tools/rust-transpile/generate.py --native --check
-              cargo build --release --locked --manifest-path rust/Cargo.toml
+              (cd rust && cargo build --release --locked)
+              python3 tools/rust-transpile/abi-audit.py
               npm ci --ignore-scripts
               node tools/rust-transpile/smoke.mjs rust/target/release/lightnvr-rs'
 

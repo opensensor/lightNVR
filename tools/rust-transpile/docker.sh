@@ -24,7 +24,8 @@ case "${cmd[0]}" in
   generate) cmd=(python3 tools/rust-transpile/generate.py --native "${cmd[@]:1}") ;;
   build) cmd=(bash -euo pipefail -c '
       python3 tools/rust-transpile/generate.py --native
-      cargo build --release --manifest-path rust/Cargo.toml
+      (cd rust && cargo build --release)
+      python3 tools/rust-transpile/abi-audit.py
       node tools/rust-transpile/smoke.mjs rust/target/release/lightnvr-rs') ;;
 esac
 
