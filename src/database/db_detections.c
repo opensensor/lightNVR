@@ -55,6 +55,11 @@ static int store_detections_with_source(const char *camera_uuid,
                  stream_name, result);
         return -1;
     }
+
+    if (result->count < 0 || result->count > MAX_DETECTIONS) {
+        log_error("Invalid detection count: %d (expected 0..%d)", result->count, MAX_DETECTIONS);
+        return -1;
+    }
     
     // Use current time if timestamp is 0
     if (timestamp == 0) {
