@@ -198,20 +198,29 @@ async function click(node) {
 
 /* ---------- fetch ---------- */
 
-const json = (status, body) => new Response(JSON.stringify(body), {
+const json = (status, body, headers = {}) => new Response(JSON.stringify(body), {
   status,
-  headers: { 'Content-Type': 'application/json' },
+  headers: { 'Content-Type': 'application/json', ...headers },
 });
+const readsJson = (reads) => json(200, {reads, count: reads.length});
 
 const read = (overrides = {}) => ({
   id: 'b1a7c0de-0000-4000-8000-000000000001',
+  type: 'license_plate',
   camera_uuid: CAMERA,
+  received_at: NOW,
+  source: 'vendor_api',
+  recording_id: null,
   stream_name: 'Driveway (old name)',
   observed_at: new Date(2026, 9, 29, 9, 5, 7).getTime(),
   plate: 'ABC1234',
   confidence: 0.97,
-  attributes: { direction: 'inbound', vehicle_color: 'blue', vehicle_type: 'car' },
   ...overrides,
+  attributes: {country: null, region: null, plate_type: null, direction: null, lane: null,
+    vehicle_type: null, vehicle_color: null, object_id: null, correlation_id: null,
+    vendor_topic: '', bounding_box: null,
+    ...(overrides.attributes ?? {direction: 'inbound', vehicle_color: 'blue', vehicle_type: 'car'}),
+  },
 });
 
 function requestBody(call) {
@@ -352,7 +361,7 @@ describe('PlatesView search results', () => {
 
   test('falls back to the stored stream name when the camera is no longer listed', async () => {
     mount();
-    global.fetch.mockResolvedValue(json(200, { reads: [read({ camera_uuid: OTHER_CAMERA })] }));
+    global.fetch.mockResolvedValue(readsJson([read({ camera_uuid: OTHER_CAMERA })]));
     await submit();
     const cells = findAll((n) => n.type === 'td', tableRows()[0]).map(text);
     expect(cells[1]).toBe('Driveway (old name)');
@@ -360,7 +369,7 @@ describe('PlatesView search results', () => {
 
   test('renders an associated recording link independently of a camera rename', async () => {
     mount();
-    global.fetch.mockResolvedValue(json(200, { reads: [read({ recording_id: 42 })] }));
+    global.fetch.mockResolvedValue(readsJson([read({ recording_id: 42 })]));
     await submit();
     const link = find((n) => n.type === 'a' && n.props.href?.startsWith('timeline.html'), tableRows()[0]);
     expect(link.props.href).toBe('timeline.html?ids=42&date=2026-10-29&time=09%3A05%3A07');
@@ -375,11 +384,13 @@ describe('PlatesView search results', () => {
     expect(text(tree)).not.toContain('lpr.prompt');
   });
 
-  test('treats a malformed success body as no results', async () => {
+  test('reports malformed success as an error without showing an empty success state', async () => {
     mount();
     global.fetch.mockResolvedValue(json(200, { reads: 'nope' }));
     await submit();
-    expect(text(tree)).toContain('lpr.emptyTitle');
+    expect(alertText()).toBe('lpr.error.generic');
+    expect(tableRows()).toHaveLength(0);
+    expect(text(tree)).not.toContain('lpr.emptyTitle');
   });
 
   test('disables the search button while a search is running', async () => {
@@ -392,7 +403,7 @@ describe('PlatesView search results', () => {
     expect(searching.props.disabled).toBe(true);
     expect(text(searching)).toBe('lpr.searching');
 
-    resolve(json(200, { reads: [] }));
+    resolve(readsJson([]));
     await pending;
     settle();
     expect(find((n) => n.type === 'button' && n.props.type === 'submit').props.disabled).toBe(false);
@@ -409,7 +420,7 @@ describe('PlatesView search results', () => {
       })
       .mockImplementationOnce((_url, init) => {
         signals.push(init.signal);
-        return Promise.resolve(json(200, { reads: [read({ plate: 'NEWER1' })] }));
+        return Promise.resolve(readsJson([read({ plate: 'NEWER1' })]));
       });
 
     const first = find((n) => n.type === 'form').props.onSubmit({ preventDefault() {} });
@@ -417,7 +428,7 @@ describe('PlatesView search results', () => {
     expect(signals[0].aborted).toBe(true);
     expect(signals[1].aborted).toBe(false);
 
-    resolveFirst(json(200, { reads: [read({ plate: 'STALE1' })] }));
+    resolveFirst(readsJson([read({ plate: 'STALE1' })]));
     await first;
     settle();
     expect(tableRows().map((row) => text(row.props.children[0]))).toEqual(['NEWER1']);
@@ -446,7 +457,7 @@ describe('PlatesView search errors', () => {
     [500, 'lpr.error.generic'],
   ])('a %i response shows %s and clears earlier results', async (status, message) => {
     mount();
-    global.fetch.mockResolvedValueOnce(json(200, { reads: [read()] }));
+    global.fetch.mockResolvedValueOnce(readsJson([read()]));
     await submit();
     expect(tableRows()).toHaveLength(1);
 
@@ -485,7 +496,7 @@ describe('PlatesView search errors', () => {
     global.fetch.mockResolvedValueOnce(json(503, {}));
     await submit();
     expect(alertText()).toBe('lpr.error.unavailable');
-    global.fetch.mockResolvedValueOnce(json(200, { reads: [] }));
+    global.fetch.mockResolvedValueOnce(readsJson([]));
     await submit();
     expect(find((n) => n.props?.role === 'alert')).toBeUndefined();
   });
@@ -512,7 +523,9 @@ describe('PlatesView export', () => {
 
   test('downloads up to 1000 reads as a JSON file and releases the blob URL', async () => {
     mount();
-    global.fetch.mockResolvedValue(json(200, { reads: [read()], count: 1 }));
+    global.fetch.mockResolvedValue(json(200, { reads: [read()], count: 1 }, {
+      'Content-Disposition': 'attachment; filename="lightnvr-lpr-export.json"',
+    }));
     input('lpr-limit', '10');
     await click(button('lpr.export'));
 
@@ -573,7 +586,7 @@ describe('PlatesView delete', () => {
 
   async function searchTwoReads() {
     mount();
-    global.fetch.mockResolvedValueOnce(json(200, { reads: [read(), second] }));
+    global.fetch.mockResolvedValueOnce(readsJson([read(), second]));
     await submit();
     expect(tableRows()).toHaveLength(2);
   }
@@ -663,7 +676,7 @@ describe('PlatesView mobile layout', () => {
 
   async function searchTwoReads() {
     mount();
-    global.fetch.mockResolvedValueOnce(json(200, { reads: [read(), second] }));
+    global.fetch.mockResolvedValueOnce(readsJson([read(), second]));
     await submit();
   }
 
@@ -725,22 +738,22 @@ describe('PlatesView mobile layout', () => {
     expect(cards().map((card) => cardButton(card, 'common.delete'))).toEqual([undefined, undefined]);
   });
 
-  test('a card with no recording link and no delete permission has no action row', async () => {
+  test('a read without its required capture time never renders a card or actions', async () => {
     mount();
     const unlinked = read({ observed_at: undefined });
-    global.fetch.mockResolvedValueOnce(json(200, { reads: [unlinked] }));
+    global.fetch.mockResolvedValueOnce(readsJson([unlinked]));
     await submit();
-    await click(cardButton(cards()[0], 'common.delete'));
-    global.fetch.mockResolvedValueOnce(json(403, {}));
-    await dialog().props.onConfirm();
-    settle();
-    expect(findAll((n) => n.type === 'a' || n.type === 'button', cards()[0])).toEqual([]);
+    expect(alertText()).toBe('lpr.error.generic');
+    expect(cards()).toHaveLength(0);
+    expect(tableRows()).toHaveLength(0);
+    expect(dialog().props.isOpen).toBe(false);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   test('no cards render before a search or when nothing matched', async () => {
     mount();
     expect(find((n) => n.type === 'ul')).toBeUndefined();
-    global.fetch.mockResolvedValueOnce(json(200, { reads: [] }));
+    global.fetch.mockResolvedValueOnce(readsJson([]));
     await submit();
     expect(find((n) => n.type === 'ul')).toBeUndefined();
   });
