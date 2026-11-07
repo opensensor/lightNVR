@@ -77,7 +77,9 @@ def validate(doc, projected=False):
                     resolve_pointer(child)
                 if key == 'discriminator' and isinstance(child, dict):
                     for reference in child.get('mapping', {}).values():
-                        if isinstance(reference, str) and reference.startswith('#/'):
+                        if not isinstance(reference, str):
+                            raise ValueError('Unsupported discriminator mapping reference')
+                        if reference.startswith('#/'):
                             resolve_pointer(reference)
                         elif reference not in doc.get('components', {}).get('schemas', {}):
                             raise ValueError('Unsupported discriminator mapping reference')
