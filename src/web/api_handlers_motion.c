@@ -607,36 +607,13 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
         pthread_t tid;
         pthread_attr_t attr;
         int rc = pthread_attr_init(&attr);
-        if (rc != 0) {
-            if (can_trigger_recording) {
-                unified_detection_notify_motion(stream_name, false);
+        if (rc == 0) {
+            rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+            if (rc == 0) {
+                rc = pthread_create(&tid, &attr, motion_pulse_worker, task);
             }
-            close_external_motion_detections(cfg.camera_uuid, stream_name, now);
-            process_motion_event(stream_name, false, now, false);
-            free(task);
-            pthread_mutex_unlock(&g_pulse_gen_mutex);
-            http_response_set_json_error(res, 500,
-                "Failed to schedule pulse end");
-            return;
-        }
-
-        rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-        if (rc != 0) {
             pthread_attr_destroy(&attr);
-            if (can_trigger_recording) {
-                unified_detection_notify_motion(stream_name, false);
-            }
-            close_external_motion_detections(cfg.camera_uuid, stream_name, now);
-            process_motion_event(stream_name, false, now, false);
-            free(task);
-            pthread_mutex_unlock(&g_pulse_gen_mutex);
-            http_response_set_json_error(res, 500,
-                "Failed to schedule pulse end");
-            return;
         }
-
-        rc = pthread_create(&tid, &attr, motion_pulse_worker, task);
-        pthread_attr_destroy(&attr);
 
         if (rc != 0) {
             if (can_trigger_recording) {
