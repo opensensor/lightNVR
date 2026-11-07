@@ -498,13 +498,16 @@ export function LiveOperatorNavigator({
                     toggleExpanded(node.uuid);
                   }
                 }}
-                onClick={() => selectLocation(node.uuid)}
+                onClick={() => {
+                  selectLocation(node.uuid);
+                  if (node.children.length > 0) toggleExpanded(node.uuid);
+                }}
                 onDblClick={() => loadLocation(node.uuid)}>
                 <span className="live-location-name">
                   {node.children.length > 0 && (
-                    <span aria-hidden="true" onClick={(event) => {
-                      event.stopPropagation(); toggleExpanded(node.uuid);
-                    }}>{expanded.has(node.uuid) ? '▾' : <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">▸</span>}</span>
+                    <span aria-hidden="true">
+                      {expanded.has(node.uuid) ? '▾' : <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">▸</span>}
+                    </span>
                   )}
                   <span dir="ltr" className="rtl-flip inline-block">{locationIcon(node.type)}</span><span>{node.name}</span>
                 </span>
@@ -616,7 +619,7 @@ export function LiveOperatorNavigator({
           <p className="live-plan-navigator-help">{t('live.plan.navigatorHelp')}</p>
           {(plansQuery.data?.plans || []).map((plan) => {
             const liveCount = (plan.cameras || []).filter((camera) =>
-              streams.find((stream) => stream.camera_uuid === camera.camera_uuid)?.availability === 'live').length;
+              streamsByUuid.get(camera.camera_uuid)?.availability === 'live').length;
             return (
               <div key={plan.uuid}
                 className={`live-layout-row ${selectedPlanUuid === plan.uuid ? 'is-selected' : ''}`}>

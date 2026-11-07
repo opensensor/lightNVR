@@ -54,7 +54,7 @@ async function openNavigator() {
   import { h, render } from 'preact';
   import { QueryClient, QueryClientProvider } from './js/query-client.ts';
   import { LiveOperatorNavigator } from './js/components/preact/live/LiveOperatorNavigator.tsx';
-  const streams = ${JSON.stringify(streams)};
+  let streams = ${JSON.stringify(streams)};
   window.calls = { searches: 0, layoutPuts: [], applied: [] };
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   window.fetch = async (url, options = {}) => {
@@ -85,6 +85,10 @@ async function openNavigator() {
     return new Response('', { status: 404 });
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  window.setAvailability = (uuid, availability) => {
+    streams = streams.map(stream => stream.camera_uuid === uuid ? {...stream, availability} : stream);
+    window.mount();
+  };
   window.mount = () => render(h(QueryClientProvider, { client }, h(LiveOperatorNavigator, {
     streams, orderedStreams: streams.slice(0, 2), columns: 2, rows: 1, operatorSurface: 'grid',
     selectedPlanUuid: '', onFilterChange: () => {}, onSurfaceChange: () => {}, onSelectPlan: () => {},
@@ -170,6 +174,19 @@ it('groups plan cameras, never spins on an empty Events scope, and updates views
       name: 'Yard', revision: 3, columns: 2, rows: 1,
       camera_slots: [{ camera_uuid: '30000000-0000-4000-8000-000000000001' }, { camera_uuid: '30000000-0000-4000-8000-000000000002' }],
     });
+  } finally {
+    await browser.close();
+  }
+}, 30000);
+
+it('counts plan cameras from all streams and refreshes when availability changes', async () => {
+  const { browser, page } = await openNavigator();
+  try {
+    await tab(page, 'plans').click();
+    // The plan has three cameras, while the current grid has only two.
+    await page.getByText('live.navigator.planCameraCounts{"live":3,"total":3}', { exact: false }).waitFor();
+    await page.evaluate(uuid => window.setAvailability(uuid, 'offline'), streams[1].camera_uuid);
+    await page.getByText('live.navigator.planCameraCounts{"live":2,"total":3}', { exact: false }).waitFor();
   } finally {
     await browser.close();
   }
