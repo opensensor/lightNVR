@@ -68,3 +68,20 @@
         @apply max-w-full;
     }
 }
+
+.recordings-mobile-filters { display: none; }
+@media (max-width: 768px) {
+    body.recordings-view-page > .container {
+        padding-inline: max(0.5rem, env(safe-area-inset-left)) max(0.5rem, env(safe-area-inset-right));
+    }
+    #recordings-page { padding: 0.5rem; }
+    #recordings-page .recordings-container > .grid { padding: 0.5rem; gap: 0.75rem; }
+    #recordings-page > .page-header { padding: 0; gap: 0.5rem; box-shadow: none; }
+    .recordings-header-actions { flex-wrap: wrap; width: 100%; }
+    .recordings-mobile-filters { display: inline-flex; align-items: center; min-height: 44px; }
+    #recordings-page #filters-sidebar { max-width: 100%; }
+    #recordings-page #filters-sidebar input,
+    #recordings-page #filters-sidebar select { font-size: 1rem; }
+    #recordings-page .filter-tag { max-width: 100%; white-space: normal; }
+    #recordings-page .filter-tag > span { overflow-wrap: anywhere; }
+}

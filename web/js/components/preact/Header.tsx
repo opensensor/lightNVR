@@ -3,7 +3,7 @@
  * Preact component for the site header
  */
 
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'preact/hooks';
 import {VERSION} from '../../version.js';
 import { fetchJSON } from '../../query-client.ts';
 import { getSettings } from '../../utils/settings-utils.ts';
@@ -83,6 +83,26 @@ export function Header({ version = VERSION }: { version?: string }) {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuButton = useRef<HTMLButtonElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (!mobileMenuOpen) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileMenuOpen(false);
+        mobileMenuButton.current?.focus();
+      }
+    };
+    const outside = (event: PointerEvent) => {
+      if (!headerRef.current?.contains(event.target as Node)) setMobileMenuOpen(false);
+    };
+    document.addEventListener('keydown', dismiss);
+    document.addEventListener('pointerdown', outside);
+    return () => {
+      document.removeEventListener('keydown', dismiss);
+      document.removeEventListener('pointerdown', outside);
+    };
+  }, [mobileMenuOpen]);
   const [authEnabled, setAuthEnabled] = useState(true); // Default to true while loading
   const [demoMode, setDemoMode] = useState(false); // Demo mode state
   const [userRole, _setUserRole] = useState<string | null>(localStorage.getItem('userrole') || null); // null = still loading
@@ -305,6 +325,7 @@ export function Header({ version = VERSION }: { version?: string }) {
               id={item.id}
               title={item.title}
               aria-disabled={isDisabled || undefined}
+              aria-current={isActive ? 'page' : undefined}
               className={`${baseClasses} ${mobile ? mobileClasses : desktopClasses} ${activeClass}${isDisabled ? ' opacity-60 cursor-default pointer-events-none' : ''}`}
               onClick={(e) => {
                 if (isDisabled) return;
@@ -356,8 +377,8 @@ export function Header({ version = VERSION }: { version?: string }) {
   return (
       <>
       <a href="#main-content" className="skip-link">{t('a11y.skipToMainContent')}</a>
-      <header className="app-header py-2 shadow-md mb-4 w-full" style={{ position: 'relative', zIndex: 20, backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))' }}>
-        <div className="container mx-auto px-4 flex justify-between items-center">
+      <header ref={headerRef} className="app-header py-2 shadow-md mb-4 w-full" style={{ position: 'relative', zIndex: 20, backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))' }}>
+        <div className="app-header-row container mx-auto px-4 flex justify-between items-center">
           <a
             href={getLiveViewHref()}
             id="nav-logo"
@@ -398,9 +419,20 @@ export function Header({ version = VERSION }: { version?: string }) {
 
           {/* Mobile Menu Button */}
           <button
-              className="xl:hidden p-2"
+              ref={mobileMenuButton}
+              type="button"
+              className="mobile-menu-toggle xl:hidden p-2"
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-navigation"
               style={{color: 'hsl(var(--card-foreground))'}}
               onClick={toggleMobileMenu}
+              onKeyDown={event => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation();
+                  setMobileMenuOpen(false);
+                  mobileMenuButton.current?.focus();
+                }
+              }}
               aria-label={t('nav.toggleMenu')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -411,7 +443,7 @@ export function Header({ version = VERSION }: { version?: string }) {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-            <div className="xl:hidden mt-2 border-t pt-2 container mx-auto px-4" style={{borderColor: 'hsl(var(--border))'}}>
+            <div id="mobile-navigation" className="mobile-navigation xl:hidden mt-2 border-t pt-2 container mx-auto px-4" style={{borderColor: 'hsl(var(--border))'}}>
               <ul className="list-none m-0 p-0 flex flex-col w-full">
                 {/* Main nav links — only shown on screens too narrow for Desktop Navigation */}
                 <li className="lg:hidden border-b pb-2 w-full" style={{borderColor: 'hsl(var(--border))'}}>

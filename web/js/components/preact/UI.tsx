@@ -324,27 +324,33 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
     setCurrentPlaybackSeconds(prev => prev === nextSeconds ? prev : nextSeconds);
   }, []);
 
-  // Handle escape key and cleanup
+  // Keep keyboard focus and page scrolling inside an open playback dialog.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => modalRef.current?.querySelector<HTMLButtonElement>('.close')?.focus(), 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
         onClose();
+      } else if (event.key === 'Tab') {
+        const controls = [...(modalRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), video[controls], [tabindex="0"]',
+        ) || [])].filter(element => element.getClientRects().length > 0);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
       }
     };
-
-    if (isOpen) {
-      console.log('VideoModal opened, setting up event listeners');
-      document.addEventListener('keydown', handleKeyDown);
-
-      if (videoRef.current) {
-        videoRef.current.ondblclick = () => handleToggleFullscreen();
-      }
-    }
-
+    document.addEventListener('keydown', handleKeyDown);
+    if (videoRef.current) videoRef.current.ondblclick = () => handleToggleFullscreen();
     return () => {
-      console.log('VideoModal cleanup');
+      window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeyDown);
-
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
     };
   }, [isOpen, onClose]);
 
@@ -842,7 +848,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >
-      <div className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[95vh] h-[95vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]">
+      <div role="dialog" aria-modal="true" aria-labelledby="video-preview-title" className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[95vh] h-[95vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]">
         <div className="flex justify-between items-center p-2 sm:p-3 border-b border-border flex-shrink-0">
           <h3 id="video-preview-title" className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate me-2">
             {title || t('recordings.video')}
@@ -856,8 +862,8 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <div className="flex-none p-2 sm:p-3 md:flex-1 md:min-h-0 flex justify-center items-center">
+        <div className="recording-preview-body flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="recording-preview-media flex-none p-2 sm:p-3 md:flex-1 md:min-h-0 flex justify-center items-center">
             <div
               ref={videoContainerRef}
               data-testid="recording-video-container"
@@ -869,6 +875,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
                 ref={videoRef}
                 className="w-full h-full object-contain"
                 controls
+                playsInline
                 controlsList="nofullscreen"
                 key={videoUrl} /* Add key to force re-render when URL changes */
                 onLoadStart={() => console.log('Video load started')}
@@ -929,6 +936,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
                           ? 'badge-success'
                           : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                       } text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50`}
+                      aria-pressed={speed === currentSpeed}
                       data-speed={speed}
                       onClick={() => handleSpeedChange(speed)}
                     >

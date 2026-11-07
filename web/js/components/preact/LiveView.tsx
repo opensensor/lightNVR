@@ -4,7 +4,7 @@
  * camera for whichever transport is active (Auto, WebRTC, HLS or MSE).
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { useFullscreenManager, FullscreenManager, useFullscreenGridNav, useFullscreenCellStream, getNativeFullscreenElement, requestNativeFullscreen, exitNativeFullscreen } from './FullscreenManager.tsx';
 import { useQuery } from '../../query-client.ts';
@@ -84,6 +84,12 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
   // Fit (letterbox) or Fill (crop) for the grid tiles (#619). A single stream
   // always shows its whole frame, so the preference only applies to grids.
   const [displayMode, setDisplayMode] = useLiveDisplayMode();
+  const [mobileOptionsOpen, setMobileOptionsOpen] = useState(false);
+  const optionsButton = useRef<HTMLButtonElement>(null);
+  const closeMobileOptions = () => {
+    setMobileOptionsOpen(false);
+    optionsButton.current?.focus();
+  };
 
   // Use the snapshot manager hook
   useSnapshotManager();
@@ -676,14 +682,23 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
         targetId="live-page"
       />
 
-      <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
-        <div className="flex flex-wrap items-center gap-3">
+      <div className={`page-header live-toolbar ${mobileOptionsOpen ? 'mobile-options-open' : ''} flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow`}
+        role="toolbar" aria-label={t('live.liveView')}
+        onKeyDown={(event) => { if (event.key === 'Escape' && mobileOptionsOpen) { event.stopPropagation(); closeMobileOptions(); } }} style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
+        <div className="live-toolbar-heading flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-bold whitespace-nowrap">{t('live.liveView')}</h2>
+          <button type="button" ref={optionsButton} className="live-mobile-options"
+            aria-expanded={mobileOptionsOpen} aria-controls="live-transport-options live-view-options"
+            onClick={() => setMobileOptionsOpen(open => !open)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6" /></svg>
+            {t(mobileOptionsOpen ? 'common.done' : 'live.viewOptions')}
+            {(tagFilter || collectionFilter) && <span className="live-filter-dot" aria-label={t('live.filtersActive')} />}
+          </button>
           {/* Auto honors per-stream precedence; explicit modes force every tile. */}
-          <div className="inline-flex items-center bg-muted rounded-lg p-1 gap-1" style={{ position: 'relative', zIndex: 50 }}>
+          <div id="live-transport-options" className="live-transport-options inline-flex items-center bg-muted rounded-lg p-1 gap-1" style={{ position: 'relative', zIndex: 50 }}>
             {transportTabs.map((tab) => (
               tab.active ? (
-                <span key={tab.id} className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                <span key={tab.id} aria-current="page" className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
                   {t(tab.labelKey)}
                 </span>
               ) : (
@@ -700,12 +715,12 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
         </div>
 
         {operatorSurface === 'grid' && (
-        <div className="controls flex items-center space-x-2">
+        <div id="live-view-options" className="controls live-view-options flex items-center space-x-2">
           {favoritesAvailable && (
             <button
               type="button"
               id={`${prefix}-favorites-filter`}
-              className={`px-3 py-2 border rounded-md shadow-sm text-sm whitespace-nowrap focus:ring-2 focus:ring-primary ${favoritesOnly ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border'}`}
+              className={`live-quick-action px-3 py-2 border rounded-md shadow-sm text-sm whitespace-nowrap focus:ring-2 focus:ring-primary ${favoritesOnly ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border'}`}
               aria-pressed={favoritesOnly}
               title={t('live.favoritesOnly')}
               onClick={() => { setFavoritesOnly((current) => !current); setCurrentPage(0); }}
@@ -766,14 +781,25 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
           ))}
 
           {/* Grid layout picker */}
-          <div className="flex items-center gap-1.5">
-            <label className="text-sm whitespace-nowrap">{t('live.layout')}:</label>
-            <GridPicker
+          <div className="live-quick-action live-layout-control flex items-center gap-1.5">
+            <span className="live-desktop-label text-sm whitespace-nowrap">{t('live.layout')}:</span>
+            <div className="live-desktop-layout"><GridPicker
               cols={cols}
               rows={rows}
               onSelect={(c, r) => { setCols(c); setRows(r); setCurrentPage(0); setAutoGrid(false); }}
               maxCells={orderedStreams.length}
-            />
+            /></div>
+            <select className="live-mobile-layout border border-border rounded-md bg-background text-foreground px-2"
+              aria-label={t('live.camerasPerPage')} value={maxStreams}
+              onChange={event => {
+                const count = Number(event.currentTarget.value);
+                if (count === maxStreams) return;
+                const columns = [1, 2, 6, 12].includes(count) ? (count === 1 ? 1 : count === 2 ? 2 : count === 6 ? 3 : 4) : Math.sqrt(count);
+                setCols(columns); setRows(count / columns); setCurrentPage(0); setAutoGrid(false);
+              }}>
+              {[...new Set([1, 2, 4, 6, 9, 12, 16, 25, 36, maxStreams])].sort((a,b) => a-b).map(count =>
+                <option key={count} value={count}>{t('live.cameraPageSize', {count})}</option>)}
+            </select>
           </div>
 
           {isSingleStream && (
@@ -794,6 +820,8 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
 
           <button
             className={`p-2 rounded-full focus:ring-2 focus:ring-primary ${showLabels ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+            aria-pressed={showLabels}
+            aria-label={t('live.cameraNames')}
             onClick={() => setShowLabels(v => !v)}
             title={showLabels ? t('live.hideStreamLabels') : t('live.showStreamLabels')}
           >
@@ -803,10 +831,13 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
               <line x1="7" y1="7" x2="7.01" y2="7"></line>
               {!showLabels && <line x1="2" y1="22" x2="22" y2="2" stroke="currentColor" strokeWidth="2"></line>}
             </svg>
+            <span className="live-mobile-label">{t('live.cameraNames')}</span>
           </button>
 
           <button
             className={`p-2 rounded-full focus:ring-2 focus:ring-primary ${showControls ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+            aria-pressed={showControls}
+            aria-label={t('live.playerControls')}
             onClick={() => setShowControls(v => !v)}
             title={showControls ? t('live.hideStreamControls') : t('live.showStreamControls')}
           >
@@ -823,10 +854,13 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
               <line x1="17" y1="16" x2="23" y2="16"></line>
               {!showControls && <line x1="2" y1="22" x2="22" y2="2" stroke="currentColor" strokeWidth="2"></line>}
             </svg>
+            <span className="live-mobile-label">{t('live.playerControls')}</span>
           </button>
 
           <button
             className={`p-2 rounded-full focus:ring-2 focus:ring-primary ${showDetections ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+            aria-pressed={showDetections}
+            aria-label={t('live.detectionOverlays')}
             onClick={() => setShowDetections(v => !v)}
             title={showDetections ? t('live.hideAllDetectionOverlays') : t('live.showAllDetectionOverlays')}
           >
@@ -837,6 +871,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
               <circle cx="12" cy="12" r="3"/>
               {!showDetections && <line x1="2" y1="22" x2="22" y2="2" stroke="currentColor" strokeWidth="2"></line>}
             </svg>
+            <span className="live-mobile-label">{t('live.detectionOverlays')}</span>
           </button>
 
           <AlwaysFullscreenToggle
@@ -863,7 +898,8 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
 
           {orderedStreams.length > 1 && (
             <button
-              className={`p-2 rounded-full focus:ring-2 focus:ring-primary ${reorderMode ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
+              className={`${reorderMode ? 'live-quick-action' : ''} p-2 rounded-full focus:ring-2 focus:ring-primary ${reorderMode ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
+              aria-pressed={reorderMode}
               onClick={toggleReorderMode}
               title={reorderMode ? t('live.exitReorderMode') : t('live.dragToReorderCameras')}
             >
@@ -874,6 +910,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
                 <circle cx="9"  cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/>
                 <circle cx="9"  cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/>
               </svg>
+              <span className="live-mobile-label">{t(reorderMode ? 'common.done' : 'live.reorderCameras')}</span>
             </button>
           )}
 
@@ -894,7 +931,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
 
           <button
             id="fullscreen-btn"
-            className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:ring-2 focus:ring-primary"
+            className="live-quick-action live-fullscreen-action p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:ring-2 focus:ring-primary"
             onClick={() => toggleFullscreen()}
             title={t(profile.fullscreenTitleKey)}
             aria-label={t(profile.fullscreenTitleKey)}

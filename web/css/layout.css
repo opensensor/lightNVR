@@ -117,3 +117,26 @@ th {
         @apply mt-2 self-end;
     }
 }
+
+/* A compact, edge-aligned phone header. Navigation opens over content rather
+ * than moving an active player several screens down the page. */
+@media (max-width: 768px) {
+    .app-header { padding: 0.25rem 0.5rem; margin-bottom: 0.5rem; }
+    .app-header > .app-header-row { width: 100%; padding: 0; min-height: 48px; }
+    .mobile-menu-toggle { min-width: 44px; min-height: 44px; border-radius: 0.5rem; }
+    .app-header > .mobile-navigation {
+        position: absolute;
+        inset-inline: 0;
+        top: 100%;
+        margin: 0;
+        padding: 0.5rem;
+        max-height: calc(100dvh - 5rem);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        background: hsl(var(--card));
+        border: 1px solid hsl(var(--border));
+        border-radius: 0 0 0.75rem 0.75rem;
+        box-shadow: 0 12px 24px rgb(0 0 0 / 0.25);
+    }
+    .mobile-navigation a { min-height: 44px; }
+}

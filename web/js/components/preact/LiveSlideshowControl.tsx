@@ -36,6 +36,7 @@ export function LiveSlideshowControl({ enabled, interval, isSingleStream, onTogg
             : <path d="M10 8l5 3-5 3z" />}
           <path d="M8 21h8" />
         </svg>
+        <span className="live-mobile-label">{t('live.slideshow')}</span>
       </button>
       {enabled && (
         <select

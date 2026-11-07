@@ -115,14 +115,19 @@ export function RecordingsView() {
     return urlState?.filters || urlUtils.createDefaultFilters();
   });
 
+  // Phone preferences must not replace the desktop's saved table/sidebar view.
+  const [phonePreferences] = useState(() => window.matchMedia('(max-width: 768px)').matches);
+  const filtersPreference = phonePreferences ? 'recordings_mobile_filters_collapsed' : 'recordings_filters_collapsed';
+  const viewPreference = phonePreferences ? 'recordings_mobile_view_mode' : 'recordings_view_mode';
+  const mobileFiltersButton = useRef<HTMLButtonElement>(null);
   // Initialize filters sidebar collapsed state
   const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem('recordings_filters_collapsed') === 'true'; }
-    catch { return false; }
+    try { const stored = localStorage.getItem(filtersPreference); return stored === null ? phonePreferences : stored === 'true'; }
+    catch { return phonePreferences; }
   });
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
-      localStorage.setItem('recordings_filters_collapsed', String(!prev));
+      localStorage.setItem(filtersPreference, String(!prev));
       return !prev;
     });
   };
@@ -157,7 +162,7 @@ export function RecordingsView() {
     const p = new URLSearchParams(window.location.search);
     const urlView = p.get('view');
     if (urlView === 'grid' || urlView === 'table') return urlView;
-    return localStorage.getItem('recordings_view_mode') || 'table';
+    return localStorage.getItem(viewPreference) || (phonePreferences ? 'grid' : 'table');
   });
   const [thumbnailsEnabled, setThumbnailsEnabled] = useState(true);
   // 1 = single first-frame thumb only (CPU-save, #364); 3 = start/middle/end with hover cycling.
@@ -186,7 +191,7 @@ export function RecordingsView() {
   // Persist view mode preference
   const handleViewModeChange = (mode: string) => {
     setViewMode(mode);
-    localStorage.setItem('recordings_view_mode', mode);
+    localStorage.setItem(viewPreference, mode);
   };
 
   // Fetch generate_thumbnails + thumbnails_per_recording settings
@@ -993,7 +998,11 @@ export function RecordingsView() {
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <h2 class="text-xl font-bold">{t('nav.recordings')}</h2>
         {/* Right: toolbar actions */}
-        <div class="flex items-center gap-2">
+        <div class="recordings-header-actions flex items-center gap-2">
+          <button type="button" ref={mobileFiltersButton} className="recordings-mobile-filters btn-secondary text-sm"
+            aria-expanded={!collapsed} aria-controls="filters-sidebar" onClick={toggleCollapsed}>
+            {t(collapsed ? 'recordings.showFilters' : 'recordings.hideFilters')}
+          </button>
           {/* Refresh pulls a fresh page of recordings without a full reload.
               Uses AsyncButton so the spinner + auto-disable mirrors the
               Apply-filters button below (PRD UXD_01 §5.1 / #399). */}
@@ -1124,7 +1133,14 @@ export function RecordingsView() {
             setPagination={setPagination}
             streams={streams}
             collections={collections}
-            applyFilters={applyFilters}
+            applyFilters={() => {
+              applyFilters();
+              if (window.matchMedia('(max-width: 768px)').matches) {
+                setCollapsed(true);
+                localStorage.setItem(filtersPreference, 'true');
+                mobileFiltersButton.current?.focus();
+              }
+            }}
             resetFilters={resetFilters}
             handleDateRangeChange={handleDateRangeChange}
             setDefaultDateRange={setDefaultDateRange}
