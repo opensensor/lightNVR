@@ -5,6 +5,7 @@
 import { render, Component, createContext } from 'preact';
 import type { ComponentChildren, CSSProperties } from 'preact';
 import { useState, useEffect, useContext } from 'preact/hooks';
+import { useI18n } from '../../i18n.ts';
 import { formatLocalTime } from '../../utils/date-utils.ts';
 
 interface ToastEntry {
@@ -19,6 +20,8 @@ interface ToastItemProps {
   id: number;
   message: string;
   type: string;
+  exiting?: boolean;
+  exitAnimationDuration: number;
   onRemove: () => void;
 }
 
@@ -91,7 +94,8 @@ const containerStyle: CSSProperties = {
 /**
  * Individual Toast Component
  */
-const Toast = ({ id, message, type, onRemove }: ToastItemProps) => {
+const Toast = ({ id, message, type, exiting = false, exitAnimationDuration, onRemove }: ToastItemProps) => {
+  const { t } = useI18n();
   const [isVisible, setIsVisible] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   
@@ -107,7 +111,7 @@ const Toast = ({ id, message, type, onRemove }: ToastItemProps) => {
     // Wait for exit animation to complete before removing from DOM
     setTimeout(() => {
       onRemove();
-    }, 300); // Match transition duration
+    }, exitAnimationDuration); // Match transition duration
   };
   
   const toastStyle: CSSProperties = {
@@ -119,9 +123,9 @@ const Toast = ({ id, message, type, onRemove }: ToastItemProps) => {
     textAlign: 'left',
     color: getToastForegroundColor(type),
     backgroundColor: getToastColor(type),
-    opacity: isExiting ? 0 : (isVisible ? 1 : 0),
-    transform: isExiting ? 'translateY(-20px)' : (isVisible ? 'translateY(0)' : 'translateY(-20px)'),
-    transition: 'opacity 0.3s ease, transform 0.3s ease',
+    opacity: (exiting || isExiting) ? 0 : (isVisible ? 1 : 0),
+    transform: (exiting || isExiting) ? 'translateY(-20px)' : (isVisible ? 'translateY(0)' : 'translateY(-20px)'),
+    transition: `opacity ${exitAnimationDuration}ms ease, transform ${exitAnimationDuration}ms ease`,
     position: 'relative',
     display: 'flex',
     alignItems: 'center',
@@ -172,7 +176,7 @@ const Toast = ({ id, message, type, onRemove }: ToastItemProps) => {
       <button 
         style={closeButtonStyle} 
         onClick={handleRemove}
-        aria-label="Close notification"
+        aria-label={t('common.close')}
         onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
         onFocus={(e) => e.currentTarget.style.opacity = '1'}
         onMouseOut={(e) => e.currentTarget.style.opacity = '0.7'}
@@ -271,6 +275,7 @@ class ToastContainer extends Component<ToastContainerProps, ToastContainerState>
             message={toast.message}
             type={toast.type}
             exiting={!!toast.exiting}
+            exitAnimationDuration={toast.duration > 0 ? Math.min(300, toast.duration) : 300}
             onRemove={() => this.removeToast(toast.id)}
           />
         ))}
