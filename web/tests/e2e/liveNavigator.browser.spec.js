@@ -4,13 +4,13 @@
  * Run with: npm --prefix web run test:e2e -- --testPathPatterns='liveNavigator\.browser\.spec\.js$'
  */
 const path = require('node:path');
-const { fleetLocations } = require('./fleetFixtures');
+const { fleetLocations, floorPlan, liveLayout } = require('./fleetFixtures');
 
 const streams = [
-  { camera_uuid: 'cam-1', name: 'Gate', availability: 'live', location_uuid: null },
-  { camera_uuid: 'cam-2', name: 'Barn', availability: 'live', location_uuid: null },
-  { camera_uuid: 'cam-3', name: 'Shed', availability: 'live', location_uuid: null },
-  { camera_uuid: 'cam-4', name: 'Office', availability: 'live', location_uuid: null },
+  { camera_uuid: '30000000-0000-4000-8000-000000000001', name: 'Gate', availability: 'live', location_uuid: null },
+  { camera_uuid: '30000000-0000-4000-8000-000000000002', name: 'Barn', availability: 'live', location_uuid: null },
+  { camera_uuid: '30000000-0000-4000-8000-000000000003', name: 'Shed', availability: 'live', location_uuid: null },
+  { camera_uuid: '30000000-0000-4000-8000-000000000004', name: 'Office', availability: 'live', location_uuid: null },
 ];
 
 async function openNavigator() {
@@ -32,16 +32,14 @@ async function openNavigator() {
     const target = String(url);
     if (target === '/api/ui/workspaces') return json({});
     if (target === '/api/locations') return json(${JSON.stringify(fleetLocations([{ uuid: '00000000-0000-4000-8000-000000000001', name: 'Orchard' }]))});
-    if (target === '/api/live/plans') return json({ can_modify: true, plans: [{ uuid: 'p1', name: 'orchard48', location_uuid: '00000000-0000-4000-8000-000000000001',
-      cameras: [{ camera_uuid: 'cam-1', x: 0.2, y: 0.2 }, { camera_uuid: 'cam-2', x: 0.4, y: 0.4 }, { camera_uuid: 'cam-3', x: 0.6, y: 0.6 }] }] });
+    if (target === '/api/live/plans') return json({can_modify:true,plans:[${JSON.stringify(floorPlan({name:'orchard48',location_uuid:'00000000-0000-4000-8000-000000000001',cameras:streams.slice(0,3).map((stream,index)=>({camera_uuid:stream.camera_uuid,x:0.2*(index+1),y:0.2*(index+1)}))}))}]});
+    const layout=${JSON.stringify(liveLayout({name:'Yard',revision:3,camera_slots:[{camera_uuid:streams[0].camera_uuid}]}))};
     if (target.startsWith('/api/live/layouts/') && options.method === 'PUT') {
       const body = JSON.parse(options.body);
       window.calls.layoutPuts.push(body);
-      return json({ uuid: 'v1', owned: true, revision: 4, ...body });
+      return json({...layout,...body,revision:4});
     }
-    if (target === '/api/live/layouts') return json({ can_modify: true, can_share: false, layouts: [{
-      uuid: 'v1', name: 'Yard', owned: true, revision: 3, columns: 2, rows: 1, availability: 'live',
-      is_shared: false, location_uuid: null, camera_slots: [{ camera_uuid: 'cam-1' }] }] });
+    if (target === '/api/live/layouts') return json({can_modify:true,can_share:false,count:1,layouts:[layout]});
     if (target === '/api/investigations/search') {
       window.calls.searches += 1;
       if (window.calls.searches === 1) return json({ error: 'search backend down' }, 500);
@@ -133,7 +131,7 @@ it('groups plan cameras, never spins on an empty Events scope, and updates views
     const [put] = await page.evaluate(() => window.calls.layoutPuts);
     expect(put).toMatchObject({
       name: 'Yard', revision: 3, columns: 2, rows: 1,
-      camera_slots: [{ camera_uuid: 'cam-1' }, { camera_uuid: 'cam-2' }],
+      camera_slots: [{ camera_uuid: '30000000-0000-4000-8000-000000000001' }, { camera_uuid: '30000000-0000-4000-8000-000000000002' }],
     });
   } finally {
     await browser.close();

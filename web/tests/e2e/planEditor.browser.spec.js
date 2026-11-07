@@ -4,13 +4,13 @@
  * Run with: npm --prefix web run test:e2e -- --testPathPatterns='planEditor\.browser\.spec\.js$'
  */
 const path = require('node:path');
-const { fleetLocations } = require('./fleetFixtures');
+const { fleetLocations, floorPlan } = require('./fleetFixtures');
 
-const fixturePlan = {
-  uuid: 'plan-1', name: 'Orchard', revision: 1, canvas_width: 1200, canvas_height: 800,
+const fixturePlan = floorPlan({
+  uuid: '10000000-0000-4000-8000-000000000001', name: 'Orchard', revision: 1, canvas_width: 1200, canvas_height: 800,
   cameras: [], sketch: null, background_mime: null, updated_at: 1,
-};
-const fixtureStreams = [{ camera_uuid: 'cam-1', name: 'Front gate', availability: 'live' }];
+});
+const fixtureStreams = [{ camera_uuid: '30000000-0000-4000-8000-000000000001', name: 'Front gate', availability: 'live' }];
 
 async function openPlanBrowser() {
   const { chromium } = require('../../../node_modules/playwright');
@@ -29,7 +29,7 @@ async function openPlanBrowser() {
   const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   window.fetch = async (url, options = {}) => {
     const target = String(url);
-    if (target.startsWith('/api/live/plans/plan-1') && options.method === 'PUT') {
+    if (target.startsWith('/api/live/plans/10000000-0000-4000-8000-000000000001') && options.method === 'PUT') {
       const body = JSON.parse(options.body);
       window.calls.puts.push(body);
       return json({ ...plan, ...body, revision: plan.revision + 1 });
@@ -38,13 +38,13 @@ async function openPlanBrowser() {
     if (target === '/api/locations') return json(${JSON.stringify(fleetLocations([{ uuid: '00000000-0000-4000-8000-000000000001', name: 'Orchard' }]))});
     if (target.startsWith('/api/cameras/') && options.method === 'PUT') {
       window.calls.locations.push({ url: target, body: JSON.parse(options.body) });
-      return json({});
+      return json({success:true,camera_uuid:target.split('/')[3],location_uuid:JSON.parse(options.body).location_uuid});
     }
     return new Response('', { status: 404 });
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   window.mount = () => render(h(QueryClientProvider, { client },
-    h(LiveBuildingPlan, { streams: ${JSON.stringify(fixtureStreams)}, selectedPlanUuid: 'plan-1',
+    h(LiveBuildingPlan, { streams: ${JSON.stringify(fixtureStreams)}, selectedPlanUuid: '10000000-0000-4000-8000-000000000001',
       onSelectPlan: () => {}, onOpenCamera: () => {} })), document.getElementById('root'));
  `,
     },
@@ -224,7 +224,7 @@ it('places a camera by pressing and aims it by dragging, then re-aims with the k
     await page.waitForFunction(() => window.calls.puts.length === 1);
     const [body] = await page.evaluate(() => window.calls.puts);
     expect(body.cameras).toEqual([expect.objectContaining({
-      camera_uuid: 'cam-1', rotation: 90, x: expect.closeTo(0.3, 1), y: expect.closeTo(0.3, 1),
+      camera_uuid: '30000000-0000-4000-8000-000000000001', rotation: 90, x: expect.closeTo(0.3, 1), y: expect.closeTo(0.3, 1),
     })]);
   } finally {
     await browser.close();
@@ -320,14 +320,14 @@ it('widens the field of view from the wedge handle and links the plan to a locat
     await page.waitForFunction(() => window.calls.puts.length === 1);
     const [body] = await page.evaluate(() => window.calls.puts);
     expect(body.location_uuid).toBe('00000000-0000-4000-8000-000000000001');
-    expect(body.cameras[0]).toMatchObject({ camera_uuid: 'cam-1', fov: 125 });
+    expect(body.cameras[0]).toMatchObject({ camera_uuid: '30000000-0000-4000-8000-000000000001', fov: 125 });
 
     // Back in view mode, offer to put the plan's cameras in that location.
     const assign = page.getByRole('button', { name: 'live.plan.assignLocation', exact: true });
     await assign.click();
     await page.waitForFunction(() => window.calls.locations.length === 1);
     expect(await page.evaluate(() => window.calls.locations)).toEqual([{
-      url: '/api/cameras/cam-1/location', body: { location_uuid: '00000000-0000-4000-8000-000000000001' },
+      url: '/api/cameras/30000000-0000-4000-8000-000000000001/location', body: { location_uuid: '00000000-0000-4000-8000-000000000001' },
     }]);
   } finally {
     await browser.close();
