@@ -33,6 +33,7 @@
 #include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "telemetry/stream_metrics.h"
+#include "telemetry/player_telemetry.h"
 #include "utils/strings.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_health.h"
@@ -325,6 +326,7 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    player_telemetry_shutdown();
     metrics_shutdown();
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
@@ -1913,6 +1915,50 @@ void test_effective_action_mask_reflects_grants_and_roles(void) {
     TEST_ASSERT_EQUAL_UINT64(UINT64_C(0), mask);
 }
 
+void test_effective_action_mask_intersects_token_and_current_owner_permissions(void) {
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("tokenmask", "password123", NULL,
+        USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_set_user_mode(user_id, "policy"));
+    char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    create_grant(user_id, OPERATOR_ROLE_UUID, "all", NULL, grant_uuid);
+    api_token_t token;
+    char secret[API_TOKEN_SECRET_MAX];
+    /* Seed an overbroad token through the database fixture to verify the
+     * intersection itself, independently of token-issuance checks. */
+    create_scoped_token(user_id, authorization_action_bit(AUTHZ_LIVE_VIEW) |
+        authorization_action_bit(AUTHZ_SYSTEM_ADMIN), "all", NULL, &token, secret);
+    http_request_t req;
+    http_request_init(&req);
+    safe_strcpy(req.headers[0].name, "X-API-Key", sizeof(req.headers[0].name), 0);
+    safe_strcpy(req.headers[0].value, secret, sizeof(req.headers[0].value), 0);
+    req.num_headers = 1;
+    g_config.web_auth_enabled = true;
+    user_t authenticated = {0};
+    TEST_ASSERT_TRUE(httpd_check_action_access(&req, &authenticated));
+    TEST_ASSERT_TRUE(authenticated.authenticated_via_scoped_token);
+    uint64_t mask = UINT64_MAX;
+    TEST_ASSERT_EQUAL_INT(0, authorization_effective_action_mask(&authenticated, &mask));
+    TEST_ASSERT_EQUAL_UINT64(authorization_action_bit(AUTHZ_LIVE_VIEW), mask);
+    /* PTZ belongs to the owner but not the token; system.admin belongs to the
+     * token's declared mask but not the owner. Neither may be effective. */
+    TEST_ASSERT_FALSE(mask & authorization_action_bit(AUTHZ_PTZ_CONTROL));
+    TEST_ASSERT_FALSE(mask & authorization_action_bit(AUTHZ_SYSTEM_ADMIN));
+
+    char sql[256];
+    snprintf(sql, sizeof(sql), "UPDATE authz_grants SET enabled=0 WHERE uuid='%s'", grant_uuid);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), sql, NULL, NULL, NULL));
+    mask = UINT64_MAX;
+    TEST_ASSERT_EQUAL_INT(0, authorization_effective_action_mask(&authenticated, &mask));
+    TEST_ASSERT_EQUAL_UINT64(0, mask);
+    snprintf(sql, sizeof(sql), "UPDATE authz_grants SET enabled=1 WHERE uuid='%s'", grant_uuid);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), sql, NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(DB_API_TOKEN_OK, db_api_token_revoke(user_id, token.uuid));
+    mask = UINT64_MAX;
+    TEST_ASSERT_EQUAL_INT(0, authorization_effective_action_mask(&authenticated, &mask));
+    TEST_ASSERT_EQUAL_UINT64(0, mask);
+}
+
 /*
  * users.manage must not be a back door to system.admin: authoring a role that
  * carries more than the requester holds has to be refused.
@@ -2052,32 +2098,67 @@ void test_streams_reject_empty_camera_uuid(void) {
     sqlite3_finalize(stmt);
 }
 
-void test_player_telemetry_requires_live_view_authorization(void) {
+static void assert_player_telemetry_status(const char *key, const char *camera,
+                                           int expected_status, int expected_count) {
     http_request_t req;
     http_response_t res;
-
-    g_config.web_auth_enabled = true;
-
-    /* Unauthenticated request is rejected. */
     http_request_init(&req);
     http_response_init(&res);
+    req.method = HTTP_METHOD_POST;
     safe_strcpy(req.path, "/api/telemetry/player", sizeof(req.path), 0);
     safe_strcpy(req.method_str, "POST", sizeof(req.method_str), 0);
-    req.body = "{\"stream_name\":\"arbitrary-camera\",\"ttff_ms\":10}";
-    req.body_len = strlen((const char *)req.body);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    if (key) {
+        safe_strcpy(req.headers[0].name, "X-API-Key", sizeof(req.headers[0].name), 0);
+        safe_strcpy(req.headers[0].value, key, sizeof(req.headers[0].value), 0);
+        req.num_headers = 1;
+    }
+    char body[256];
+    snprintf(body, sizeof(body), "{\"stream_name\":\"%s\",\"session_id\":\"test-session\",\"transport\":\"hls\",\"ttff_ms\":10}", camera);
+    req.body = body;
+    req.body_len = strlen(body);
     handle_post_player_telemetry(&req, &res);
-    TEST_ASSERT_EQUAL_INT(401, res.status_code);
+    int status = res.status_code;
     http_response_free(&res);
+    TEST_ASSERT_EQUAL_INT(expected_status, status);
+    TEST_ASSERT_EQUAL_INT(expected_count, player_telemetry_count());
+}
 
-    /*
-     * Authenticated-but-forbidden and authenticated-and-allowed coverage
-     * must be added using the same auth/token/permission fixtures used by the
-     * other authorization tests in this file:
-     *   - lacking live.view on arbitrary-camera => 403
-     *   - granted live.view on arbitrary-camera => success
-     */
+void test_player_telemetry_requires_live_view_authorization(void) {
+    stream_config_t allowed = create_camera("telemetry_allowed", "");
+    stream_config_t denied = create_camera("telemetry_denied", "");
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("telemetryuser", "password123", NULL,
+        USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_set_user_mode(user_id, "policy"));
+    char selector[256], grant_uuid[CAMERA_UUID_STRING_SIZE];
+    snprintf(selector, sizeof(selector),
+        "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\",\"values\":[\"%s\"]}}", allowed.camera_uuid);
+    create_grant(user_id, OPERATOR_ROLE_UUID, "selector", selector, grant_uuid);
+    char api_key[128];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+    g_config.web_auth_enabled = true;
+    player_telemetry_init();
+    assert_player_telemetry_status(NULL, allowed.name, 401, 0);
+    assert_player_telemetry_status(api_key, denied.name, 403, 0);
+    assert_player_telemetry_status(api_key, allowed.name, 204, 1);
+    player_telemetry_event_t event;
+    TEST_ASSERT_EQUAL_INT(1, player_telemetry_snapshot(&event, 1));
+    TEST_ASSERT_EQUAL_STRING(allowed.name, event.stream_name);
+    TEST_ASSERT_EQUAL_STRING("test-session", event.session_id);
+    TEST_ASSERT_EQUAL_STRING("hls", event.transport);
+    TEST_ASSERT_TRUE(event.ttff_ms == 10.0);
+    TEST_ASSERT_TRUE(event.timestamp > 0);
 
-    g_config.web_auth_enabled = false;
+    api_token_t token;
+    char secret[API_TOKEN_SECRET_MAX];
+    create_scoped_token(user_id, authorization_action_bit(AUTHZ_PTZ_CONTROL),
+        "all", NULL, &token, secret);
+    assert_player_telemetry_status(secret, allowed.name, 403, 1);
+    create_scoped_token(user_id, authorization_action_bit(AUTHZ_LIVE_VIEW),
+        "selector", selector, &token, secret);
+    assert_player_telemetry_status(secret, denied.name, 403, 1);
+    assert_player_telemetry_status(secret, allowed.name, 204, 2);
 }
 
 static void assert_metrics_status(const char *api_key, int expected_status) {
@@ -3666,7 +3747,8 @@ int main(void) {
     RUN_TEST(test_visible_camera_filter_hides_cameras_outside_grant);
     RUN_TEST(test_investigation_search_facets_are_camera_scope_authorized);
     RUN_TEST(test_investigation_recording_preview_explains_action_permissions);
-    RUN_TEST(test_effective_action_mask_reflects_grants_and_tokens);
+    RUN_TEST(test_effective_action_mask_reflects_grants_and_roles);
+    RUN_TEST(test_effective_action_mask_intersects_token_and_current_owner_permissions);
     RUN_TEST(test_policy_manager_cannot_grant_actions_it_lacks);
     RUN_TEST(test_action_catalog_bit_layout_matches_database);
     RUN_TEST(test_streams_reject_empty_camera_uuid);
