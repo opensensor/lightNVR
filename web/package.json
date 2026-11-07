@@ -1,6 +1,6 @@
 {
   "name": "lightnvr-web",
-  "version": "1.0.0",
+  "version": "0.47.3",
   "description": "LightNVR Web Interface",
   "type": "module",
   "engines": {
