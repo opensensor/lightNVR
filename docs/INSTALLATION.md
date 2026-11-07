@@ -1,7 +1,5 @@
 # LightNVR Installation Guide
 
-*Verified against LightNVR 0.37.x.*
-
 This document provides detailed instructions for installing LightNVR on various platforms.
 
 ## Table of Contents
@@ -143,22 +141,32 @@ Docker Compose simplifies the deployment and ensures proper volume configuration
 git clone https://github.com/opensensor/lightNVR.git
 cd lightNVR
 
-# Initialize submodules (required for go2rtc build)
-git submodule update --init --recursive
+# Prepare the recordings bind mount for the image's non-root UID:GID
+sudo install -d -o 10001 -g 10001 -m 0750 ./data/recordings
 
-# Start the container (first run will build the image)
+# Start the container from the published image
 docker compose up -d
 ```
 
-The default `docker-compose.yml` creates two volumes:
-- `./config` - Configuration files (mounted to `/etc/lightnvr`)
-- `./data` - Persistent data including database, recordings, and models (mounted to `/var/lib/lightnvr/data`)
+The default `docker-compose.yml` persists storage in three named volumes and one host directory:
+
+- `lightnvr-config` — configuration at `/etc/lightnvr`
+- `lightnvr-database` — database at `/var/lib/lightnvr/data/database`
+- `lightnvr-models` — models at `/var/lib/lightnvr/data/models`
+- `./data/recordings` — recordings at `/var/lib/lightnvr/data/recordings`
+
+Compose prefixes named volumes with its project name. If reusing a recordings directory, ensure UID:GID `10001:10001` can write it.
 
 To customize the configuration:
 
 ```bash
-# Edit the configuration file
-nano config/lightnvr.ini
+# Copy the initialized configuration to a private local file
+umask 077
+docker compose cp lightnvr:/etc/lightnvr/lightnvr.ini ./lightnvr.ini
+nano ./lightnvr.ini
+
+# Write it back as the container user to preserve volume ownership
+docker compose exec -T lightnvr sh -c 'cat > /etc/lightnvr/lightnvr.ini' < ./lightnvr.ini
 
 # Restart the container to apply changes
 docker compose restart
@@ -172,14 +180,16 @@ docker compose restart
 docker pull ghcr.io/opensensor/lightnvr:latest
 ```
 
-##### 2. Create Directories for Persistent Storage
+##### 2. Create Named Volumes for Persistent Storage
 
 ```bash
-mkdir -p /path/to/config
-mkdir -p /path/to/data
+docker volume create lightnvr-config
+docker volume create lightnvr-database
+docker volume create lightnvr-recordings
+docker volume create lightnvr-models
 ```
 
-**Important:** The data directory must be persisted to avoid losing the database and recordings on container restart.
+These volumes preserve configuration, database, recordings, and models when the container is replaced. New empty volumes inherit the image's directory ownership for its non-root user.
 
 ##### 3. Run the Container
 
@@ -196,14 +206,16 @@ docker run -d \
   ghcr.io/opensensor/lightnvr:latest
 ```
 
-##### 4. Create a Configuration File
+##### 4. Customize the Initialized Configuration
 
 ```bash
-# Copy the default configuration
-docker cp lightnvr:/etc/lightnvr/lightnvr.ini /path/to/config/lightnvr.ini
+# Copy to a private local file and edit it
+umask 077
+docker cp lightnvr:/etc/lightnvr/lightnvr.ini ./lightnvr.ini
+nano ./lightnvr.ini
 
-# Edit the configuration
-nano /path/to/config/lightnvr.ini
+# Write it back as the container user to preserve volume ownership
+docker exec -i lightnvr sh -c 'cat > /etc/lightnvr/lightnvr.ini' < ./lightnvr.ini
 ```
 
 **Note:** Ensure the paths in `lightnvr.ini` point to `/var/lib/lightnvr/data` subdirectories:
@@ -674,11 +686,13 @@ cd lightNVR
 docker compose down
 
 # Remove the image
-docker rmi lightnvr
+docker rmi ghcr.io/opensensor/lightnvr:latest
 
-# Remove volumes (optional - this will delete all data)
-rm -rf ./config
-rm -rf ./data
+# Delete configuration, database, and models (optional; irreversible)
+docker compose down --volumes
+
+# Delete recordings in the bind mount separately (optional; irreversible)
+sudo rm -rf ./data/recordings
 ```
 
 #### Using Docker Run
@@ -691,7 +705,9 @@ docker rm lightnvr
 # Remove the image
 docker rmi ghcr.io/opensensor/lightnvr:latest
 
-# Remove volumes (optional - this will delete all data)
-rm -rf /path/to/config
-rm -rf /path/to/data
+# Remove named volumes (optional - this will delete all data)
+docker volume rm lightnvr-config
+docker volume rm lightnvr-database
+docker volume rm lightnvr-recordings
+docker volume rm lightnvr-models
 ```
