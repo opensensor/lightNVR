@@ -895,6 +895,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/detection/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List evidence models
+         * @description Requires global camera.configure or that permission on an existing camera. Built-in models remain present if the configured model directory is absent. File models include paths and support/build metadata only for an authorized configurator.
+         */
+        get: operations["listEvidenceModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/detection/results/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence detections
+         * @description Current camera live.view authorizes the query. Captured detection UUIDs take precedence over reused stream names; only legacy NULL/empty UUID rows fall back to name. Optional start/end are epoch-second filters; absent bounds use a recent interval of at least 30 seconds.
+         */
+        get: operations["getEvidenceDetections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/event-destinations": {
         parameters: {
             query?: never;
@@ -1165,6 +1205,178 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/investigation-bookmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List evidence bookmarks
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        get: operations["listEvidenceBookmarks"];
+        put?: never;
+        /**
+         * Create evidence bookmark
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        post: operations["createEvidenceBookmark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigation-bookmarks/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence bookmark
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        get: operations["getEvidenceBookmark"];
+        /**
+         * Update evidence bookmark
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        put: operations["updateEvidenceBookmark"];
+        post?: never;
+        /**
+         * Delete evidence bookmark
+         * @description Owned by current user ID, including scoped-token owners; token replay scope must still permit every saved camera. Foreign ownership is concealed as404; own inaccessible cameras may return403. List filters invisible bookmarks/counts. Updates only title/note with current revision. Scoped-token siblings retain existing same-owner compatibility. Bookmarks do not hold recordings.
+         */
+        delete: operations["deleteEvidenceBookmark"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/recordings/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview evidence recordings
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["previewEvidenceRecordings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search evidence
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["searchEvidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/segment-at": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve evidence segment
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["resolveEvidenceSegment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/thumbnail-samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sample evidence thumbnails
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["sampleEvidenceThumbnails"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/thumbnail/{recording_id}/{offset_ms}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence thumbnail
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["getEvidenceThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query evidence timeline
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["queryEvidenceTimeline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/live/layouts": {
         parameters: {
             query?: never;
@@ -1340,6 +1552,66 @@ export interface paths {
          * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
          */
         delete: operations["deleteFleetLocation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lpr/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export evidence lpr
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["exportEvidenceLpr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lpr/reads/{read_uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete evidence lpr
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        delete: operations["deleteEvidenceLpr"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lpr/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search evidence lpr
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["searchEvidenceLpr"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1705,6 +1977,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete evidence recording file
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        delete: operations["deleteEvidenceRecordingFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/files/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check evidence recording file
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["checkEvidenceRecordingFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recordings/play/{recording_id}": {
         parameters: {
             query?: never;
@@ -1722,6 +2034,46 @@ export interface paths {
         get: operations["playRecording"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/protected": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count evidence protected
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["countEvidenceProtected"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync evidence recordings
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        post: operations["syncEvidenceRecordings"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1823,6 +2175,26 @@ export interface paths {
          * @description Before setup completion this bootstrap operation is public. Once complete it requires system.admin; resetting requires that authority. Malformed/absent optional fields retain the native default of completing setup.
          */
         post: operations["updateSetupStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{camera}/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence snapshot
+         * @description New MQTT snapshot URLs use the captured immutable camera UUID namespace. UUID URLs authorize that UUID and never fall back to a display-name directory. Existing name-only snapshot URLs remain compatible and authorize the current named camera; old files do not contain recoverable capture identity. Camera snapshot.create is required.
+         */
+        get: operations["getEvidenceSnapshot"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2513,6 +2885,46 @@ export interface paths {
          * @description A named stream requires live.view on that stream. Empty/malformed unnamed telemetry is ignored with 204; an acknowledgment does not imply storage of an event.
          */
         post: operations["recordPlayerTelemetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/timeline/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence manifest
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["getEvidenceManifest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/timeline/play": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Redirect evidence playback
+         * @description Discovery indicates an operation; concrete cameras, captured identities, ownership and current permissions are rechecked for every request. Basic, legacy keys and scoped-token owner intersections remain supported.
+         */
+        get: operations["redirectEvidencePlayback"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3390,6 +3802,579 @@ export interface components {
                 end: string;
                 start: string;
             }[];
+        };
+        EvidenceBookmark: {
+            camera_uuids: string[];
+            created_at: number;
+            cursor_time: number;
+            end_time: number;
+            filters: components["schemas"]["EvidenceBookmarkFilters"];
+            /** @constant */
+            holds_recordings: false;
+            note: string;
+            primary_camera_uuid: string;
+            representative_result: components["schemas"]["EvidenceBookmarkResult"];
+            revision: number;
+            start_time: number;
+            title: string;
+            updated_at: number;
+            uuid: string;
+        };
+        /** @description Camera list, primary camera, region and saved result must agree. Cursor must lie inside the interval. The bookmark is owned by the current user (also for scoped tokens), never grants access, and does not protect media from retention. */
+        EvidenceBookmarkCreate: {
+            camera_uuids: string[];
+            cursor_time: number;
+            end_time: number;
+            filters: components["schemas"]["EvidenceBookmarkFilters"];
+            note?: string;
+            primary_camera_uuid: string;
+            representative_result?: components["schemas"]["EvidenceBookmarkResult"];
+            start_time: number;
+            title: string;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceBookmarkDelete: {
+            revision: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceBookmarkDeleted: {
+            /** @constant */
+            success: true;
+        };
+        EvidenceBookmarkFilters: {
+            capture_method?: string;
+            event_type?: string;
+            label?: string;
+            location?: string;
+            min_confidence?: number;
+            protection?: string;
+            recording_tag?: string;
+            region?: {
+                camera_uuid: string;
+                height: number;
+                /** @enum {string} */
+                match?: "center" | "intersects" | "minimum_intersection";
+                min_intersection?: number;
+                width: number;
+                x: number;
+                y: number;
+            };
+            source?: string;
+            zone?: string;
+        };
+        EvidenceBookmarkResult: {
+            camera_uuid?: string;
+            detection_id?: string | number;
+            end_time?: string | number;
+            event_type?: string | number;
+            label?: string | number;
+            recording_id?: string | number;
+            result_id?: string | number;
+            start_time?: string | number;
+        } | null;
+        EvidenceBookmarks: {
+            bookmarks: components["schemas"]["EvidenceBookmark"][];
+            count: number;
+        };
+        EvidenceBookmarkUpdate: {
+            note?: string;
+            revision: number;
+            title: string;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceDetection: {
+            confidence: number;
+            end_timestamp: number;
+            height: number;
+            label: string;
+            timestamp: number;
+            width: number;
+            x: number;
+            y: number;
+        };
+        EvidenceDetections: {
+            detections: components["schemas"]["EvidenceDetection"][];
+            stream_status: components["schemas"]["StreamStatus"];
+            timestamp: string;
+        };
+        EvidenceFileCheck: {
+            /** @constant */
+            exists: false;
+        } | {
+            /** @constant */
+            exists: true;
+            mtime: number;
+            size: number;
+        };
+        EvidenceFileDeleted: {
+            existed: boolean;
+            /** @enum {string} */
+            status: "deleted" | "deletion_pending";
+            /** @constant */
+            success: true;
+        };
+        EvidenceLprDeleted: {
+            /** @constant */
+            deleted: true;
+        };
+        EvidenceLprExportRequest: {
+            camera_uuid: string;
+            end_at: number;
+            limit?: number;
+            /** @enum {string} */
+            match?: "exact" | "partial";
+            plate?: string;
+            start_at: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceLprRead: {
+            attributes: {
+                bounding_box: {
+                    bottom: number;
+                    left: number;
+                    right: number;
+                    top: number;
+                } | null;
+                correlation_id: string | null;
+                country: string | null;
+                direction: string | null;
+                lane: string | null;
+                object_id: string | null;
+                plate_type: string | null;
+                region: string | null;
+                vehicle_color: string | null;
+                vehicle_type: string | null;
+                vendor_topic: string;
+            };
+            camera_uuid: string;
+            confidence: number | null;
+            id: string;
+            observed_at: number;
+            plate: string;
+            received_at: number;
+            recording_id: number | null;
+            source: string;
+            stream_name: string;
+            /** @constant */
+            type: "license_plate";
+        };
+        EvidenceLprReads: {
+            count: number;
+            reads: components["schemas"]["EvidenceLprRead"][];
+        };
+        /** @description Epoch milliseconds, end at/after start within 366 days; match requires a canonicalizable plate (partial at least 3 canonical characters). Search returns at most 100 rows. */
+        EvidenceLprSearchRequest: {
+            camera_uuid: string;
+            end_at: number;
+            limit?: number;
+            /** @enum {string} */
+            match?: "exact" | "partial";
+            plate?: string;
+            start_at: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceModel: {
+            description?: string;
+            id: string;
+            name: string;
+            path: string;
+            size?: number;
+            supported: boolean;
+            type: string;
+            unsupported_reason?: string;
+        };
+        EvidenceModels: {
+            count: number;
+            litert_available: boolean;
+            message?: string;
+            models: components["schemas"]["EvidenceModel"][];
+            sod_available: boolean;
+        };
+        EvidencePreview: {
+            camera_count: number;
+            end_time: number;
+            permissions: {
+                export: {
+                    all_allowed: boolean;
+                    allowed_count: number;
+                    denied_count: number;
+                };
+                protect: {
+                    actionable_count: number;
+                    allowed_count: number;
+                    denied_count: number;
+                };
+            };
+            protected_count: number;
+            recording_count: number;
+            recordings: components["schemas"]["EvidencePreviewRecording"][];
+            start_time: number;
+            total_bytes: number;
+            unprotected_count: number;
+        };
+        EvidencePreviewRecording: {
+            camera_name: string;
+            camera_uuid: string;
+            can_export: boolean;
+            can_protect: boolean;
+            end_time: number;
+            id: number;
+            protected: boolean;
+            size_bytes: number;
+            start_time: number;
+            stream_name: string;
+        };
+        EvidenceProtectedCount: {
+            protected_count: number;
+            stream_name?: string;
+        };
+        /** @description End must exceed start by no more than 31 days. All explicit cameras must exist and permit recordings.replay; mixed unauthorized input is rejected. */
+        EvidenceRangeRequest: {
+            camera_uuids: string[];
+            end_time: number;
+            start_time: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceSearch: {
+            camera_count: number;
+            coverage: {
+                complete: boolean;
+                incomplete_reasons: string[];
+                requested_end: number;
+                requested_start: number;
+                searched_end: number;
+                searched_start: number;
+                spatial_metadata: {
+                    /** @constant */
+                    requested: false;
+                } | {
+                    camera_uuid: string;
+                    complete: boolean;
+                    /** @enum {string} */
+                    match: "center" | "intersects" | "minimum_intersection";
+                    min_intersection?: number;
+                    rectangle: {
+                        height: number;
+                        width: number;
+                        x: number;
+                        y: number;
+                    };
+                    /** @constant */
+                    requested: true;
+                    rows_with_boxes: number;
+                    rows_without_boxes: number;
+                    /** @constant */
+                    search_type: "metadata_search";
+                };
+                unresolved_legacy_rows: number;
+            };
+            facets: {
+                cameras: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                capture_methods: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                event_types: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                labels: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                locations: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                protection: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                recording_tags: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                sources: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+                zones: {
+                    count: number;
+                    label?: string;
+                    value: string;
+                }[];
+            };
+            histogram: {
+                bucket_seconds: number;
+                buckets: {
+                    count: number;
+                    end_time: number;
+                    event_time: number;
+                    start_time: number;
+                }[];
+            };
+            page: {
+                has_more: boolean;
+                limit: number;
+                next_cursor: string | null;
+                returned: number;
+                total: number;
+            };
+            results: components["schemas"]["EvidenceSearchResult"][];
+            selector_applied: boolean;
+            summary_complete: boolean;
+        };
+        EvidenceSearchRequest: ({
+            camera_uuids: string[];
+            cursor?: string | null;
+            end_time: number;
+            filters?: {
+                capture_methods?: string[];
+                event_types?: string[];
+                labels?: string[];
+                locations?: string[];
+                max_confidence?: number;
+                min_confidence?: number;
+                protected?: boolean;
+                recording_tags?: string[];
+                sources?: string[];
+                zones?: string[];
+            } & {
+                [key: string]: unknown;
+            };
+            include_summary?: boolean;
+            limit?: number;
+            region?: {
+                camera_uuid: string;
+                height: number;
+                /** @enum {string} */
+                match?: "center" | "intersects" | "minimum_intersection";
+                min_intersection?: number;
+                width: number;
+                x: number;
+                y: number;
+            } & {
+                [key: string]: unknown;
+            };
+            selector?: never;
+            start_time: number;
+            summary_only?: boolean;
+        } & {
+            [key: string]: unknown;
+        }) | ({
+            camera_uuids?: never;
+            cursor?: string | null;
+            end_time: number;
+            filters?: {
+                capture_methods?: string[];
+                event_types?: string[];
+                labels?: string[];
+                locations?: string[];
+                max_confidence?: number;
+                min_confidence?: number;
+                protected?: boolean;
+                recording_tags?: string[];
+                sources?: string[];
+                zones?: string[];
+            } & {
+                [key: string]: unknown;
+            };
+            include_summary?: boolean;
+            limit?: number;
+            region?: {
+                camera_uuid: string;
+                height: number;
+                /** @enum {string} */
+                match?: "center" | "intersects" | "minimum_intersection";
+                min_intersection?: number;
+                width: number;
+                x: number;
+                y: number;
+            } & {
+                [key: string]: unknown;
+            };
+            selector: components["schemas"]["FleetSelector"];
+            start_time: number;
+            summary_only?: boolean;
+        } & {
+            [key: string]: unknown;
+        });
+        EvidenceSearchResult: {
+            camera: {
+                location_name: string | null;
+                location_path: string | null;
+                location_uuid: string | null;
+                name: string;
+            };
+            camera_uuid: string;
+            detection: {
+                bounding_box: {
+                    height: number;
+                    /** @constant */
+                    normalized: true;
+                    width: number;
+                    x: number;
+                    y: number;
+                } | null;
+                confidence: number;
+                id: number;
+                label: string;
+                source: string;
+                track_id: number | null;
+                zone_uuid: string | null;
+            };
+            end_time: number;
+            /** @enum {string} */
+            event_type: "motion" | "detection";
+            known_gap: boolean;
+            media_available: boolean;
+            recording: {
+                capture_method: string | null;
+                protected: boolean | null;
+            };
+            recording_id: number | null;
+            result_id: string;
+            start_time: number;
+            thumbnail: {
+                /** @constant */
+                status: "available";
+                url: string;
+            } | {
+                /** @enum {string} */
+                status: "unavailable" | "disabled";
+            };
+        };
+        EvidenceSegment: {
+            capture_method: string;
+            duration: number;
+            end_time: number;
+            has_detection: boolean;
+            id: number;
+            /** @constant */
+            media_available: true;
+            protected: boolean;
+            size_bytes: number;
+            start_time: number;
+        } | {
+            /** @constant */
+            coverage_only: true;
+            duration: number;
+            end_time: number;
+            has_detection: boolean;
+            id: number;
+            /** @constant */
+            media_available: true;
+            protected: boolean;
+            size_bytes: number;
+            source_segment_count: number;
+            start_time: number;
+        };
+        EvidenceSegmentAt: {
+            segment: components["schemas"]["EvidenceSegment"] | null;
+        };
+        EvidenceSegmentAtRequest: {
+            camera_uuids: string[];
+            timestamp: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceSyncComplete: {
+            message: string;
+            /** @constant */
+            success: true;
+            updated: number;
+        };
+        EvidenceThumbnailRequest: {
+            camera_uuids: string[];
+            end_time: number;
+            sample_count?: number;
+            start_time: number;
+        } & {
+            [key: string]: unknown;
+        };
+        EvidenceThumbnails: {
+            camera: {
+                camera_uuid: string;
+                name: string;
+            };
+            coverage: {
+                available_samples: number;
+                gap_samples: number;
+                /** @constant */
+                segments_truncated: false;
+            };
+            end_time: number;
+            sample_count: number;
+            samples: components["schemas"]["EvidenceThumbnailSample"][];
+            start_time: number;
+        };
+        EvidenceThumbnailSample: {
+            /** @constant */
+            media_status: "gap";
+            thumbnail: {
+                /** @constant */
+                status: "unavailable";
+            };
+            timestamp: number;
+        } | {
+            /** @constant */
+            media_status: "available";
+            offset_ms: number;
+            recording_end_time: number;
+            recording_id: number;
+            recording_start_time: number;
+            thumbnail: {
+                /** @constant */
+                status: "available";
+                url: string;
+            } | {
+                /** @enum {string} */
+                status: "unavailable" | "disabled";
+            };
+            timestamp: number;
+        };
+        EvidenceTimeline: {
+            camera_count: number;
+            end_time: number;
+            /** @constant */
+            max_active_decoders: 4;
+            start_time: number;
+            tracks: components["schemas"]["EvidenceTimelineTrack"][];
+        };
+        EvidenceTimelineTrack: {
+            aggregated: boolean;
+            aggregation_bucket_seconds: number;
+            camera_uuid: string;
+            coverage: {
+                /** @constant */
+                identity_resolved: true;
+                requested_end: number;
+                requested_start: number;
+            };
+            name: string;
+            returned_interval_count: number;
+            segment_count: number;
+            segments: components["schemas"]["EvidenceSegment"][];
+            stream_name: string;
+            /** @constant */
+            truncated: false;
         };
         FleetCamera: {
             address: string;
@@ -10367,6 +11352,196 @@ export interface operations {
             };
         };
     };
+    listEvidenceModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceModels"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceDetections: {
+        parameters: {
+            query?: {
+                end?: number;
+                start?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceDetections"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listEventDestinations: {
         parameters: {
             query?: never;
@@ -11936,6 +13111,1081 @@ export interface operations {
             };
         };
     };
+    listEvidenceBookmarks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmarks"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createEvidenceBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceBookmarkCreate"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmark"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmark"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateEvidenceBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceBookmarkUpdate"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmark"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteEvidenceBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceBookmarkDelete"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceBookmarkDeleted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    previewEvidenceRecordings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceRangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidencePreview"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    searchEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceSearch"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    resolveEvidenceSegment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceSegmentAtRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceSegmentAt"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sampleEvidenceThumbnails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceThumbnailRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceThumbnails"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                offset_ms: string;
+                /** @description Concrete resource identifier; authorized independently. */
+                recording_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized media bytes; not JSON. Thumbnail offsets are milliseconds and snap to the cache grid. Generation may be disabled. Manifest references recording IDs whose playback rechecks captured identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description A supported byte range of authorized media. */
+            206: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unsatisfiable range. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    queryEvidenceTimeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceRangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceTimeline"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listLiveLayouts: {
         parameters: {
             query?: never;
@@ -13245,6 +15495,294 @@ export interface operations {
             };
             /** @description Operation failed. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    exportEvidenceLpr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceLprExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: "attachment; filename=\"lightnvr-lpr-export.json\"";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceLprReads"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteEvidenceLpr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                read_uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceLprDeleted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    searchEvidenceLpr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceLprSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceLprReads"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14678,6 +17216,205 @@ export interface operations {
             };
         };
     };
+    deleteEvidenceRecordingFile: {
+        parameters: {
+            query: {
+                /** @description Exact registered recording file path. Unknown paths return404; this is not an arbitrary filesystem operation. Captured recording UUID controls authority. */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceFileDeleted"];
+                };
+            };
+            /** @description Deletion scheduled; not proof of file removal. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceFileDeleted"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    checkEvidenceRecordingFile: {
+        parameters: {
+            query: {
+                /** @description Exact registered recording file path. Unknown paths return404; this is not an arbitrary filesystem operation. Captured recording UUID controls authority. */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceFileCheck"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     playRecording: {
         parameters: {
             query?: {
@@ -14824,6 +17561,193 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"] | components["schemas"]["RecordingPlaybackPreparing"];
+                };
+            };
+        };
+    };
+    countEvidenceProtected: {
+        parameters: {
+            query?: {
+                /** @description Optional current camera name; otherwise count only recordings visible by replay scope. */
+                stream?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceProtectedCount"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    syncEvidenceRecordings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceSyncComplete"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -15304,6 +18228,120 @@ export interface operations {
                 };
             };
             /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Concrete resource identifier; authorized independently. */
+                camera: string;
+                /** @description Concrete resource identifier; authorized independently. */
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized media bytes; not JSON. Thumbnail offsets are milliseconds and snap to the cache grid. Generation may be disabled. Manifest references recording IDs whose playback rechecks captured identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description A supported byte range of authorized media. */
+            206: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unsatisfiable range. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -19047,6 +22085,216 @@ export interface operations {
                 };
             };
             /** @description Service temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEvidenceManifest: {
+        parameters: {
+            query: {
+                /** @description ISO8601 or date-only; defaults to recent24hours. */
+                end?: string;
+                /** @description ISO8601 or date-only; defaults to recent24hours. */
+                start?: string;
+                stream: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized media bytes; not JSON. Thumbnail offsets are milliseconds and snap to the cache grid. Generation may be disabled. Manifest references recording IDs whose playback rechecks captured identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apple.mpegurl": string;
+                };
+            };
+            /** @description A supported byte range of authorized media. */
+            206: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apple.mpegurl": string;
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unsatisfiable range. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    redirectEvidencePlayback: {
+        parameters: {
+            query: {
+                /** @description Positive epoch seconds or ISO8601; defaults to now. */
+                start?: string;
+                stream: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Empty redirect to the chosen recording playback endpoint; playback independently reauthorizes the recording. */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Denied by current camera policy, feature configuration or demo write restriction. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Resource not found or not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, protected media or transfer conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Request exceeds operation limits. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure; a mutation may have applied. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Protected storage or media work temporarily unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

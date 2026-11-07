@@ -1,6 +1,7 @@
+import { evidenceJSON } from '../../../api/evidence.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import { fetchJSON, useQuery } from '../../../query-client.ts';
+import { useQuery } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
 import { Priority, queueThumbnailLoad } from '../../../request-queue.ts';
 import {
@@ -243,7 +244,7 @@ function InvestigationPlayer({
 
     const controller = new AbortController();
     setStatus('loading');
-    fetchJSON<InvestigationSegmentAtResponse>('/api/investigations/segment-at', {
+    evidenceJSON<InvestigationSegmentAtResponse>('/api/investigations/segment-at', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -971,7 +972,7 @@ export function InvestigationView() {
         limit: 24,
         include_summary: false,
       };
-      const data = await fetchJSON<InvestigationSearchResponse>('/api/investigations/search', {
+      const data = await evidenceJSON<InvestigationSearchResponse>('/api/investigations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(searchRequest),
@@ -990,7 +991,7 @@ export function InvestigationView() {
       searchSummaryController.current?.abort();
       const summaryController = new AbortController();
       searchSummaryController.current = summaryController;
-      void fetchJSON<InvestigationSearchResponse>('/api/investigations/search', {
+      void evidenceJSON<InvestigationSearchResponse>('/api/investigations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1080,7 +1081,7 @@ export function InvestigationView() {
     setError('');
     setPlaying(false);
     try {
-      const data = await fetchJSON<InvestigationTimeline>('/api/investigations/timeline', {
+      const data = await evidenceJSON<InvestigationTimeline>('/api/investigations/timeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1360,7 +1361,7 @@ export function InvestigationView() {
     setThumbnailLoading(true);
     setThumbnailError('');
     try {
-      const data = await fetchJSON<InvestigationThumbnailData>('/api/investigations/thumbnail-samples', {
+      const data = await evidenceJSON<InvestigationThumbnailData>('/api/investigations/thumbnail-samples', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

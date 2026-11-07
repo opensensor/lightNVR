@@ -1,4 +1,5 @@
 import {getSystemSettings} from '../../api/system.ts';
+import { evidenceJSON } from '../../api/evidence.ts';
 /**
  * LightNVR Web Interface StreamsView Component
  * React component for the streams page
@@ -422,11 +423,7 @@ export function StreamsView() {
   // Fetch detection models
   const {
     data: detectionModelsData
-  } = useQuery<DetectionModelsResponse>(['detectionModels'], '/api/detection/models', {
-    timeout: 5000,
-    retries: 1,
-    retryDelay: 1000
-  });
+  } = useQuery<DetectionModelsResponse>({queryKey:['detectionModels'], queryFn:({signal})=>evidenceJSON('/api/detection/models',{signal,timeout:5000,retries:1}),retry:false});
 
   const { data: clientConfig = {} } = useQuery<ClientConfig>(
     ['client-config'],

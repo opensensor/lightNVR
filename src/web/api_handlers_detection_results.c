@@ -31,6 +31,7 @@
 #include "video/stream_manager.h"
 #include "video/zone_filter.h"
 #include "database/database_manager.h"
+#include "utils/uuid.h"
 
 // See api_handlers_detection.c — this constant is only used by the debug helper
 // (debug_dump_detection_results) which still benefits from a wider window.
@@ -178,8 +179,17 @@ void handle_get_detection_snapshot(const http_request_t *req, http_response_t *r
     const char *stream_part = param_buf;
     const char *file_part = slash + 1;
 
-    if (!httpd_authorize_stream_action(req, res, AUTHZ_SNAPSHOT_CREATE,
-                                       stream_part)) return;
+    /* UUID namespaces are immutable capture identities. Never authorize a UUID
+     * against a current display name, nor serve a name namespace as fallback. */
+    const bool uuid_namespace = lightnvr_uuid_is_valid(stream_part);
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_SNAPSHOT_CREATE,
+            uuid_namespace ? stream_part : NULL,
+            uuid_namespace ? NULL : stream_part,
+            &user, &camera, &evaluation)) return;
 
     // Both components must be plain filenames: no traversal, no separators,
     // only characters sanitize_stream_name / the snapshot writer produce.

@@ -613,3 +613,19 @@ target_link_options(test_recording_file PRIVATE "-Wl,--wrap=write" "-Wl,--wrap=c
 add_layer1_test(test_uuid CI_UNIT CI_SANITIZER)
 target_sources(test_uuid PRIVATE ${CMAKE_SOURCE_DIR}/src/utils/uuid.c)
 target_link_options(test_uuid PRIVATE "-Wl,--wrap=getrandom" "-Wl,--wrap=fread")
+
+# Compile the MQTT producer even in the isolated no-MQTT API variant, when the
+# development headers are available. Wrappers exercise identity changes during
+# capture without a broker or go2rtc process.
+find_path(MQTT_SNAPSHOT_TEST_INCLUDE mosquitto.h)
+find_library(MQTT_SNAPSHOT_TEST_LIBRARY mosquitto)
+if(MQTT_SNAPSHOT_TEST_INCLUDE AND MQTT_SNAPSHOT_TEST_LIBRARY)
+    add_layer2_test(test_mqtt_snapshot_identity CI_UNIT CI_SANITIZER)
+    target_include_directories(test_mqtt_snapshot_identity PRIVATE ${MQTT_SNAPSHOT_TEST_INCLUDE})
+    target_compile_definitions(test_mqtt_snapshot_identity PRIVATE ENABLE_MQTT=1)
+    target_compile_options(test_mqtt_snapshot_identity PRIVATE -ffunction-sections -fdata-sections)
+    target_link_libraries(test_mqtt_snapshot_identity ${MQTT_SNAPSHOT_TEST_LIBRARY})
+    target_link_options(test_mqtt_snapshot_identity PRIVATE -Wl,--gc-sections
+        -Wl,--wrap=get_stream_config_by_name -Wl,--wrap=go2rtc_get_snapshot
+        -Wl,--wrap=mosquitto_publish)
+endif()

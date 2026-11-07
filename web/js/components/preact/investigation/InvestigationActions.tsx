@@ -1,3 +1,4 @@
+import { evidenceJSON } from '../../../api/evidence.ts';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { fetchJSON } from '../../../query-client.ts';
@@ -82,7 +83,7 @@ export function InvestigationActions({ timeline, selectedResult, t }: Investigat
     setError('');
     if (!preserveOutcome) setOutcome('');
     try {
-      const data = await fetchJSON<InvestigationPreview>('/api/investigations/recordings/preview', {
+      const data = await evidenceJSON<InvestigationPreview>('/api/investigations/recordings/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

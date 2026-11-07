@@ -220,6 +220,66 @@ void test_detection_snapshot_only_sees_committed_rows_and_preserves_event_ranges
     TEST_ASSERT_EQUAL_INT64(now - 10, ends[1]);
 }
 
+/* Capture identity survives renames. Legacy fallback applies only to absent UUIDs. */
+void test_captured_detection_identity_isolated_from_reused_names(void) {
+    const char *uuid = "00000000-0000-4000-8000-000000000001";
+    const char *sql = "INSERT INTO detections(stream_name,camera_uuid,timestamp,label,confidence,source) VALUES"
+        "('reused','00000000-0000-4000-8000-000000000002',100,'hidden',1,'api'),"
+        "('old-name','00000000-0000-4000-8000-000000000001',99,'captured',1,'api'),"
+        "('reused',NULL,98,'legacy-null',1,'api'),"
+        "('reused','',97,'legacy-empty',1,'api'),"
+        "('other',NULL,96,'hidden-legacy',1,'api');";
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), sql, NULL, NULL, NULL));
+    detection_result_t result;
+    time_t starts[MAX_DETECTIONS], ends[MAX_DETECTIONS];
+    pthread_t writer = start_busy_writer();
+    int count = get_detection_results_for_camera_readonly(uuid, "reused", &result,
+        starts, ends, 0, 90, 110);
+    bool completed = finish_busy_writer(writer);
+    TEST_ASSERT_TRUE(completed);
+    TEST_ASSERT_EQUAL_INT(3, count);
+    TEST_ASSERT_EQUAL_STRING("captured", result.detections[0].label);
+    TEST_ASSERT_EQUAL_STRING("legacy-null", result.detections[1].label);
+    TEST_ASSERT_EQUAL_STRING("legacy-empty", result.detections[2].label);
+    TEST_ASSERT_EQUAL_INT64(99, starts[0]);
+    TEST_ASSERT_EQUAL_INT64(99, ends[0]);
+    TEST_ASSERT_EQUAL_INT(1, get_detection_results_for_camera_readonly(uuid,
+        "unrelated", &result, starts, NULL, 0, 0, 110));
+    TEST_ASSERT_EQUAL_INT(0, get_detection_results_for_camera_readonly(uuid,
+        "reused", &result, starts, ends, 1, 0, 0));
+    TEST_ASSERT_EQUAL_INT(-1, get_detection_results_for_camera_readonly(NULL,
+        "reused", &result, starts, ends, 0, 0, 0));
+}
+
+void test_captured_detection_read_preserves_committed_motion_ranges(void) {
+    stream_config_t camera;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_a", &camera));
+    time_t now = time(NULL);
+    detection_result_t motion = { .count = 1 };
+    strcpy(motion.detections[0].label, "motion");
+    motion.detections[0].confidence = 1;
+    TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections("cam_a", &motion, now - 120, 0));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections("cam_a", now - 10));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "BEGIN IMMEDIATE; UPDATE detections SET label='uncommitted';", NULL, NULL, NULL));
+    detection_result_t result;
+    time_t starts[MAX_DETECTIONS], ends[MAX_DETECTIONS];
+    int count = get_detection_results_for_camera_readonly(camera.camera_uuid, "cam_a",
+        &result, starts, ends, 0, now - 60, now);
+    sqlite3_exec(get_db_handle(), "ROLLBACK", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_STRING("motion", result.detections[0].label);
+    TEST_ASSERT_EQUAL_INT64(now - 120, starts[0]);
+    TEST_ASSERT_EQUAL_INT64(now - 10, ends[0]);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "ALTER TABLE detections RENAME TO unavailable_detections", NULL, NULL, NULL));
+    count = get_detection_results_for_camera_readonly(camera.camera_uuid, "cam_a",
+        &result, starts, ends, 0, 0, 0);
+    sqlite3_exec(get_db_handle(), "ALTER TABLE unavailable_detections RENAME TO detections", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(-1, count);
+    TEST_ASSERT_EQUAL_INT(0, result.count);
+}
+
 void test_missing_setup_settings_mean_incomplete(void) {
     sqlite3_exec(get_db_handle(), "DELETE FROM system_settings WHERE key IN "
         "('setup_complete', 'setup_completed_at');", NULL, NULL, NULL);
@@ -258,6 +318,8 @@ int main(void) {
     RUN_TEST(test_legacy_authorization_does_not_wait_for_busy_writer);
     RUN_TEST(test_detection_snapshot_does_not_wait_for_busy_writer);
     RUN_TEST(test_detection_snapshot_only_sees_committed_rows_and_preserves_event_ranges);
+    RUN_TEST(test_captured_detection_identity_isolated_from_reused_names);
+    RUN_TEST(test_captured_detection_read_preserves_committed_motion_ranges);
     RUN_TEST(test_missing_setup_settings_mean_incomplete);
     RUN_TEST(test_setup_database_error_is_not_reported_as_incomplete);
     int result = UNITY_END();

@@ -18,6 +18,8 @@ import { buildTimelineSegmentsUrl } from '../js/components/preact/timeline/timel
 
 const CAMERA = 'ad1d3d70-36ee-4f0c-9225-3b88373f42cb';
 
+const bodyFixture = {camera_uuid:CAMERA,start_at:1,end_at:2};
+const readFixture={id:CAMERA,type:'license_plate',camera_uuid:CAMERA,stream_name:'A',observed_at:1,received_at:1,source:'vendor_api',plate:'ABC123',confidence:null,recording_id:null,attributes:{country:null,region:null,plate_type:null,direction:null,lane:null,vehicle_type:null,vehicle_color:null,object_id:null,correlation_id:null,vendor_topic:'',bounding_box:null}};
 const jsonResponse = (status, body) => new Response(JSON.stringify(body), {
   status,
   headers: { 'Content-Type': 'application/json' },
@@ -148,7 +150,7 @@ describe('LPR filter validation', () => {
 
 describe('LPR API calls', () => {
   test('search posts the body as JSON and returns reads', async () => {
-    const read = { id: 'r1', camera_uuid: CAMERA, plate: 'ABC123', observed_at: 1 };
+    const read = readFixture;
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { reads: [read], count: 1 }));
     const body = buildLprSearchBody(filters({ plate: 'abc' }));
 
@@ -171,38 +173,38 @@ describe('LPR API calls', () => {
     [500, 'error'],
   ])('search maps HTTP %i to %s', async (status, outcome) => {
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(status, { error: 'nope' }));
-    await expect(searchLprReads({}, { fetchImpl })).resolves.toMatchObject({ outcome, message: 'nope' });
+    await expect(searchLprReads(bodyFixture, { fetchImpl })).resolves.toMatchObject({ outcome, message: 'nope' });
   });
 
   test('error messages are optional and tolerate non-JSON bodies', async () => {
     const plain = jest.fn().mockResolvedValue(new Response('Bad Gateway', { status: 502 }));
-    await expect(searchLprReads({}, { fetchImpl: plain }))
+    await expect(searchLprReads(bodyFixture, { fetchImpl: plain }))
       .resolves.toEqual({ outcome: 'error', status: 502, message: '' });
     const numeric = jest.fn().mockResolvedValue(jsonResponse(400, { error: 42 }));
-    await expect(searchLprReads({}, { fetchImpl: numeric })).resolves.toEqual({ outcome: 'invalid', message: '' });
+    await expect(searchLprReads(bodyFixture, { fetchImpl: numeric })).resolves.toEqual({ outcome: 'invalid', message: '' });
   });
 
-  test('a success body without a reads array is treated as no reads', async () => {
+  test('a success body without a reads array is rejected', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { count: 3 }));
-    await expect(searchLprReads({}, { fetchImpl })).resolves.toEqual({ outcome: 'ok', reads: [] });
+    await expect(searchLprReads(bodyFixture, { fetchImpl })).rejects.toThrow('Invalid searchEvidenceLpr response');
   });
 
   test('search passes the abort signal through', async () => {
     const controller = new AbortController();
-    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { reads: [] }));
-    await searchLprReads({}, { fetchImpl, signal: controller.signal });
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { reads: [], count:0 }));
+    await searchLprReads(bodyFixture, { fetchImpl, signal: controller.signal });
     expect(fetchImpl.mock.calls[0][1].signal).toBe(controller.signal);
   });
 
   test('calls use the global fetch by default', async () => {
     const original = global.fetch;
     global.fetch = jest.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { reads: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { reads: [], count:0 }))
       .mockResolvedValueOnce(jsonResponse(503, {}))
       .mockResolvedValueOnce(jsonResponse(404, {}));
     try {
-      await expect(searchLprReads({})).resolves.toEqual({ outcome: 'ok', reads: [] });
-      await expect(exportLprReads({})).resolves.toMatchObject({ outcome: 'unavailable' });
+      await expect(searchLprReads(bodyFixture)).resolves.toEqual({ outcome: 'ok', reads: [] });
+      await expect(exportLprReads(bodyFixture)).resolves.toMatchObject({ outcome: 'unavailable' });
       await expect(deleteLprRead('r1')).resolves.toMatchObject({ outcome: 'not_found' });
       expect(global.fetch.mock.calls.map(([url]) => url))
         .toEqual(['/api/lpr/search', '/api/lpr/export', '/api/lpr/reads/r1']);
@@ -212,10 +214,10 @@ describe('LPR API calls', () => {
   });
 
   test('export returns the downloaded document as a blob', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(new Response('{"reads":[]}', { status: 200 }));
-    const result = await exportLprReads({ camera_uuid: CAMERA }, { fetchImpl });
+    const fetchImpl = jest.fn().mockResolvedValue(new Response('{"reads":[],"count":0}', { status:200,headers:{'Content-Type':'application/json','Content-Disposition':'attachment; filename="lightnvr-lpr-export.json"'} }));
+    const result = await exportLprReads(bodyFixture, { fetchImpl });
     expect(result.outcome).toBe('ok');
-    await expect(result.blob.text()).resolves.toBe('{"reads":[]}');
+    await expect(result.blob.text()).resolves.toBe('{"reads":[],"count":0}');
     expect(fetchImpl.mock.calls[0][0]).toBe('/api/lpr/export');
   });
 
@@ -232,7 +234,7 @@ describe('permission-driven actions', () => {
     expect(lprActionsFor(denied, CAMERA)).toEqual({ canSearch: true, canExport: true, canDelete: true });
 
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(403, { error: 'Forbidden' }));
-    const exportResult = await exportLprReads({ camera_uuid: CAMERA }, { fetchImpl });
+    const exportResult = await exportLprReads(bodyFixture, { fetchImpl });
     expect(exportResult.outcome).toBe('forbidden');
     denied = denyLprAction(denied, CAMERA, 'export');
     expect(lprActionsFor(denied, CAMERA)).toEqual({ canSearch: true, canExport: false, canDelete: true });

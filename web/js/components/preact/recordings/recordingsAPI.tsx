@@ -1,3 +1,4 @@
+import { evidenceJSON } from '../../../api/evidence.ts';
 /**
  * API functions for RecordingsView
  */
@@ -667,7 +668,7 @@ export const recordingsAPI = {
         return false;
       }
 
-      const data = await fetchJSON<DetectionResultsResponse>(`/api/detection/results/${recording.stream}?${params.toString()}`, {
+      const data = await evidenceJSON<DetectionResultsResponse>(`/api/detection/results/${recording.stream}?${params.toString()}`, {
         timeout: 10000, // 10 second timeout
         retries: 1,     // Retry once
         retryDelay: 500 // 0.5 second between retries
@@ -698,7 +699,7 @@ export const recordingsAPI = {
         return [];
       }
 
-      const data = await fetchJSON<DetectionResultsResponse>(`/api/detection/results/${recording.stream}?${params.toString()}`, {
+      const data = await evidenceJSON<DetectionResultsResponse>(`/api/detection/results/${recording.stream}?${params.toString()}`, {
         timeout: 15000, // 15 second timeout
         retries: 1,     // Retry once
         retryDelay: 1000 // 1 second between retries

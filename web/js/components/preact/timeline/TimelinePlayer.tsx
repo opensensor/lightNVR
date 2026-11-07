@@ -1,3 +1,4 @@
+import { evidenceJSON } from '../../../api/evidence.ts';
 /**
  * LightNVR Timeline Player Component
  * Handles video playback for the timeline
@@ -655,31 +656,7 @@ export function TimelinePlayer({
         const endTime = toUnixSeconds(data.end_time, { assumeUtc: true });
         if (startTime <= 0 || endTime <= 0) return;
 
-        return fetch(`/api/detection/results/${encodeURIComponent(data.stream)}?start=${startTime}&end=${endTime}`);
-      })
-      .then(async (res): Promise<TimelineDetectionsResponse | null> => {
-        if (!res) {
-          return null;
-        }
-        if (res.ok) {
-          return res.json();
-        }
-
-        // Log details for non-OK HTTP responses when loading detections.
-        let errorText = '';
-        try {
-          errorText = await res.text();
-        } catch (e) {
-          // Ignore secondary errors while attempting to read the body.
-        }
-        console.warn(
-          'Failed to load detections HTTP response for timeline segment:',
-          'status:',
-          res.status,
-          res.statusText,
-          errorText || '(no response body)'
-        );
-        return null;
+        return evidenceJSON<TimelineDetectionsResponse>(`/api/detection/results/${encodeURIComponent(data.stream)}?start=${startTime}&end=${endTime}`);
       })
       .then(data => {
         if (data && data.detections) {
