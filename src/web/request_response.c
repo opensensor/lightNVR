@@ -270,7 +270,6 @@ void http_response_add_cors_headers(http_response_t *res) {
     http_response_add_header(
         res, "Access-Control-Expose-Headers",
         "X-Request-ID, X-Total-Count, Content-Disposition");
-    http_response_add_header(res, "Access-Control-Allow-Credentials", "true");
     http_response_add_header(res, "Access-Control-Max-Age", "86400");
 }
 
