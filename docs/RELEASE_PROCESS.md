@@ -109,7 +109,9 @@ The recommended way to create a release is using the automated script:
 
 The command requires Python 3, Git, an authenticated GitHub CLI (`gh`) with Actions
 read access, and permission to push `main` and tags through `origin`. Run it from
-a clean `main` checkout containing the changes you intend to release. It refuses
+a `main` checkout with no uncommitted tracked changes, containing the changes you
+intend to release. Untracked local notes and files are left alone and do not block
+the release; Git still refuses to overwrite them during a fast-forward. It refuses
 to silently pull new product changes into the release.
 
 1. Validates the version, checkout and absence of both `X.Y.Z` and `vX.Y.Z` tags.
@@ -252,9 +254,10 @@ Examples:
 
 ## Troubleshooting
 
-### "Git working directory is not clean"
+### "Tracked files have uncommitted changes"
 
-You have uncommitted changes. Either commit them or stash them:
+You have staged or unstaged changes to tracked files. Either commit them or stash
+them. Untracked files do not need to be committed, stashed or deleted for a release:
 
 ```bash
 git status

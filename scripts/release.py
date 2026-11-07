@@ -152,7 +152,7 @@ def publish(repo, anchor, version, timeout):
     check_tag_absent(version)
     if fetch_main() != head:
         raise ReleaseError('main moved before tagging. Resume with --publish-only.')
-    if git('rev-parse', 'HEAD') != anchor or git('status', '--porcelain'):
+    if git('rev-parse', 'HEAD') != anchor or git('status', '--porcelain', '--untracked-files=no'):
         raise ReleaseError('Local checkout changed while waiting; no tag was created.')
     git('merge', '--ff-only', head)
     tag = f'v{version}'
@@ -203,8 +203,10 @@ def main(argv=None):
         return
     if git('branch', '--show-current') != 'main':
         raise ReleaseError('Releases must be prepared from main.')
-    if git('status', '--porcelain'):
-        raise ReleaseError('Working directory is not clean. Commit or stash changes first.')
+    # Only tracked files enter the release; unrelated local notes are harmless.
+    # Git still refuses a fast-forward that would overwrite an untracked file.
+    if git('status', '--porcelain', '--untracked-files=no'):
+        raise ReleaseError('Tracked files have uncommitted changes. Commit or stash them first.')
     check_tag_absent(args.version)
     # gh resolves the repository explicitly from origin, not a configured fork default.
     repo = None

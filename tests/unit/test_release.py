@@ -136,11 +136,23 @@ class RepositoryTests(unittest.TestCase):
             release.check_versions('HEAD', '1.2.3', rust=True)
 
     def test_no_push_creates_no_tag(self):
+        (self.root / 'local-notes.md').write_text('Keep these notes local.\n')
         with patch.object(release, 'publish') as publish:
             release.main(['1.2.3', '--no-push', '--yes'])
         publish.assert_not_called()
         self.assertEqual(release.git('tag', '--list'), '')
         self.assertEqual(release.git('ls-remote', '--tags', 'origin'), '')
+        self.assertEqual((self.root / 'local-notes.md').read_text(), 'Keep these notes local.\n')
+
+    def test_tracked_changes_block_preparation(self):
+        (self.root / 'CMakeLists.txt').write_text('uncommitted changes\n')
+        for staged in (False, True):
+            if staged:
+                release.git('add', 'CMakeLists.txt')
+            with self.subTest(staged=staged), self.assertRaisesRegex(release.ReleaseError, 'Tracked files'):
+                release.main(['1.2.4', '--no-push', '--yes'])
+        self.assertEqual(release.git('rev-parse', 'HEAD'), self.anchor)
+        self.assertEqual(release.git('tag', '--list'), '')
 
     def test_version_bump_preparation_creates_commit_but_no_tag(self):
         (self.root / 'scripts').mkdir()
@@ -176,6 +188,7 @@ class RepositoryTests(unittest.TestCase):
             publish.assert_called_once_with('owner/repo', head, '1.2.3', 14400)
 
     def test_publish_only_pushes_requested_tag_at_verified_commit(self):
+        (self.root / 'local-notes.md').write_text('Keep these notes local.\n')
         release.git('tag', 'unrelated-local-tag')
         with patch.object(release, 'wait_for_ci', return_value=self.anchor):
             release.publish('owner/repo', self.anchor, '1.2.3', 10)
@@ -183,6 +196,17 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn('refs/tags/v1.2.3', remote_tags)
         self.assertNotIn('unrelated-local-tag', remote_tags)
         self.assertEqual(release.git('rev-parse', 'v1.2.3^{}'), self.anchor)
+        self.assertEqual((self.root / 'local-notes.md').read_text(), 'Keep these notes local.\n')
+
+    def test_tracked_changes_during_ci_block_publication(self):
+        def finish_ci(*args):
+            (self.root / 'CMakeLists.txt').write_text('changed while waiting\n')
+            return self.anchor
+        with patch.object(release, 'wait_for_ci', side_effect=finish_ci):
+            with self.assertRaisesRegex(release.ReleaseError, 'Local checkout changed'):
+                release.publish('owner/repo', self.anchor, '1.2.3', 10)
+        self.assertEqual(release.git('tag', '--list'), '')
+        self.assertEqual(release.git('ls-remote', '--tags', 'origin'), '')
 
     def test_failed_ci_never_creates_tag(self):
         with patch.object(release, 'wait_for_ci', side_effect=release.ReleaseError('CI failure')):
