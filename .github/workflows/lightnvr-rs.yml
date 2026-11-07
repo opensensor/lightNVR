@@ -15,7 +15,8 @@ on:
       - 'cmake/**'
       - 'rust/**'
       - 'tools/rust-transpile/**'
-      - 'tests/contracts/fixture-server.mjs'
+      - 'tests/contracts/**'
+      - 'web/**'
       - '.github/workflows/lightnvr-rs.yml'
   push:
     branches: [main]

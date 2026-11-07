@@ -19,6 +19,9 @@ const nonScopedOps=['createAdminUser','listAuthorizationRoles','createAuthorizat
 const auditOps=['listAuditEvents','exportAuditEvents','getAuditSettings','updateAuditSettings'];
 const domainOps=[...selfOps,...managementOps,...nonScopedOps,...auditOps];
 const selected=(doc:Record<string,any>)=>operationIds(doc).filter(id=>domainOps.includes(id));
+// last_login has one-second resolution and changes on every authenticated login,
+// so no-side-effect comparisons ignore it wherever it appears.
+const withoutLoginTime=(value:unknown)=>JSON.parse(JSON.stringify(value,(key,item)=>key==='last_login'?0:item));
 function noSecrets(body:unknown){
   if(Array.isArray(body)){body.forEach(noSecrets);return;}
   if(!body||typeof body!=='object')return;
@@ -97,7 +100,7 @@ test('roles and policy enforce revisions, delegation and self-lockout with no gr
   const manager=await createUser(server,'narrow_manager');const manage=await role(server,'Narrow management',['users.manage']);await policy(server,manager,[{role_uuid:manage,scope:{type:'all'}}]);
   const before=await ok(server,`/api/authorization/users/${subject.id}`);
   expect((await wire(server,`/api/authorization/users/${subject.id}`,manager,'PUT',{mode:'policy',expected_policy_version:before.policy_version,grants})).response.status).toBe(403);
-  expect(await ok(server,`/api/authorization/users/${subject.id}`)).toEqual(before);
+  expect(withoutLoginTime(await ok(server,`/api/authorization/users/${subject.id}`))).toEqual(withoutLoginTime(before));
   const list=await ok(server,'/api/auth/users');
   expect((await wire(server,'/api/auth/users',manager,'POST',{username:'escalated_user',password:'ContractEscalate123!',role:0})).response.status).toBe(403);
   expect(await ok(server,'/api/auth/users')).toEqual(list);
