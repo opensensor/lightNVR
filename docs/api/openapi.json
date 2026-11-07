@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.1",
   "info": {
-    "title": "LightNVR API \u2014 Streams, identity and recording reads",
+    "title": "LightNVR API \u2014 permission-aware contracts",
     "version": "0.46.3-contracts.3",
-    "description": "Partial contract for the current C backend. It covers Streams list/full/update, authenticated discovery, login/config/verify/logout, safe client configuration, scoped-token lifecycle, and UI recording reads/timeline/playback/thumbnail routes. User administration, legacy-key issuance, TOTP completion/enrollment, session/trusted-device management, other bootstrap routes, other media protocols and unrelated UI calls remain unspecified. Recording export/download/protection/deletion and jobs remain a later slice. Absence from this document is not evidence of denied access to an unspecified API. Visibility describes current usable authority; every actual request still enforces authorization. A valid session takes precedence over Basic, then X-API-Key/Bearer credentials; use a cookie-free client to inspect a scoped token. CIDR and required-password-change restrictions retain their existing semantics; independent API keys/tokens are exempt from the password-change gate. Existing non-discovery APIs retain auth-disabled/demo deployment behavior. This document contains no deployment-derived examples or credentials."
+    "description": "Canonical contract for the current C backend: authentication and administration, fleet and workspaces, streams and devices, recordings and investigations, storage, events, system settings and bootstrap. The authenticated discovery endpoint projects operations and response variants for the current principal. Eight media-protocol surfaces and one internal callback are documented separately in the coverage inventory. Discovery is descriptive and does not grant access."
   },
   "servers": [
     {

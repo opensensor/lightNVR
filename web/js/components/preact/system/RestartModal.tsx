@@ -71,7 +71,8 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }: Resta
     const poll = async () => {
       try {
         await getSystemStatus({
-          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(observedOutage ? 2000 : 1000)]),
+          signal: controller.signal,
+          timeout: observedOutage ? 2000 : 1000,
           retries: 0
         });
         if (finished) return;
