@@ -6189,20 +6189,22 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** @description stream_name (or stream fallback) selects comma-separated current camera names. Without a nonempty stream filter, all-fleet recording.delete authority is required. Authorized camera UUIDs and collection membership are captured before dispatch; caller-supplied camera UUID fields do not grant scope. Supplied start/end must be valid UTC YYYY-MM-DDTHH:mm:ss strings, optionally followed by fractional seconds and/or Z; fractions are truncated to whole seconds. Bounds must be after the Unix epoch and start must not exceed end. Invalid types, calendar dates, suffixes, or ranges return400 before job creation. Omitted bounds are unbounded. detection/protected numeric values use C integer conversion; protected is clamped to -1..1. In-progress rows are excluded. */
+        /** @description stream_name (or stream fallback) selects comma-separated current camera names. Without a nonempty stream filter, all-fleet recording.delete authority is required. Authorized camera UUIDs and collection membership are captured before dispatch; caller-supplied camera UUID fields do not grant scope. Supplied start/end must be valid UTC YYYY-MM-DDTHH:mm:ss strings, optionally followed by fractional seconds and/or Z; fractions are truncated to whole seconds. Bounds must be after the Unix epoch and start must not exceed end. Invalid types, calendar dates, suffixes, or ranges return400 before job creation. Omitted bounds are unbounded. detection/protected must be -1, 0, or 1. Unknown keys, duplicate keys (including date-case aliases), simultaneous stream and stream_name, invalid types, and empty selectors return400. Date key spelling is case-insensitive; other keys are case-sensitive. Caller-supplied camera/stream UUID selectors are unsupported and rejected. In-progress rows are excluded. */
         RecordingDeletionFilter: {
             capture_method?: string;
             collection_uuid?: string;
-            detection?: number;
+            /** @enum {integer} */
+            detection?: -1 | 0 | 1;
             detection_label?: string;
             end?: string;
-            protected?: number;
+            /** @enum {integer} */
+            protected?: -1 | 0 | 1;
             start?: string;
             stream?: string;
             stream_name?: string;
             tag?: string;
         } & {
-            [key: string]: unknown;
+            [key: string]: string;
         };
         RecordingDeletionJobAccepted: {
             job_id: string;

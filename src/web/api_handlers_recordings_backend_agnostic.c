@@ -14,6 +14,8 @@
 #define _GNU_SOURCE
 
 #include <stdio.h>
+#include <ctype.h>
+#include <strings.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -719,6 +721,45 @@ static bool parse_delete_time_bound(const cJSON *item, time_t *value) {
     return true;
 }
 
+/* Validate every supplied selector before an ignored field can widen deletion. */
+static bool validate_batch_delete_filter(const cJSON *filter) {
+    static const struct { const char *name; size_t max_length; bool numeric; } fields[] = {
+        {"start", 64, false}, {"end", 64, false},
+        {"stream", 255, false}, {"stream_name", 255, false},
+        {"collection_uuid", CAMERA_UUID_STRING_SIZE - 1, false},
+        {"detection", 0, true}, {"protected", 0, true},
+        {"detection_label", 255, false}, {"tag", 511, false}, {"capture_method", 127, false},
+    };
+    const cJSON *item;
+    cJSON_ArrayForEach(item, filter) {
+        if (!item->string) return false;
+        size_t field = 0;
+        for (; field < sizeof(fields) / sizeof(fields[0]); field++) {
+            // Date bounds retain the case-insensitive spelling accepted historically.
+            if ((field < 2 ? strcasecmp(item->string, fields[field].name)
+                           : strcmp(item->string, fields[field].name)) == 0) break;
+        }
+        if (field == sizeof(fields) / sizeof(fields[0])) return false;
+        for (const cJSON *prior = filter->child; prior != item; prior = prior->next) {
+            if (strcasecmp(prior->string, item->string) == 0) return false;
+        }
+        if (fields[field].numeric) {
+            if (!cJSON_IsNumber(item) ||
+                (item->valuedouble != -1 && item->valuedouble != 0 && item->valuedouble != 1)) return false;
+        } else {
+            if (!cJSON_IsString(item) || !item->valuestring ||
+                strlen(item->valuestring) > fields[field].max_length) return false;
+            bool has_value = false;
+            for (const unsigned char *p = (const unsigned char *)item->valuestring; *p; p++) {
+                if (*p != ',' && !isspace(*p)) has_value = true;
+            }
+            if (!has_value) return false;
+        }
+    }
+    // These are aliases, not two independent selectors; never silently prefer one.
+    return !(cJSON_HasObjectItem(filter, "stream") && cJSON_HasObjectItem(filter, "stream_name"));
+}
+
 static int authorize_batch_delete_filter(const user_t *user,
     const cJSON *filter, http_response_t *res,
     char camera_scope[][CAMERA_UUID_STRING_SIZE], int *scope_count) {
@@ -851,6 +892,12 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     } else if (filter && cJSON_IsObject(filter)) {
         // Delete by filter - total count will be determined by worker thread
         total_count = 0;
+
+        if (!validate_batch_delete_filter(filter)) {
+            cJSON_Delete(json);
+            http_response_set_json_error(res, 400, "Unknown, duplicate, or invalid deletion filter field");
+            return;
+        }
         if (!authorize_batch_delete_filter(&user, filter, res, camera_scope, &camera_scope_count)) {
             cJSON_Delete(json);
             return;
