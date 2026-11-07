@@ -448,8 +448,14 @@ void test_store_max_detections(void) {
         r.detections[i].confidence = 0.5f;
         r.detections[i].track_id = -1;
     }
-    int rc = store_detections_in_db("cam7", &r, time(NULL), 0);
+    time_t ts = time(NULL);
+    int rc = store_detections_in_db("cam7", &r, ts, 0);
     TEST_ASSERT_EQUAL_INT(0, rc);
+
+    detection_result_t out;
+    memset(&out, 0, sizeof(out));
+    int count = get_detections_from_db_time_range("cam7", &out, 0, ts - 1, ts + 1);
+    TEST_ASSERT_EQUAL_INT(MAX_DETECTIONS, count);
 }
 
 void test_external_motion_interval_spans_later_recording_segment(void) {
