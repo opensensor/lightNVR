@@ -42,6 +42,7 @@ jobs:
             libcurl4-openssl-dev \
             libcjson-dev \
             libmbedtls-dev \
+            libmosquitto-dev \
             lcov \
             curl \
             gpg
