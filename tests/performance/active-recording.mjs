@@ -2,6 +2,7 @@
 /** Bounded synthetic active-recording measurements on an owned loopback fixture. */
 import {startFixture} from '../contracts/fixture-server.mjs';
 import {trackedDiffSha256} from './git-provenance.mjs';
+import {pipeRecordingSource,validateRecordingDurations} from './active-recording-utils.mjs';
 import {createServer} from 'node:http';
 import {spawn,execFileSync} from 'node:child_process';
 import {mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
@@ -24,6 +25,7 @@ const source=path.join(directory,'source.ts');
 execFileSync('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-f','lavfi','-i','testsrc2=size=1920x1080:rate=15','-t','5','-an','-c:v','libx264','-threads','2','-preset','ultrafast','-pix_fmt','yuv420p','-g','15','-f','mpegts',source],{timeout:30000});
 report.sourceSha256=hash(await readFile(source));
 report.harnessSha256=hash(await readFile(new URL(import.meta.url)));
+report.validationSha256=hash(await readFile(new URL('./active-recording-utils.mjs',import.meta.url)));
 report.nativeSourceSha256=hash(await readFile('src/video/mp4_segment_recorder.c'));
 const buildDirectory=path.dirname(path.dirname(binary));
 for(const [key,relative] of [['cmakeCache','CMakeCache.txt'],['compileFlags','CMakeFiles/lightnvr.dir/flags.make']]) {
@@ -38,9 +40,7 @@ const http=createServer((req,res)=>{
  res.writeHead(200,{'Content-Type':'video/mp2t'});
  const child=spawn('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-re','-stream_loop','-1','-i',source,'-c','copy','-f','mpegts','pipe:1'],{stdio:['ignore','pipe','pipe']});
  children.add(child);childExits.push(new Promise(resolve=>child.once('close',()=>{children.delete(child);resolve();})));
- child.stdout.pipe(res);let error='';child.stderr.on('data',chunk=>{error+=chunk;});
- child.once('error',error=>res.destroy(error));child.once('exit',code=>{if(code)report.sourceError=error;res.end();});
- res.on('close',()=>child.kill('SIGTERM'));
+ pipeRecordingSource(child,res,error=>{report.sourceError ||= error;});
 });
 await new Promise(resolve=>http.listen(0,'127.0.0.1',resolve));
 let server;
@@ -78,7 +78,8 @@ try {
   execFileSync('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-xerror','-i',filename,'-f','null','-'],{timeout:60000});
   report.recordings.push({id:row.id,stream:row.stream,probe});
  }
- if(new Set(report.recordings.map(row=>row.stream)).size!==count)throw new Error('Missing finalized camera footage');
+ report.recordedDurationSeconds=validateRecordingDurations(report.recordings,count,seconds);
+ if(report.sourceError)throw new Error(`Source process failed: ${report.sourceError}`);
  report.status='passed';
 }catch(error){report.status='failed';report.error=String(error);process.exitCode=1;}
 finally{
@@ -87,6 +88,7 @@ finally{
  for(const child of children)child.kill('SIGTERM');
  const killTimer=setTimeout(()=>{for(const child of children)child.kill('SIGKILL');},2000);
  await Promise.all(childExits);clearTimeout(killTimer);
+ if(report.sourceError){report.status='failed';report.error ||= `Source process failed: ${report.sourceError}`;process.exitCode=1;}
  await save();
 }
 console.log(JSON.stringify({status:report.status,output:directory,error:report.error}));

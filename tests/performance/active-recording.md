@@ -15,7 +15,10 @@ FFmpeg processes share the host; their CPU/memory are not included in the native
 process samples. Streams start sequentially before the sampling interval.
 
 After the harness automatically stops recordings at the configured duration, every catalogued file must pass ffprobe and full FFmpeg
-`-xerror` decoding, with footage present for every stream. Ordinary FFmpeg exit
+`-xerror` decoding, with footage present for every stream. Each stream must have at least the requested
+duration minus five seconds across all its segments; a short final segment is valid.
+Missing, zero or non-finite durations fail validation. Source process failures,
+including failures discovered during cleanup, also fail the run. Ordinary FFmpeg exit
 status alone is insufficient: it can report corrupt frames while exiting zero.
 The regression in `mediaLifecycle.api.spec.ts` uses one stream for ten seconds;
 `LIGHTNVR_CONTRACT_BIN` selects the binary as in the other native contract tests.
