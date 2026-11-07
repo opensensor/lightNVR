@@ -616,7 +616,7 @@ export function LiveOperatorNavigator({
           <p className="live-plan-navigator-help">{t('live.plan.navigatorHelp')}</p>
           {(plansQuery.data?.plans || []).map((plan) => {
             const liveCount = (plan.cameras || []).filter((camera) =>
-              streams.find((stream) => stream.camera_uuid === camera.camera_uuid)?.availability === 'live').length;
+              streamsByUuid.get(camera.camera_uuid)?.availability === 'live').length;
             return (
               <div key={plan.uuid}
                 className={`live-layout-row ${selectedPlanUuid === plan.uuid ? 'is-selected' : ''}`}>
