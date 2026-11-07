@@ -15,6 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 env:
@@ -29,7 +30,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-preflight:
+    uses: ./.github/workflows/release-preflight.yml
+
   build:
+    needs: release-preflight
     name: Build lightnvr-rs (sid/amd64)
     runs-on: ubuntu-latest
     timeout-minutes: 60
