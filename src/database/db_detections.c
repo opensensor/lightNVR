@@ -163,22 +163,6 @@ static int store_detections_with_source(const char *camera_uuid,
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
-    
-    // Verify the detections were stored
-    char verify_sql[256];
-    snprintf(verify_sql, sizeof(verify_sql), 
-            "SELECT COUNT(*) FROM detections WHERE stream_name = '%s' AND timestamp = %lld;",
-            stream_name, (long long)timestamp);
-    
-    rc = sqlite3_get_table(db, verify_sql, &query_result, &rows, &cols, &err_msg);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to verify detections were stored: %s", err_msg);
-        sqlite3_free(err_msg);
-    } else if (rows > 0 && cols > 0) {
-        int count = (int)strtol(query_result[1], NULL, 10); // First row, first column
-        log_debug("Verified %d detections were stored in database for stream %s", count, stream_name);
-        sqlite3_free_table(query_result);
-    }
 
     pthread_mutex_unlock(db_mutex);
 
