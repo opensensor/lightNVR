@@ -9,7 +9,6 @@ static unsigned read_calls;
 static char path[128];
 static const char *diagnostic_path;
 static const char *db_value;
-static size_t db_length;
 static int db_status;
 static bool process_available;
 static int process_pid;
@@ -60,24 +59,23 @@ cJSON *__wrap_cJSON_AddNumberToObject(cJSON *object, const char *name, double va
     return item;
 }
 const char *__wrap_go2rtc_process_get_override_path(void) { return diagnostic_path; }
-bool __wrap_go2rtc_process_try_get_pid(int *pid) { *pid = process_pid; return process_available; }
+bool __wrap_go2rtc_process_try_get_pid(int *pid) {
+    if (!pid) return false;
+    *pid = process_available ? process_pid : -1;
+    return process_available;
+}
 int __wrap_db_get_system_setting_alloc(const char *key, char **value, size_t *length) {
-    (void)key;
+    *value = NULL;
+    *length = 0;
+    /* Override bytes must not masquerade as a quarantine reason or version. */
+    if (strcmp(key, "go2rtc_config_override") != 0) return 1;
     if (db_status != 0) {
-        *value = NULL;
-        *length = 0;
         errno = EDOM;
         return db_status;
     }
-    *length = db_length;
-    *value = malloc(db_length + 1);
-    if (*value == NULL) {
-        *length = 0;
-        errno = ENOMEM;
-        return -1;
-    }
-    if (db_value != NULL && db_length > 0) memcpy(*value, db_value, db_length);
-    (*value)[db_length] = '\0';
+    *value = strdup(db_value ? db_value : "");
+    if (!*value) return -1;
+    *length = strlen(*value);
     return 0;
 }
 int __wrap_httpd_authorize_global_action(const http_request_t *req, http_response_t *res,
@@ -89,7 +87,6 @@ void setUp(void) {
     fault = NONE;
     read_calls = 0;
     db_value = NULL;
-    db_length = 0;
     db_status = 1;
     process_available = true;
     process_pid = -1;
@@ -103,7 +100,6 @@ void setUp(void) {
 void tearDown(void) {
     fault = NONE;
     db_value = NULL;
-    db_length = 0;
     db_status = 1;
     process_available = true;
     process_pid = -1;
@@ -158,7 +154,7 @@ void test_reader_retries_interrupted_short_reads_and_handles_empty_and_missing_f
     TEST_ASSERT_NULL(content);
 }
 
-static void assert_diagnostic(const char *error, bool present, bool matches) {
+static cJSON *get_diagnostic(void) {
     http_request_t request;
     http_response_t response;
     http_request_init(&request);
@@ -168,6 +164,12 @@ static void assert_diagnostic(const char *error, bool present, bool matches) {
     TEST_ASSERT_NULL(strstr(response.body, secret));
     cJSON *json = cJSON_Parse(response.body);
     TEST_ASSERT_NOT_NULL(json);
+    http_response_free(&response);
+    return json;
+}
+
+static void assert_diagnostic(const char *error, bool present, bool matches) {
+    cJSON *json = get_diagnostic();
     const cJSON *message = cJSON_GetObjectItemCaseSensitive(json, "file_read_error");
     if (error) {
         TEST_ASSERT_TRUE(cJSON_IsString(message));
@@ -176,7 +178,6 @@ static void assert_diagnostic(const char *error, bool present, bool matches) {
     TEST_ASSERT_EQUAL_INT(present, cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(json, "file_present")));
     TEST_ASSERT_EQUAL_INT(matches, cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(json, "content_matches")));
     cJSON_Delete(json);
-    http_response_free(&response);
 }
 
 void test_semantic_failures_and_json_allocations_cannot_report_stale_errno(void) {
@@ -204,11 +205,60 @@ void test_diagnostics_distinguish_absent_uninitialized_and_present_without_discl
     assert_diagnostic("no override path", false, false);
 }
 
+void test_diagnostics_compare_database_bytes_without_disclosing_override(void) {
+    db_status = 0;
+    db_value = secret;
+    assert_diagnostic(NULL, true, true);
+    cJSON *json = get_diagnostic();
+    TEST_ASSERT_EQUAL_INT(sizeof(secret) - 1,
+        cJSON_GetObjectItemCaseSensitive(json, "db_bytes")->valueint);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(json, "quarantine_active")));
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(json, "quarantine_reason"));
+    TEST_ASSERT_EQUAL_STRING("", cJSON_GetObjectItemCaseSensitive(json, "validated_version")->valuestring);
+    cJSON_Delete(json);
+
+    db_value = "fixture-SECrET"; // Same length, different bytes.
+    TEST_ASSERT_EQUAL_UINT(strlen(secret), strlen(db_value));
+    assert_diagnostic(NULL, true, false);
+    db_value = "short";
+    assert_diagnostic(NULL, true, false);
+    db_value = "";
+    assert_diagnostic(NULL, true, false);
+    db_status = -1;
+    assert_diagnostic(NULL, true, false);
+    db_status = 0;
+    db_value = secret;
+    unlink(path);
+    assert_diagnostic(NULL, false, false);
+}
+
+void test_diagnostics_distinguish_running_stopped_and_busy_lifecycle(void) {
+    const struct { bool available; int pid; bool known; bool running; int exposed_pid; } cases[] = {
+        {true, 1234, true, true, 1234},
+        {true, -1, true, false, 0},
+        {false, 1234, false, false, 0},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        process_available = cases[i].available;
+        process_pid = cases[i].pid;
+        cJSON *json = get_diagnostic();
+        TEST_ASSERT_EQUAL_INT(cases[i].known,
+            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(json, "process_state_known")));
+        TEST_ASSERT_EQUAL_INT(cases[i].running,
+            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(json, "process_running")));
+        TEST_ASSERT_EQUAL_INT(cases[i].exposed_pid,
+            cJSON_GetObjectItemCaseSensitive(json, "process_pid")->valueint);
+        cJSON_Delete(json);
+    }
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_reader_reports_io_and_allocation_failures_after_cleanup);
     RUN_TEST(test_reader_retries_interrupted_short_reads_and_handles_empty_and_missing_files);
     RUN_TEST(test_semantic_failures_and_json_allocations_cannot_report_stale_errno);
     RUN_TEST(test_diagnostics_distinguish_absent_uninitialized_and_present_without_disclosing_content);
+    RUN_TEST(test_diagnostics_compare_database_bytes_without_disclosing_override);
+    RUN_TEST(test_diagnostics_distinguish_running_stopped_and_busy_lifecycle);
     return UNITY_END();
 }
