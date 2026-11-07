@@ -149,26 +149,6 @@ jobs:
             GIT_COMMIT=${{ github.sha }}
           cache-from: type=registry,ref=${{ env.C_REGISTRY_IMAGE }}:buildcache-amd64
 
-      - name: Build lightnvr-rs image
-        run: |
-          chmod 0755 dist/lightnvr-rs
-          docker buildx build --builder default --load -t lightnvr-rs:local \
-            -f tools/rust-transpile/Dockerfile.runtime \
-            --build-arg BASE_IMAGE=lightnvr-runtime:local dist
-
-      - name: Smoke test lightnvr-rs image
-        run: |
-          docker run -d --name lightnvr-rs-smoke -p 18080:8080 lightnvr-rs:local
-          for i in $(seq 1 45); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/ || true)
-            [ "$code" = 200 ] && break
-            sleep 2
-          done
-          docker logs lightnvr-rs-smoke | tail -n 30
-          test "$code" = 200
-          docker exec lightnvr-rs-smoke pgrep -x go2rtc
-          docker rm -f lightnvr-rs-smoke
-
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v6
@@ -184,6 +164,34 @@ jobs:
             org.opencontainers.image.title=LightNVR (lightnvr-rs)
             org.opencontainers.image.description=LightNVR with the backend translated from C to Rust by C2Rust
             org.opencontainers.image.vendor=OpenSensor
+
+      - name: Build lightnvr-rs image
+        env:
+          IMAGE_METADATA: ${{ steps.meta.outputs.json }}
+        run: |
+          # Metadata must be applied to the image, not just computed for tags.
+          # GHCR uses the source label to associate the package with this repo.
+          label_args=()
+          while IFS= read -r label; do
+            label_args+=(--label "$label")
+          done < <(jq -r '.labels | to_entries[] | "\(.key)=\(.value)"' <<< "$IMAGE_METADATA")
+          chmod 0755 dist/lightnvr-rs
+          docker buildx build --builder default --load -t lightnvr-rs:local \
+            -f tools/rust-transpile/Dockerfile.runtime \
+            "${label_args[@]}" --build-arg BASE_IMAGE=lightnvr-runtime:local dist
+
+      - name: Smoke test lightnvr-rs image
+        run: |
+          docker run -d --name lightnvr-rs-smoke -p 18080:8080 lightnvr-rs:local
+          for i in $(seq 1 45); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/ || true)
+            [ "$code" = 200 ] && break
+            sleep 2
+          done
+          docker logs lightnvr-rs-smoke | tail -n 30
+          test "$code" = 200
+          docker exec lightnvr-rs-smoke pgrep -x go2rtc
+          docker rm -f lightnvr-rs-smoke
 
       - name: Push lightnvr-rs image
         env:
