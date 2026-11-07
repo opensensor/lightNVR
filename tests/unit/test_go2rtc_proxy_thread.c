@@ -29,6 +29,8 @@ static bool hold_upstream;
 static bool release_upstream;
 static bool worker_in_curl;
 static bool real_authorization;
+static bool fail_lease_uuid;
+static bool acknowledge_media_policy;
 static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -55,6 +57,10 @@ int __wrap_libuv_send_response_ex(libuv_connection_t *connection,
     return 0;
 }
 
+int __real_lightnvr_uuid_generate_v4(char output[37]);
+int __wrap_lightnvr_uuid_generate_v4(char output[37]) {
+    return fail_lease_uuid ? -1 : __real_lightnvr_uuid_generate_v4(output);
+}
 CURLcode __real_curl_easy_perform(CURL *curl);
 CURLcode __wrap_curl_easy_perform(CURL *curl) {
     if (!hold_upstream) return __real_curl_easy_perform(curl);
@@ -98,6 +104,8 @@ void setUp(void) {
     release_upstream = false;
     worker_in_curl = false;
     real_authorization = false;
+    fail_lease_uuid = false;
+    acknowledge_media_policy = true;
     upstream_requests = 0;
     TEST_ASSERT_EQUAL_INT(CURLE_OK, curl_global_init(CURL_GLOBAL_ALL));
     TEST_ASSERT_EQUAL_INT(0, uv_loop_init(&loop));
@@ -320,15 +328,17 @@ static void *webrtc_peer(void *arg) {
     upstream_requests++;
     char response[512];
     int length = snprintf(response, sizeof(response),
-        "HTTP/1.1 201 Created\r\nContent-Type: application/sdp\r\n"
+        "HTTP/1.1 201 Created\r\n%sContent-Type: application/sdp\r\n"
         "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
+        acknowledge_media_policy ? "X-LightNVR-Media-Policy: 1\r\n" : "",
         strlen(sdp_answer), sdp_answer);
     (void)send(client, response, (size_t)length, MSG_NOSIGNAL);
     close(client);
     return NULL;
 }
 
-void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
+static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
+    acknowledge_media_policy = acknowledged;
     char db_path[] = "/tmp/lightnvr-webrtc-proxy-XXXXXX";
     int db_file = mkstemp(db_path);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, db_file);
@@ -349,7 +359,7 @@ void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
         upstream_request[0] = '\0';
         int server = open_upstream_listener();
         pthread_t peer;
-        TEST_ASSERT_EQUAL_INT(0, pthread_create(&peer, NULL, webrtc_peer, &server));
+        if (!fail_issuance) TEST_ASSERT_EQUAL_INT(0, pthread_create(&peer, NULL, webrtc_peer, &server));
         libuv_connection_t connection;
         init_connection(&connection);
         strcpy(connection.request.path, "/go2rtc/api/webrtc");
@@ -359,6 +369,7 @@ void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
         connection.request.body = (char *)sdp_offer;
         connection.request.body_len = strlen(sdp_offer);
         connection.request.user_data = &connection;
+        fail_lease_uuid = fail_issuance;
         if (threaded) {
             TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
             pump_responses(1, 3000);
@@ -366,8 +377,19 @@ void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
         } else {
             handle_go2rtc_proxy(&connection.request, &connection.response);
         }
-        pthread_join(peer, NULL);
+        fail_lease_uuid = false;
+        if (!fail_issuance) pthread_join(peer, NULL);
+        if (fail_issuance) {
+            struct pollfd ready = {.fd = server, .events = POLLIN};
+            TEST_ASSERT_EQUAL_INT(0, poll(&ready, 1, 0));
+        }
         close(server);
+        if (!acknowledged || fail_issuance) {
+            TEST_ASSERT_EQUAL_INT(fail_issuance ? 503 : 502, connection.response.status_code);
+            TEST_ASSERT_NULL(strstr((char *)connection.response.body, sdp_answer));
+            http_response_free(&connection.response);
+            continue;
+        }
         TEST_ASSERT_EQUAL_INT(201, connection.response.status_code);
         TEST_ASSERT_EQUAL_STRING("application/sdp", connection.response.content_type);
         TEST_ASSERT_EQUAL_UINT(strlen(sdp_answer), connection.response.body_length);
@@ -381,6 +403,16 @@ void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
     }
     shutdown_database();
     unlink(db_path);
+}
+
+void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
+    check_both_webrtc_proxies(true, false);
+}
+void test_both_proxy_handlers_reject_missing_media_ack(void) {
+    check_both_webrtc_proxies(false, false);
+}
+void test_both_proxy_handlers_reject_lease_failure_without_upstream_contact(void) {
+    check_both_webrtc_proxies(true, true);
 }
 
 static void *release_delayed_worker(void *unused) {
@@ -397,7 +429,8 @@ static void *release_delayed_worker(void *unused) {
 void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     libuv_connection_t connection;
     init_connection(&connection);
-    strcpy(connection.request.path, "/go2rtc/api/stream.m3u8");
+    // Shutdown ownership is independent of media policy; use the snapshot worker.
+    strcpy(connection.request.path, "/go2rtc/api/frame.jpeg");
     hold_upstream = true;
     TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
     pthread_mutex_lock(&upstream_mutex);
@@ -421,6 +454,8 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout);
     RUN_TEST(test_both_proxy_handlers_forward_authorized_webrtc_sdp);
+    RUN_TEST(test_both_proxy_handlers_reject_missing_media_ack);
+    RUN_TEST(test_both_proxy_handlers_reject_lease_failure_without_upstream_contact);
     RUN_TEST(test_proxy_rejects_overflow_and_recovers_slots_after_completion);
     RUN_TEST(test_slow_snapshot_releases_its_slot_after_ten_seconds);
     RUN_TEST(test_both_proxy_handlers_never_follow_unauthorized_redirects);

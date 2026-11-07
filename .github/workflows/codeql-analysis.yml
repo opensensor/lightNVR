@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Keep the same gates on the explicitly stacked hardening PRs.
+    branches: [main, 'codex/hardening-*']
   schedule:
     # Run weekly on Mondays at 06:00 UTC to catch new CVE patterns
     - cron: '0 6 * * 1'

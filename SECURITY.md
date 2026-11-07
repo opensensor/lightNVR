@@ -77,3 +77,25 @@ Please include:
 - TLS support is available via mbedTLS, OpenSSL, or WolfSSL
 - ONVIF authentication uses WS-Security with nonce and timestamp validation
 
+
+## Media access and revocation
+
+LightNVR's authenticated playback routes enforce camera permissions and separate
+`audio.listen` and `audio.talk` rights. Managed go2rtc API and RTSP listeners are
+loopback-only; exposing a separate service, tunnel, or bridge requires its own
+access controls. Local processes and administrator-configured bridges remain
+trusted. Recorded footage is governed by recording permissions, not live audio
+permissions.
+
+Use the compatible maintained go2rtc fork, including for externally managed
+services. It validates opaque media leases against LightNVR on `127.0.0.1` in
+the same network namespace. LightNVR must listen on an address reachable there;
+a web listener bound only to a non-loopback interface causes playback to fail
+closed. Incompatible forks and unavailable callbacks cannot silently allow
+playback. See [deployment configuration](docs/CONFIGURATION.md#media-authority-deployment-requirements).
+
+The fork checks established WebRTC, MSE, and HLS authority every five seconds,
+with a two-second callback timeout. Permission changes or callback failure close
+media within seven seconds under normal process scheduling. Native `/hls/...`
+requests have a separate, at-most-30-second authorization cache. No revocation
+can remove media already delivered to a client or buffered by its player.

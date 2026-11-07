@@ -28,7 +28,7 @@ static const char upgrade_headers[] =
     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n";
 static const char upgrade_response[] =
     "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-    "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
+    "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nX-LightNVR-Media-Policy: 1\r\n\r\n";
 /* A masked text frame containing {"type":"mse"}. */
 static const unsigned char mse_request[] = {
     0x81, 0x8e, 0, 0, 0, 0, '{', '"', 't', 'y', 'p', 'e', '"', ':', '"', 'm', 's', 'e', '"', '}'
@@ -40,6 +40,7 @@ typedef struct {
     int status;
     char request[4096];
     bool received_mse;
+    bool omit_media_ack;
 } peer_t;
 
 static void socket_timeout(int fd) {
@@ -98,6 +99,14 @@ static void *upstream_peer(void *arg) {
     if (peer->status != 101) {
         const char error[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
         send_all(peer->fd, error, sizeof(error) - 1);
+        goto done;
+    }
+    if (peer->omit_media_ack) {
+        const char unsupported[] = "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
+        send_all(peer->fd, unsupported, sizeof(unsupported) - 1);
+        send_all(peer->fd, media_response, sizeof(media_response));
         goto done;
     }
     // Split the upstream HTTP response and coalesce its end with a frame.
@@ -265,10 +274,25 @@ void test_failed_upstream_handshake_returns_502(void) {
     close(client);
     pthread_join(thread, NULL);
 }
+void test_upgrade_without_media_policy_ack_is_rejected(void) {
+    peer_t peer = {.status = 101, .omit_media_ack = true};
+    pthread_t thread;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL, upstream_peer, &peer));
+    int client = client_open();
+    char origin[64], response[2048];
+    snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
+    send_upgrade(client, 0, origin, false);
+    TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
+    TEST_ASSERT_NOT_NULL(strstr(response, "502"));
+    close(client);
+    pthread_join(thread, NULL);
+    TEST_ASSERT_FALSE(peer.received_mse);
+}
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_four_websockets_relay_media_on_the_web_port_and_close_cleanly);
     RUN_TEST(test_websocket_auth_origin_and_query_failures_never_reach_upstream);
     RUN_TEST(test_failed_upstream_handshake_returns_502);
+    RUN_TEST(test_upgrade_without_media_policy_ack_is_rejected);
     return UNITY_END();
 }
