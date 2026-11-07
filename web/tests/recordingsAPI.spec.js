@@ -256,6 +256,33 @@ describe('recordingsAPI', () => {
     });
   });
 
+  test.each([true, false])('selected deletion preserves exact keys with modal=%s', async useModal => {
+    const priorWindow = global.window;
+    const expected = {succeeded: 2, failed: 0};
+    const modal = jest.fn().mockResolvedValue(expected);
+    global.window = useModal ? {batchDeleteRecordingsByHttpRequest: modal} : {};
+    const direct = jest.spyOn(recordingsAPI, 'deleteSelectedRecordingsHttp').mockResolvedValue(expected);
+    try {
+      await expect(recordingsAPI.deleteSelectedRecordings({
+        '42': true, '9007199254740993': true, '9007199254740992': false,
+      })).resolves.toEqual(expected);
+      if (useModal) {
+        expect(modal).toHaveBeenCalledWith({ids: ['42', '9007199254740993']});
+        expect(direct).not.toHaveBeenCalled();
+      } else expect(direct).toHaveBeenCalledWith(['42', '9007199254740993']);
+    } finally {global.window = priorWindow;}
+  });
+
+  test('direct deletion sends large IDs as unchanged strings', async () => {
+    const response = {json: jest.fn()};
+    enhancedFetch.mockResolvedValue(response);
+    jest.spyOn(recordingsAPI, 'handleBatchDeleteResponse').mockResolvedValue({succeeded: 1, failed: 0});
+    await recordingsAPI.deleteSelectedRecordingsHttp(['9007199254740993']);
+    expect(enhancedFetch).toHaveBeenCalledWith('/api/recordings/batch-delete', expect.objectContaining({
+      body: JSON.stringify({ids: ['9007199254740993']}),
+    }));
+  });
+
   test('deleteSelectedRecordingsHttp delegates response handling to shared helper', async () => {
     const response = { json: jest.fn() };
     const expected = { succeeded: 2, failed: 0 };

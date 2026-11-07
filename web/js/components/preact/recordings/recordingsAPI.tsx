@@ -467,10 +467,10 @@ export const recordingsAPI = {
 
   /**
    * Delete selected recordings using HTTP (fallback)
-   * @param {Array<number>} selectedIds Array of recording IDs
+   * @param {Array<number|string>} selectedIds Array of recording IDs
    * @returns {Promise<Object>} Result with success and error counts
    */
-  deleteSelectedRecordingsHttp: async (selectedIds: number[]): Promise<BatchDeleteCounts> => {
+  deleteSelectedRecordingsHttp: async (selectedIds: Array<number | string>): Promise<BatchDeleteCounts> => {
     try {
       // Use the batch delete endpoint with enhanced fetch
       const response = await enhancedFetch('/api/recordings/batch-delete', {

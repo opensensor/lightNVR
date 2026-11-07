@@ -77820,7 +77820,7 @@ var __contract_RecordingDeletionRequest = validate121, schema128 = {
     },
     required: [ "ids" ],
     additionalProperties: !0,
-    description: "IDs take precedence over filter. Invalid or missing members become failed counts; a forbidden existing member rejects the whole request before job creation."
+    description: "IDs take precedence over filter. IDs accept safe positive integer JSON numbers or exact positive decimal uint64 strings. Invalid, unsafe numeric, or missing members become failed counts; a forbidden existing member rejects the whole request before job creation."
   }, {
     type: "object",
     properties: {

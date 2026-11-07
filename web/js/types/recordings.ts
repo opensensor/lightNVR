@@ -90,7 +90,7 @@ export interface BatchDeleteFilter {
 
 /** Body of POST /api/recordings/batch-delete; `totalCount` is only read by the modal. */
 export interface BatchDeleteParams {
-  ids?: number[];
+  ids?: Array<number | string>;
   filter?: BatchDeleteFilter;
   totalCount?: number;
 }
