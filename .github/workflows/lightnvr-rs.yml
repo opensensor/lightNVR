@@ -113,6 +113,7 @@ jobs:
         env:
           STEP: >-
             npm ci --ignore-scripts &&
+            node scripts/extract_version.js &&
             npm ci --prefix web && npm --prefix web run build &&
             node tools/rust-transpile/smoke.mjs rust/target/release/lightnvr-rs &&
             LIGHTNVR_CONTRACT_BIN=/work/rust/target/release/lightnvr-rs
