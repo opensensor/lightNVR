@@ -661,7 +661,7 @@ export function RecordingsView() {
         break;
     }
 
-    applyFilters();
+    // Refetch is driven by reactive state/query-key updates after filters settle.
   };
 
   // Sort by field — URL sync is handled by the reactive useEffect
