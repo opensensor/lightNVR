@@ -53,6 +53,13 @@ export function DayNightControl({ stream }: DayNightControlProps) {
   const [pending, setPending] = useState<string | null>(null); // mode currently being applied
   const containerRef = useRef<HTMLSpanElement | null>(null);
 
+  // Reset per-stream UI/data when switching cameras.
+  useEffect(() => {
+    setOpen(false);
+    setMode(null);
+    setPending(null);
+  }, [stream?.name]);
+
   // Close the popover on outside clicks
   useEffect(() => {
     if (!open) return undefined;
