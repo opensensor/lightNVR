@@ -12,7 +12,8 @@
     "F1d adds MFA completion/enrollment/status, password change and legacy logout. Self-service or effective users.manage discovery; concrete target authorization remains enforced. Seven operations, 44 total. Login and MFA consumers validate responses before claiming success.",
     "F2 covers 13 read/query/preview operations: fleet queries, saved view reads, collection list/detail/members/preview, locations, tags and camera tags. Data remains filtered independently of discovery; mutations are F4. Total 57 operations, 183 residual.",
     "Fleet write/workspace slice adds 31 operations. Background GET/PUT contracts are binary PNG/JPEG, verified independently from JSON plan responses.",
-    "F3 covers 20 user administration, authorization policy and audit operations. Non-scoped management is explicit; scoped users.manage never issues unrestricted legacy credentials. CSV exports are paginated byte contracts. Total 77 covered operations, 163 residual."
+    "F3 covers 20 user administration, authorization policy and audit operations. Non-scoped management is explicit; scoped users.manage never issues unrestricted legacy credentials. CSV exports are paginated byte contracts. Total 77 covered operations, 163 residual.",
+    "Storage slice covers 28 registrations. Migration, archive retry and cleanup acknowledgements do not imply completed file operations. Local fixtures qualify local lifecycle; remote providers remain separately qualified."
   ],
   "operations": [
     {
@@ -1135,8 +1136,10 @@
       "handler": "handle_get_storage_health",
       "source": "src/web/libuv_api_handlers.c",
       "line": 303,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStorageHealth",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1144,8 +1147,10 @@
       "handler": "handle_post_storage_cleanup",
       "source": "src/web/libuv_api_handlers.c",
       "line": 304,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "triggerStorageCleanup",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1569,8 +1574,10 @@
       "handler": "handle_get_storage_archive",
       "source": "src/web/libuv_api_handlers.c",
       "line": 379,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStorageArchive",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1578,8 +1585,10 @@
       "handler": "handle_post_storage_archive_retry",
       "source": "src/web/libuv_api_handlers.c",
       "line": 380,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "retryStorageArchive",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1587,8 +1596,10 @@
       "handler": "handle_post_storage_policy_apply",
       "source": "src/web/libuv_api_handlers.c",
       "line": 381,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "applyStoragePolicy",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1596,8 +1607,10 @@
       "handler": "handle_get_storage_targets",
       "source": "src/web/libuv_api_handlers.c",
       "line": 384,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "listStorageTargets",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1605,8 +1618,10 @@
       "handler": "handle_post_storage_target",
       "source": "src/web/libuv_api_handlers.c",
       "line": 386,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "createStorageTarget",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1614,8 +1629,10 @@
       "handler": "handle_post_storage_target_probe",
       "source": "src/web/libuv_api_handlers.c",
       "line": 388,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "probeStorageTarget",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1623,8 +1640,10 @@
       "handler": "handle_get_storage_target",
       "source": "src/web/libuv_api_handlers.c",
       "line": 390,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStorageTarget",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "PUT",
@@ -1632,8 +1651,10 @@
       "handler": "handle_put_storage_target",
       "source": "src/web/libuv_api_handlers.c",
       "line": 392,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateStorageTarget",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "DELETE",
@@ -1641,8 +1662,10 @@
       "handler": "handle_delete_storage_target",
       "source": "src/web/libuv_api_handlers.c",
       "line": 394,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteStorageTarget",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1650,8 +1673,10 @@
       "handler": "handle_get_storage_migrations",
       "source": "src/web/libuv_api_handlers.c",
       "line": 396,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "listStorageMigrations",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1659,8 +1684,10 @@
       "handler": "handle_post_storage_migration",
       "source": "src/web/libuv_api_handlers.c",
       "line": 398,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "createStorageMigration",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1668,8 +1695,10 @@
       "handler": "handle_post_storage_migration_cancel",
       "source": "src/web/libuv_api_handlers.c",
       "line": 400,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "cancelStorageMigration",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1677,8 +1706,10 @@
       "handler": "handle_post_storage_migration_retry",
       "source": "src/web/libuv_api_handlers.c",
       "line": 402,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "retryStorageMigration",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1686,8 +1717,10 @@
       "handler": "handle_get_storage_migration",
       "source": "src/web/libuv_api_handlers.c",
       "line": 404,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStorageMigration",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1695,8 +1728,10 @@
       "handler": "handle_get_storage_pools",
       "source": "src/web/libuv_api_handlers.c",
       "line": 406,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "listStoragePools",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1704,8 +1739,10 @@
       "handler": "handle_post_storage_pool",
       "source": "src/web/libuv_api_handlers.c",
       "line": 408,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "createStoragePool",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1713,8 +1750,10 @@
       "handler": "handle_get_storage_pool",
       "source": "src/web/libuv_api_handlers.c",
       "line": 410,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStoragePool",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "PUT",
@@ -1722,8 +1761,10 @@
       "handler": "handle_put_storage_pool",
       "source": "src/web/libuv_api_handlers.c",
       "line": 412,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateStoragePool",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "DELETE",
@@ -1731,8 +1772,10 @@
       "handler": "handle_delete_storage_pool",
       "source": "src/web/libuv_api_handlers.c",
       "line": 414,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteStoragePool",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1740,8 +1783,10 @@
       "handler": "handle_get_storage_compliance",
       "source": "src/web/libuv_api_handlers.c",
       "line": 416,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStorageCompliance",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1749,8 +1794,10 @@
       "handler": "handle_get_storage_policies",
       "source": "src/web/libuv_api_handlers.c",
       "line": 418,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "listStoragePolicies",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1758,8 +1805,10 @@
       "handler": "handle_post_storage_policy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 420,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "createStoragePolicy",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
@@ -1767,8 +1816,10 @@
       "handler": "handle_post_storage_policy_preview",
       "source": "src/web/libuv_api_handlers.c",
       "line": 422,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "previewStoragePolicy",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "GET",
@@ -1776,8 +1827,10 @@
       "handler": "handle_get_storage_policy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 424,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "getStoragePolicy",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "PUT",
@@ -1785,8 +1838,10 @@
       "handler": "handle_put_storage_policy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 426,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateStoragePolicy",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "DELETE",
@@ -1794,8 +1849,10 @@
       "handler": "handle_delete_storage_policy",
       "source": "src/web/libuv_api_handlers.c",
       "line": 428,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "storage",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteStoragePolicy",
+      "eligibility": "global storage.configure; revisions and state/reference checks apply"
     },
     {
       "method": "POST",
