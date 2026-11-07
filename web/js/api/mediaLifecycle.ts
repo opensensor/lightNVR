@@ -26,7 +26,8 @@ async function call<T>(url:string,operation:string,guard:ContractValidator<T>,op
     response=await enhancedFetch(url,{timeout:20000,...options,retries:0,method,body,headers,cache:'no-store',credentials:'same-origin',redirect:'error',sensitive:true});
   }catch(error:unknown){
     if(options.signal?.aborted)throw new DOMException('Request cancelled','AbortError');
-    const status=typeof error==='object'&&error!==null&&'status' in error&&typeof error.status==='number'?error.status:undefined;
+    const status = typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number'
+      ? error.status : undefined;
     throw new MediaContractError(operation,'transport',status,mutation);
   }
   if(response.status!==status)throw new MediaContractError(operation,'response',response.status,mutation);

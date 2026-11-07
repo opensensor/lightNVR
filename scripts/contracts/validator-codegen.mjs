@@ -7,7 +7,7 @@
  */
 import code from 'ajv/dist/vocabularies/code.js';
 import util from 'ajv/dist/compile/util.js';
-import {_} from 'ajv/dist/compile/codegen/index.js';
+import {_, Name} from 'ajv/dist/compile/codegen/index.js';
 import ts from 'typescript';
 export function configureContractCodegen(ajv) {
   if (ajv.opts.allErrors || ajv.opts.$data || ajv.opts.useDefaults ||
@@ -16,6 +16,46 @@ export function configureContractCodegen(ajv) {
   }
   // Definitions are instance-owned copies. Retain their rule order so
   // fail-fast error selection stays identical to unmodified Ajv.
+  const anyOf=ajv.getKeyword('anyOf');
+  const emitAnyOf=anyOf.code;
+  anyOf.code = cxt=>{
+    // The enclosing additionalProperties rule always marks every property as
+    // evaluated, including when its schema is true. Union property maps would
+    // be overwritten by that rule; child schemas still track their own maps.
+    // Keep item tracking and branch/error evaluation unchanged.
+    if(cxt.parentSchema.additionalProperties!==undefined)cxt.it.props=true;
+    emitAnyOf(cxt);
+  };
+  const oneOf=ajv.getKeyword('oneOf');
+  oneOf.code = cxt=>{
+    const {gen,schema,parentSchema,it}=cxt;
+    if(it.opts.discriminator && parentSchema.discriminator)return;
+    const valid=gen.let('valid',false),passing=gen.let('passing',null);
+    cxt.setParams({passing});
+    gen.block(()=>schema.forEach((sch,i)=>{
+      // Ajv reuses one function-scoped var for every branch. Independent
+      // temporaries let optimization remove unused assignments without moving
+      // the surviving declaration below an earlier branch's use.
+      const schValid=gen.name('_valid');
+      let schCxt;
+      if(util.alwaysValidSchema(it,sch))gen.var(schValid,true);
+      else schCxt=cxt.subschema({keyword:'oneOf',schemaProp:i,compositeRule:true},schValid);
+      if(i>0)gen.if(_`${schValid} && ${valid}`)
+        .assign(valid,false).assign(passing,_`[${passing}, ${i}]`).else();
+      gen.if(schValid,()=>{
+        gen.assign(valid,true).assign(passing,i);
+        if(schCxt){
+          // Assigning the fully evaluated sentinel is idempotent. Avoid a
+          // self-read guard that keeps an otherwise unused property map alive.
+          if(schCxt.props===true && it.props instanceof Name){
+            gen.assign(it.props,true);
+            cxt.mergeEvaluated({...schCxt,props:undefined},Name);
+          }else cxt.mergeEvaluated(schCxt,Name);
+        }
+      });
+    }));
+    cxt.result(valid,()=>cxt.reset(),()=>cxt.error(true));
+  };
   const properties=ajv.getKeyword('properties');
   properties.code = (cxt)=>{
     const {gen,schema,data,it}=cxt;

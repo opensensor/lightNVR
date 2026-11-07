@@ -87,6 +87,37 @@ test('custom emitters fail closed for unsupported mutating or exhaustive profile
     assert.throws(()=>configureContractCodegen(new Ajv2020(options)),/reviewed non-mutating/);
 });
 
+test('union emitters preserve overlapping branches and evaluated property/item boundaries',()=>{
+  const branches=[
+    {properties:{a:{type:'integer'}},required:['a']},
+    {properties:{b:{type:'string'}},required:['b']},
+  ];
+  const schemas=[
+    ...[true,false,{type:'number'}].map(additionalProperties=>({
+      type:'object',anyOf:branches,properties:{a:true,b:true},additionalProperties,
+    })),
+    {type:'object',anyOf:branches,unevaluatedProperties:false},
+    {type:'object',oneOf:branches,unevaluatedProperties:false},
+    {type:'object',oneOf:[true,...branches],unevaluatedProperties:false},
+    {type:'object',properties:{rows:{type:'array',items:{type:'object',oneOf:branches,unevaluatedProperties:false}}}},
+    {type:'array',anyOf:[{prefixItems:[{type:'integer'}]},{prefixItems:[{type:'string'},{type:'boolean'}]}],unevaluatedItems:false},
+  ];
+  const values=[null,{},[],[1],['x',true],['x',true,2],{a:1},{b:'x'},
+    {a:1,b:'x'},{a:'wrong'},{b:2},{a:1,extra:2},{a:1,extra:'wrong'},
+    {rows:[{a:1},{b:'x'}]},{rows:[{a:1,b:'x'}]},{rows:[{a:'wrong'}]}];
+  for(const schema of schemas){
+    const oracle=new Ajv2020({strict:false}).compile(schema);
+    const ajv=new Ajv2020({strict:false});configureContractCodegen(ajv);
+    const candidate=ajv.compile(schema);
+    for(const value of values){
+      const original=structuredClone(value);
+      assert.equal(candidate(value),oracle(value),JSON.stringify({schema,value}));
+      assert.deepEqual(candidate.errors,oracle.errors);
+      assert.deepEqual(value,original);
+    }
+  }
+});
+
 
 test('repeated counter checks collapse without folding property reads or calls',()=>{
   const result=normalizeRepeatedCounterChecks('if (0 === _errs5 && 0 === _errs5) check(); if (a.x === 0 && a.x === 0) check(); if (f() === 0 && f() === 0) check();');

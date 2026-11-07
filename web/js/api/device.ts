@@ -76,8 +76,9 @@ export async function deviceRequest<K extends DeviceOperation>(operation:K, opti
   let response:Response;
   try { response=await enhancedFetch(route.path.replace('{name}',encodeURIComponent(name??'')),{timeout:20000,...fetchOptions,headers,method:route.method,body:body===undefined?undefined:JSON.stringify(body),retries:0,sensitive:true,cache:'no-store',credentials:'same-origin',redirect:'error'}); }
   catch(error:unknown) {
-    if(options.signal?.aborted || error instanceof Error&&error.name==='AbortError')throw new DOMException('Request cancelled','AbortError');
-    const status=typeof error==='object'&&error!==null&&'status' in error&&typeof error.status==='number'?error.status:undefined;
+    if (options.signal?.aborted || (error instanceof Error && error.name === 'AbortError'))throw new DOMException('Request cancelled','AbortError');
+    const status = typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number'
+      ? error.status : undefined;
     throw new DeviceRequestError(operation,status,route.method!=='GET'&&(status===undefined||status>=500));
   }
   if(response.status!==200)throw new ContractValidationError(operation,'response',route.response,response.status,'status');
