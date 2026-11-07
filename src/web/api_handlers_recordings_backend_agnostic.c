@@ -84,9 +84,9 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
         return;
     }
     
-    // Convert ID to integer
-    uint64_t id = strtoull(id_str, NULL, 10);
-    if (id == 0) {
+    // Convert ID to integer using strict decimal parsing
+    uint64_t id;
+    if (recording_id_parse_decimal(id_str, &id) != 0) {
         log_error("Invalid recording ID: %s", id_str);
         http_response_set_json_error(res, 400, "Invalid recording ID");
         return;
