@@ -131,6 +131,11 @@ static bool perform_health_check(void) {
     struct MemoryStruct chunk;
 
     chunk.memory = malloc(1);
+    if (!chunk.memory) {
+        log_error("Failed to allocate initial buffer for health check response");
+        return false;
+    }
+    chunk.memory[0] = '\0';
     chunk.size = 0;
 
     curl = curl_easy_init();
