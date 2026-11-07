@@ -108,7 +108,7 @@ GO2RTC_TEST_BINARY="$PWD/build/media-authority/go2rtc" \
   -R 'test_go2rtc_managed_listeners|test_go2rtc_two_config_merge'
 ```
 
-Focused native tests passed, including all ten policy/remux cases. Managed
+Focused native tests passed, including all twelve policy/remux cases. Managed
 fork process checks passed (2/2). Fork validation passed:
 
 ```sh
@@ -157,3 +157,49 @@ byte. Both failures reproduced locally before correction. The expiry assertion
 still independently advances the stored lease beyond its idle lifetime and
 expects denial. `test_libuv_tls` and `test_media_authority` pass with Debug
 ASan/UBSan, `ENABLE_SSL=ON`, and libyaml 0.2.5 enabled (also pass without libyaml).
+
+
+### PR #835 coverage verification
+
+A local reproduction of the go2rtc CI job used Debug, SSL, libyaml 0.2.5,
+`--coverage -fprofile-update=atomic`, and the owned maintained-fork binary. The
+original 18 selected suites passed. Matching added executable source lines from
+`git diff --unified=0 84ed0174...HEAD` against the filtered LCOV `DA` records
+measured **199/218 (91.28%)** before the additional tests below. This is changed
+line coverage, not branch coverage or overall repository coverage.
+
+The zero-coverage report was observed while the go2rtc coverage job was still
+queued. Both raw and filtered local reports retain canonical absolute `src/`
+paths, including production source compiled by direct inclusion in test files.
+The existing exclusions (`/usr/*`, `*/third_party/*`, `*/external/*`, `*/tests/*`)
+do not remove these production records. No source-path or upload-filter change
+was needed.
+
+Additional tests now exercise real registry exhaustion (256 leases), denial
+without overwriting an active lease, expired-slot reclamation, missing camera
+and invalid principal at issuance. Both proxy implementations return 503 without
+upstream contact when lease entropy generation fails, and reject a successful
+SDP response without the media-policy acknowledgment. An actual WebSocket
+upgrade returning 101 without that acknowledgment is rejected with 502. The
+query and WebSocket suites are now explicitly built and run in the go2rtc CI job;
+previously that job omitted those two existing targets.
+
+The four affected suites pass under ASan/UBSan, including all twelve native
+media-authority cases. Together with the prior 18-suite run this verifies all
+20 targets now selected by the job. Recapturing and applying the unchanged LCOV
+filters measures:
+
+| Production file | Covered changed executable lines |
+| --- | --- |
+| `src/web/api_handlers_go2rtc_proxy.c` | 126 / 126 |
+| `src/web/go2rtc_proxy_thread.c` | 14 / 14 |
+| `src/web/go2rtc_websocket.c` | 4 / 4 |
+| `src/web/api_handlers_streaming.c` | 71 / 74 |
+| Total | **215 / 218 (98.62%)** |
+
+All 144 changed executable lines in the three files highlighted by the missing
+coverage report are now covered locally. Three native HLS lines remain uncovered;
+this does not claim 100% coverage of every branch or replace hosted verification.
+Local artifacts are `build/media-coverage/coverage_baseline.info`,
+`coverage_filtered.info` and `patch-coverage.json.txt` in the P1 publication
+worktree. The hosted Codecov result must still be checked after its job uploads.
