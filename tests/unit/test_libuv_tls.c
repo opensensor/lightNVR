@@ -414,7 +414,7 @@ void test_pipelined_request_buffered_in_tls_session_is_served(void) {
     content_length = strstr(headers, "Content-Length: ");
     TEST_ASSERT_NOT_NULL(content_length);
     size = strtoul(content_length + 16, NULL, 10);
-    TEST_ASSERT_LESS_THAN_size_t(sizeof(body), size);
+    TEST_ASSERT_LESS_OR_EQUAL_size_t(sizeof(body) - 1, size);  // Reserve the NUL byte without overflow.
     TEST_ASSERT_TRUE(tls_read_all(&client, body, size));
     body[size] = '\0';
     char expected[128];
@@ -428,7 +428,7 @@ void test_pipelined_request_buffered_in_tls_session_is_served(void) {
     content_length = strstr(headers, "Content-Length: ");
     TEST_ASSERT_NOT_NULL(content_length);
     size = strtoul(content_length + 16, NULL, 10);
-    TEST_ASSERT_LESS_THAN_size_t(sizeof(body), size);
+    TEST_ASSERT_LESS_OR_EQUAL_size_t(sizeof(body) - 1, size);  // Reserve the NUL byte without overflow.
     TEST_ASSERT_TRUE(tls_read_all(&client, body, size));
     body[size] = '\0';
     TEST_ASSERT_EQUAL_STRING("{\"hello\":\"tls\"}", body);
