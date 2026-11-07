@@ -141,7 +141,7 @@ http:
 
 ## Existing deployments
 
-Remove any old gateway route to go2rtc, including a dedicated `/go2rtc/api/ws` route, and any port-1984 mapping. Route them through LightNVR instead. Review `override.yaml`: an explicit `api.listen` or `api.tls_listen` can override the generated loopback default. `/api/config`, `/api/restart`, and `/api/exit` are disabled without go2rtc credentials; when credentials are configured, authentication is mandatory even on loopback. Manage the subprocess through LightNVR instead of exposing administrative routes.
+Remove any old gateway route to go2rtc, including a dedicated `/go2rtc/api/ws` route, and any port-1984 mapping. Route them through LightNVR instead. Managed children receive a final listener policy after `override.yaml`; overrides cannot reopen HTTP or RTSP listeners. Independently managed services must apply these restrictions themselves. Ensure LightNVR remains reachable on IPv4 loopback for the [media authority callback](CONFIGURATION.md#media-authority-deployment-requirements). `/api/config`, `/api/restart`, and `/api/exit` are disabled without go2rtc credentials; when credentials are configured, authentication is mandatory even on loopback. Manage the subprocess through LightNVR instead of exposing administrative routes.
 
 In v0.44.0–v0.44.2, the MSE frontend used the dashboard origin but LightNVR lacked a WebSocket relay. Those versions could return `404` on port 8080. Pointing the frontend at port 1984 bypasses LightNVR authorization and is not the fix. The relay now handles that request on the dashboard port. The same update resolves HLS grid authorization for managed `_sub` streams.
 

@@ -153,7 +153,13 @@ Managed go2rtc also binds RTSP to `127.0.0.1` (default port 8554). External dire
 RTSP clients must move to LightNVR playback; the local recorder still uses RTSP.
 A final managed configuration pins both listeners after user overrides and
 disables extra HTTPS/Unix API listeners. It leaves WebRTC ICE media connectivity
-available. See [override behavior and external-service limits](GO2RTC_CONFIG_OVERRIDE.md).
+available. Use the maintained OpenSensor fork shipped with LightNVR; older or
+incompatible external binaries fail closed for protected playback. The fork's
+media lease callback requires LightNVR's web listener to be reachable at
+`127.0.0.1` in the same network namespace. A web listener bound only to a
+non-loopback address will deny playback rather than bypass authorization.
+See [media authority requirements and revocation timing](CONFIGURATION.md#media-authority-deployment-requirements)
+and [override behavior and external-service limits](GO2RTC_CONFIG_OVERRIDE.md).
 
 ## Configuration
 
