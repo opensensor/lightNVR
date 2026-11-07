@@ -234,7 +234,12 @@ export interface TextInputDialogProps {
 }
 
 /** A modal form backed by a real text input, optionally with one checkbox. */
-export function TextInputDialog({
+export function TextInputDialog(props: TextInputDialogProps) {
+  // Each opening owns its action so a previous completion cannot affect it.
+  return props.isOpen ? <TextInputDialogContent {...props} /> : null;
+}
+
+function TextInputDialogContent({
   isOpen,
   onClose,
   onSubmit,
@@ -252,26 +257,25 @@ export function TextInputDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState(initialValue);
   const [checked, setChecked] = useState(checkboxInitialValue);
-  const [submitting, setSubmitting] = useState(false);
+  const { t } = useI18n();
+  const mounted = useRef(true);
+  useLayoutEffect(() => () => { mounted.current = false; }, []);
+  const submission = useAsyncAction(async (trimmed: string, checkboxValue: boolean) => {
+    const result = await onSubmit(trimmed, checkboxValue);
+    if (mounted.current && result !== false) onClose();
+  });
 
   useEffect(() => {
     if (!isOpen) return;
     setValue(initialValue);
     setChecked(checkboxInitialValue);
-    setSubmitting(false);
   }, [checkboxInitialValue, initialValue, isOpen]);
 
-  const submit = async (event: Event) => {
+  const submit = (event: Event) => {
     event.preventDefault();
     const trimmed = value.trim();
-    if (!trimmed || submitting) return;
-    setSubmitting(true);
-    try {
-      const result = await onSubmit(trimmed, checked);
-      if (result !== false) onClose();
-    } finally {
-      setSubmitting(false);
-    }
+    if (!trimmed) return;
+    void submission.run(trimmed, checked);
   };
 
   return (
@@ -280,7 +284,7 @@ export function TextInputDialog({
       onClose={onClose}
       title={title}
       description={description}
-      closeDisabled={submitting}
+      closeDisabled={submission.pending}
       initialFocusRef={inputRef}
     >
       <form onSubmit={submit}>
@@ -295,7 +299,7 @@ export function TextInputDialog({
               placeholder={placeholder}
               maxLength={maxLength}
               required
-              disabled={submitting}
+              disabled={submission.pending}
               onInput={(event) => setValue(event.currentTarget.value)}
             />
           </label>
@@ -305,20 +309,23 @@ export function TextInputDialog({
                 type="checkbox"
                 className="mt-0.5 h-4 w-4"
                 checked={checked}
-                disabled={submitting}
+                disabled={submission.pending}
                 onChange={(event) => setChecked(event.currentTarget.checked)}
               />
               <span>{checkboxLabel}</span>
             </label>
           )}
         </div>
-        <footer className="flex justify-end gap-3 border-t border-border px-5 py-4">
-          <button type="button" className="btn-secondary" disabled={submitting} onClick={onClose}>
-            {cancelLabel}
-          </button>
-          <button type="submit" className="btn-primary" disabled={submitting || !value.trim()}>
-            {confirmLabel}
-          </button>
+        <footer className="border-t border-border px-5 py-4">
+          {submission.error && <p role="alert" className="mb-3 text-sm text-destructive">{t('common.actionFailed')}</p>}
+          <div className="flex justify-end gap-3">
+            <button type="button" className="btn-secondary" disabled={submission.pending} onClick={onClose}>
+              {cancelLabel}
+            </button>
+            <button type="submit" className="btn-primary" disabled={submission.pending || !value.trim()} aria-busy={submission.pending}>
+              {confirmLabel}
+            </button>
+          </div>
         </footer>
       </form>
     </ModalShell>
