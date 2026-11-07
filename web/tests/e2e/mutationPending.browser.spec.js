@@ -21,7 +21,11 @@ async function openBrowser(view) {
         if(method!=='GET'){
           const body=options.body?JSON.parse(options.body):null;
           window.writes.push({url,method,body});
-          return new Promise(resolve=>window.pending.push(ok=>resolve(ok?json(url==='/api/ui/workspaces'?workspace(body.workspaces['live.navigator']):url.endsWith('/login-lockout/clear')?{success:true,cleared:true,message:'Login lockout cleared'}:{}):json({error:'Fixture rejection'},400))));
+          return new Promise(resolve=>window.pending.push(ok=>{
+            if(!ok)return resolve(json({error:'Fixture rejection'},400));
+            if(method==='DELETE'&&url.startsWith('/api/streams/'))return resolve(json({success:true,permanent:url.includes('permanent=true'),status:'accepted'},202));
+            resolve(json(url==='/api/ui/workspaces'?workspace(body.workspaces['live.navigator']):url.endsWith('/login-lockout/clear')?{success:true,cleared:true,message:'Login lockout cleared'}:{}));
+          }));
         }
         if(url.startsWith('/api/streams?'))return json(summary);
         if(url==='/api/auth/users')return json(users);

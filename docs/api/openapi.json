@@ -67,7 +67,7 @@
   ],
   "x-lightnvr-coverage": {
     "partial": true,
-    "canonical_revision": "eng-api-storage-v1",
+    "canonical_revision": "eng-api-four-pr-v1",
     "covered_operations": [
       "listStreams",
       "getStreamFull",
@@ -302,7 +302,7 @@
       "setStreamDetectionEngines",
       "getIceServers"
     ],
-    "description": "Reviewed operations are enumerated in covered_operations. Discovery is filtered independently by current authority; coverage never grants access."
+    "description": "232 reviewed OpenAPI operations; eight registered media-protocol surfaces and one internal callback have explicit inventory dispositions outside this document. Discovery is filtered by current authority and never grants access."
   },
   "x-lightnvr-validators": [
     "StreamSummaryPage",
