@@ -278,7 +278,7 @@ test('real missing-source export reaches error and result409 without a partial a
 test('a bounded regular export source exposes running and not_ready before completing',async({server})=>{
   const filesystem=statfsSync('/tmp');
   const freeBytes=filesystem.bavail*filesystem.bsize;
-  expect(freeBytes,'256MiB export fixture requires at least2GiB free space').toBeGreaterThanOrEqual(2*1024*1024*1024);
+  expect(freeBytes,'256MiB export fixture requires at least 2GiB free space').toBeGreaterThanOrEqual(2*1024*1024*1024);
   const fixture=seedRecordings(server);const exporter=await actor(server,'running_exporter',['recordings.export']);
   // Real bounded work (256 MiB sparse suffix), rather than a native test hook
   // or an arbitrary sleep, keeps CRC/archive generation observable over HTTP.
