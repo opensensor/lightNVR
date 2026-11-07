@@ -60,6 +60,9 @@ static bool g_server_needs_restart = false;
 static time_t g_last_restart_attempt = 0;
 static int g_restart_attempts = 0;
 static const int MAX_RESTART_ATTEMPTS = 5;
+
+// True if stop timed out and the worker was detached; caller must treat worker as potentially still alive
+static bool g_health_thread_detached_inflight = false;
 static const int RESTART_COOLDOWN_SECONDS = 30;
 
 // Health check thread variables
@@ -853,8 +856,11 @@ void stop_health_check_thread(void) {
         elapsed_ms += poll_interval_ms;
     }
 
-    // Thread did not exit in time, detach it
-    log_warn("Health check thread did not exit in time (%d ms), detaching", timeout_ms);
+    // Thread did not exit in time, detach it and mark as still in-flight.
+    // This prevents callers from treating shutdown as complete while the worker
+    // may still be inside perform_health_check().
+    g_health_thread_detached_inflight = true;
+    log_warn("Health check thread did not exit in time (%d ms), detaching and marking in-flight", timeout_ms);
     pthread_detach(g_health_check_thread);
 }
 
@@ -863,6 +869,11 @@ void stop_health_check_thread(void) {
  */
 void cleanup_health_check_system(void) {
     stop_health_check_thread();
+
+    if (g_health_thread_detached_inflight) {
+        log_warn("Health check worker detached and still in-flight; skipping global state reset");
+        return;
+    }
 
     // Reset all state
     g_is_healthy = false;
@@ -886,6 +897,9 @@ void update_health_metrics(bool request_succeeded) {
  * @brief Check if the web server is healthy
  */
 bool is_web_server_healthy(void) {
+    if (g_health_thread_detached_inflight) {
+        return false;
+    }
     return g_is_healthy && is_web_server_thread_running();
 }
 
@@ -900,6 +914,11 @@ int get_failed_health_checks(void) {
  * @brief Reset health check metrics
  */
 void reset_health_metrics(void) {
+    if (g_health_thread_detached_inflight) {
+        log_warn("Skipping health metrics reset while detached health thread is still in-flight");
+        return;
+    }
+
     g_total_requests = 0;
     g_failed_requests = 0;
     g_failed_health_checks = 0;
