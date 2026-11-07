@@ -207,6 +207,11 @@ static void test_timeline_and_summaries_skip_unrelated_detection_history(void) {
     recording_detection_summary_t summary;
     TEST_ASSERT_EQUAL_INT(0, get_recording_detection_summaries_for_cameras(&recording,1,&summary));
     TEST_ASSERT_FALSE(summary.has_detection);
+    timeline_coverage_interval_t coverage[8];
+    int sources, seconds;
+    TEST_ASSERT_EQUAL_INT(1, get_timeline_coverage_by_camera_uuid(UUID_A,900,1200,coverage,8,&sources,&seconds));
+    TEST_ASSERT_EQUAL_INT(3, sources);
+    TEST_ASSERT_FALSE(coverage[0].has_detection);
     TEST_ASSERT_LESS_OR_EQUAL_INT(50,query_progress_calls);
 }
 
@@ -226,6 +231,61 @@ static void test_timeline_motion_keeps_legacy_identity_and_interval_overlap(void
     TEST_ASSERT_EQUAL_INT(3,get_timeline_segments_by_camera_uuid(UUID_A,1000,1100,segments,8));
     for (int i=0;i<3;i++) TEST_ASSERT_TRUE(segments[i].has_detection);
 }
+
+static void assert_coverage_detection(bool expected) {
+    timeline_coverage_interval_t coverage[8];
+    int sources, seconds;
+    TEST_ASSERT_EQUAL_INT(1, get_timeline_coverage_by_camera_uuid(UUID_A,1000,1100,coverage,8,&sources,&seconds));
+    TEST_ASSERT_EQUAL_INT(3, sources);
+    TEST_ASSERT_EQUAL_INT(expected, coverage[0].has_detection);
+}
+static void test_coverage_detection_identity_and_event_types(void) {
+    sql("DELETE FROM detections;"
+        "INSERT INTO detections(stream_name,camera_uuid,timestamp,label,confidence,source,recording_id) VALUES "
+        "('A','" UUID_B "',1050,'conflicting-linked',0.9,'',2),"
+        "('missing',NULL,1050,'orphan',0.9,'',NULL);");
+    assert_coverage_detection(false);
+    /* A UUID survives a stream rename, even without a recording link. */
+    sql("INSERT INTO detections(stream_name,camera_uuid,timestamp,label,confidence,source) VALUES "
+        "('old-name','" UUID_A "',1050,'renamed',0.9,'');");
+    assert_coverage_detection(true);
+    sql("DELETE FROM detections;"
+        "INSERT INTO detections(stream_name,camera_uuid,timestamp,label,confidence,source) VALUES "
+        "('A',NULL,1050,'legacy-null',0.9,'');");
+    assert_coverage_detection(true);
+    sql("UPDATE detections SET camera_uuid='';");
+    assert_coverage_detection(true);
+    /* Motion starts before the recording but overlaps it. */
+    sql("DELETE FROM detections;"
+        "INSERT INTO detections(stream_name,camera_uuid,timestamp,event_end_time,label,confidence,source) VALUES "
+        "('old-name','" UUID_A "',800,1050,'motion',0.9,'external_motion');");
+    assert_coverage_detection(true);
+    sql("UPDATE detections SET event_end_time=900;");
+    assert_coverage_detection(false);
+    sql("UPDATE recordings SET trigger_type='detection' WHERE id=2;");
+    assert_coverage_detection(true);
+}
+static void test_coverage_half_open_buckets_preserve_gaps_and_clip(void) {
+    sql("DELETE FROM detections; DELETE FROM recordings;"
+        "INSERT INTO recordings(id,stream_name,camera_uuid,file_path,start_time,end_time,size_bytes,is_complete,trigger_type) VALUES "
+        "(10,'A','" UUID_A "','/fixture/first.mp4',990,1010,100,1,'scheduled'),"
+        "(11,'A','" UUID_A "','/fixture/second.mp4',1020,1050,200,1,'scheduled'),"
+        "(12,'A','" UUID_A "','/fixture/empty.mp4',1015,1015,300,1,'scheduled');");
+    timeline_coverage_interval_t coverage[4];
+    int sources, seconds;
+    TEST_ASSERT_EQUAL_INT(2, get_timeline_coverage_by_camera_uuid(UUID_A,1000,1040,coverage,4,&sources,&seconds));
+    TEST_ASSERT_EQUAL_INT(10, seconds);
+    TEST_ASSERT_EQUAL_INT(3, sources); /* Includes the empty row scanned. */
+    TEST_ASSERT_EQUAL_INT64(1000, coverage[0].start_time);
+    TEST_ASSERT_EQUAL_INT64(1010, coverage[0].end_time);
+    TEST_ASSERT_EQUAL_INT64(1020, coverage[1].start_time);
+    TEST_ASSERT_EQUAL_INT64(1040, coverage[1].end_time);
+    TEST_ASSERT_EQUAL_UINT64(100, coverage[0].size_bytes);
+    TEST_ASSERT_EQUAL_UINT64(200, coverage[1].size_bytes);
+    TEST_ASSERT_EQUAL_INT(1, coverage[0].source_segment_count);
+    TEST_ASSERT_EQUAL_INT(1, coverage[1].source_segment_count);
+}
+
 int main(void) {
     if(!mkdtemp(directory))return 1;
     char path[256];snprintf(path,sizeof(path),"%s/db.sqlite",directory);
@@ -240,5 +300,7 @@ int main(void) {
     RUN_TEST(test_camera_label_walk_skips_modern_rows_in_legacy_branch);
     RUN_TEST(test_timeline_and_summaries_skip_unrelated_detection_history);
     RUN_TEST(test_timeline_motion_keeps_legacy_identity_and_interval_overlap);
+    RUN_TEST(test_coverage_detection_identity_and_event_types);
+    RUN_TEST(test_coverage_half_open_buckets_preserve_gaps_and_clip);
     int result=UNITY_END();shutdown_database();nftw(directory,remove_path,16,FTW_DEPTH|FTW_PHYS);return result;
 }
