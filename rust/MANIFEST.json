@@ -1669,9 +1669,9 @@
     },
     {
       "c": "src/web/api_handlers_system.c",
-      "c_sha256": "daf4370fb57ec99e13ab73cbb6414a5ef925167f2c562cb69820a5794697b47e",
+      "c_sha256": "f96a80c81867c557e0980b8dad69ec5cc87da43f3493255516dced731c5d26ad",
       "rust": "generated/src__web__api_handlers_system.rs",
-      "rust_sha256": "b340aaac861956c36e033ed612f766fb116318be957bacb299541dab7d544dc6",
+      "rust_sha256": "eb6fef74678a50a83ee663dccfa088bd95f9739966cbeea29ab4fe08df4c8080",
       "adapted": true
     },
     {
