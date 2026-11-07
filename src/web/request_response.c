@@ -213,7 +213,7 @@ int http_request_extract_path_param(const http_request_t *req, const char *prefi
 
     if (param_len == 0) return -1;
 
-    return url_decode_span(param, param_len, param_buf, buf_size, false);
+    return url_decode_span(param, param_len, param_buf, buf_size, true);
 }
 
 int http_response_add_header(http_response_t *res, const char *name, const char *value) {
