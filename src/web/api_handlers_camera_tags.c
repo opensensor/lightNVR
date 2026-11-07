@@ -182,9 +182,6 @@ static bool load_visible_cameras(const http_request_t *req,
     authorization_evaluation_t evaluation;
     *all_fleet =
         (authorization_evaluate(&user, AUTHZ_LIVE_VIEW, NULL, &evaluation) == 0 &&
-         evaluation.decision == AUTHZ_DECISION_ALLOW) ||
-        (authorization_evaluate(&user, AUTHZ_CAMERA_CONFIGURE, NULL,
-                                &evaluation) == 0 &&
          evaluation.decision == AUTHZ_DECISION_ALLOW);
     if (db_fleet_camera_load(cameras, count) != 0 ||
         authorization_filter_cameras(&user, AUTHZ_LIVE_VIEW, *cameras,
