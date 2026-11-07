@@ -70,15 +70,21 @@ try {
  }
  for(let i=0;i<count;i++)await server.json(`/api/streams/Load${i}/recording`,{method:'POST',body:{action:'stop'}});
  const rows=(await server.json('/api/recordings?limit=1000')).recordings;
+ const durationToleranceSeconds=5;
+ const minExpectedDurationSeconds=Math.max(0,seconds-durationToleranceSeconds);
  for(const row of rows){
   const detail=await server.json(`/api/recordings/${row.id}`);
   const filename=detail.file_path||detail.recording?.file_path;
   if(!filename?.startsWith(server.directory+'/'))throw new Error('Media outside owned fixture');
   const probe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_entries','format=duration,size:stream=codec_name,width,height','-of','json',filename],{encoding:'utf8',timeout:30000}));
+  const durationSeconds=Number(probe?.format?.duration);
+  if(!Number.isFinite(durationSeconds))throw new Error(`Missing recording duration for ${filename}`);
+  if(durationSeconds<minExpectedDurationSeconds)throw new Error(`Recording shorter than expected for ${row.stream}: ${durationSeconds}s < ${minExpectedDurationSeconds}s`);
   execFileSync('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-xerror','-i',filename,'-f','null','-'],{timeout:60000});
   report.recordings.push({id:row.id,stream:row.stream,probe});
  }
  if(new Set(report.recordings.map(row=>row.stream)).size!==count)throw new Error('Missing finalized camera footage');
+ if(report.sourceError)throw new Error(`Source process failed: ${report.sourceError}`);
  report.status='passed';
 }catch(error){report.status='failed';report.error=String(error);process.exitCode=1;}
 finally{
