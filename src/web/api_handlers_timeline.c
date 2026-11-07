@@ -48,6 +48,19 @@
 // (e.g., 10-second segments = 8640 per day)
 #define MAX_TIMELINE_SEGMENTS 8640
 
+/* Keep existing numeric IDs where JavaScript can represent them exactly. */
+static void add_timeline_recording_id(cJSON *segment, uint64_t id) {
+    char decimal[21];
+    snprintf(decimal, sizeof(decimal), "%llu", (unsigned long long)id);
+    if (id <= UINT64_C(9007199254740991)) {
+        /* cJSON's floating-point formatter can round even safe 16-digit IDs.
+         * This trusted decimal integer is valid JSON and needs no conversion. */
+        cJSON_AddRawToObject(segment, "id", decimal);
+    } else {
+        cJSON_AddStringToObject(segment, "id", decimal);
+    }
+}
+
 // Maximum number of segments in a manifest
 #define MAX_MANIFEST_SEGMENTS 100
 
@@ -733,7 +746,7 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
             snprintf(size_str, sizeof(size_str), "%.1f GB", (double)segments[i].size_bytes / (1024.0 * 1024.0 * 1024.0));
         }
 
-        cJSON_AddNumberToObject(segment, "id", (double)segments[i].id);
+        add_timeline_recording_id(segment, segments[i].id);
         cJSON_AddStringToObject(segment, "stream", segments[i].stream_name);
         if (segments[i].camera_uuid[0] != '\0') {
             cJSON_AddStringToObject(segment, "camera_uuid",
@@ -1246,7 +1259,7 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         else
             snprintf(size_str, sizeof(size_str), "%.1f GB", (double)rec.size_bytes / (1024.0 * 1024.0 * 1024.0));
 
-        cJSON_AddNumberToObject(segment, "id", (double)rec.id);
+        add_timeline_recording_id(segment, rec.id);
         cJSON_AddStringToObject(segment, "stream", rec.stream_name);
         if (rec.camera_uuid[0] != '\0') {
             cJSON_AddStringToObject(segment, "camera_uuid", rec.camera_uuid);

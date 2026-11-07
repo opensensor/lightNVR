@@ -40,6 +40,17 @@ describe('recordingsAPI', () => {
     jest.restoreAllMocks();
   });
 
+  test('tag requests preserve an exact large timeline recording ID', async () => {
+    const id = '9007199254740993';
+    fetchJSON.mockResolvedValue({tags: ['event']});
+    await expect(recordingsAPI.getRecordingTags(id)).resolves.toEqual(['event']);
+    expect(fetchJSON).toHaveBeenLastCalledWith(`/api/recordings/${id}/tags`, expect.any(Object));
+    await recordingsAPI.setRecordingTags(id, ['event']);
+    expect(fetchJSON).toHaveBeenLastCalledWith(`/api/recordings/${id}/tags`, expect.objectContaining({
+      method: 'PUT', body: JSON.stringify({tags: ['event']}),
+    }));
+  });
+
   test.each(['invalid_media', 'no_video', 'decode_error'])('explains %s without opening a broken player', playback_issue => {
     const modal = jest.fn();
     recordingsAPI.playRecording({id:42, playback_issue}, modal);

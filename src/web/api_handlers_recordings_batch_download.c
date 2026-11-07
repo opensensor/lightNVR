@@ -477,6 +477,24 @@ static void *zip_worker(void *arg) {
 
 /* ─── HTTP Handlers ───────────────────────────────────────────────────── */
 
+/* Timeline IDs above JavaScript's exact integer range arrive as decimal strings. */
+static bool parse_export_recording_id(const cJSON *item, uint64_t *id) {
+    if (cJSON_IsNumber(item)) {
+        double value = item->valuedouble;
+        if (!(value >= 1 && value <= 9007199254740991.0)) return false;
+        *id = (uint64_t)value;
+        return (double)*id == value;
+    }
+    if (!cJSON_IsString(item) || !item->valuestring || !item->valuestring[0]) return false;
+    uint64_t value = 0;
+    for (const char *p = item->valuestring; *p; p++) {
+        if (*p < '0' || *p > '9' || value > (UINT64_MAX - (unsigned)(*p - '0')) / 10) return false;
+        value = value * 10 + (unsigned)(*p - '0');
+    }
+    *id = value;
+    return value != 0;
+}
+
 /**
  * POST /api/recordings/batch-download
  * Body: { "ids": [1,2,3], "filename": "incident.zip" }
@@ -510,17 +528,18 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
     cJSON *fn = cJSON_GetObjectItem(json, "filename");
     if (fn && cJSON_IsString(fn) && fn->valuestring[0]) filename_raw = fn->valuestring;
 
+    uint64_t parsed_ids[MAX_DL_IDS];
     // Export batches are all-or-nothing: resolve and authorize every server
     // recording before any background job can read files.
     for (int i = 0; i < count; i++) {
         cJSON *item = cJSON_GetArrayItem(ids_arr, i);
-        if (!cJSON_IsNumber(item) || item->valuedouble <= 0) {
+        if (!parse_export_recording_id(item, &parsed_ids[i])) {
             cJSON_Delete(json);
             http_response_set_json_error(res, 400, "Invalid recording ID");
             return;
         }
         recording_metadata_t recording;
-        if (get_recording_metadata_by_id((uint64_t)item->valuedouble,
+        if (get_recording_metadata_by_id(parsed_ids[i],
                                          &recording) != 0) {
             cJSON_Delete(json);
             http_response_set_json_error(res, 404, "Recording not found");
@@ -596,8 +615,7 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
     job->is_active  = true;
 
     for (int i = 0; i < count; i++) {
-        cJSON *item = cJSON_GetArrayItem(ids_arr, i);
-        job->ids[i] = (uint64_t)(cJSON_IsNumber(item) ? item->valuedouble : 0);
+        job->ids[i] = parsed_ids[i];
     }
 
     char job_id[64];

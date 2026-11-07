@@ -793,10 +793,10 @@ export const recordingsAPI = {
 
   /**
    * Get tags for a specific recording
-   * @param {number} recordingId Recording ID
+   * @param {number|string} recordingId Recording ID
    * @returns {Promise<string[]>} Array of tags
    */
-  getRecordingTags: async (recordingId: number) => {
+  getRecordingTags: async (recordingId: number | string) => {
     try {
       const data = await fetchJSON<RecordingTagsListResponse>(`/api/recordings/${recordingId}/tags`, {
         timeout: 10000,
@@ -812,11 +812,11 @@ export const recordingsAPI = {
 
   /**
    * Set tags for a specific recording (replace all)
-   * @param {number} recordingId Recording ID
+   * @param {number|string} recordingId Recording ID
    * @param {string[]} tags Array of tags
    * @returns {Promise<Object>} Result with id and tags
    */
-  setRecordingTags: async (recordingId: number, tags: string[]) => {
+  setRecordingTags: async (recordingId: number | string, tags: string[]) => {
     try {
       const data = await fetchJSON<SetRecordingTagsResponse>(`/api/recordings/${recordingId}/tags`, {
         method: 'PUT',

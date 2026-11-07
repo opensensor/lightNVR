@@ -6299,7 +6299,7 @@ export interface components {
         /** @description Positive numeric IDs are converted to uint64. Filename is sanitized for attachment delivery. Every member is authorized before a job is created; existing operational missing/incomplete errors can abort earlier in input order. */
         RecordingExportRequest: {
             filename?: string;
-            ids: number[];
+            ids: (number | string)[];
         } & {
             [key: string]: unknown;
         };
@@ -6462,7 +6462,8 @@ export interface components {
             end_time: string;
             end_timestamp: number;
             has_detection: boolean;
-            id: number;
+            /** @description Recording ID: a number through 9007199254740991 (JavaScript maximum safe integer), otherwise an exact decimal string. Treat IDs as opaque values; do not convert strings to Number. */
+            id: number | string;
             in_progress: boolean;
             local_end_timestamp: number;
             local_start_timestamp: number;

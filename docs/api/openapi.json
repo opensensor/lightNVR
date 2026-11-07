@@ -31974,8 +31974,18 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "integer",
-            "minimum": 1
+            "description": "Recording ID: a number through 9007199254740991 (JavaScript maximum safe integer), otherwise an exact decimal string. Treat IDs as opaque values; do not convert strings to Number.",
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,19}$"
+              }
+            ]
           },
           "stream": {
             "type": "string"
@@ -32541,8 +32551,18 @@
           "ids": {
             "type": "array",
             "items": {
-              "type": "number",
-              "exclusiveMinimum": 0
+              "description": "Recording ID: a number through 9007199254740991 (JavaScript maximum safe integer), otherwise an exact decimal string. Treat IDs as opaque values; do not convert strings to Number.",
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]{0,19}$"
+                }
+              ]
             },
             "minItems": 1,
             "maxItems": 200

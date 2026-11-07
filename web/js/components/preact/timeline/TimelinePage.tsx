@@ -1386,7 +1386,7 @@ export function TimelinePage() {
   // local segments list (creates the visual gap) and advance to the next segment.
   useEffect(() => {
     const handleTimelineDeleted = (e: Event) => {
-      const deletedId = (e as CustomEvent<{ id: number }>).detail.id;
+      const deletedId = (e as CustomEvent<{ id: TimelineSegment['id'] }>).detail.id;
 
       setSegments(prev => {
         const idx = prev.findIndex(s => s.id === deletedId);

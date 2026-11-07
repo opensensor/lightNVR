@@ -11,9 +11,12 @@ export interface TimelineRange {
   end_timestamp: number;
 }
 
+/** Exact recording identity; large IDs stay decimal strings throughout the UI. */
+export type TimelineRecordingId = number | string;
+
 /** One entry of `segments` from /api/timeline/segments and /segments-by-ids. */
 export interface TimelineSegment extends TimelineRange {
-  id: number;
+  id: TimelineRecordingId;
   stream: string;
   camera_uuid: string | null;
   /** Local time, "YYYY-MM-DD HH:MM:SS". */
@@ -103,7 +106,7 @@ export interface TimelineDayBounds {
 export interface TimelineDragPreview {
   frameIndex: number;
   label: string;
-  recordingId: number;
+  recordingId: TimelineRecordingId;
   url: string;
 }
 
@@ -113,7 +116,7 @@ export interface TimelineStateFields {
   timelineSegments: TimelineSegment[];
   selectedStream: string | null;
   selectedDate: string | null;
-  currentRecordingId: number | null;
+  currentRecordingId: TimelineRecordingId | null;
   currentRecordingProtected: boolean;
   currentRecordingTags: string[];
   isPlaying: boolean;

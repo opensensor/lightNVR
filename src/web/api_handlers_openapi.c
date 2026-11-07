@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include <stdlib.h>
+#include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <strings.h>
 #include "web/api_handlers_openapi.h"
@@ -31,6 +33,31 @@ static int private_headers(http_response_t *response) {
     }
     return http_response_add_header(response, "Cache-Control", "private, no-store");
 }
+/* Preserve exact large integer schema bounds through cJSON's formatter,
+ * which can otherwise round 16-digit integers to 15 significant digits. */
+static int preserve_exact_integer_bounds(cJSON *parent) {
+    for (cJSON *item = parent->child, *next; item; item = next) {
+        next = item->next;
+        double value = item->valuedouble;
+        if (cJSON_IsNumber(item) &&
+            (value >= 1000000000000000.0 || value <= -1000000000000000.0) &&
+            value >= -9007199254740991.0 && value <= 9007199254740991.0 &&
+            value == (double)(int64_t)value) {
+            char decimal[32];
+            snprintf(decimal, sizeof(decimal), "%.0f", value);
+            cJSON *exact = cJSON_CreateRaw(decimal);
+            if (!exact) return -1;
+            int replaced = cJSON_IsObject(parent)
+                ? cJSON_ReplaceItemInObjectCaseSensitive(parent, item->string, exact)
+                : cJSON_ReplaceItemViaPointer(parent, item, exact);
+            if (!replaced) { cJSON_Delete(exact); return -1; }
+        } else if (item->child && preserve_exact_integer_bounds(item) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
 void handle_get_openapi(const http_request_t *request, http_response_t *response) {
     if (!response) return;
     error_response(response, 500, "{\"error\":\"API discovery is unavailable\"}");
@@ -64,6 +91,7 @@ void handle_get_openapi(const http_request_t *request, http_response_t *response
         cJSON_Delete(revision);
         goto done;
     }
+    if (preserve_exact_integer_bounds(projected) != 0) goto done;
     serialized = cJSON_PrintUnformatted(projected);
     if (!serialized) goto done;
     if (http_response_set_body(response, serialized) != 0) {

@@ -20,11 +20,11 @@ interface TagChipProps {
   readOnly?: boolean;
 }
 
-export interface TagsOverlayProps {
+export interface TagsOverlayProps<Id extends number | string = number | string> {
   /** Only id and tags are read, so TimelineControls can pass a partial recording. */
-  recording: Pick<Recording, 'id'> & { tags?: string[] };
+  recording: { id: Id; tags?: string[] };
   onClose: () => void;
-  onTagsChanged?: (recordingId: number, newTags: string[]) => unknown;
+  onTagsChanged?: (recordingId: Id, newTags: string[]) => unknown;
 }
 
 export interface BulkTagsOverlayProps {
@@ -72,7 +72,7 @@ function TagChip({ tag, onRemove, readOnly = false }: TagChipProps) {
 /**
  * Single-recording tag overlay
  */
-export function TagsOverlay({ recording, onClose, onTagsChanged }: TagsOverlayProps) {
+export function TagsOverlay<Id extends number | string>({ recording, onClose, onTagsChanged }: TagsOverlayProps<Id>) {
   const { t } = useI18n();
   const [tags, setTags] = useState<string[]>(recording.tags || []);
   const [inputValue, setInputValue] = useState('');
