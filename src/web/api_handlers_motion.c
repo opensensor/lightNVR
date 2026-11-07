@@ -485,19 +485,22 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     }
 
     /* ---- Dispatch -------------------------------------------------------- */
-    time_t now = time(NULL);
     bool active = (action != MOTION_ACTION_STOP);
 
     /* Increment the per-stream generation counter before dispatching.  This
      * invalidates any in-flight pulse worker for this stream so it will not
-     * emit a spurious stop that could cut short the new motion activity. */
+     * emit a spurious stop that could cut short the new motion activity. Keep
+     * the lock through dispatch and any rollback: accepting a newer generation
+     * must not allow an older request to overwrite its motion state. */
     pthread_mutex_lock(&g_pulse_gen_mutex);
     uint64_t new_gen = pulse_gen_increment(stream_name);
-    pthread_mutex_unlock(&g_pulse_gen_mutex);
     if (new_gen == 0) {
+        pthread_mutex_unlock(&g_pulse_gen_mutex);
         http_response_set_json_error(res, 500, "Motion trigger tracking capacity exhausted");
         return;
     }
+
+    time_t now = time(NULL);
 
     /* Record the reported objects before arming motion so a detection-triggered
      * recording can pick them up via the existing update_detections_recording_id
@@ -589,6 +592,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             }
             close_external_motion_detections(cfg.camera_uuid, stream_name, now);
             process_motion_event(stream_name, false, now, false);
+            pthread_mutex_unlock(&g_pulse_gen_mutex);
             http_response_set_json_error(res, 500, "Out of memory");
             return;
         }
@@ -614,6 +618,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             close_external_motion_detections(cfg.camera_uuid, stream_name, now);
             process_motion_event(stream_name, false, now, false);
             free(task);
+            pthread_mutex_unlock(&g_pulse_gen_mutex);
             http_response_set_json_error(res, 500,
                 "Failed to schedule pulse end");
             return;
@@ -622,6 +627,8 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     } else {
         log_info("Motion %s for stream '%s'", action_str, stream_name);
     }
+
+    pthread_mutex_unlock(&g_pulse_gen_mutex);
 
     /* ---- Response -------------------------------------------------------- */
     cJSON *resp = cJSON_CreateObject();
