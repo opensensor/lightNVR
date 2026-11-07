@@ -43,6 +43,7 @@ import {
   normalizeTimelineRange,
   panTimelineRange,
   reconcileTimelineSegments,
+  reconcileTimelineSelection,
   resolveActiveSegmentIndex,
   timelineOffsetToTimestamp,
   timestampToTimelineOffset,
@@ -1321,22 +1322,26 @@ export function TimelinePage() {
 
         // Use polled segments as the authoritative list
         const updated = authoritative.sort((a, b) => a.start_timestamp - b.start_timestamp);
+        const applySegments = (next: TimelineSegment[]) => {
+          // Read the current selection for each phase, including any seek made
+          // while removed rows were fading. The index belongs to this exact list.
+          const selection = reconcileTimelineSelection(timelineState, next);
+          setSegments(next);
+          timelineState.setState(selection);
+        };
         if (removedSegs.length > 0) {
           const fading = [
             ...updated,
             ...removedSegs.map((segment) => ({ ...segment, _removing: true })),
           ].sort((a, b) => a.start_timestamp - b.start_timestamp);
-          setSegments(fading);
-          timelineState.setState({ timelineSegments: fading });
+          applySegments(fading);
           clearTimeout(fadeTimeoutId as TimeoutId);
           fadeTimeoutId = setTimeout(() => {
             if (cancelled) return;
-            setSegments(updated);
-            timelineState.setState({ timelineSegments: updated });
+            applySegments(updated);
           }, 100);
         } else {
-          setSegments(updated);
-          timelineState.setState({ timelineSegments: updated });
+          applySegments(updated);
         }
 
         if (addedSegs.length > 0) {

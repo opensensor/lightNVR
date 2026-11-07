@@ -49,6 +49,21 @@ export function timelineSegmentIdentity(segment: Partial<TimelineSegment> | null
   return `range:${streamName}:${segment?.start_timestamp ?? ''}:${segment?.end_timestamp ?? ''}`;
 }
 
+/** Keep playback attached to the same recording when polling reorders the list. */
+export function reconcileTimelineSelection(
+  previous: { timelineSegments: TimelineSegment[]; currentSegmentIndex: number },
+  next: TimelineSegment[],
+): { timelineSegments: TimelineSegment[]; currentSegmentIndex: number } {
+  const active = Number.isInteger(previous.currentSegmentIndex)
+    ? previous.timelineSegments[previous.currentSegmentIndex] : undefined;
+  const identity = active ? timelineSegmentIdentity(active) : null;
+  return {
+    timelineSegments: next,
+    currentSegmentIndex: identity === null ? -1
+      : next.findIndex(segment => timelineSegmentIdentity(segment) === identity),
+  };
+}
+
 export function reconcileTimelineSegments(existing: TimelineSegment[] = [], incoming: TimelineSegment[] = []) {
   const existingByKey = new Map<string, TimelineSegment>(existing.map((segment) =>
     [timelineSegmentIdentity(segment), segment]));

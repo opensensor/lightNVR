@@ -27,6 +27,7 @@ import {
   normalizeTimelineRange,
   panTimelineRange,
   reconcileTimelineSegments,
+  reconcileTimelineSelection,
   timelineOffsetToTimestamp,
   timestampToTimelineOffset,
   zoomTimelineRange,
@@ -770,5 +771,60 @@ describe('timeline scrub resolution', () => {
     });
   test('an empty day does not invent footage',()=>{
     expect(resolveTimelineSeek([],100)).toEqual({index:-1,timestamp:100,inGap:false});
+  });
+});
+
+
+describe('polled timeline selection', () => {
+  const first = {id: 1, stream: 'camera-a', start_timestamp: 100, end_timestamp: 200};
+  const active = {id: '9007199254740993', stream: 'camera-a', start_timestamp: 300, end_timestamp: 400};
+  const last = {id: 3, stream: 'camera-a', start_timestamp: 500, end_timestamp: 600};
+  const selection = (segments, index) => ({timelineSegments: segments, currentSegmentIndex: index});
+  const selectedId = state => state.timelineSegments[state.currentSegmentIndex]?.id;
+
+  test('inserting and removing earlier rows keeps the same exact recording selected', () => {
+    let state = selection([active, last], 0);
+    state = reconcileTimelineSelection(state, [first, active, last]);
+    expect(state.currentSegmentIndex).toBe(1);
+    expect(selectedId(state)).toBe(active.id);
+    state = reconcileTimelineSelection(state, [active, last]);
+    expect(state.currentSegmentIndex).toBe(0);
+    expect(selectedId(state)).toBe(active.id);
+  });
+
+  test('fading and final arrays each have their own index, honoring a seek during the fade', () => {
+    const updated = [active, last];
+    let state = reconcileTimelineSelection(selection([first, active, last], 1),
+      [{...first, _removing: true}, ...updated]);
+    expect(state.currentSegmentIndex).toBe(1);
+    expect(selectedId(state)).toBe(active.id);
+    expect(reconcileTimelineSelection(state, updated).currentSegmentIndex).toBe(0);
+    state.currentSegmentIndex = 2; // Operator seeks to the last recording before timeout.
+    state = reconcileTimelineSelection(state, updated);
+    expect(state.currentSegmentIndex).toBe(1);
+    expect(selectedId(state)).toBe(last.id);
+  });
+
+  test('removing the active recording clears selection instead of playing a timestamp collision', () => {
+    const replacement = {...active, id: '9007199254740992'};
+    expect(reconcileTimelineSelection(selection([active], 0), [replacement]).currentSegmentIndex).toBe(-1);
+    expect(reconcileTimelineSelection(selection([active], 0), []).currentSegmentIndex).toBe(-1);
+  });
+
+  test('finalization and safe number/string representation changes preserve recording identity', () => {
+    const growing = {...first, in_progress: true};
+    const completed = {...first, id: '1', end_timestamp: 250, in_progress: false};
+    expect(reconcileTimelineSelection(selection([growing], 0), [completed]).currentSegmentIndex).toBe(0);
+  });
+
+  test('legacy segments without IDs match ranges within their own stream', () => {
+    const legacy = {...first, id: undefined};
+    const other = {...legacy, stream: 'camera-b'};
+    expect(reconcileTimelineSelection(selection([legacy], 0), [other, legacy]).currentSegmentIndex).toBe(1);
+    expect(reconcileTimelineSelection(selection([legacy], 0), [other]).currentSegmentIndex).toBe(-1);
+  });
+
+  test.each([-1, 3, 0.5, NaN])('invalid prior index %s remains unselected', index => {
+    expect(reconcileTimelineSelection(selection([active], index), [active]).currentSegmentIndex).toBe(-1);
   });
 });
