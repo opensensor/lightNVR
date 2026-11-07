@@ -2308,6 +2308,16 @@
       "operation_id": "getOpenApi",
       "eligibility": "authenticated",
       "classification": "protected-discovery"
+    },
+    {
+      "method": "GET",
+      "route_pattern": "/api/internal/media-lease",
+      "handler": "handle_internal_media_lease",
+      "source": "src/web/libuv_api_handlers.c",
+      "line": 510,
+      "coverage": "excluded",
+      "classification": "internal-protocol",
+      "reason": "Loopback-only opaque lease renewal between managed go2rtc and LightNVR; deliberately excluded from public discovery."
     }
   ]
 }

@@ -31,6 +31,10 @@
  */
 void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res);
 
+bool go2rtc_proxy_create_media_lease(const http_request_t *req,
+                                    http_response_t *res, char token[37]);
+void handle_internal_media_lease(const http_request_t *req, http_response_t *res);
+
 /* Exact canonical endpoint allow-list, shared by both proxy paths. */
 bool go2rtc_proxy_path_matches(const char *path);
 

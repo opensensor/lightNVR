@@ -320,7 +320,7 @@ static void *webrtc_peer(void *arg) {
     upstream_requests++;
     char response[512];
     int length = snprintf(response, sizeof(response),
-        "HTTP/1.1 201 Created\r\nContent-Type: application/sdp\r\n"
+        "HTTP/1.1 201 Created\r\nX-LightNVR-Media-Policy: 1\r\nContent-Type: application/sdp\r\n"
         "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
         strlen(sdp_answer), sdp_answer);
     (void)send(client, response, (size_t)length, MSG_NOSIGNAL);
@@ -397,7 +397,8 @@ static void *release_delayed_worker(void *unused) {
 void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     libuv_connection_t connection;
     init_connection(&connection);
-    strcpy(connection.request.path, "/go2rtc/api/stream.m3u8");
+    // Shutdown ownership is independent of media policy; use the snapshot worker.
+    strcpy(connection.request.path, "/go2rtc/api/frame.jpeg");
     hold_upstream = true;
     TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
     pthread_mutex_lock(&upstream_mutex);

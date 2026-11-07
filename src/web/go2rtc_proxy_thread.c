@@ -60,6 +60,8 @@ typedef struct proxy_thread_ctx {
     // Captured request data
     http_request_t request;      // inline copy; body points to body below
     char url[2048];
+    char media_lease[37];
+    bool media_policy_ack;
     char method[16];
     char *body;                 // malloc'd copy, NULL if no body
     size_t body_len;
@@ -127,6 +129,8 @@ static size_t proxy_header_cb(char *buffer, size_t size, size_t nitems, void *us
     size_t total = size * nitems;
     proxy_thread_ctx_t *ctx = (proxy_thread_ctx_t *)userp;
 
+    if (total == sizeof("X-LightNVR-Media-Policy: 1\r\n") - 1 && strncasecmp(buffer, "X-LightNVR-Media-Policy: 1\r\n", total) == 0)
+        ctx->media_policy_ack = true;
     if (total > 14 && strncasecmp(buffer, "Content-Type:", 13) == 0) {
         const char *val = buffer + 13;
         while (*val == ' ' || *val == '\t') val++;
@@ -215,6 +219,10 @@ static void *proxy_worker_thread(void *arg) {
         ctx->authorization_denied = true;
         goto done;
     }
+    if (!go2rtc_proxy_create_media_lease(&ctx->request, &ctx->auth_response, ctx->media_lease)) {
+        ctx->authorization_denied = true;
+        goto done;
+    }
     if (strcmp(ctx->request.path, "/go2rtc/api/ws") == 0) {
         ctx->websocket_request = go2rtc_websocket_validate(&ctx->request, &ctx->auth_response);
         ctx->authorization_denied = !ctx->websocket_request;
@@ -260,6 +268,13 @@ static void *proxy_worker_thread(void *arg) {
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
 
     struct curl_slist *headers = NULL;
+    if (ctx->media_lease[0]) {
+        char lease_header[80];
+        snprintf(lease_header, sizeof(lease_header), "X-LightNVR-Media-Lease: %s", ctx->media_lease);
+        headers = curl_slist_append(headers, lease_header);
+        headers = curl_slist_append(headers, httpd_secure_cookies() ? "X-LightNVR-Media-TLS: 1" : "X-LightNVR-Media-TLS: 0");
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    }
 
     if (strcmp(ctx->method, "POST") == 0) {
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
@@ -289,7 +304,8 @@ static void *proxy_worker_thread(void *arg) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &ctx->http_code);
         if (headers) curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
-        if (cres != CURLE_OK || ctx->error) {
+        if (cres != CURLE_OK || ctx->error ||
+            (ctx->media_lease[0] && ctx->http_code < 300 && !ctx->media_policy_ack)) {
             log_warn("go2rtc proxy thread: curl failed: %s", curl_easy_strerror(cres));
             ctx->error = true;
         } else {
@@ -331,7 +347,7 @@ static void proxy_async_cb(uv_async_t *handle) {
         }
 
         if (ctx->websocket_request) {
-            go2rtc_websocket_start(conn, ctx->url);
+            go2rtc_websocket_start(conn, ctx->url, ctx->media_lease);
             free_proxy_context(ctx);
             ctx = next;
             continue;
