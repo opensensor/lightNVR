@@ -17,6 +17,8 @@
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
 #include "database/db_streams.h"
+#include "database/db_authorization.h"
+#include "core/authorization.h"
 #include "utils/strings.h"
 #include "web/api_handlers_camera_tags.h"
 #include "web/request_response.h"
@@ -24,6 +26,13 @@
 #define TEST_DB_PATH "/tmp/lightnvr_unit_camera_tag_handlers_test.db"
 
 extern config_t g_config;
+static user_t scoped_user;
+static bool use_scoped_user;
+int __real_httpd_check_action_access(const http_request_t *req, user_t *user);
+int __wrap_httpd_check_action_access(const http_request_t *req, user_t *user) {
+    if (use_scoped_user) { *user = scoped_user; return 1; }
+    return __real_httpd_check_action_access(req, user);
+}
 
 static cJSON *parse_response(const http_response_t *response) {
     TEST_ASSERT_NOT_NULL(response->body);
@@ -67,6 +76,7 @@ static stream_config_t create_stream(const char *name) {
 }
 
 void setUp(void) {
+    use_scoped_user = false;
     g_config.web_auth_enabled = false;
     sqlite3 *db = get_db_handle();
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
@@ -242,6 +252,76 @@ void test_camera_tag_handlers_validate_payload_and_auth(void) {
     http_response_free(&response);
 }
 
+void test_tag_dictionary_uses_live_scope_even_with_global_configure_authority(void) {
+    stream_config_t visible = create_stream("visible"), hidden = create_stream("hidden");
+    camera_tag_t shared = create_tag("Shared"), secret = create_tag("Hidden"), unused = create_tag("Unused");
+    const char *visible_tags[] = {shared.uuid};
+    const char *hidden_tags[] = {shared.uuid, secret.uuid};
+    TEST_ASSERT_EQUAL_INT(0, db_camera_tag_set_for_camera(visible.camera_uuid, visible_tags, 1));
+    TEST_ASSERT_EQUAL_INT(0, db_camera_tag_set_for_camera(hidden.camera_uuid, hidden_tags, 2));
+    int64_t id, version, next;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("tag-scope", "password123", NULL, USER_ROLE_USER, true, &id));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_set_user_mode(id, "policy"));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(id, &scoped_user));
+    authorization_role_t configure = {0}, read = {0};
+    strcpy(configure.name, "Tag configure");
+    configure.action_mask = authorization_action_bit(AUTHZ_CAMERA_CONFIGURE);
+    strcpy(read.name, "Tag read");
+    read.action_mask = authorization_action_bit(AUTHZ_LIVE_VIEW);
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_role_create(&configure, version, &next));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_role_create(&read, next, &version));
+    char grant[CAMERA_UUID_STRING_SIZE], selector[256];
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_create_user_grant(id, configure.uuid, "all", NULL, NULL, grant));
+    snprintf(selector, sizeof(selector), "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\",\"values\":[\"%s\"]}}", visible.camera_uuid);
+    use_scoped_user = true;
+    g_config.web_auth_enabled = true;
+    for (int phase = 0; phase < 3; phase++) {
+        if (phase == 1) TEST_ASSERT_EQUAL_INT(0, db_authorization_create_user_grant(id, read.uuid, "selector", selector, NULL, grant));
+        if (phase == 2) TEST_ASSERT_EQUAL_INT(0, db_authorization_create_user_grant(id, read.uuid, "all", NULL, NULL, grant));
+        http_request_t request;
+        http_response_t response;
+        init_request(&request, "/api/camera-tags", NULL);
+        http_response_init(&response);
+        handle_get_camera_tags(&request, &response);
+        TEST_ASSERT_EQUAL_INT(200, response.status_code);
+        cJSON *json = parse_response(&response);
+        cJSON *tags = cJSON_GetObjectItemCaseSensitive(json, "tags");
+        TEST_ASSERT_EQUAL_INT(phase == 0 ? 0 : phase == 1 ? 1 : 3, cJSON_GetArraySize(tags));
+        if (phase == 1) {
+            cJSON *tag = cJSON_GetArrayItem(tags, 0);
+            TEST_ASSERT_EQUAL_STRING(shared.uuid, cJSON_GetObjectItemCaseSensitive(tag, "uuid")->valuestring);
+            TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(tag, "camera_count")->valueint);
+            TEST_ASSERT_NULL(strstr(response.body, secret.uuid));
+            TEST_ASSERT_NULL(strstr(response.body, unused.uuid));
+        }
+        cJSON_Delete(json);
+        http_response_free(&response);
+    }
+    use_scoped_user = false;
+}
+
+void test_camera_tag_paths_reject_uuid_shaped_invalid_identifiers(void) {
+    const char *invalid[] = {"gggggggg-gggg-gggg-gggg-gggggggggggg", "00000000_0000_4000_8000_000000000000", "00000000-0000-4000-8000-00000000000"};
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        http_request_t request;
+        http_response_t response;
+        char path[128];
+        snprintf(path, sizeof(path), "/api/camera-tags/%s", invalid[i]);
+        init_request(&request, path, "{\"label\":\"rejected\"}");
+        http_response_init(&response);
+        handle_put_camera_tag(&request, &response);
+        TEST_ASSERT_EQUAL_INT(400, response.status_code);
+        http_response_free(&response);
+        snprintf(path, sizeof(path), "/api/cameras/%s/tags", invalid[i]);
+        init_request(&request, path, "{\"tag_uuids\":[]}");
+        http_response_init(&response);
+        handle_put_camera_tag_assignments(&request, &response);
+        TEST_ASSERT_EQUAL_INT(400, response.status_code);
+        http_response_free(&response);
+    }
+}
+
 int main(void) {
     load_default_config(&g_config);
     unlink(TEST_DB_PATH);
@@ -254,6 +334,8 @@ int main(void) {
     RUN_TEST(test_camera_assignment_api_uses_tag_uuids_and_updates_legacy);
     RUN_TEST(test_merge_api_moves_assignments_to_target);
     RUN_TEST(test_camera_tag_handlers_validate_payload_and_auth);
+    RUN_TEST(test_tag_dictionary_uses_live_scope_even_with_global_configure_authority);
+    RUN_TEST(test_camera_tag_paths_reject_uuid_shaped_invalid_identifiers);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
