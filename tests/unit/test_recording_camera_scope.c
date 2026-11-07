@@ -20,6 +20,12 @@ static char directory[] = "/tmp/lightnvr-recording-scope-XXXXXX";
 static int variable_budget;
 static const char *step_sql_match;
 static int successful_steps;
+static int query_budget;
+static int query_progress_calls;
+static int bound_query_work(void *unused) {
+    (void)unused;
+    return ++query_progress_calls > query_budget;
+}
 int __real_sqlite3_step(sqlite3_stmt *);
 int __wrap_sqlite3_step(sqlite3_stmt *stmt) {
     const char *statement = sqlite3_sql(stmt);
@@ -31,6 +37,7 @@ int __real_db_open_readonly_connection(sqlite3 **);
 int __wrap_db_open_readonly_connection(sqlite3 **db) {
     int rc = __real_db_open_readonly_connection(db);
     if (rc == 0 && variable_budget > 0) sqlite3_limit(*db, SQLITE_LIMIT_VARIABLE_NUMBER, variable_budget);
+    if (rc == 0 && query_budget > 0) sqlite3_progress_handler(*db, 1000, bound_query_work, NULL);
     return rc;
 }
 static void sql(const char *text) {
@@ -42,6 +49,7 @@ static void sql(const char *text) {
 }
 void setUp(void) {
     variable_budget = 0;
+    query_budget = query_progress_calls = 0;
     step_sql_match = NULL;
     sql("DELETE FROM detections; DELETE FROM recording_tags; DELETE FROM recordings; DELETE FROM streams;"
         "INSERT INTO streams(name,url,camera_uuid) VALUES ('A','rtsp://fixture.invalid/a','" UUID_A "'),('B','rtsp://fixture.invalid/b','" UUID_B "');"
@@ -62,7 +70,7 @@ void setUp(void) {
         "('A','" UUID_B "',1010,1020,'hidden-motion',0.9,'external_motion'),"
         "('B','" UUID_A "',1030,1040,'visible-motion',0.9,'external_motion');");
 }
-void tearDown(void) { variable_budget = 0; step_sql_match = NULL; }
+void tearDown(void) { variable_budget = query_budget = 0; step_sql_match = NULL; }
 static int count(const char *const *scope, int n, const char *label) {
     return get_recording_count_for_cameras(0,0,NULL,0,label,-1,scope,n,NULL,NULL,false);
 }
@@ -181,6 +189,43 @@ static void test_camera_label_walk_skips_modern_rows_in_legacy_branch(void) {
 static int remove_path(const char *path,const struct stat *st,int type,struct FTW *walk) {
     (void)st;(void)type;(void)walk;return remove(path);
 }
+static void test_timeline_and_summaries_skip_unrelated_detection_history(void) {
+    sql("DELETE FROM detections;"
+        "WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<30000) "
+        "INSERT INTO detections(stream_name,camera_uuid,timestamp,label,confidence,source) "
+        "SELECT 'A','" UUID_B "',i%900,'unrelated',0.9,'' FROM n;");
+    /* VM work budget, independent of wall-clock speed. The old identity
+     * expression scanned detection history for every empty recording. */
+    query_budget = 50;
+    timeline_segment_t segments[8];
+    TEST_ASSERT_EQUAL_INT(3, get_timeline_segments_by_camera_uuid(UUID_A,900,1200,segments,8));
+    for (int i=0;i<3;i++) TEST_ASSERT_FALSE(segments[i].has_detection);
+    detection_interval_t intervals[8];
+    TEST_ASSERT_EQUAL_INT(0, get_external_motion_detection_intervals_by_camera_uuid(UUID_A,900,1200,intervals,8));
+    recording_metadata_t recording;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(2,&recording));
+    recording_detection_summary_t summary;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_detection_summaries_for_cameras(&recording,1,&summary));
+    TEST_ASSERT_FALSE(summary.has_detection);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(50,query_progress_calls);
+}
+
+static void test_timeline_motion_keeps_legacy_identity_and_interval_overlap(void) {
+    sql("DELETE FROM detections;"
+        "INSERT INTO detections(stream_name,camera_uuid,timestamp,event_end_time,label,confidence,source) VALUES "
+        "('A',NULL,800,1050,'legacy-null',0.9,'external_motion'),"
+        "('A','',810,1060,'legacy-empty',0.9,'external_motion'),"
+        "('B','" UUID_A "',820,1070,'renamed',0.9,'external_motion'),"
+        "('A','" UUID_B "',830,1080,'conflict',0.9,'external_motion'),"
+        "('missing',NULL,840,1090,'orphan',0.9,'external_motion');");
+    detection_interval_t intervals[8];
+    TEST_ASSERT_EQUAL_INT(3,get_external_motion_detection_intervals_by_camera_uuid(UUID_A,1000,1100,intervals,8));
+    TEST_ASSERT_EQUAL_INT64(800,intervals[0].start_time);
+    TEST_ASSERT_EQUAL_INT64(820,intervals[2].start_time);
+    timeline_segment_t segments[8];
+    TEST_ASSERT_EQUAL_INT(3,get_timeline_segments_by_camera_uuid(UUID_A,1000,1100,segments,8));
+    for (int i=0;i<3;i++) TEST_ASSERT_TRUE(segments[i].has_detection);
+}
 int main(void) {
     if(!mkdtemp(directory))return 1;
     char path[256];snprintf(path,sizeof(path),"%s/db.sqlite",directory);
@@ -193,5 +238,7 @@ int main(void) {
     RUN_TEST(test_low_bind_budget_batches_facets_and_summaries_and_fails_closed_lists);
     RUN_TEST(test_step_errors_never_return_partial_rows_or_successful_empty);
     RUN_TEST(test_camera_label_walk_skips_modern_rows_in_legacy_branch);
+    RUN_TEST(test_timeline_and_summaries_skip_unrelated_detection_history);
+    RUN_TEST(test_timeline_motion_keeps_legacy_identity_and_interval_overlap);
     int result=UNITY_END();shutdown_database();nftw(directory,remove_path,16,FTW_DEPTH|FTW_PHYS);return result;
 }

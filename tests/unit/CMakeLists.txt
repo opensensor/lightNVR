@@ -150,6 +150,7 @@ target_sources(test_stream_frame_rate PRIVATE
 # Layer 2: lightnvr_lib tests — compiled functions + optional SQLite
 # ====================================================================
 add_layer2_test(test_config CI_UNIT CI_SANITIZER)
+target_link_options(test_config PRIVATE -Wl,--wrap=fchmod -Wl,--wrap=renameat)
 add_layer2_test(test_db_core_initialization CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_backup_publication CI_UNIT CI_SANITIZER)
 target_link_options(test_db_backup_publication PRIVATE -Wl,--wrap=rename -Wl,--wrap=fsync -Wl,--wrap=write)

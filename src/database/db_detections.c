@@ -242,23 +242,21 @@ static int get_external_motion_intervals_for_identity(
     const char *identity, bool by_camera_uuid, time_t start_time,
     time_t end_time, detection_interval_t *intervals, int max_intervals) {
     if (!identity || !intervals || max_intervals <= 0) return -1;
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-    if (!db) return -1;
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) return -1;
 
-    pthread_mutex_lock(db_mutex);
-    char sql[512];
+    char sql[1024];
     snprintf(sql, sizeof(sql),
         "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) "
-        "FROM detections d WHERE %s = ? "
+        "FROM detections d WHERE %s "
         "AND source = 'external_motion' AND timestamp <= ? "
         "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
         "GROUP BY timestamp, event_end_time ORDER BY timestamp ASC LIMIT ?;",
-        by_camera_uuid ? DB_CAPTURE_CAMERA_IDENTITY_SQL("d") : "stream_name");
+        by_camera_uuid ? DB_CAPTURE_CAMERA_FILTER_SQL("d", "?1") : "stream_name = ?1");
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
     sqlite3_bind_text(stmt, 1, identity, -1, SQLITE_STATIC);
@@ -274,7 +272,7 @@ static int get_external_motion_intervals_for_identity(
         count++;
     }
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
     return step_result == SQLITE_DONE || step_result == SQLITE_ROW ? count : -1;
 }
 
@@ -1130,31 +1128,45 @@ static int detection_summaries_for_scope(
         safe_strcat(sql,
             "), label_counts AS ("
             "SELECT q.recording_id, d.label, COUNT(*) AS cnt "
-            "FROM requested q JOIN detections d ON d.recording_id = q.recording_id ", sizeof(sql));
+            "FROM requested q CROSS JOIN detections d ON d.recording_id = q.recording_id ", sizeof(sql));
         if (camera_scope) safe_strcat(sql, "AND " DB_CAPTURE_CAMERA_MATCH_SQL("d", "q") " ", sizeof(sql));
         safe_strcat(sql,
             "WHERE d.source != 'external_motion' "
             "GROUP BY q.recording_id, d.label "
             "UNION ALL "
             "SELECT q.recording_id, d.label, COUNT(*) AS cnt "
-            "FROM requested q JOIN detections d "
+            "FROM requested q CROSS JOIN detections d "
             "ON ", sizeof(sql));
         safe_strcat(sql, camera_scope ? DB_CAPTURE_CAMERA_MATCH_SQL("d", "q") : "d.stream_name = q.stream_name", sizeof(sql));
         safe_strcat(sql, " "
             "AND d.timestamp >= q.start_time AND d.timestamp <= q.end_time "
             "WHERE (d.recording_id IS NULL OR d.recording_id != q.recording_id) "
             "AND d.source != 'external_motion' "
-            "GROUP BY q.recording_id, d.label "
-            "UNION ALL "
-            "SELECT q.recording_id, d.label, COUNT(*) AS cnt "
-            "FROM requested q JOIN detections d "
-            "ON ", sizeof(sql));
-        safe_strcat(sql, camera_scope ? DB_CAPTURE_CAMERA_MATCH_SQL("d", "q") : "d.stream_name = q.stream_name", sizeof(sql));
-        safe_strcat(sql, " AND d.timestamp <= q.end_time "
-            "WHERE d.source = 'external_motion' "
-            "AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= q.start_time "
-            "GROUP BY q.recording_id, d.label"
-            ") "
+            "GROUP BY q.recording_id, d.label ", sizeof(sql));
+        /* Keep the two disjoint identity branches separate for intervals.
+         * An OR join here lets SQLite build a source-only automatic index by
+         * scanning the entire detections archive for every page request. */
+        for (int legacy = 0; legacy < (camera_scope ? 2 : 1); legacy++) {
+            safe_strcat(sql,
+                "UNION ALL SELECT q.recording_id, d.label, COUNT(*) AS cnt "
+                "FROM requested q ", sizeof(sql));
+            if (camera_scope && legacy) {
+                safe_strcat(sql,
+                    "CROSS JOIN streams legacy ON legacy.camera_uuid = " DB_CAPTURE_CAMERA_IDENTITY_SQL("q") " "
+                    "CROSS JOIN detections d ON d.stream_name = legacy.name "
+                    "AND (d.camera_uuid IS NULL OR d.camera_uuid = '') ", sizeof(sql));
+            } else {
+                safe_strcat(sql, "CROSS JOIN detections d ON ", sizeof(sql));
+                safe_strcat(sql, camera_scope
+                    ? "d.camera_uuid = " DB_CAPTURE_CAMERA_IDENTITY_SQL("q") " "
+                    : "d.stream_name = q.stream_name ", sizeof(sql));
+            }
+            safe_strcat(sql,
+                "AND d.timestamp <= q.end_time WHERE d.source = 'external_motion' "
+                "AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= q.start_time "
+                "GROUP BY q.recording_id, d.label ", sizeof(sql));
+        }
+        safe_strcat(sql, ") "
             "SELECT recording_id, label, SUM(cnt) AS label_count "
             "FROM label_counts GROUP BY recording_id, label "
             "ORDER BY recording_id, label_count DESC, label;",

@@ -1476,6 +1476,61 @@ void test_decision_modes_init_loads_stored_modes_into_memory(void) {
     TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
 }
 
+typedef struct {
+    pthread_mutex_t mutex;
+    pthread_cond_t condition;
+    bool done;
+    int result;
+    int64_t total;
+} audit_reader_test_t;
+
+static void *read_audit_while_writer_busy(void *context) {
+    audit_reader_test_t *reader = context;
+    audit_query_t query = {.page = 1, .page_size = 20};
+    audit_page_t page;
+    int result = db_audit_query(&query, &page);
+    pthread_mutex_lock(&reader->mutex);
+    reader->result = result;
+    reader->total = page.total;
+    reader->done = true;
+    pthread_cond_signal(&reader->condition);
+    pthread_mutex_unlock(&reader->mutex);
+    db_audit_page_free(&page);
+    return NULL;
+}
+
+static void test_audit_reader_does_not_wait_for_shared_writer_mutex(void) {
+    audit_event_input_t input = event_input("independent-reader", "recordings.export", "success");
+    TEST_ASSERT_EQUAL_INT(0, db_audit_append(&input, NULL));
+    audit_reader_test_t reader = {
+        .mutex = PTHREAD_MUTEX_INITIALIZER, .condition = PTHREAD_COND_INITIALIZER,
+    };
+    pthread_t thread;
+    pthread_mutex_t *writer_mutex = get_db_mutex();
+    pthread_mutex_lock(writer_mutex);
+    int created = pthread_create(&thread, NULL, read_audit_while_writer_busy, &reader);
+    bool completed_while_locked = false;
+    if (created == 0) {
+        struct timespec deadline;
+        clock_gettime(CLOCK_REALTIME, &deadline);
+        deadline.tv_sec += 2;
+        pthread_mutex_lock(&reader.mutex);
+        while (!reader.done) {
+            if (pthread_cond_timedwait(&reader.condition, &reader.mutex, &deadline) != 0) break;
+        }
+        completed_while_locked = reader.done;
+        pthread_mutex_unlock(&reader.mutex);
+    }
+    pthread_mutex_unlock(writer_mutex);
+    if (created == 0) pthread_join(thread, NULL);
+    pthread_cond_destroy(&reader.condition);
+    pthread_mutex_destroy(&reader.mutex);
+    TEST_ASSERT_EQUAL_INT(0, created);
+    TEST_ASSERT_TRUE(completed_while_locked);
+    TEST_ASSERT_EQUAL_INT(0, reader.result);
+    TEST_ASSERT_EQUAL_INT64(1, reader.total);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     init_logger();
@@ -1492,6 +1547,7 @@ int main(void) {
     admin_user_id = admin.id;
 
     UNITY_BEGIN();
+    RUN_TEST(test_audit_reader_does_not_wait_for_shared_writer_mutex);
     RUN_TEST(test_append_and_query_round_trip);
     RUN_TEST(test_append_rejects_invalid_or_non_object_payloads);
     RUN_TEST(test_query_paginates_newest_first);

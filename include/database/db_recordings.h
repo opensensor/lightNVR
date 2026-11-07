@@ -22,7 +22,15 @@
 #define DB_CAPTURE_CAMERA_IDENTITY_SQL(alias) \
     "COALESCE(NULLIF(" alias ".camera_uuid,''),(SELECT camera_uuid FROM streams WHERE name=" alias ".stream_name))"
 #define DB_CAPTURE_CAMERA_MATCH_SQL(left, right) \
-    DB_CAPTURE_CAMERA_IDENTITY_SQL(left) " = " DB_CAPTURE_CAMERA_IDENTITY_SQL(right)
+    DB_CAPTURE_CAMERA_FILTER_SQL(left, DB_CAPTURE_CAMERA_IDENTITY_SQL(right))
+/* Indexable equivalent of capture identity = an authorized UUID. Keep the
+ * UUID column bare so SQLite can seek camera/time indexes. Only legacy rows
+ * may fall back to the current stream name; a conflicting UUID never does.
+ * Use a numbered parameter for identity_sql when it is a bind placeholder. */
+#define DB_CAPTURE_CAMERA_FILTER_SQL(alias, identity_sql) \
+    "((" alias ".camera_uuid != '' AND " alias ".camera_uuid = " identity_sql ") OR ((" alias ".camera_uuid IS NULL OR " \
+    alias ".camera_uuid = '') AND " alias ".stream_name IN " \
+    "(SELECT name FROM streams WHERE camera_uuid = " identity_sql ")))"
 
 typedef struct {
     uint64_t id;

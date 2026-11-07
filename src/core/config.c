@@ -20,6 +20,7 @@
 #include <limits.h>
 #include <syslog.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 #include "ini.h"
 #include "core/config.h"
@@ -1760,9 +1761,9 @@ int save_config(const config_t *config, const char *path) {
     int config_fd = openat(dir_fd, validated_filename,
                            O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
                            0600);
-    close(dir_fd);
     if (config_fd < 0) {
         log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
+        close(dir_fd);
         return -1;
     }
 
@@ -1770,19 +1771,48 @@ int save_config(const config_t *config, const char *path) {
     if (fstat(config_fd, &config_stat) != 0) {
         log_error("Could not stat config file after opening: %s (error: %s)", canonical_save_path, strerror(errno));
         close(config_fd);
+        close(dir_fd);
         return -1;
     }
     if (!S_ISREG(config_stat.st_mode) || config_stat.st_nlink != 1) {
         log_error("Config save target must be a regular file with one link: %s", canonical_save_path);
         close(config_fd);
+        close(dir_fd);
         return -1;
     }
 
-    /* open's creation mode does not tighten an existing file. Restrict access
-     * before truncating or writing credentials; failures preserve old content. */
-    if (fchmod(config_fd, 0600) != 0 || ftruncate(config_fd, 0) != 0) {
+    /* A legacy root-owned, group-writable config can be written by a non-root
+     * service but cannot be chmod'd by it. Publish a private replacement in the
+     * writable directory in that case; never write secrets to the broad-mode
+     * original. Keep in-place saves for owned files (including bind mounts). */
+    char replacement_name[96] = {0};
+    if (fchmod(config_fd, 0600) != 0) {
+        int mode_error = errno;
+        close(config_fd);
+        config_fd = -1;
+        if (mode_error == EPERM) {
+            static atomic_uint replacement_sequence = 0;
+            for (int attempt = 0; attempt < 100; attempt++) {
+                snprintf(replacement_name, sizeof(replacement_name),
+                         ".lightnvr-config-%ld-%u.tmp", (long)getpid(),
+                         atomic_fetch_add(&replacement_sequence, 1));
+                config_fd = openat(dir_fd, replacement_name,
+                    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+                if (config_fd >= 0 || errno != EEXIST) break;
+            }
+        }
+        if (config_fd < 0) {
+            log_error("Could not prepare private config replacement: %s", strerror(errno));
+            close(dir_fd);
+            return -1;
+        }
+    }
+    if ((replacement_name[0] && fchmod(config_fd, 0600) != 0) ||
+        ftruncate(config_fd, 0) != 0) {
         log_error("Could not prepare private config file: %s", strerror(errno));
         close(config_fd);
+        if (replacement_name[0]) unlinkat(dir_fd, replacement_name, 0);
+        close(dir_fd);
         return -1;
     }
 
@@ -1790,6 +1820,8 @@ int save_config(const config_t *config, const char *path) {
     if (!file) {
         log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
         close(config_fd);
+        if (replacement_name[0]) unlinkat(dir_fd, replacement_name, 0);
+        close(dir_fd);
         return -1;
     }
     
@@ -2043,7 +2075,21 @@ int save_config(const config_t *config, const char *path) {
     // Do NOT write [stream.X] sections here.
     
     int write_failed = ferror(file);
+    if (replacement_name[0] && (fflush(file) != 0 || fsync(fileno(file)) != 0)) write_failed = 1;
     if (fclose(file) != 0) write_failed = 1;
+    if (!write_failed && replacement_name[0]) {
+        /* Do not replace a symlink, hardlink, or changed target introduced
+         * while the replacement was being written. */
+        struct stat current;
+        if (fstatat(dir_fd, validated_filename, &current, AT_SYMLINK_NOFOLLOW) != 0 ||
+            !S_ISREG(current.st_mode) || current.st_nlink != 1 ||
+            current.st_dev != config_stat.st_dev || current.st_ino != config_stat.st_ino ||
+            renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
+            write_failed = 1;
+        }
+    }
+    if (replacement_name[0]) unlinkat(dir_fd, replacement_name, 0);
+    close(dir_fd);
     if (write_failed) {
         log_error("Failed to write config file: %s", canonical_save_path);
         return -1;
