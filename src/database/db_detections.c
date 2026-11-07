@@ -210,7 +210,9 @@ int store_external_motion_detections(const char *stream_name,
                                         recording_id, "external_motion", true);
 }
 
-int close_external_motion_detections(const char *stream_name, time_t end_time) {
+int close_external_motion_detections(const char *camera_uuid,
+                                     const char *stream_name, time_t end_time) {
+    if (!camera_uuid || camera_uuid[0] == '\0') return -1;
     if (!stream_name || stream_name[0] == '\0') return -1;
     if (end_time == 0) end_time = time(NULL);
 
@@ -222,14 +224,17 @@ int close_external_motion_detections(const char *stream_name, time_t end_time) {
     const char *sql =
         "UPDATE detections SET event_end_time = "
         "CASE WHEN ? < timestamp THEN timestamp ELSE ? END "
-        "WHERE stream_name = ? AND source = 'external_motion' "
-        "AND event_end_time IS NULL;";
+        "WHERE source = 'external_motion' "
+        "AND event_end_time IS NULL "
+        "AND (camera_uuid = ? "
+        "OR ((camera_uuid IS NULL OR camera_uuid = '') AND stream_name = ?));";
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc == SQLITE_OK) {
         sqlite3_bind_int64(stmt, 1, (sqlite3_int64)end_time);
         sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
-        sqlite3_bind_text(stmt, 3, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 3, camera_uuid, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 4, stream_name, -1, SQLITE_STATIC);
         rc = sqlite3_step(stmt);
     }
     int changed = rc == SQLITE_DONE ? sqlite3_changes(db) : -1;
