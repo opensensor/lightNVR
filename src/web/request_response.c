@@ -141,7 +141,11 @@ void http_response_free(http_response_t *res) {
 const char* http_request_get_header(const http_request_t *req, const char *name) {
     if (!req || !name) return NULL;
 
-    for (int i = 0; i < req->num_headers; i++) {
+    int header_count = req->num_headers;
+    if (header_count < 0) return NULL;
+    if (header_count > MAX_HEADERS) header_count = MAX_HEADERS;
+
+    for (int i = 0; i < header_count; i++) {
         if (strcasecmp(req->headers[i].name, name) == 0) {
             return req->headers[i].value;
         }
