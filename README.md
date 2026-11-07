@@ -117,7 +117,7 @@ made there, and the native builds above come from it.
 Alongside them, CI translates the C into Rust with [C2Rust](https://github.com/immunant/c2rust)
 on every pull request, builds it, and runs the smoke and API contract tests against it.
 This build, **lightnvr-rs**, is for organizations whose policies call for software built
-in a memory-safe language. Starting with the first release after this change, it is
+in a memory-safe language. Starting with 0.47.3, it is
 published as `ghcr.io/opensensor/lightnvr-rs` and `lightnvr-rs_<version>_sid_amd64.deb`.
 
 Today the translation is C-shaped `unsafe` Rust linking the same native libraries, so its
