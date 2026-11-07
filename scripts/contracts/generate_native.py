@@ -40,6 +40,12 @@ def validate(doc, projected=False):
         raise ValueError('Contract must use OpenAPI 3.1.1')
     if not isinstance(doc.get('paths'), dict):
         raise ValueError('Contract paths must be an object')
+    components = doc.get('components', {})
+    if not isinstance(components, dict):
+        raise ValueError('Contract components must be an object')
+    schemas = components.get('schemas', {})
+    if not isinstance(schemas, dict):
+        raise ValueError('Contract components.schemas must be an object')
     def resolve_pointer(reference):
         target = doc
         for token in reference[2:].split('/'):
@@ -88,7 +94,7 @@ def validate(doc, projected=False):
                             raise ValueError('Unsupported discriminator mapping reference')
                         if reference.startswith('#/'):
                             resolve_pointer(reference)
-                        elif reference not in doc.get('components', {}).get('schemas', {}):
+                        elif reference not in schemas:
                             raise ValueError('Unsupported discriminator mapping reference')
                 if key in ('x-lightnvr-authorization', 'x-lightnvr-visibility'):
                     predicate(child)
@@ -116,12 +122,6 @@ def validate(doc, projected=False):
             ids.add(operation['operationId'])
             if not projected and 'x-lightnvr-authorization' not in operation:
                 raise ValueError('Every canonical operation needs authorization metadata')
-    components = doc.get('components', {})
-    if not isinstance(components, dict):
-        raise ValueError('Contract components must be an object')
-    schemas = components.get('schemas', {})
-    if not isinstance(schemas, dict):
-        raise ValueError('Contract components.schemas must be an object')
     selected = doc.get('x-lightnvr-validators', list(schemas))
     if not isinstance(selected, list):
         raise ValueError('x-lightnvr-validators must be a unique schema name array')
