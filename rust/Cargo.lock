@@ -85,7 +85,7 @@ checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "lightnvr-rs"
-version = "0.47.2"
+version = "0.47.3"
 dependencies = [
  "c2rust-bitfields",
  "f128",

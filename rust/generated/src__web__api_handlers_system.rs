@@ -22,6 +22,12 @@ unsafe extern "C" {
         __stream: *mut FILE,
     ) -> *mut ::core::ffi::c_char;
     unsafe fn fputs(__s: *const ::core::ffi::c_char, __stream: *mut FILE) -> ::core::ffi::c_int;
+    unsafe fn fread(
+        __ptr: *mut ::core::ffi::c_void,
+        __size: size_t,
+        __n: size_t,
+        __stream: *mut FILE,
+    ) -> ::core::ffi::c_ulong;
     unsafe fn __ctype_b_loc() -> *mut *const ::core::ffi::c_ushort;
     unsafe fn close(__fd: ::core::ffi::c_int) -> ::core::ffi::c_int;
     unsafe fn sysconf(__name: ::core::ffi::c_int) -> ::core::ffi::c_long;
@@ -187,6 +193,11 @@ unsafe extern "C" {
         __c: ::core::ffi::c_int,
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
+    unsafe fn memchr(
+        __s: *const ::core::ffi::c_void,
+        __c: ::core::ffi::c_int,
+        __n: size_t,
+    ) -> *mut ::core::ffi::c_void;
     unsafe fn strcmp(
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
@@ -197,6 +208,10 @@ unsafe extern "C" {
         __n: size_t,
     ) -> ::core::ffi::c_int;
     unsafe fn strdup(__s: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
+    unsafe fn strrchr(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
     unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
     unsafe fn strnlen(__string: *const ::core::ffi::c_char, __maxlen: size_t) -> size_t;
     unsafe fn strerror(__errnum: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
@@ -1433,6 +1448,9 @@ unsafe extern "C" fn trim_copy_value(
         return;
     }
     let mut start: *const ::core::ffi::c_char = ltrim_pos(src);
+    if *start as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
+        return;
+    }
     let mut end: *const ::core::ffi::c_char = rtrim_pos(src, 0 as size_t);
     if end <= start {
         return;
@@ -3364,6 +3382,30 @@ unsafe extern "C" fn add_versions_to_json(mut info: *mut cJSON) {
         versions,
     );
 }
+unsafe extern "C" fn is_detector_command(
+    mut cmdline: *const ::core::ffi::c_char,
+    mut bytes: size_t,
+) -> bool {
+    if cmdline.is_null()
+        || memchr(
+            cmdline as *const ::core::ffi::c_void,
+            '\0' as ::core::ffi::c_int,
+            bytes,
+        )
+        .is_null()
+    {
+        return r#false != 0;
+    }
+    let mut name: *const ::core::ffi::c_char = strrchr(cmdline, '/' as ::core::ffi::c_int);
+    return strcmp(
+        if !name.is_null() {
+            name.offset(1 as ::core::ffi::c_int as isize)
+        } else {
+            cmdline
+        },
+        b"light-object-detect\0".as_ptr() as *const ::core::ffi::c_char,
+    ) == 0 as ::core::ffi::c_int;
+}
 unsafe extern "C" fn get_detector_memory_usage(
     mut memory_usage: *mut ::core::ffi::c_ulonglong,
 ) -> bool {
@@ -3405,305 +3447,33 @@ unsafe extern "C" fn get_detector_memory_usage(
         {
             continue;
         }
-        let mut comm_path: [::core::ffi::c_char; 64] = [0; 64];
+        let mut cmdline_path: [::core::ffi::c_char; 64] = [0; 64];
         snprintf(
-            &raw mut comm_path as *mut ::core::ffi::c_char,
+            &raw mut cmdline_path as *mut ::core::ffi::c_char,
             ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
-            b"/proc/%d/comm\0".as_ptr() as *const ::core::ffi::c_char,
+            b"/proc/%d/cmdline\0".as_ptr() as *const ::core::ffi::c_char,
             candidate,
         );
         let mut cf: *mut FILE = fopen(
-            &raw mut comm_path as *mut ::core::ffi::c_char,
+            &raw mut cmdline_path as *mut ::core::ffi::c_char,
             b"r\0".as_ptr() as *const ::core::ffi::c_char,
         );
         if cf.is_null() {
             continue;
         }
-        let mut comm: [::core::ffi::c_char; 256] = [
-            0 as ::core::ffi::c_char,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ];
-        if fgets(
-            &raw mut comm as *mut ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 256]>() as ::core::ffi::c_int,
+        let mut cmdline: [::core::ffi::c_char; 4096] = [0; 4096];
+        let mut bytes: size_t = fread(
+            &raw mut cmdline as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void,
+            1 as size_t,
+            ::core::mem::size_of::<[::core::ffi::c_char; 4096]>(),
             cf,
-        )
-        .is_null()
-        {
-            fclose(cf);
-        } else {
-            fclose(cf);
-            let mut len: size_t = strlen(&raw mut comm as *mut ::core::ffi::c_char);
-            if len > 0 as size_t
-                && comm[len.wrapping_sub(1 as size_t)] as ::core::ffi::c_int
-                    == '\n' as ::core::ffi::c_int
-            {
-                comm[len.wrapping_sub(1 as size_t)] = '\0' as ::core::ffi::c_char;
-            }
-            if strcmp(
-                &raw mut comm as *mut ::core::ffi::c_char,
-                b"light-object-detect\0".as_ptr() as *const ::core::ffi::c_char,
-            ) != 0 as ::core::ffi::c_int
-            {
-                continue;
-            }
-            pid = candidate;
-            break;
+        ) as size_t;
+        fclose(cf);
+        if !is_detector_command(&raw mut cmdline as *mut ::core::ffi::c_char, bytes) {
+            continue;
         }
+        pid = candidate;
+        break;
     }
     closedir(proc_dir);
     if pid <= 0 as ::core::ffi::c_int {
@@ -5522,7 +5292,7 @@ pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const LIGHTNVR_VERSION_STRING: [::core::ffi::c_char; 7] =
-    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.47.2\0") };
+    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.47.3\0") };
 pub const LIGHTNVR_BUILD_DATE: [::core::ffi::c_char; 27] = unsafe {
     ::core::mem::transmute::<[u8; 27], [::core::ffi::c_char; 27]>(*crate::build_info::LIGHTNVR_BUILD_DATE)
 };
