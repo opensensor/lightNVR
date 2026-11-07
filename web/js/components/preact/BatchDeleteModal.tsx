@@ -191,7 +191,7 @@ export function BatchDeleteModal() {
           // Check if we've been cancelled
           if (!isRunningRef.current) {
             if (pollTimerRef.current) {
-              clearInterval(pollTimerRef.current);
+              clearTimeout(pollTimerRef.current);
               pollTimerRef.current = null;
             }
             return;
@@ -242,11 +242,15 @@ export function BatchDeleteModal() {
               }
             })
             .catch(error => {
+              if (!isRunningRef.current) {
+                return;
+              }
+
               console.error('Progress polling error:', error);
 
               // Stop polling
               if (pollTimerRef.current) {
-                clearInterval(pollTimerRef.current);
+                clearTimeout(pollTimerRef.current);
                 pollTimerRef.current = null;
               }
 
@@ -267,12 +271,21 @@ export function BatchDeleteModal() {
               showStatusMessage(t('recordings.errorMessage', { message: error.message || t('recordings.unknownError') }), 'error', 5000);
 
               reject(error);
+            })
+            .finally(() => {
+              if (!isRunningRef.current) {
+                return;
+              }
+
+              if (pollTimerRef.current) {
+                clearTimeout(pollTimerRef.current);
+              }
+              pollTimerRef.current = setTimeout(pollProgress, pollInterval);
             });
         };
 
-        // Start polling immediately and then at intervals
+        // Start polling immediately (subsequent polls are scheduled after each request settles)
         pollProgress();
-        pollTimerRef.current = setInterval(pollProgress, pollInterval);
       })
       .catch(error => {
         console.error('Batch delete start error:', error);
