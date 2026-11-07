@@ -80,15 +80,15 @@ test('desktop live retains expanded toolbar and selected layout',async({server,b
 
 test('phone recordings: discover filters, play actual media inline, rotate and return',async({server,browser},info)=>{
  seedRecordings(server);
- const settings=await ok(server,'/api/settings');
+ const settings=await ok(server,'/api/client-config');
  const context=await phoneContext(server,browser),page=await context.newPage();
  try {
   page.setDefaultTimeout(10000);
   await page.setViewportSize({width:390,height:844});
   await page.addInitScript(()=>{localStorage.setItem('recordings_view_mode','table');localStorage.setItem('recordings_filters_collapsed','false');});
-  await page.route('**/api/settings',route=>route.fulfill({json:{...settings,generate_thumbnails:true}}));
+  await page.route('**/api/client-config',route=>route.fulfill({json:{...settings,generate_thumbnails:true}}));
   await page.goto(`${server.baseURL}/recordings.html`);
-  await expect(page.getByRole('tab',{name:'Grid',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.getByRole('navigation',{name:'Recordings views'}).getByRole('link',{name:'Grid',exact:true})).toHaveAttribute('aria-current','page');
   await expect(page.locator('#filters-sidebar')).toHaveCount(0);
   await expect(page.locator('.recording-card').first()).toBeVisible();
   const filters=page.locator('.recordings-mobile-filters');await filters.click();

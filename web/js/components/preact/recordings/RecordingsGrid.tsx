@@ -15,6 +15,7 @@ import {
   Priority,
 } from '../../../request-queue.ts';
 import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.tsx';
+import { useAsyncAction } from '../../../hooks/useAsyncAction.ts';
 import { useI18n } from '../../../i18n.ts';
 import type {
   RecordingListItem,
@@ -42,6 +43,7 @@ interface RecordingCardProps {
   hiddenColumns: Record<string, boolean>;
   onTagsChanged?: RecordingTagsChanged;
   thumbnailsPerRecording?: number;
+  thumbnailsEnabled?: boolean;
 }
 
 export interface RecordingsGridProps {
@@ -67,6 +69,7 @@ export interface RecordingsGridProps {
   onTagsChanged?: RecordingTagsChanged;
   viewSelectedInTimeline?: () => void;
   thumbnailsPerRecording?: number;
+  thumbnailsEnabled?: boolean;
 }
 
 /** Card elements that can be hidden via the settings cog — labels resolved via i18n in CardConfigDropdown */
@@ -147,13 +150,15 @@ function RecordingCard({
   selectionMode,
   hiddenColumns,
   onTagsChanged,
-  thumbnailsPerRecording = 3
+  thumbnailsPerRecording = 3,
+  thumbnailsEnabled = true
 }: RecordingCardProps) {
   const { t } = useI18n();
   // Mount-time frame: always index 0 (first frame, no ffmpeg seek — #364).
   // Hover cycling animates 0→1→2 when thumbnailsPerRecording === 3; in
   // single-thumb mode the frame never changes.
-  const hoverFramesEnabled = thumbnailsPerRecording > 1;
+  const protection = useAsyncAction(() => toggleProtection?.(recording));
+  const hoverFramesEnabled = thumbnailsEnabled && thumbnailsPerRecording > 1;
   const [currentFrame, setCurrentFrame] = useState(0);
   const [showTagsOverlay, setShowTagsOverlay] = useState(false);
   const tagBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -184,14 +189,14 @@ function RecordingCard({
 
   /** Load (or reload) the mount-time (first-frame) thumbnail. */
   const loadThumbnail = useCallback(() => {
-    if (inProgress || playbackUnavailable) return;
+    if (!thumbnailsEnabled || inProgress || playbackUnavailable) return;
     const url = `/api/recordings/thumbnail/${recording.id}/0`;
     setLoadState('loading');
     imgErrorCountRef.current = 0;
     queueThumbnailLoad(url, Priority.HIGH)
       .then(() => setLoadState('loaded'))
       .catch(() => setLoadState('error'));
-  }, [inProgress, playbackUnavailable, recording.id]);
+  }, [thumbnailsEnabled, inProgress, playbackUnavailable, recording.id]);
 
   // Handle <img> element load errors — if the decoded image was evicted
   // from the browser cache between queueThumbnailLoad success and render,
@@ -282,17 +287,18 @@ function RecordingCard({
 
   return (
     <div
-      class={`recording-card relative bg-card text-card-foreground rounded-lg shadow cursor-pointer group transition-all duration-200 hover:shadow-lg ${isSelected ? 'ring-2' : ''}`}
+      class={`recording-card ${thumbnailsEnabled ? '' : 'is-compact'} relative bg-card text-card-foreground rounded-lg shadow cursor-pointer group transition-all duration-200 hover:shadow-lg ${isSelected ? 'ring-2' : ''}`}
       style={isSelected ? { ringColor: 'hsl(var(--primary))' } : {}}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {/* Thumbnail area */}
       <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- pointer shortcut for the Play action button */
-        class="relative aspect-video bg-muted overflow-hidden"
+        class={thumbnailsEnabled ? "relative aspect-video bg-muted overflow-hidden" : "recording-card-summary relative min-h-11 border-b border-border"}
         onClick={() => { if (!playbackUnavailable) playRecording(recording); }}
         title={inProgress ? t('recordings.inProgressToast') : undefined}
       >
+        {!thumbnailsEnabled && <span className="text-xs text-muted-foreground px-3">{t(inProgress ? 'recordings.inProgressBadge' : 'recordings.columnDuration')}</span>}
         {!show('actions') && !playbackUnavailable && (
           <button
             type="button"
@@ -302,7 +308,7 @@ function RecordingCard({
             {t('recordings.play')}
           </button>
         )}
-        {playbackUnavailable ? (
+        {!thumbnailsEnabled ? null : playbackUnavailable ? (
           <div class="w-full h-full flex items-center justify-center p-3 text-sm text-muted-foreground">{t('recordings.playbackUnavailable')}</div>
         ) : inProgress ? (
           <div class="w-full h-full flex flex-col items-center justify-center gap-2 text-destructive">
@@ -342,7 +348,7 @@ function RecordingCard({
         )}
 
         {/* Play overlay on hover */}
-        {!playbackUnavailable && <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        {thumbnailsEnabled && !playbackUnavailable && <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <svg class="w-12 h-12 text-white drop-shadow-lg" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
           </svg>
@@ -401,7 +407,7 @@ function RecordingCard({
 
         {/* Protected badge */}
         {show('protected') && recording.protected && (
-          <div class={`absolute top-2 ${inProgress ? 'inset-e-[5.5rem]' : 'inset-e-2'} px-1.5 py-0.5 bg-yellow-500/90 text-white text-xs rounded flex items-center gap-0.5`}>
+          <div title={t('recordings.protectedBadge')} aria-label={t('recordings.protectedBadge')} class={`absolute top-2 ${inProgress ? 'inset-e-[5.5rem]' : 'inset-e-2'} px-1.5 py-0.5 bg-yellow-500/90 text-white text-xs rounded flex items-center gap-0.5`}>
             <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
             </svg>
@@ -415,7 +421,7 @@ function RecordingCard({
           <RecordingPlaybackNotice recording={recording} />
           {show('stream') && (
             <div class="mb-1">
-              <div class="flex items-center justify-between gap-2">
+              <div class="recording-card-heading flex items-center justify-between gap-2">
                 <span class="font-medium text-sm truncate" title={recording.stream}>
                   {recording.stream || t('common.unknown')}
                 </span>
@@ -518,8 +524,10 @@ function RecordingCard({
               <button
                 class="p-1 rounded-full"
                 style={{ color: recording.protected ? 'hsl(var(--warning))' : 'hsl(var(--muted-foreground))' }}
-                onClick={() => toggleProtection && toggleProtection(recording)}
-                title={recording.protected ? 'Unprotect' : 'Protect'}
+                onClick={() => protection.run()}
+                disabled={protection.pending}
+                aria-busy={protection.pending}
+                title={t(recording.protected ? 'recordings.unprotect' : 'recordings.protect')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   {recording.protected ? (
@@ -577,7 +585,8 @@ export function RecordingsGrid({
   toggleColumn = () => {},
   onTagsChanged,
   viewSelectedInTimeline,
-  thumbnailsPerRecording = 3
+  thumbnailsPerRecording = 3,
+  thumbnailsEnabled = true
 }: RecordingsGridProps) {
   const { t } = useI18n();
   const [selectionMode, setSelectionMode] = useState(false);
@@ -724,6 +733,7 @@ export function RecordingsGrid({
               selectionMode={selectionMode}
               hiddenColumns={hiddenColumns}
               onTagsChanged={onTagsChanged}
+              thumbnailsEnabled={thumbnailsEnabled}
               thumbnailsPerRecording={thumbnailsPerRecording}
             />
           ))

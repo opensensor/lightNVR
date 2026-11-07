@@ -230,7 +230,7 @@ function requestBody(call) {
 beforeEach(() => {
   jest.spyOn(Date, 'now').mockReturnValue(NOW);
   global.fetch = jest.fn();
-  global.window = {};
+  global.window = {location:{search:''}};
   handleAuthenticationFailure.mockClear();
   showStatusMessage.mockClear();
   useQuery.mockClear();
@@ -758,15 +758,14 @@ describe('PlatesView mobile layout', () => {
     expect(find((n) => n.type === 'ul')).toBeUndefined();
   });
 
-  test('the view tabs are not a <nav> element, which layout.css styles as header links', () => {
+  test('uses the shared five-view navigation with Plates current', () => {
     mount();
-    expect(find((n) => n.type === 'nav')).toBeUndefined();
-    const tabs = find((n) => n.props?.role === 'navigation');
-    expect(tabs.props['aria-label']).toBe('recordings.views');
-    expect(tabs.props.className).toContain('overflow-x-auto');
-    const links = findAll((n) => n.type === 'a', tabs);
-    expect(links.map((a) => a.props.href)).toEqual(['recordings.html', 'timeline.html', 'investigation.html', 'plates.html']);
-    expect(links.map((a) => a.props['aria-current'])).toEqual([undefined, undefined, undefined, 'page']);
-    links.forEach((a) => expect(a.props.className).toContain('shrink-0'));
+    const nav = find((n) => n.type === 'nav' && n.props.className === 'recordings-navigation');
+    expect(nav.props['aria-label']).toBe('recordings.views');
+    const links = findAll((n) => n.type === 'a', nav);
+    expect(links.map((a) => a.props.children)).toEqual(['recordings.table','recordings.grid','nav.timeline','nav.investigation','nav.plates']);
+    expect(links.map((a) => a.props['aria-current'])).toEqual([undefined,undefined,undefined,undefined,'page']);
+    expect(new URL(links[0].props.href, 'https://fixture.invalid/').searchParams.get('view')).toBe('table');
+    expect(new URL(links[1].props.href, 'https://fixture.invalid/').searchParams.get('view')).toBe('grid');
   });
 });

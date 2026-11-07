@@ -1,3 +1,4 @@
+import { RecordingsNavigation } from '../recordings/RecordingsNavigation.tsx';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { useQuery } from '../../../query-client.ts';
@@ -10,6 +11,8 @@ import {
   LPR_SEARCH_LIMIT_MAX,
   buildLprSearchBody,
   createLprFilters,
+  toDateTimeLocalValue,
+  parseDateTimeLocalValue,
   deleteLprRead,
   denyLprAction,
   exportLprReads,
@@ -33,7 +36,7 @@ import type {
 const INPUT_CLASS = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground '
   + 'focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
 const LABEL_CLASS = 'mb-1 block text-sm font-medium';
-const SUBNAV_LINK_CLASS = 'shrink-0 rounded-t-lg px-3 py-2 text-sm font-medium transition-colors sm:px-4';
+
 
 function formatObservedAt(milliseconds: number) {
   if (!Number.isFinite(milliseconds)) return '—';
@@ -78,7 +81,19 @@ function FieldErrors({ id, errors, t }: { id: string; errors: LprValidationError
 
 export function PlatesView() {
   const { t } = useI18n();
-  const [filters, setFilters] = useState(() => createLprFilters());
+  const [filters, setFilters] = useState(() => {
+    const initial = createLprFilters();
+    const params = new URLSearchParams(window.location.search);
+    initial.cameraUuid = params.get('camera_uuid') || '';
+    for (const key of ['start', 'end'] as const) {
+      const value = params.get(key);
+      if (value !== null && Number.isFinite(Number(value))) {
+        const local = toDateTimeLocalValue(Number(value) * 1000);
+        if (local) initial[key] = local;
+      }
+    }
+    return initial;
+  });
   const [submittedErrors, setSubmittedErrors] = useState<LprValidationError[]>([]);
   const [reads, setReads] = useState<LprRead[] | null>(null);
   const [searchedCameraUuid, setSearchedCameraUuid] = useState('');
@@ -219,30 +234,13 @@ export function PlatesView() {
     <section className="lpr-page py-4" aria-labelledby="lpr-heading">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-x-3 border-b border-border">
         <h1 id="lpr-heading" className="pb-2 text-2xl font-bold">{t('lpr.title')}</h1>
-        {/* Not a <nav> element: layout.css styles every `nav a` as a header link. */}
-        <div
-          role="navigation"
-          className="flex max-w-full overflow-x-auto whitespace-nowrap sm:overflow-visible"
-          aria-label={t('recordings.views')}
-        >
-          <a href="recordings.html" className={`${SUBNAV_LINK_CLASS} text-muted-foreground hover:text-foreground`}>
-            {t('nav.recordings')}
-          </a>
-          <a href="timeline.html" className={`${SUBNAV_LINK_CLASS} text-muted-foreground hover:text-foreground`}>
-            {t('nav.timeline')}
-          </a>
-          <a href="investigation.html" className={`${SUBNAV_LINK_CLASS} text-muted-foreground hover:text-foreground`}>
-            {t('nav.investigation')}
-          </a>
-          <a
-            href="plates.html"
-            aria-current="page"
-            className={`${SUBNAV_LINK_CLASS} bg-card text-card-foreground border border-border border-b-0 -mb-px`}
-          >
-            {t('nav.plates')}
-          </a>
-        </div>
+
       </div>
+
+      <RecordingsNavigation active="plates" recordingsUrl={new URLSearchParams(window.location.search).get('return_to')}
+        cameras={filters.cameraUuid ? [filters.cameraUuid] : []} streams={cameraName(filters.cameraUuid) ? [cameraName(filters.cameraUuid)!] : []}
+        start={parseDateTimeLocalValue(filters.start) == null ? null : parseDateTimeLocalValue(filters.start)! / 1000}
+        end={parseDateTimeLocalValue(filters.end) == null ? null : parseDateTimeLocalValue(filters.end)! / 1000} />
 
       <p className="mb-4 text-sm text-muted-foreground">{t('lpr.description')}</p>
 

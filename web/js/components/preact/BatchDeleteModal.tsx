@@ -14,7 +14,7 @@ import type {
   BatchDeleteProgressResponse,
   BatchDeleteStartResponse,
 } from '../../types/recordings.ts';
-import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
+import { ModalShell } from './common/ModalDialog.tsx';
 
 declare global {
   interface Window {
@@ -53,6 +53,7 @@ export function BatchDeleteModal() {
 
   // Modal phase: 'hidden' | 'confirm' | 'progress'
   const [phase, setPhase] = useState<BatchDeletePhase>('hidden');
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
   // Pending delete params (stored during confirm phase, used when user clicks Proceed)
   const pendingParamsRef = useRef<BatchDeleteParams | null>(null);
@@ -367,34 +368,15 @@ export function BatchDeleteModal() {
     }
   };
 
-  // If hidden, don't render anything
-  useEscapeKey(() => {
-    if (phase === 'confirm') cancelConfirm();
-    else if (progress.complete) closeModal();
-  }, phase !== 'hidden');
-
-  if (phase === 'hidden') {
-    return null;
-  }
-
   return (
-    <div
-      id="batch-delete-modal"
-      className="fixed inset-0 bg-black/50 overflow-y-auto h-full w-full flex items-center justify-center z-50"
-    >
-      <div className="relative bg-card text-card-foreground rounded-lg shadow-xl max-w-md mx-auto p-6 w-full">
-
+    <ModalShell isOpen={phase !== 'hidden'}
+      title={t(phase === 'confirm' ? 'recordings.confirmBatchDelete' : progress.complete ? 'recordings.batchDeleteComplete' : 'recordings.deletingRecordings')}
+      onClose={phase === 'confirm' ? cancelConfirm : closeModal}
+      closeDisabled={phase === 'progress' && !progress.complete} initialFocusRef={cancelButtonRef}>
+      <div id="batch-delete-modal" className="p-5 max-h-[75dvh] overflow-y-auto">
         {/* ===== PHASE 1: Confirmation ===== */}
         {phase === 'confirm' && (
           <>
-            <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
-              <h3 className="text-xl font-bold">{t('recordings.confirmBatchDelete')}</h3>
-              <button
-                className="text-muted-foreground hover:text-foreground text-2xl font-bold"
-                onClick={cancelConfirm}
-              >&times;</button>
-            </div>
-
             <div className="mb-4">
               <div className="flex items-start gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 mb-4">
                 <svg className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -414,6 +396,7 @@ export function BatchDeleteModal() {
             <div className="flex justify-end gap-2 pt-2 border-t border-border">
               <button
                 className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
+                ref={cancelButtonRef}
                 onClick={cancelConfirm}
               >
                 {t('common.cancel')}
@@ -431,12 +414,6 @@ export function BatchDeleteModal() {
         {/* ===== PHASE 2: Progress (non-cancellable) ===== */}
         {phase === 'progress' && (
           <>
-            <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
-              <h3 className="text-xl font-bold">
-                {t(progress.complete ? 'recordings.batchDeleteComplete' : 'recordings.deletingRecordings')}
-              </h3>
-            </div>
-
             <div className="modal-body">
               <div className="progress-container bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-4">
                 <div
@@ -479,7 +456,7 @@ export function BatchDeleteModal() {
         )}
 
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

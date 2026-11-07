@@ -63,13 +63,14 @@ baseline. Timeline pinch/pan/fling/snap and live gestures already exist. The nex
 slices address complete phone workflows and qualification, not a replacement
 gesture implementation.
 
-### M1: Find footage on a phone — next implementation
+### M1: Find footage on a phone — implementation ready for review
 
-Current code forces table mode when thumbnails are disabled. Provide a compact
-phone list that works without generated thumbnails, with camera/time/duration,
-playback availability and protection state visible. Keep explicit URL choices
-and desktop preferences intact. Phone sorting, camera/date filters and selected
-item actions must work without horizontal table navigation.
+The follow-up removes the forced Table fallback when thumbnails are disabled.
+Grid uses compact metadata cards without thumbnail requests, while keeping
+camera/time/duration, playback availability and protection state visible. Shared
+sorting, reachable filters/retry and explicit selection work on phones. URL
+choices and desktop preferences remain separate from phone preferences. Batch
+delete confirmation now uses the shared accessible dialog shell.
 
 Acceptance:
 
@@ -87,9 +88,15 @@ Acceptance:
   viewers and an actual playable recording. Verify focus restoration and phone
   preference isolation as in the existing slice.
 
-### M2: Timeline and investigation workflow
+### M2: Timeline and investigation workflow — shared navigation implemented
 
-Depends on M1's recording navigation conventions. Audit the existing ruler and
+Table, Grid, Timeline, Investigation and Plates now share the Grid-style
+five-link navigation with a current-page indicator. Links retain camera/time
+context and a validated local return URL carrying the original list filters,
+sort and page. Timeline and Plates still operate on one camera; Investigation
+can carry multiple cameras. The return URL retains the full list scope.
+
+The broader workflow audit remains open. Audit the existing ruler and
 gesture primitives in the complete flow: live camera → recordings → timeline or
 investigation → playback → return. Improve camera/date context and the compact
 event list where the audit demonstrates friction.
@@ -102,7 +109,10 @@ pinch/pan/fling/snap regressions and desktop mouse/wheel behavior.
 
 ### M3: Real-device and accessibility qualification
 
-The #840 slice can be qualified now; repeat affected paths after M1/M2. Record
+Supported target generation is 2024 or newer, per the product decision. No
+physical device or target NVR instance has been supplied for this pass. Viewport
+and CPU emulation remain separate evidence. The #840 slice can be qualified
+now; repeat affected paths after M1/M2. Record
 device model, OS/browser versions, build/fork hashes, network and result for each
 case. Test iPhone Safari and Android Chrome in portrait, landscape and installed
 mode where supported: browser toolbar/keyboard changes, rotation during playback,
@@ -117,3 +127,6 @@ performance budgets rather than declaring an unmeasured phone latency target.
 Administration screens remain outside this pass. Browser viewport tests do not
 establish real-device playback or performance qualification. Desktop regressions
 remain a release gate for each mobile slice.
+
+The [follow-up validation receipt](../validation/mobile-recordings-2026-11-07.md)
+records desktop/phone browser coverage, measurements and remaining limits.

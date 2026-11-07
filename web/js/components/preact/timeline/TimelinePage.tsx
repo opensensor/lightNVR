@@ -1,3 +1,4 @@
+import { RecordingsNavigation } from '../recordings/RecordingsNavigation.tsx';
 /**
  * LightNVR Timeline Page Component
  * Main component for the timeline view
@@ -1510,17 +1511,7 @@ export function TimelinePage() {
 
   // Get return URL for "Refine Selections" link
   const returnUrl = idsMode ? (sessionStorage.getItem(RECORDINGS_RETURN_URL_KEY) || 'recordings.html') : null;
-  const investigationParams = new URLSearchParams();
-  if (selectedStream) investigationParams.set('stream', selectedStream);
-  const investigationBounds = getLocalDayBounds(selectedDate);
-  if (investigationBounds) {
-    investigationParams.set('start', String(investigationBounds.startTimestamp));
-    investigationParams.set('end', String(investigationBounds.endTimestamp));
-  }
-  if (Number.isFinite(timelineState.currentTime)) {
-    investigationParams.set('cursor', String(Math.floor(timelineState.currentTime as number)));
-  }
-  const investigationHref = `investigation.html?${investigationParams.toString()}`;
+  const navigationBounds = getLocalDayBounds(selectedDate);
 
   return (
     <div className="timeline-page">
@@ -1528,81 +1519,12 @@ export function TimelinePage() {
         <h1 className="text-2xl font-bold">
           {idsMode ? t('timeline.selectedRecordingsTimeline') : t('timeline.timelinePlayback')}
         </h1>
-        <div className="flex max-w-full overflow-x-auto whitespace-nowrap">
-          <a
-            href={returnUrl || 'recordings.html'}
-            className="px-3 py-1 rounded-s-md text-sm"
-            style={{
-              backgroundColor: 'hsl(var(--secondary))',
-              color: 'hsl(var(--secondary-foreground))'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
-            onFocus={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
-            onBlur={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
-            onClick={() => { try { localStorage.setItem('recordings_view_mode', 'table'); } catch(e) {} }}
-          >
-            {t('recordings.table')}
-          </a>
-          <a
-            href="recordings.html"
-            className="px-3 py-1 text-sm"
-            style={{
-              backgroundColor: 'hsl(var(--secondary))',
-              color: 'hsl(var(--secondary-foreground))'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
-            onFocus={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
-            onBlur={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
-            onClick={() => { try { localStorage.setItem('recordings_view_mode', 'grid'); } catch(e) {} }}
-          >
-            {t('recordings.grid')}
-          </a>
-          <a
-            href="timeline.html"
-            className="px-3 py-1 text-sm"
-            style={{
-              backgroundColor: idsMode ? 'hsl(var(--secondary))' : 'hsl(var(--primary))',
-              color: idsMode ? 'hsl(var(--secondary-foreground))' : 'hsl(var(--primary-foreground))'
-            }}
-            onMouseOver={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'; }}
-            onFocus={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'; }}
-            onMouseOut={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'; }}
-            onBlur={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'; }}
-          >
-            {t('nav.timeline')}
-          </a>
-          <a
-            href={investigationHref}
-            className="px-3 py-1 text-sm"
-            style={{
-              backgroundColor: 'hsl(var(--secondary))',
-              color: 'hsl(var(--secondary-foreground))'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
-            onFocus={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
-            onBlur={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
-          >
-            {t('nav.investigation')}
-          </a>
-          <a
-            href="plates.html"
-            className="px-3 py-1 rounded-e-md text-sm"
-            style={{
-              backgroundColor: 'hsl(var(--secondary))',
-              color: 'hsl(var(--secondary-foreground))'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
-            onFocus={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
-            onBlur={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
-          >
-            {t('nav.plates')}
-          </a>
-        </div>
+
       </div>
+      <RecordingsNavigation active="timeline" recordingsUrl={returnUrl || new URLSearchParams(window.location.search).get('return_to')}
+        streams={selectedStream ? [selectedStream] : []} cameras={selectedCameraUuid ? [selectedCameraUuid] : []}
+        start={navigationBounds?.startTimestamp} end={navigationBounds?.endTimestamp} cursor={timelineState.currentTime} />
+
 
       {idsMode ? (
         /* IDs mode: compact info bar */
