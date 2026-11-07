@@ -3352,6 +3352,53 @@ void test_timeline_ids_batch_only_authorized_recordings_and_keep_open_detection_
     cJSON_Delete(json);
 }
 
+void test_timeline_ids_reject_malformed_tokens_without_partial_results(void) {
+    stream_config_t camera = create_camera("timeline_strict_ids", "");
+    recording_metadata_t rec = {0};
+    safe_strcpy(rec.stream_name, camera.name, sizeof(rec.stream_name), 0);
+    safe_strcpy(rec.camera_uuid, camera.camera_uuid, sizeof(rec.camera_uuid), 0);
+    safe_strcpy(rec.file_path, "/tmp/timeline-strict-ids.mp4", sizeof(rec.file_path), 0);
+    rec.start_time = time(NULL) - 100;
+    rec.end_time = rec.start_time + 60;
+    rec.is_complete = true;
+    uint64_t id = add_recording_metadata(&rec);
+    TEST_ASSERT_NOT_EQUAL(0, id);
+    char api_key[128] = {0};
+    create_camera_action_user("timeline_strict_ids_user", camera.camera_uuid,
+        authorization_action_bit(AUTHZ_RECORDINGS_REPLAY), api_key);
+    g_config.web_auth_enabled = true;
+    const char *invalid[] = {
+        "0", "000", "-1", "%2B1", "%20-1", "%09%2B1", "invalid",
+        "1junk", "1.5", "0x10", "1%20junk", "%20%09",
+        "18446744073709551616", "9999999999999999999999999999999999999999"
+    };
+    char path[512];
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        /* A valid ID before and after the bad token must not yield a partial 200. */
+        snprintf(path, sizeof(path), "/api/timeline/segments-by-ids?ids=%llu,%s,%llu",
+            (unsigned long long)id, invalid[i], (unsigned long long)id);
+        timeline_summary_calls = 0;
+        cJSON *json = call_handler_path(handle_get_timeline_segments_by_ids, HTTP_METHOD_GET,
+                                       path, NULL, api_key, 400);
+        TEST_ASSERT_EQUAL_INT(0, timeline_summary_calls);
+        TEST_ASSERT_EQUAL_STRING("Invalid recording ID in ids parameter",
+            cJSON_GetObjectItemCaseSensitive(json, "error")->valuestring);
+        TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(json, "segments"));
+        cJSON_Delete(json);
+    }
+    /* Decimal IDs allow surrounding whitespace and leading zeros. An in-range
+     * uint64 that is not present is still omitted, and duplicates keep order. */
+    snprintf(path, sizeof(path), "/api/timeline/segments-by-ids?ids=%%09%llu%%20%%0A,18446744073709551615,00%llu",
+        (unsigned long long)id, (unsigned long long)id);
+    cJSON *json = call_handler_path(handle_get_timeline_segments_by_ids, HTTP_METHOD_GET,
+                                   path, NULL, api_key, 200);
+    const cJSON *segments = cJSON_GetObjectItemCaseSensitive(json, "segments");
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(segments));
+    for (int i = 0; i < 2; i++) TEST_ASSERT_EQUAL_UINT64(id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(segments, i), "id")->valuedouble);
+    cJSON_Delete(json);
+}
+
 void test_timeline_ids_preserve_duplicates_at_query_size_limit(void) {
     stream_config_t camera = create_camera("timeline_query_limit", "");
     recording_metadata_t rec = {0};
@@ -3525,6 +3572,7 @@ int main(void) {
     RUN_TEST(test_timeline_segments_reject_unparseable_time_bounds);
     RUN_TEST(test_timeline_ids_batch_only_authorized_recordings_and_keep_open_detection_bounds);
     RUN_TEST(test_timeline_ids_preserve_duplicates_at_query_size_limit);
+    RUN_TEST(test_timeline_ids_reject_malformed_tokens_without_partial_results);
     RUN_TEST(test_timeline_manifest_rejects_invalid_bounds_before_querying_recordings);
     RUN_TEST(test_legacy_role_compatibility_has_no_runtime_allowed_tags_path);
     RUN_TEST(test_legacy_principals_migrate_to_idempotent_selector_grants);
