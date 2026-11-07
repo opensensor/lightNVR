@@ -146,3 +146,14 @@ returns 503 and never inserts a lease. Request metadata copies are bounded too.
 An injected malformed generator output failed the new rejection test before the
 fix. Both invalid-character and unterminated 37-byte outputs now fail closed;
 the ten-case owned-fixture suite passes under ASan/UBSan.
+
+### TLS and deterministic tamper fixtures
+
+Hosted Debug CI exposed a stale TLS WebSocket fake that omitted the new media
+policy acknowledgment, plus a token-tampering assertion that occasionally wrote
+`0` over an existing `0`. The TLS fixture now acknowledges the policy handshake;
+the lease fixture forces a valid zero-prefix UUID and changes it to a different
+byte. Both failures reproduced locally before correction. The expiry assertion
+still independently advances the stored lease beyond its idle lifetime and
+expects denial. `test_libuv_tls` and `test_media_authority` pass with Debug
+ASan/UBSan, `ENABLE_SSL=ON`, and libyaml 0.2.5 enabled (also pass without libyaml).

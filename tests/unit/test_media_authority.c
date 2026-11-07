@@ -6,12 +6,14 @@ static int fixture_uuid_generate(char output[LIGHTNVR_UUID_STRING_SIZE]);
 #undef lightnvr_uuid_generate_v4
 static int uuid_fault;
 static int fixture_uuid_generate(char output[LIGHTNVR_UUID_STRING_SIZE]) {
-    if (uuid_fault) {
+    if (uuid_fault == 1 || uuid_fault == 2) {
         memset(output, 'z', LIGHTNVR_UUID_STRING_SIZE);
         if (uuid_fault == 1) output[36] = 0;
         return 0;
     }
-    return lightnvr_uuid_generate_v4(output);
+    int result = lightnvr_uuid_generate_v4(output);
+    if (result == 0 && uuid_fault == 3) output[0] = '0';
+    return result;
 }
 #include "database/db_api_tokens.h"
 #include "database/db_authorization.h"
@@ -191,14 +193,17 @@ void test_instance_audio_disable_remuxes_native_hls_despite_cached_grant(void) {
   rmdir(directory);
 }
 void test_lease_binds_source_loopback_immutable_identity_and_expiry(void) {
+    /* Reproduce a valid token beginning with zero deterministically. */
+    uuid_fault = 3;
     issue();
+    uuid_fault = 0;
     strcpy(callback.client_ip, "198.51.100.1");
     check(403, NULL);
     strcpy(callback.client_ip, "127.0.0.1");
     strcpy(callback.query_string, "src=another");
     check(403, NULL);
     strcpy(callback.query_string, "src=camera_sub");
-    callback.headers[0].value[0] = '0';
+    callback.headers[0].value[0] = lease[0] == '0' ? '1' : '0';
     check(403, NULL);
     strcpy(callback.headers[0].value, lease);
     check(200, NULL);
