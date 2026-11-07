@@ -22,8 +22,8 @@
   "dependencies": {
     "@preact-signals/query": "^2.1.2",
     "@preact/compat": "^18.3.2",
-    "@sentry/browser": "^11.10.0",
-    "@tailwindcss/postcss": "^4.3.3",
+    "@sentry/browser": "^11.11.0",
+    "@tailwindcss/postcss": "^4.3.5",
     "daisyui": "^5.7.50",
     "dayjs": "^1.11.23",
     "hls.js": "^1.7.4",
@@ -31,7 +31,7 @@
     "preact": "^11.1.1",
     "qrcode": "^1.5.4",
     "swagger-ui-dist": "5.34.1",
-    "tailwindcss": "^4.3.3",
+    "tailwindcss": "^4.3.5",
     "tinykeys": "^4.0.1",
     "webrtc-adapter": "^9.0.6"
   },
@@ -41,10 +41,10 @@
     "@babel/preset-env": "^8.0.7",
     "@babel/preset-typescript": "8.0.7",
     "@prefresh/vite": "^4.0.1",
-    "@sentry/vite-plugin": "^11.10.0",
+    "@sentry/vite-plugin": "^11.11.0",
     "@types/jest": "30.0.0",
     "@types/node": "24.19.2",
-    "@vitejs/plugin-legacy": "^8.2.3",
+    "@vitejs/plugin-legacy": "^8.2.4",
     "autoprefixer": "^10.6.2",
     "babel-jest": "^30.5.2",
     "esbuild": "^0.28.2",
@@ -57,7 +57,7 @@
     "selenium-webdriver": "^4.52.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.1",
-    "vite": "^8.3.5",
+    "vite": "^8.3.6",
     "vite-plugin-compression": "^0.5.1"
   },
   "overrides": {

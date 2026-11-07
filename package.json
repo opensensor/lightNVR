@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
-    "@redocly/cli": "2.75.0",
+    "@redocly/cli": "2.76.0",
     "@types/node": "24.19.2",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
@@ -32,7 +32,7 @@
     "openapi-typescript": "7.13.0",
     "playwright": "^1.62.1",
     "sharp": "^0.35.5",
-    "terser": "5.48.0",
+    "terser": "5.51.2",
     "typescript": "5.9.3"
   }
 }
