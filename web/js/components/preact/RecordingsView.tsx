@@ -754,7 +754,7 @@ export function RecordingsView() {
       return;
     }
     // Store current URL for "Refine Selections" back-link
-    sessionStorage.setItem(RECORDINGS_RETURN_URL_KEY, window.location.href);
+    sessionStorage.setItem(RECORDINGS_RETURN_URL_KEY, recordingsUrl);
     sessionStorage.setItem(RECORDINGS_SELECTED_IDS_KEY, JSON.stringify(selectedIds));
     sessionStorage.setItem(RECORDINGS_RESTORE_SELECTION_KEY, 'true');
     window.location.href = `timeline.html?ids=${selectedIds.join(',')}`;
@@ -810,6 +810,7 @@ export function RecordingsView() {
         start: String(paddedStart),
         end: String(paddedEnd),
         cursor: String(Math.floor(start)),
+        return_to: recordingsUrl,
       });
       window.location.href = `investigation.html?${params.toString()}`;
     } catch (requestError) {

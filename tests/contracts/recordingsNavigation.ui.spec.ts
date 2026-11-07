@@ -110,3 +110,30 @@ test('scoped phone viewer only sees allowed cameras and cannot delete footage',a
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }finally{await context.close();}
 });
+
+for (const destination of ['Timeline','Investigation']) {
+ test(`selected footage returns from ${destination} with the original list scope`,async({server,browser})=>{
+  seedRecordings(server);
+  const context=await server.browserContext(browser),page=await context.newPage();
+  try {
+   await page.setViewportSize({width:390,height:844});
+   await page.goto(`${server.baseURL}/recordings.html?view=grid&stream=A&tag=visible-tag&sort=duration&order=asc`);
+   await expect(page.locator('.recording-card')).toHaveCount(1);
+   await page.getByRole('button',{name:'Select',exact:true}).click();
+   await page.locator('.recording-card').getByRole('checkbox').check();
+   const original=new URL(page.url()).search;
+   await page.getByRole('button',{name:new RegExp(`^.*${destination} \\(1\\)$`)}).click();
+   await expect(page).toHaveURL(new RegExp(`/${destination.toLowerCase()}\\.html\\?`));
+   if(destination==='Timeline') {
+    expect(await page.evaluate(()=>sessionStorage.getItem('lightnvr_recordings_return_url'))).toBe(`recordings.html${original}`);
+   } else {
+    expect(new URL(page.url()).searchParams.get('return_to')).toBe(`recordings.html${original}`);
+   }
+   const back=page.locator('.recordings-navigation').getByRole('link',{name:'Grid',exact:true});
+   await expect(back).toHaveAttribute('href',`recordings.html${original}`);
+   await back.click();
+   await expect(page.locator('.recording-card')).toHaveCount(1);
+   expect(new URL(page.url()).search).toBe(original);
+  } finally {await context.close();}
+ });
+}
