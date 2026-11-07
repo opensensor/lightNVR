@@ -33,7 +33,8 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Cover the 20 residual user CRUD/key/password-lock/login-lockout, action/simulation/role/user-policy and audit list/export/settings operations. Read concrete handler semantics; validate response/request variants, token restrictions, revisions/self-lockout and actual audit export bytes. Integrate generated contracts into real consumers.
 - **acceptance_criteria**: Effective policy changes/revocations affect discovery and requests, denied mutations have no durable effects, credentials only appear in explicitly authorized issuance responses, no token privilege expansion. Canonical and projected specs agree with independent native responses.
 - **validation**: RED -> GREEN domain/API/browser regressions; lint, generation/drift, root/web typing, unit and sanitizer checks. Record exact accepted route inventory and fixture limits.
-- **status**: In progress
+- **status**: Complete locally — `ab12d410`; publication pending.
+- **log**: 20 operations; scoped-token legacy-key escalation blocked; actual user password-lock form fixed; API/browser, native optimized/sanitizer and generated contract validation pass. See identity-admin evidence receipt.
 
 ### P3: Fleet organization and live workspace contracts (F4)
 - **depends_on**: []
@@ -59,7 +60,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Enumerate all residual stream/device/media registrations. Use owned SOAP/media fixtures for create/test/delete/refresh/recording controls, discovery/device operations, PTZ/imaging/daynight and protocol response variants. Preserve captured identities and create/edit intent.
 - **acceptance_criteria**: Invalid/denied requests have no configuration or device effects; actual protocol bodies/ranges/signaling align with the contract. Physical multicast/vendor interoperability remains separately qualified.
 - **validation**: Independent SOAP/media bytes, real-server negative mutations, typed consumer tests, native/sanitizer checks.
-- **status**: Pending
+- **status**: In progress
 
 ### P4c: Storage configuration and lifecycle contracts (F5/F6)
 - **depends_on**: [P3]
@@ -67,7 +68,8 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Cover every residual storage registration using owned destinations. Preserve current global storage.configure policy for migration operations; do not invent job-owner/cancellation semantics. Test asynchronous completion independently of acknowledgements.
 - **acceptance_criteria**: Credential redaction, revisions, reference integrity, protected media, denial no-job/no-file effects and retry/cancel catalog consistency. Remote-provider qualification remains explicit.
 - **validation**: Real-server schemas/principals, owned local storage fault/recovery fixtures, UI adapters, native sanitizers.
-- **status**: In progress
+- **status**: Complete locally — `fe32298a`; integration/publication pending.
+- **log**: 28 operations; cleanup rejects malformed/trailing JSON before scheduling; owned target/policy/migration/archive bytes and lifecycle, browser and sanitizer checks pass. See storage evidence receipt.
 
 ### P4d: Event routing contracts (F8)
 - **depends_on**: [P3, P4a]
@@ -75,7 +77,8 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Cover all residual event operations. Reuse selector and settings semantics; observe actual delivery with an owned local sink.
 - **acceptance_criteria**: Secret redaction, stale revisions/private collection references, suppression/retry and denied no-delivery behavior; validate actual consumer boundaries.
 - **validation**: Real delivery and negative-effect fixtures, schema projection, domain/native/browser tests.
-- **status**: Pending
+- **status**: Complete locally; publication pending.
+- **log**: 13 operations; real MQTT bytes/PUBACK retry/cooldown; native no-effects and browser malformed-ack/revision-preview cases; 12 optimized +3 sanitizer suites. See events evidence receipt.
 
 ### P4e: Investigations and residual recordings/detections (F11)
 - **depends_on**: []
@@ -83,7 +86,7 @@ do not pass unsupported skill-template sandbox parameters.
 - **description**: Enumerate each residual operation; preserve captured UUID and legacy fallback across aggregation/enrichment. Validate concrete media/image/export bytes and ranges beside JSON.
 - **acceptance_criteria**: Hidden rows/counts/facets remain hidden, name reuse cannot widen authority, invalid/denied writes have no durable effects, file and streaming responses are independently verified.
 - **validation**: Real-server principal/no-effects tests, media/image/export fixtures, typed consumers, native sanitizers.
-- **status**: Pending
+- **status**: In progress
 
 ### P4f: Final integration and four-PR publication
 - **depends_on**: [P1, P2, P3, P4a, P4b, P4c, P4d, P4e]

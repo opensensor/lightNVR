@@ -5985,6 +5985,10840 @@ validate131.evaluated = {
   dynamicItems: !1
 };
 
+var __contract_EventCameraScope = validate204;
+
+function validate204(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate204.evaluated;
+  evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0);
+  let _errs0 = errors, valid0 = !1, passing0 = null, _errs1 = errors;
+  if (errors === _errs1) if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.type) {
+    let err0 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf/0/required",
+      keyword: "required",
+      params: {
+        missingProperty: "type"
+      }
+    };
+    vErrors.push(err0), errors++;
+  } else {
+    let _errs3 = errors;
+    for (let key0 in data) if ("type" !== key0) {
+      let err1 = {
+        instancePath: instancePath,
+        schemaPath: "#/oneOf/0/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      };
+      vErrors.push(err1), errors++;
+      break;
+    }
+    if (_errs3 === errors && void 0 !== data.type) {
+      let data0 = data.type;
+      if ("string" != typeof data0) {
+        let err2 = {
+          instancePath: instancePath + "/type",
+          schemaPath: "#/oneOf/0/properties/type/type",
+          keyword: "type",
+          params: {
+            type: "string"
+          }
+        };
+        vErrors.push(err2), errors++;
+      }
+      if ("all" !== data0) {
+        let err3 = {
+          instancePath: instancePath + "/type",
+          schemaPath: "#/oneOf/0/properties/type/const",
+          keyword: "const",
+          params: {
+            allowedValue: "all"
+          }
+        };
+        vErrors.push(err3), errors++;
+      }
+    }
+  } else {
+    let err4 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf/0/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    };
+    vErrors.push(err4), errors++;
+  }
+  if (_errs1 === errors) {
+    valid0 = !0, passing0 = 0;
+    var props0 = !0;
+  }
+  let _errs6 = errors;
+  if (errors === _errs6) if (data && "object" == typeof data && !Array.isArray(data)) if (void 0 === data.type) {
+    let err5 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf/1/required",
+      keyword: "required",
+      params: {
+        missingProperty: "type"
+      }
+    };
+    vErrors.push(err5), errors++;
+  } else if (void 0 === data.selector) {
+    let err6 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf/1/required",
+      keyword: "required",
+      params: {
+        missingProperty: "selector"
+      }
+    };
+    vErrors.push(err6), errors++;
+  } else {
+    let _errs8 = errors;
+    for (let key1 in data) if ("type" !== key1 && "selector" !== key1) {
+      let err7 = {
+        instancePath: instancePath,
+        schemaPath: "#/oneOf/1/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key1
+        }
+      };
+      vErrors.push(err7), errors++;
+      break;
+    }
+    if (_errs8 === errors) {
+      if (void 0 !== data.type) {
+        let data1 = data.type, _errs9 = errors;
+        if ("string" != typeof data1) {
+          let err8 = {
+            instancePath: instancePath + "/type",
+            schemaPath: "#/oneOf/1/properties/type/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          };
+          vErrors.push(err8), errors++;
+        }
+        if ("selector" !== data1) {
+          let err9 = {
+            instancePath: instancePath + "/type",
+            schemaPath: "#/oneOf/1/properties/type/const",
+            keyword: "const",
+            params: {
+              allowedValue: "selector"
+            }
+          };
+          vErrors.push(err9), errors++;
+        }
+        var valid2 = _errs9 === errors;
+      } else valid2 = !0;
+      valid2 && void 0 !== data.selector && (validate142(data.selector, {
+        instancePath: instancePath + "/selector",
+        parentData: data,
+        parentDataProperty: "selector",
+        rootData: rootData,
+        dynamicAnchors: dynamicAnchors
+      }) || (vErrors = vErrors.concat(validate142.errors), errors = vErrors.length));
+    }
+  } else {
+    let err10 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf/1/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    };
+    vErrors.push(err10), errors++;
+  }
+  var _valid0;
+  if ((_valid0 = _errs6 === errors) && valid0 ? (valid0 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid0 = !0,
+  passing0 = 1, !0 !== props0 && (props0 = !0)), !valid0) {
+    let err11 = {
+      instancePath: instancePath,
+      schemaPath: "#/oneOf",
+      keyword: "oneOf",
+      params: {
+        passingSchemas: passing0
+      }
+    };
+    return vErrors.push(err11), errors++, validate204.errors = vErrors, !1;
+  }
+  return errors = _errs0, vErrors.length = _errs0, validate204.errors = vErrors, evaluated0.props = props0,
+  0 === errors;
+}
+
+validate204.evaluated = {
+  dynamicProps: !0,
+  dynamicItems: !1
+};
+
+var __contract_EventCatalog = validate217, schema230 = {
+  type: "object",
+  properties: {
+    schema_version: {
+      type: "integer",
+      const: 1
+    },
+    count: {
+      type: "integer",
+      minimum: 0
+    },
+    event_types: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: {
+            type: "string"
+          },
+          expected_rate: {
+            type: "string",
+            enum: [ "low", "medium", "high" ]
+          },
+          severity: {
+            type: "string",
+            enum: [ "debug", "info", "notice", "warning", "error", "critical" ]
+          },
+          dynamic_severity: {
+            type: "boolean"
+          },
+          minimum_severity: {
+            type: "string",
+            enum: [ "debug", "info", "notice", "warning", "error", "critical" ]
+          },
+          maximum_severity: {
+            type: "string",
+            enum: [ "debug", "info", "notice", "warning", "error", "critical" ]
+          },
+          subject_kind: {
+            type: "string",
+            enum: [ "camera", "storage", "system" ]
+          },
+          family: {
+            type: "string"
+          },
+          description: {
+            type: "string"
+          },
+          sensitivity: {
+            type: "string"
+          },
+          media_policy: {
+            type: "string"
+          },
+          default_expiry_seconds: {
+            type: "integer",
+            minimum: 0
+          }
+        },
+        required: [ "type", "expected_rate", "severity", "dynamic_severity", "minimum_severity", "maximum_severity", "subject_kind", "family", "description", "sensitivity", "media_policy", "default_expiry_seconds" ],
+        additionalProperties: !1
+      }
+    }
+  },
+  required: [ "schema_version", "count", "event_types" ],
+  additionalProperties: !1
+};
+
+function validate217(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate217.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate217.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.schema_version) return validate217.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "schema_version"
+    }
+  } ], !1;
+  if (void 0 === data.count) return validate217.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "count"
+    }
+  } ], !1;
+  if (void 0 === data.event_types) return validate217.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "event_types"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("schema_version" !== key0 && "count" !== key0 && "event_types" !== key0) return validate217.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.schema_version) {
+        let data0 = data.schema_version, _errs2 = 0;
+        if ("number" != typeof data0 || data0 % 1 || isNaN(data0) || !isFinite(data0)) return validate217.errors = [ {
+          instancePath: instancePath + "/schema_version",
+          schemaPath: "#/properties/schema_version/type",
+          keyword: "type",
+          params: {
+            type: "integer"
+          }
+        } ], !1;
+        if (1 !== data0) return validate217.errors = [ {
+          instancePath: instancePath + "/schema_version",
+          schemaPath: "#/properties/schema_version/const",
+          keyword: "const",
+          params: {
+            allowedValue: 1
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.count) {
+          let data1 = data.count, _errs4 = 0;
+          if ("number" != typeof data1 || data1 % 1 || isNaN(data1) || !isFinite(data1)) return validate217.errors = [ {
+            instancePath: instancePath + "/count",
+            schemaPath: "#/properties/count/type",
+            keyword: "type",
+            params: {
+              type: "integer"
+            }
+          } ], !1;
+          if (0 === _errs4 && "number" == typeof data1 && isFinite(data1) && (data1 < 0 || isNaN(data1))) return validate217.errors = [ {
+            instancePath: instancePath + "/count",
+            schemaPath: "#/properties/count/minimum",
+            keyword: "minimum",
+            params: {
+              comparison: ">=",
+              limit: 0
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.event_types) {
+          let data2 = data.event_types;
+          if (!Array.isArray(data2)) return validate217.errors = [ {
+            instancePath: instancePath + "/event_types",
+            schemaPath: "#/properties/event_types/type",
+            keyword: "type",
+            params: {
+              type: "array"
+            }
+          } ], !1;
+          {
+            let len0 = data2.length;
+            for (let i0 = 0; i0 < len0; i0++) {
+              let data3 = data2[i0], _errs8 = 0;
+              if (0 === _errs8) {
+                if (!data3 || "object" != typeof data3 || Array.isArray(data3)) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/type",
+                  keyword: "type",
+                  params: {
+                    type: "object"
+                  }
+                } ], !1;
+                if (void 0 === data3.type) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "type"
+                  }
+                } ], !1;
+                if (void 0 === data3.expected_rate) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "expected_rate"
+                  }
+                } ], !1;
+                if (void 0 === data3.severity) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "severity"
+                  }
+                } ], !1;
+                if (void 0 === data3.dynamic_severity) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "dynamic_severity"
+                  }
+                } ], !1;
+                if (void 0 === data3.minimum_severity) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "minimum_severity"
+                  }
+                } ], !1;
+                if (void 0 === data3.maximum_severity) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "maximum_severity"
+                  }
+                } ], !1;
+                if (void 0 === data3.subject_kind) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "subject_kind"
+                  }
+                } ], !1;
+                if (void 0 === data3.family) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "family"
+                  }
+                } ], !1;
+                if (void 0 === data3.description) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "description"
+                  }
+                } ], !1;
+                if (void 0 === data3.sensitivity) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "sensitivity"
+                  }
+                } ], !1;
+                if (void 0 === data3.media_policy) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "media_policy"
+                  }
+                } ], !1;
+                if (void 0 === data3.default_expiry_seconds) return validate217.errors = [ {
+                  instancePath: instancePath + "/event_types/" + i0,
+                  schemaPath: "#/properties/event_types/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "default_expiry_seconds"
+                  }
+                } ], !1;
+                {
+                  let _errs10 = 0;
+                  for (let key1 in data3) if (!func5.call(schema230.properties.event_types.items.properties, key1)) return validate217.errors = [ {
+                    instancePath: instancePath + "/event_types/" + i0,
+                    schemaPath: "#/properties/event_types/items/additionalProperties",
+                    keyword: "additionalProperties",
+                    params: {
+                      additionalProperty: key1
+                    }
+                  } ], !1;
+                  if (0 === _errs10) {
+                    if (void 0 !== data3.type) {
+                      let _errs11 = 0;
+                      if ("string" != typeof data3.type) return validate217.errors = [ {
+                        instancePath: instancePath + "/event_types/" + i0 + "/type",
+                        schemaPath: "#/properties/event_types/items/properties/type/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      var valid4 = 0 === _errs11;
+                    } else valid4 = !0;
+                    if (valid4) {
+                      if (void 0 !== data3.expected_rate) {
+                        let data5 = data3.expected_rate, _errs13 = 0;
+                        if ("string" != typeof data5) return validate217.errors = [ {
+                          instancePath: instancePath + "/event_types/" + i0 + "/expected_rate",
+                          schemaPath: "#/properties/event_types/items/properties/expected_rate/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        if ("low" !== data5 && "medium" !== data5 && "high" !== data5) return validate217.errors = [ {
+                          instancePath: instancePath + "/event_types/" + i0 + "/expected_rate",
+                          schemaPath: "#/properties/event_types/items/properties/expected_rate/enum",
+                          keyword: "enum",
+                          params: {
+                            allowedValues: schema230.properties.event_types.items.properties.expected_rate.enum
+                          }
+                        } ], !1;
+                        var valid5 = 0 === _errs13;
+                      } else valid5 = !0;
+                      if (valid5) {
+                        if (void 0 !== data3.severity) {
+                          let data6 = data3.severity, _errs15 = 0;
+                          if ("string" != typeof data6) return validate217.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0 + "/severity",
+                            schemaPath: "#/properties/event_types/items/properties/severity/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if ("debug" !== data6 && "info" !== data6 && "notice" !== data6 && "warning" !== data6 && "error" !== data6 && "critical" !== data6) return validate217.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0 + "/severity",
+                            schemaPath: "#/properties/event_types/items/properties/severity/enum",
+                            keyword: "enum",
+                            params: {
+                              allowedValues: schema230.properties.event_types.items.properties.severity.enum
+                            }
+                          } ], !1;
+                          var valid6 = 0 === _errs15;
+                        } else valid6 = !0;
+                        if (valid6) {
+                          if (void 0 !== data3.dynamic_severity) {
+                            let _errs17 = 0;
+                            if ("boolean" != typeof data3.dynamic_severity) return validate217.errors = [ {
+                              instancePath: instancePath + "/event_types/" + i0 + "/dynamic_severity",
+                              schemaPath: "#/properties/event_types/items/properties/dynamic_severity/type",
+                              keyword: "type",
+                              params: {
+                                type: "boolean"
+                              }
+                            } ], !1;
+                            var valid7 = 0 === _errs17;
+                          } else valid7 = !0;
+                          if (valid7) {
+                            if (void 0 !== data3.minimum_severity) {
+                              let data8 = data3.minimum_severity, _errs19 = 0;
+                              if ("string" != typeof data8) return validate217.errors = [ {
+                                instancePath: instancePath + "/event_types/" + i0 + "/minimum_severity",
+                                schemaPath: "#/properties/event_types/items/properties/minimum_severity/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              if ("debug" !== data8 && "info" !== data8 && "notice" !== data8 && "warning" !== data8 && "error" !== data8 && "critical" !== data8) return validate217.errors = [ {
+                                instancePath: instancePath + "/event_types/" + i0 + "/minimum_severity",
+                                schemaPath: "#/properties/event_types/items/properties/minimum_severity/enum",
+                                keyword: "enum",
+                                params: {
+                                  allowedValues: schema230.properties.event_types.items.properties.minimum_severity.enum
+                                }
+                              } ], !1;
+                              var valid8 = 0 === _errs19;
+                            } else valid8 = !0;
+                            if (valid8) {
+                              if (void 0 !== data3.maximum_severity) {
+                                let data9 = data3.maximum_severity, _errs21 = 0;
+                                if ("string" != typeof data9) return validate217.errors = [ {
+                                  instancePath: instancePath + "/event_types/" + i0 + "/maximum_severity",
+                                  schemaPath: "#/properties/event_types/items/properties/maximum_severity/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                if ("debug" !== data9 && "info" !== data9 && "notice" !== data9 && "warning" !== data9 && "error" !== data9 && "critical" !== data9) return validate217.errors = [ {
+                                  instancePath: instancePath + "/event_types/" + i0 + "/maximum_severity",
+                                  schemaPath: "#/properties/event_types/items/properties/maximum_severity/enum",
+                                  keyword: "enum",
+                                  params: {
+                                    allowedValues: schema230.properties.event_types.items.properties.maximum_severity.enum
+                                  }
+                                } ], !1;
+                                var valid9 = 0 === _errs21;
+                              } else valid9 = !0;
+                              if (valid9) {
+                                if (void 0 !== data3.subject_kind) {
+                                  let data10 = data3.subject_kind, _errs23 = 0;
+                                  if ("string" != typeof data10) return validate217.errors = [ {
+                                    instancePath: instancePath + "/event_types/" + i0 + "/subject_kind",
+                                    schemaPath: "#/properties/event_types/items/properties/subject_kind/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  } ], !1;
+                                  if ("camera" !== data10 && "storage" !== data10 && "system" !== data10) return validate217.errors = [ {
+                                    instancePath: instancePath + "/event_types/" + i0 + "/subject_kind",
+                                    schemaPath: "#/properties/event_types/items/properties/subject_kind/enum",
+                                    keyword: "enum",
+                                    params: {
+                                      allowedValues: schema230.properties.event_types.items.properties.subject_kind.enum
+                                    }
+                                  } ], !1;
+                                  var valid10 = 0 === _errs23;
+                                } else valid10 = !0;
+                                if (valid10) {
+                                  if (void 0 !== data3.family) {
+                                    let _errs25 = 0;
+                                    if ("string" != typeof data3.family) return validate217.errors = [ {
+                                      instancePath: instancePath + "/event_types/" + i0 + "/family",
+                                      schemaPath: "#/properties/event_types/items/properties/family/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    var valid11 = 0 === _errs25;
+                                  } else valid11 = !0;
+                                  if (valid11) {
+                                    if (void 0 !== data3.description) {
+                                      let _errs27 = 0;
+                                      if ("string" != typeof data3.description) return validate217.errors = [ {
+                                        instancePath: instancePath + "/event_types/" + i0 + "/description",
+                                        schemaPath: "#/properties/event_types/items/properties/description/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      } ], !1;
+                                      var valid12 = 0 === _errs27;
+                                    } else valid12 = !0;
+                                    if (valid12) {
+                                      if (void 0 !== data3.sensitivity) {
+                                        let _errs29 = 0;
+                                        if ("string" != typeof data3.sensitivity) return validate217.errors = [ {
+                                          instancePath: instancePath + "/event_types/" + i0 + "/sensitivity",
+                                          schemaPath: "#/properties/event_types/items/properties/sensitivity/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "string"
+                                          }
+                                        } ], !1;
+                                        var valid13 = 0 === _errs29;
+                                      } else valid13 = !0;
+                                      if (valid13) {
+                                        if (void 0 !== data3.media_policy) {
+                                          let _errs31 = 0;
+                                          if ("string" != typeof data3.media_policy) return validate217.errors = [ {
+                                            instancePath: instancePath + "/event_types/" + i0 + "/media_policy",
+                                            schemaPath: "#/properties/event_types/items/properties/media_policy/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "string"
+                                            }
+                                          } ], !1;
+                                          var valid14 = 0 === _errs31;
+                                        } else valid14 = !0;
+                                        if (valid14 && void 0 !== data3.default_expiry_seconds) {
+                                          let data15 = data3.default_expiry_seconds, _errs33 = 0;
+                                          if ("number" != typeof data15 || data15 % 1 || isNaN(data15) || !isFinite(data15)) return validate217.errors = [ {
+                                            instancePath: instancePath + "/event_types/" + i0 + "/default_expiry_seconds",
+                                            schemaPath: "#/properties/event_types/items/properties/default_expiry_seconds/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "integer"
+                                            }
+                                          } ], !1;
+                                          if (0 === _errs33 && "number" == typeof data15 && isFinite(data15) && (data15 < 0 || isNaN(data15))) return validate217.errors = [ {
+                                            instancePath: instancePath + "/event_types/" + i0 + "/default_expiry_seconds",
+                                            schemaPath: "#/properties/event_types/items/properties/default_expiry_seconds/minimum",
+                                            keyword: "minimum",
+                                            params: {
+                                              comparison: ">=",
+                                              limit: 0
+                                            }
+                                          } ], !1;
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              if (0 !== _errs8) break;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate217.errors = [], !0;
+}
+
+validate217.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventDestination = validate199, schema209 = {
+  type: "object",
+  properties: {
+    uuid: {
+      type: "string",
+      format: "uuid"
+    },
+    key: {
+      type: "string",
+      maxLength: 63,
+      minLength: 1
+    },
+    name: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    description: {
+      type: "string",
+      maxLength: 511
+    },
+    enabled: {
+      type: "boolean"
+    },
+    type: {
+      type: "string",
+      const: "mqtt"
+    },
+    broker: {
+      type: "object",
+      properties: {
+        host: {
+          type: "string",
+          maxLength: 255,
+          minLength: 1
+        },
+        port: {
+          type: "integer",
+          minimum: 1,
+          maximum: 65535
+        },
+        client_id: {
+          type: "string",
+          maxLength: 127,
+          minLength: 1
+        },
+        topic_template: {
+          type: "string",
+          maxLength: 511,
+          minLength: 1
+        },
+        status_topic_template: {
+          type: "string",
+          maxLength: 511
+        },
+        keepalive_seconds: {
+          type: "integer",
+          minimum: 5,
+          maximum: 3600
+        },
+        qos: {
+          type: "integer",
+          minimum: 0,
+          maximum: 2
+        }
+      },
+      required: [ "host", "port", "client_id", "topic_template", "status_topic_template", "keepalive_seconds", "qos" ],
+      additionalProperties: !1
+    },
+    authentication: {
+      type: "object",
+      properties: {
+        username: {
+          type: "string",
+          maxLength: 127
+        },
+        password_configured: {
+          type: "boolean"
+        }
+      },
+      required: [ "username", "password_configured" ],
+      additionalProperties: !1
+    },
+    tls: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          enum: [ "disabled", "system", "custom_ca", "mutual" ]
+        },
+        ca_file: {
+          type: "string",
+          maxLength: 511
+        },
+        cert_file: {
+          type: "string",
+          maxLength: 511
+        },
+        key_file: {
+          type: "string",
+          maxLength: 511
+        }
+      },
+      required: [ "mode", "ca_file", "cert_file", "key_file" ],
+      additionalProperties: !1
+    },
+    managed: {
+      type: "boolean",
+      const: !0
+    },
+    revision: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9007199254740991
+    },
+    created_at: {
+      type: "integer",
+      minimum: 0
+    },
+    updated_at: {
+      type: "integer",
+      minimum: 0
+    }
+  },
+  required: [ "uuid", "key", "name", "description", "enabled", "type", "broker", "authentication", "tls", "managed", "revision", "created_at", "updated_at" ],
+  additionalProperties: !1
+}, formats2 = /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+function validate199(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate199.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.uuid) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "uuid"
+    }
+  } ], !1;
+  if (void 0 === data.key) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "key"
+    }
+  } ], !1;
+  if (void 0 === data.name) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "name"
+    }
+  } ], !1;
+  if (void 0 === data.description) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "description"
+    }
+  } ], !1;
+  if (void 0 === data.enabled) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "enabled"
+    }
+  } ], !1;
+  if (void 0 === data.type) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "type"
+    }
+  } ], !1;
+  if (void 0 === data.broker) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "broker"
+    }
+  } ], !1;
+  if (void 0 === data.authentication) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "authentication"
+    }
+  } ], !1;
+  if (void 0 === data.tls) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "tls"
+    }
+  } ], !1;
+  if (void 0 === data.managed) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "managed"
+    }
+  } ], !1;
+  if (void 0 === data.revision) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "revision"
+    }
+  } ], !1;
+  if (void 0 === data.created_at) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "created_at"
+    }
+  } ], !1;
+  if (void 0 === data.updated_at) return validate199.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "updated_at"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if (!func5.call(schema209.properties, key0)) return validate199.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.uuid) {
+        let data0 = data.uuid, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate199.errors = [ {
+            instancePath: instancePath + "/uuid",
+            schemaPath: "#/properties/uuid/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (!formats2.test(data0)) return validate199.errors = [ {
+            instancePath: instancePath + "/uuid",
+            schemaPath: "#/properties/uuid/format",
+            keyword: "format",
+            params: {
+              format: "uuid"
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.key) {
+          let data1 = data.key, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("string" != typeof data1) return validate199.errors = [ {
+              instancePath: instancePath + "/key",
+              schemaPath: "#/properties/key/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data1) > 63) return validate199.errors = [ {
+              instancePath: instancePath + "/key",
+              schemaPath: "#/properties/key/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 63
+              }
+            } ], !1;
+            if (func1(data1) < 1) return validate199.errors = [ {
+              instancePath: instancePath + "/key",
+              schemaPath: "#/properties/key/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.name) {
+            let data2 = data.name, _errs6 = 0;
+            if (0 === _errs6) {
+              if ("string" != typeof data2) return validate199.errors = [ {
+                instancePath: instancePath + "/name",
+                schemaPath: "#/properties/name/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data2) > 127) return validate199.errors = [ {
+                instancePath: instancePath + "/name",
+                schemaPath: "#/properties/name/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 127
+                }
+              } ], !1;
+              if (func1(data2) < 1) return validate199.errors = [ {
+                instancePath: instancePath + "/name",
+                schemaPath: "#/properties/name/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              } ], !1;
+            }
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.description) {
+              let data3 = data.description, _errs8 = 0;
+              if (0 === _errs8) {
+                if ("string" != typeof data3) return validate199.errors = [ {
+                  instancePath: instancePath + "/description",
+                  schemaPath: "#/properties/description/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                if (func1(data3) > 511) return validate199.errors = [ {
+                  instancePath: instancePath + "/description",
+                  schemaPath: "#/properties/description/maxLength",
+                  keyword: "maxLength",
+                  params: {
+                    limit: 511
+                  }
+                } ], !1;
+              }
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.enabled) {
+                let _errs10 = 0;
+                if ("boolean" != typeof data.enabled) return validate199.errors = [ {
+                  instancePath: instancePath + "/enabled",
+                  schemaPath: "#/properties/enabled/type",
+                  keyword: "type",
+                  params: {
+                    type: "boolean"
+                  }
+                } ], !1;
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.type) {
+                  let data5 = data.type, _errs12 = 0;
+                  if ("string" != typeof data5) return validate199.errors = [ {
+                    instancePath: instancePath + "/type",
+                    schemaPath: "#/properties/type/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  if ("mqtt" !== data5) return validate199.errors = [ {
+                    instancePath: instancePath + "/type",
+                    schemaPath: "#/properties/type/const",
+                    keyword: "const",
+                    params: {
+                      allowedValue: "mqtt"
+                    }
+                  } ], !1;
+                  var valid5 = 0 === _errs12;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.broker) {
+                    let data6 = data.broker, _errs14 = 0;
+                    if (0 === _errs14) {
+                      if (!data6 || "object" != typeof data6 || Array.isArray(data6)) return validate199.errors = [ {
+                        instancePath: instancePath + "/broker",
+                        schemaPath: "#/properties/broker/type",
+                        keyword: "type",
+                        params: {
+                          type: "object"
+                        }
+                      } ], !1;
+                      if (void 0 === data6.host) return validate199.errors = [ {
+                        instancePath: instancePath + "/broker",
+                        schemaPath: "#/properties/broker/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "host"
+                        }
+                      } ], !1;
+                      if (void 0 === data6.port) return validate199.errors = [ {
+                        instancePath: instancePath + "/broker",
+                        schemaPath: "#/properties/broker/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "port"
+                        }
+                      } ], !1;
+                      if (void 0 === data6.client_id) return validate199.errors = [ {
+                        instancePath: instancePath + "/broker",
+                        schemaPath: "#/properties/broker/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "client_id"
+                        }
+                      } ], !1;
+                      if (void 0 === data6.topic_template) return validate199.errors = [ {
+                        instancePath: instancePath + "/broker",
+                        schemaPath: "#/properties/broker/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "topic_template"
+                        }
+                      } ], !1;
+                      if (void 0 === data6.status_topic_template) return validate199.errors = [ {
+                        instancePath: instancePath + "/broker",
+                        schemaPath: "#/properties/broker/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "status_topic_template"
+                        }
+                      } ], !1;
+                      if (void 0 === data6.keepalive_seconds) return validate199.errors = [ {
+                        instancePath: instancePath + "/broker",
+                        schemaPath: "#/properties/broker/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "keepalive_seconds"
+                        }
+                      } ], !1;
+                      if (void 0 === data6.qos) return validate199.errors = [ {
+                        instancePath: instancePath + "/broker",
+                        schemaPath: "#/properties/broker/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "qos"
+                        }
+                      } ], !1;
+                      {
+                        let _errs16 = 0;
+                        for (let key1 in data6) if ("host" !== key1 && "port" !== key1 && "client_id" !== key1 && "topic_template" !== key1 && "status_topic_template" !== key1 && "keepalive_seconds" !== key1 && "qos" !== key1) return validate199.errors = [ {
+                          instancePath: instancePath + "/broker",
+                          schemaPath: "#/properties/broker/additionalProperties",
+                          keyword: "additionalProperties",
+                          params: {
+                            additionalProperty: key1
+                          }
+                        } ], !1;
+                        if (0 === _errs16) {
+                          if (void 0 !== data6.host) {
+                            let data7 = data6.host, _errs17 = 0;
+                            if (0 === _errs17) {
+                              if ("string" != typeof data7) return validate199.errors = [ {
+                                instancePath: instancePath + "/broker/host",
+                                schemaPath: "#/properties/broker/properties/host/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              if (func1(data7) > 255) return validate199.errors = [ {
+                                instancePath: instancePath + "/broker/host",
+                                schemaPath: "#/properties/broker/properties/host/maxLength",
+                                keyword: "maxLength",
+                                params: {
+                                  limit: 255
+                                }
+                              } ], !1;
+                              if (func1(data7) < 1) return validate199.errors = [ {
+                                instancePath: instancePath + "/broker/host",
+                                schemaPath: "#/properties/broker/properties/host/minLength",
+                                keyword: "minLength",
+                                params: {
+                                  limit: 1
+                                }
+                              } ], !1;
+                            }
+                            var valid7 = 0 === _errs17;
+                          } else valid7 = !0;
+                          if (valid7) {
+                            if (void 0 !== data6.port) {
+                              let data8 = data6.port, _errs19 = 0;
+                              if ("number" != typeof data8 || data8 % 1 || isNaN(data8) || !isFinite(data8)) return validate199.errors = [ {
+                                instancePath: instancePath + "/broker/port",
+                                schemaPath: "#/properties/broker/properties/port/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              if (0 === _errs19 && "number" == typeof data8 && isFinite(data8)) {
+                                if (data8 > 65535 || isNaN(data8)) return validate199.errors = [ {
+                                  instancePath: instancePath + "/broker/port",
+                                  schemaPath: "#/properties/broker/properties/port/maximum",
+                                  keyword: "maximum",
+                                  params: {
+                                    comparison: "<=",
+                                    limit: 65535
+                                  }
+                                } ], !1;
+                                if (data8 < 1 || isNaN(data8)) return validate199.errors = [ {
+                                  instancePath: instancePath + "/broker/port",
+                                  schemaPath: "#/properties/broker/properties/port/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: 1
+                                  }
+                                } ], !1;
+                              }
+                              var valid8 = 0 === _errs19;
+                            } else valid8 = !0;
+                            if (valid8) {
+                              if (void 0 !== data6.client_id) {
+                                let data9 = data6.client_id, _errs21 = 0;
+                                if (0 === _errs21) {
+                                  if ("string" != typeof data9) return validate199.errors = [ {
+                                    instancePath: instancePath + "/broker/client_id",
+                                    schemaPath: "#/properties/broker/properties/client_id/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  } ], !1;
+                                  if (func1(data9) > 127) return validate199.errors = [ {
+                                    instancePath: instancePath + "/broker/client_id",
+                                    schemaPath: "#/properties/broker/properties/client_id/maxLength",
+                                    keyword: "maxLength",
+                                    params: {
+                                      limit: 127
+                                    }
+                                  } ], !1;
+                                  if (func1(data9) < 1) return validate199.errors = [ {
+                                    instancePath: instancePath + "/broker/client_id",
+                                    schemaPath: "#/properties/broker/properties/client_id/minLength",
+                                    keyword: "minLength",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  } ], !1;
+                                }
+                                var valid9 = 0 === _errs21;
+                              } else valid9 = !0;
+                              if (valid9) {
+                                if (void 0 !== data6.topic_template) {
+                                  let data10 = data6.topic_template, _errs23 = 0;
+                                  if (0 === _errs23) {
+                                    if ("string" != typeof data10) return validate199.errors = [ {
+                                      instancePath: instancePath + "/broker/topic_template",
+                                      schemaPath: "#/properties/broker/properties/topic_template/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    if (func1(data10) > 511) return validate199.errors = [ {
+                                      instancePath: instancePath + "/broker/topic_template",
+                                      schemaPath: "#/properties/broker/properties/topic_template/maxLength",
+                                      keyword: "maxLength",
+                                      params: {
+                                        limit: 511
+                                      }
+                                    } ], !1;
+                                    if (func1(data10) < 1) return validate199.errors = [ {
+                                      instancePath: instancePath + "/broker/topic_template",
+                                      schemaPath: "#/properties/broker/properties/topic_template/minLength",
+                                      keyword: "minLength",
+                                      params: {
+                                        limit: 1
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid10 = 0 === _errs23;
+                                } else valid10 = !0;
+                                if (valid10) {
+                                  if (void 0 !== data6.status_topic_template) {
+                                    let data11 = data6.status_topic_template, _errs25 = 0;
+                                    if (0 === _errs25) {
+                                      if ("string" != typeof data11) return validate199.errors = [ {
+                                        instancePath: instancePath + "/broker/status_topic_template",
+                                        schemaPath: "#/properties/broker/properties/status_topic_template/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      } ], !1;
+                                      if (func1(data11) > 511) return validate199.errors = [ {
+                                        instancePath: instancePath + "/broker/status_topic_template",
+                                        schemaPath: "#/properties/broker/properties/status_topic_template/maxLength",
+                                        keyword: "maxLength",
+                                        params: {
+                                          limit: 511
+                                        }
+                                      } ], !1;
+                                    }
+                                    var valid11 = 0 === _errs25;
+                                  } else valid11 = !0;
+                                  if (valid11) {
+                                    if (void 0 !== data6.keepalive_seconds) {
+                                      let data12 = data6.keepalive_seconds, _errs27 = 0;
+                                      if ("number" != typeof data12 || data12 % 1 || isNaN(data12) || !isFinite(data12)) return validate199.errors = [ {
+                                        instancePath: instancePath + "/broker/keepalive_seconds",
+                                        schemaPath: "#/properties/broker/properties/keepalive_seconds/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "integer"
+                                        }
+                                      } ], !1;
+                                      if (0 === _errs27 && "number" == typeof data12 && isFinite(data12)) {
+                                        if (data12 > 3600 || isNaN(data12)) return validate199.errors = [ {
+                                          instancePath: instancePath + "/broker/keepalive_seconds",
+                                          schemaPath: "#/properties/broker/properties/keepalive_seconds/maximum",
+                                          keyword: "maximum",
+                                          params: {
+                                            comparison: "<=",
+                                            limit: 3600
+                                          }
+                                        } ], !1;
+                                        if (data12 < 5 || isNaN(data12)) return validate199.errors = [ {
+                                          instancePath: instancePath + "/broker/keepalive_seconds",
+                                          schemaPath: "#/properties/broker/properties/keepalive_seconds/minimum",
+                                          keyword: "minimum",
+                                          params: {
+                                            comparison: ">=",
+                                            limit: 5
+                                          }
+                                        } ], !1;
+                                      }
+                                      var valid12 = 0 === _errs27;
+                                    } else valid12 = !0;
+                                    if (valid12 && void 0 !== data6.qos) {
+                                      let data13 = data6.qos, _errs29 = 0;
+                                      if ("number" != typeof data13 || data13 % 1 || isNaN(data13) || !isFinite(data13)) return validate199.errors = [ {
+                                        instancePath: instancePath + "/broker/qos",
+                                        schemaPath: "#/properties/broker/properties/qos/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "integer"
+                                        }
+                                      } ], !1;
+                                      if (0 === _errs29 && "number" == typeof data13 && isFinite(data13)) {
+                                        if (data13 > 2 || isNaN(data13)) return validate199.errors = [ {
+                                          instancePath: instancePath + "/broker/qos",
+                                          schemaPath: "#/properties/broker/properties/qos/maximum",
+                                          keyword: "maximum",
+                                          params: {
+                                            comparison: "<=",
+                                            limit: 2
+                                          }
+                                        } ], !1;
+                                        if (data13 < 0 || isNaN(data13)) return validate199.errors = [ {
+                                          instancePath: instancePath + "/broker/qos",
+                                          schemaPath: "#/properties/broker/properties/qos/minimum",
+                                          keyword: "minimum",
+                                          params: {
+                                            comparison: ">=",
+                                            limit: 0
+                                          }
+                                        } ], !1;
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    var valid6 = 0 === _errs14;
+                  } else valid6 = !0;
+                  if (valid6) {
+                    if (void 0 !== data.authentication) {
+                      let data14 = data.authentication, _errs31 = 0;
+                      if (0 === _errs31) {
+                        if (!data14 || "object" != typeof data14 || Array.isArray(data14)) return validate199.errors = [ {
+                          instancePath: instancePath + "/authentication",
+                          schemaPath: "#/properties/authentication/type",
+                          keyword: "type",
+                          params: {
+                            type: "object"
+                          }
+                        } ], !1;
+                        if (void 0 === data14.username) return validate199.errors = [ {
+                          instancePath: instancePath + "/authentication",
+                          schemaPath: "#/properties/authentication/required",
+                          keyword: "required",
+                          params: {
+                            missingProperty: "username"
+                          }
+                        } ], !1;
+                        if (void 0 === data14.password_configured) return validate199.errors = [ {
+                          instancePath: instancePath + "/authentication",
+                          schemaPath: "#/properties/authentication/required",
+                          keyword: "required",
+                          params: {
+                            missingProperty: "password_configured"
+                          }
+                        } ], !1;
+                        {
+                          let _errs33 = 0;
+                          for (let key2 in data14) if ("username" !== key2 && "password_configured" !== key2) return validate199.errors = [ {
+                            instancePath: instancePath + "/authentication",
+                            schemaPath: "#/properties/authentication/additionalProperties",
+                            keyword: "additionalProperties",
+                            params: {
+                              additionalProperty: key2
+                            }
+                          } ], !1;
+                          if (0 === _errs33) {
+                            if (void 0 !== data14.username) {
+                              let data15 = data14.username, _errs34 = 0;
+                              if (0 === _errs34) {
+                                if ("string" != typeof data15) return validate199.errors = [ {
+                                  instancePath: instancePath + "/authentication/username",
+                                  schemaPath: "#/properties/authentication/properties/username/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                if (func1(data15) > 127) return validate199.errors = [ {
+                                  instancePath: instancePath + "/authentication/username",
+                                  schemaPath: "#/properties/authentication/properties/username/maxLength",
+                                  keyword: "maxLength",
+                                  params: {
+                                    limit: 127
+                                  }
+                                } ], !1;
+                              }
+                              var valid15 = 0 === _errs34;
+                            } else valid15 = !0;
+                            if (valid15 && void 0 !== data14.password_configured && "boolean" != typeof data14.password_configured) return validate199.errors = [ {
+                              instancePath: instancePath + "/authentication/password_configured",
+                              schemaPath: "#/properties/authentication/properties/password_configured/type",
+                              keyword: "type",
+                              params: {
+                                type: "boolean"
+                              }
+                            } ], !1;
+                          }
+                        }
+                      }
+                      var valid14 = 0 === _errs31;
+                    } else valid14 = !0;
+                    if (valid14) {
+                      if (void 0 !== data.tls) {
+                        let data17 = data.tls, _errs38 = 0;
+                        if (0 === _errs38) {
+                          if (!data17 || "object" != typeof data17 || Array.isArray(data17)) return validate199.errors = [ {
+                            instancePath: instancePath + "/tls",
+                            schemaPath: "#/properties/tls/type",
+                            keyword: "type",
+                            params: {
+                              type: "object"
+                            }
+                          } ], !1;
+                          if (void 0 === data17.mode) return validate199.errors = [ {
+                            instancePath: instancePath + "/tls",
+                            schemaPath: "#/properties/tls/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "mode"
+                            }
+                          } ], !1;
+                          if (void 0 === data17.ca_file) return validate199.errors = [ {
+                            instancePath: instancePath + "/tls",
+                            schemaPath: "#/properties/tls/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "ca_file"
+                            }
+                          } ], !1;
+                          if (void 0 === data17.cert_file) return validate199.errors = [ {
+                            instancePath: instancePath + "/tls",
+                            schemaPath: "#/properties/tls/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "cert_file"
+                            }
+                          } ], !1;
+                          if (void 0 === data17.key_file) return validate199.errors = [ {
+                            instancePath: instancePath + "/tls",
+                            schemaPath: "#/properties/tls/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "key_file"
+                            }
+                          } ], !1;
+                          {
+                            let _errs40 = 0;
+                            for (let key3 in data17) if ("mode" !== key3 && "ca_file" !== key3 && "cert_file" !== key3 && "key_file" !== key3) return validate199.errors = [ {
+                              instancePath: instancePath + "/tls",
+                              schemaPath: "#/properties/tls/additionalProperties",
+                              keyword: "additionalProperties",
+                              params: {
+                                additionalProperty: key3
+                              }
+                            } ], !1;
+                            if (0 === _errs40) {
+                              if (void 0 !== data17.mode) {
+                                let data18 = data17.mode, _errs41 = 0;
+                                if ("string" != typeof data18) return validate199.errors = [ {
+                                  instancePath: instancePath + "/tls/mode",
+                                  schemaPath: "#/properties/tls/properties/mode/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                if ("disabled" !== data18 && "system" !== data18 && "custom_ca" !== data18 && "mutual" !== data18) return validate199.errors = [ {
+                                  instancePath: instancePath + "/tls/mode",
+                                  schemaPath: "#/properties/tls/properties/mode/enum",
+                                  keyword: "enum",
+                                  params: {
+                                    allowedValues: schema209.properties.tls.properties.mode.enum
+                                  }
+                                } ], !1;
+                                var valid18 = 0 === _errs41;
+                              } else valid18 = !0;
+                              if (valid18) {
+                                if (void 0 !== data17.ca_file) {
+                                  let data19 = data17.ca_file, _errs43 = 0;
+                                  if (0 === _errs43) {
+                                    if ("string" != typeof data19) return validate199.errors = [ {
+                                      instancePath: instancePath + "/tls/ca_file",
+                                      schemaPath: "#/properties/tls/properties/ca_file/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    if (func1(data19) > 511) return validate199.errors = [ {
+                                      instancePath: instancePath + "/tls/ca_file",
+                                      schemaPath: "#/properties/tls/properties/ca_file/maxLength",
+                                      keyword: "maxLength",
+                                      params: {
+                                        limit: 511
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid19 = 0 === _errs43;
+                                } else valid19 = !0;
+                                if (valid19) {
+                                  if (void 0 !== data17.cert_file) {
+                                    let data20 = data17.cert_file, _errs45 = 0;
+                                    if (0 === _errs45) {
+                                      if ("string" != typeof data20) return validate199.errors = [ {
+                                        instancePath: instancePath + "/tls/cert_file",
+                                        schemaPath: "#/properties/tls/properties/cert_file/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      } ], !1;
+                                      if (func1(data20) > 511) return validate199.errors = [ {
+                                        instancePath: instancePath + "/tls/cert_file",
+                                        schemaPath: "#/properties/tls/properties/cert_file/maxLength",
+                                        keyword: "maxLength",
+                                        params: {
+                                          limit: 511
+                                        }
+                                      } ], !1;
+                                    }
+                                    var valid20 = 0 === _errs45;
+                                  } else valid20 = !0;
+                                  if (valid20 && void 0 !== data17.key_file) {
+                                    let data21 = data17.key_file;
+                                    if ("string" != typeof data21) return validate199.errors = [ {
+                                      instancePath: instancePath + "/tls/key_file",
+                                      schemaPath: "#/properties/tls/properties/key_file/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    if (func1(data21) > 511) return validate199.errors = [ {
+                                      instancePath: instancePath + "/tls/key_file",
+                                      schemaPath: "#/properties/tls/properties/key_file/maxLength",
+                                      keyword: "maxLength",
+                                      params: {
+                                        limit: 511
+                                      }
+                                    } ], !1;
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        var valid17 = 0 === _errs38;
+                      } else valid17 = !0;
+                      if (valid17) {
+                        if (void 0 !== data.managed) {
+                          let data22 = data.managed, _errs49 = 0;
+                          if ("boolean" != typeof data22) return validate199.errors = [ {
+                            instancePath: instancePath + "/managed",
+                            schemaPath: "#/properties/managed/type",
+                            keyword: "type",
+                            params: {
+                              type: "boolean"
+                            }
+                          } ], !1;
+                          if (!0 !== data22) return validate199.errors = [ {
+                            instancePath: instancePath + "/managed",
+                            schemaPath: "#/properties/managed/const",
+                            keyword: "const",
+                            params: {
+                              allowedValue: !0
+                            }
+                          } ], !1;
+                          var valid22 = 0 === _errs49;
+                        } else valid22 = !0;
+                        if (valid22) {
+                          if (void 0 !== data.revision) {
+                            let data23 = data.revision, _errs51 = 0;
+                            if ("number" != typeof data23 || data23 % 1 || isNaN(data23) || !isFinite(data23)) return validate199.errors = [ {
+                              instancePath: instancePath + "/revision",
+                              schemaPath: "#/properties/revision/type",
+                              keyword: "type",
+                              params: {
+                                type: "integer"
+                              }
+                            } ], !1;
+                            if (0 === _errs51 && "number" == typeof data23 && isFinite(data23)) {
+                              if (data23 > 9007199254740991 || isNaN(data23)) return validate199.errors = [ {
+                                instancePath: instancePath + "/revision",
+                                schemaPath: "#/properties/revision/maximum",
+                                keyword: "maximum",
+                                params: {
+                                  comparison: "<=",
+                                  limit: 9007199254740991
+                                }
+                              } ], !1;
+                              if (data23 < 1 || isNaN(data23)) return validate199.errors = [ {
+                                instancePath: instancePath + "/revision",
+                                schemaPath: "#/properties/revision/minimum",
+                                keyword: "minimum",
+                                params: {
+                                  comparison: ">=",
+                                  limit: 1
+                                }
+                              } ], !1;
+                            }
+                            var valid23 = 0 === _errs51;
+                          } else valid23 = !0;
+                          if (valid23) {
+                            if (void 0 !== data.created_at) {
+                              let data24 = data.created_at, _errs53 = 0;
+                              if ("number" != typeof data24 || data24 % 1 || isNaN(data24) || !isFinite(data24)) return validate199.errors = [ {
+                                instancePath: instancePath + "/created_at",
+                                schemaPath: "#/properties/created_at/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              if (0 === _errs53 && "number" == typeof data24 && isFinite(data24) && (data24 < 0 || isNaN(data24))) return validate199.errors = [ {
+                                instancePath: instancePath + "/created_at",
+                                schemaPath: "#/properties/created_at/minimum",
+                                keyword: "minimum",
+                                params: {
+                                  comparison: ">=",
+                                  limit: 0
+                                }
+                              } ], !1;
+                              var valid24 = 0 === _errs53;
+                            } else valid24 = !0;
+                            if (valid24 && void 0 !== data.updated_at) {
+                              let data25 = data.updated_at, _errs55 = 0;
+                              if ("number" != typeof data25 || data25 % 1 || isNaN(data25) || !isFinite(data25)) return validate199.errors = [ {
+                                instancePath: instancePath + "/updated_at",
+                                schemaPath: "#/properties/updated_at/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              if (0 === _errs55 && "number" == typeof data25 && isFinite(data25) && (data25 < 0 || isNaN(data25))) return validate199.errors = [ {
+                                instancePath: instancePath + "/updated_at",
+                                schemaPath: "#/properties/updated_at/minimum",
+                                keyword: "minimum",
+                                params: {
+                                  comparison: ">=",
+                                  limit: 0
+                                }
+                              } ], !1;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate199.errors = [], !0;
+}
+
+validate199.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventDestinationCreate = validate201, schema212 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    description: {
+      type: "string",
+      maxLength: 511
+    },
+    enabled: {
+      type: "boolean"
+    },
+    type: {
+      type: "string",
+      const: "mqtt"
+    },
+    broker: {
+      type: "object",
+      properties: {
+        host: {
+          type: "string",
+          maxLength: 255,
+          minLength: 1
+        },
+        port: {
+          type: "integer",
+          minimum: 1,
+          maximum: 65535
+        },
+        client_id: {
+          type: "string",
+          maxLength: 127,
+          minLength: 1
+        },
+        topic_template: {
+          type: "string",
+          maxLength: 511,
+          minLength: 1
+        },
+        status_topic_template: {
+          type: "string",
+          maxLength: 511
+        },
+        keepalive_seconds: {
+          type: "integer",
+          minimum: 5,
+          maximum: 3600
+        },
+        qos: {
+          type: "integer",
+          minimum: 0,
+          maximum: 2
+        }
+      },
+      required: [ "host" ],
+      additionalProperties: !1
+    },
+    authentication: {
+      type: "object",
+      properties: {
+        username: {
+          type: "string",
+          maxLength: 127
+        },
+        password: {
+          type: [ "string", "null" ],
+          maxLength: 255
+        }
+      },
+      required: [],
+      additionalProperties: !1
+    },
+    tls: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          enum: [ "disabled", "system", "custom_ca", "mutual" ]
+        },
+        ca_file: {
+          type: "string",
+          maxLength: 511
+        },
+        cert_file: {
+          type: "string",
+          maxLength: 511
+        },
+        key_file: {
+          type: "string",
+          maxLength: 511
+        }
+      },
+      required: [],
+      additionalProperties: !1
+    }
+  },
+  required: [ "name", "broker" ],
+  additionalProperties: !1
+};
+
+function validate201(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate201.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate201.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.name) return validate201.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "name"
+    }
+  } ], !1;
+  if (void 0 === data.broker) return validate201.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "broker"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("name" !== key0 && "description" !== key0 && "enabled" !== key0 && "type" !== key0 && "broker" !== key0 && "authentication" !== key0 && "tls" !== key0) return validate201.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.name) {
+        let data0 = data.name, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate201.errors = [ {
+            instancePath: instancePath + "/name",
+            schemaPath: "#/properties/name/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 127) return validate201.errors = [ {
+            instancePath: instancePath + "/name",
+            schemaPath: "#/properties/name/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 127
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate201.errors = [ {
+            instancePath: instancePath + "/name",
+            schemaPath: "#/properties/name/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.description) {
+          let data1 = data.description, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("string" != typeof data1) return validate201.errors = [ {
+              instancePath: instancePath + "/description",
+              schemaPath: "#/properties/description/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data1) > 511) return validate201.errors = [ {
+              instancePath: instancePath + "/description",
+              schemaPath: "#/properties/description/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 511
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.enabled) {
+            let _errs6 = 0;
+            if ("boolean" != typeof data.enabled) return validate201.errors = [ {
+              instancePath: instancePath + "/enabled",
+              schemaPath: "#/properties/enabled/type",
+              keyword: "type",
+              params: {
+                type: "boolean"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.type) {
+              let data3 = data.type, _errs8 = 0;
+              if ("string" != typeof data3) return validate201.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if ("mqtt" !== data3) return validate201.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/const",
+                keyword: "const",
+                params: {
+                  allowedValue: "mqtt"
+                }
+              } ], !1;
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.broker) {
+                let data4 = data.broker, _errs10 = 0;
+                if (0 === _errs10) {
+                  if (!data4 || "object" != typeof data4 || Array.isArray(data4)) return validate201.errors = [ {
+                    instancePath: instancePath + "/broker",
+                    schemaPath: "#/properties/broker/type",
+                    keyword: "type",
+                    params: {
+                      type: "object"
+                    }
+                  } ], !1;
+                  if (void 0 === data4.host) return validate201.errors = [ {
+                    instancePath: instancePath + "/broker",
+                    schemaPath: "#/properties/broker/required",
+                    keyword: "required",
+                    params: {
+                      missingProperty: "host"
+                    }
+                  } ], !1;
+                  {
+                    let _errs12 = 0;
+                    for (let key1 in data4) if ("host" !== key1 && "port" !== key1 && "client_id" !== key1 && "topic_template" !== key1 && "status_topic_template" !== key1 && "keepalive_seconds" !== key1 && "qos" !== key1) return validate201.errors = [ {
+                      instancePath: instancePath + "/broker",
+                      schemaPath: "#/properties/broker/additionalProperties",
+                      keyword: "additionalProperties",
+                      params: {
+                        additionalProperty: key1
+                      }
+                    } ], !1;
+                    if (0 === _errs12) {
+                      if (void 0 !== data4.host) {
+                        let data5 = data4.host, _errs13 = 0;
+                        if (0 === _errs13) {
+                          if ("string" != typeof data5) return validate201.errors = [ {
+                            instancePath: instancePath + "/broker/host",
+                            schemaPath: "#/properties/broker/properties/host/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (func1(data5) > 255) return validate201.errors = [ {
+                            instancePath: instancePath + "/broker/host",
+                            schemaPath: "#/properties/broker/properties/host/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 255
+                            }
+                          } ], !1;
+                          if (func1(data5) < 1) return validate201.errors = [ {
+                            instancePath: instancePath + "/broker/host",
+                            schemaPath: "#/properties/broker/properties/host/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          } ], !1;
+                        }
+                        var valid5 = 0 === _errs13;
+                      } else valid5 = !0;
+                      if (valid5) {
+                        if (void 0 !== data4.port) {
+                          let data6 = data4.port, _errs15 = 0;
+                          if ("number" != typeof data6 || data6 % 1 || isNaN(data6) || !isFinite(data6)) return validate201.errors = [ {
+                            instancePath: instancePath + "/broker/port",
+                            schemaPath: "#/properties/broker/properties/port/type",
+                            keyword: "type",
+                            params: {
+                              type: "integer"
+                            }
+                          } ], !1;
+                          if (0 === _errs15 && "number" == typeof data6 && isFinite(data6)) {
+                            if (data6 > 65535 || isNaN(data6)) return validate201.errors = [ {
+                              instancePath: instancePath + "/broker/port",
+                              schemaPath: "#/properties/broker/properties/port/maximum",
+                              keyword: "maximum",
+                              params: {
+                                comparison: "<=",
+                                limit: 65535
+                              }
+                            } ], !1;
+                            if (data6 < 1 || isNaN(data6)) return validate201.errors = [ {
+                              instancePath: instancePath + "/broker/port",
+                              schemaPath: "#/properties/broker/properties/port/minimum",
+                              keyword: "minimum",
+                              params: {
+                                comparison: ">=",
+                                limit: 1
+                              }
+                            } ], !1;
+                          }
+                          var valid6 = 0 === _errs15;
+                        } else valid6 = !0;
+                        if (valid6) {
+                          if (void 0 !== data4.client_id) {
+                            let data7 = data4.client_id, _errs17 = 0;
+                            if (0 === _errs17) {
+                              if ("string" != typeof data7) return validate201.errors = [ {
+                                instancePath: instancePath + "/broker/client_id",
+                                schemaPath: "#/properties/broker/properties/client_id/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              if (func1(data7) > 127) return validate201.errors = [ {
+                                instancePath: instancePath + "/broker/client_id",
+                                schemaPath: "#/properties/broker/properties/client_id/maxLength",
+                                keyword: "maxLength",
+                                params: {
+                                  limit: 127
+                                }
+                              } ], !1;
+                              if (func1(data7) < 1) return validate201.errors = [ {
+                                instancePath: instancePath + "/broker/client_id",
+                                schemaPath: "#/properties/broker/properties/client_id/minLength",
+                                keyword: "minLength",
+                                params: {
+                                  limit: 1
+                                }
+                              } ], !1;
+                            }
+                            var valid7 = 0 === _errs17;
+                          } else valid7 = !0;
+                          if (valid7) {
+                            if (void 0 !== data4.topic_template) {
+                              let data8 = data4.topic_template, _errs19 = 0;
+                              if (0 === _errs19) {
+                                if ("string" != typeof data8) return validate201.errors = [ {
+                                  instancePath: instancePath + "/broker/topic_template",
+                                  schemaPath: "#/properties/broker/properties/topic_template/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                if (func1(data8) > 511) return validate201.errors = [ {
+                                  instancePath: instancePath + "/broker/topic_template",
+                                  schemaPath: "#/properties/broker/properties/topic_template/maxLength",
+                                  keyword: "maxLength",
+                                  params: {
+                                    limit: 511
+                                  }
+                                } ], !1;
+                                if (func1(data8) < 1) return validate201.errors = [ {
+                                  instancePath: instancePath + "/broker/topic_template",
+                                  schemaPath: "#/properties/broker/properties/topic_template/minLength",
+                                  keyword: "minLength",
+                                  params: {
+                                    limit: 1
+                                  }
+                                } ], !1;
+                              }
+                              var valid8 = 0 === _errs19;
+                            } else valid8 = !0;
+                            if (valid8) {
+                              if (void 0 !== data4.status_topic_template) {
+                                let data9 = data4.status_topic_template, _errs21 = 0;
+                                if (0 === _errs21) {
+                                  if ("string" != typeof data9) return validate201.errors = [ {
+                                    instancePath: instancePath + "/broker/status_topic_template",
+                                    schemaPath: "#/properties/broker/properties/status_topic_template/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  } ], !1;
+                                  if (func1(data9) > 511) return validate201.errors = [ {
+                                    instancePath: instancePath + "/broker/status_topic_template",
+                                    schemaPath: "#/properties/broker/properties/status_topic_template/maxLength",
+                                    keyword: "maxLength",
+                                    params: {
+                                      limit: 511
+                                    }
+                                  } ], !1;
+                                }
+                                var valid9 = 0 === _errs21;
+                              } else valid9 = !0;
+                              if (valid9) {
+                                if (void 0 !== data4.keepalive_seconds) {
+                                  let data10 = data4.keepalive_seconds, _errs23 = 0;
+                                  if ("number" != typeof data10 || data10 % 1 || isNaN(data10) || !isFinite(data10)) return validate201.errors = [ {
+                                    instancePath: instancePath + "/broker/keepalive_seconds",
+                                    schemaPath: "#/properties/broker/properties/keepalive_seconds/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  if (0 === _errs23 && "number" == typeof data10 && isFinite(data10)) {
+                                    if (data10 > 3600 || isNaN(data10)) return validate201.errors = [ {
+                                      instancePath: instancePath + "/broker/keepalive_seconds",
+                                      schemaPath: "#/properties/broker/properties/keepalive_seconds/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 3600
+                                      }
+                                    } ], !1;
+                                    if (data10 < 5 || isNaN(data10)) return validate201.errors = [ {
+                                      instancePath: instancePath + "/broker/keepalive_seconds",
+                                      schemaPath: "#/properties/broker/properties/keepalive_seconds/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 5
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid10 = 0 === _errs23;
+                                } else valid10 = !0;
+                                if (valid10 && void 0 !== data4.qos) {
+                                  let data11 = data4.qos, _errs25 = 0;
+                                  if ("number" != typeof data11 || data11 % 1 || isNaN(data11) || !isFinite(data11)) return validate201.errors = [ {
+                                    instancePath: instancePath + "/broker/qos",
+                                    schemaPath: "#/properties/broker/properties/qos/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  if (0 === _errs25 && "number" == typeof data11 && isFinite(data11)) {
+                                    if (data11 > 2 || isNaN(data11)) return validate201.errors = [ {
+                                      instancePath: instancePath + "/broker/qos",
+                                      schemaPath: "#/properties/broker/properties/qos/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 2
+                                      }
+                                    } ], !1;
+                                    if (data11 < 0 || isNaN(data11)) return validate201.errors = [ {
+                                      instancePath: instancePath + "/broker/qos",
+                                      schemaPath: "#/properties/broker/properties/qos/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 0
+                                      }
+                                    } ], !1;
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.authentication) {
+                  let data12 = data.authentication, _errs27 = 0;
+                  if (0 === _errs27) {
+                    if (!data12 || "object" != typeof data12 || Array.isArray(data12)) return validate201.errors = [ {
+                      instancePath: instancePath + "/authentication",
+                      schemaPath: "#/properties/authentication/type",
+                      keyword: "type",
+                      params: {
+                        type: "object"
+                      }
+                    } ], !1;
+                    {
+                      let _errs29 = 0;
+                      for (let key2 in data12) if ("username" !== key2 && "password" !== key2) return validate201.errors = [ {
+                        instancePath: instancePath + "/authentication",
+                        schemaPath: "#/properties/authentication/additionalProperties",
+                        keyword: "additionalProperties",
+                        params: {
+                          additionalProperty: key2
+                        }
+                      } ], !1;
+                      if (0 === _errs29) {
+                        if (void 0 !== data12.username) {
+                          let data13 = data12.username, _errs30 = 0;
+                          if (0 === _errs30) {
+                            if ("string" != typeof data13) return validate201.errors = [ {
+                              instancePath: instancePath + "/authentication/username",
+                              schemaPath: "#/properties/authentication/properties/username/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (func1(data13) > 127) return validate201.errors = [ {
+                              instancePath: instancePath + "/authentication/username",
+                              schemaPath: "#/properties/authentication/properties/username/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 127
+                              }
+                            } ], !1;
+                          }
+                          var valid13 = 0 === _errs30;
+                        } else valid13 = !0;
+                        if (valid13 && void 0 !== data12.password) {
+                          let data14 = data12.password, _errs32 = 0;
+                          if ("string" != typeof data14 && null !== data14) return validate201.errors = [ {
+                            instancePath: instancePath + "/authentication/password",
+                            schemaPath: "#/properties/authentication/properties/password/type",
+                            keyword: "type",
+                            params: {
+                              type: schema212.properties.authentication.properties.password.type
+                            }
+                          } ], !1;
+                          if (0 === _errs32 && "string" == typeof data14 && func1(data14) > 255) return validate201.errors = [ {
+                            instancePath: instancePath + "/authentication/password",
+                            schemaPath: "#/properties/authentication/properties/password/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 255
+                            }
+                          } ], !1;
+                        }
+                      }
+                    }
+                  }
+                  var valid12 = 0 === _errs27;
+                } else valid12 = !0;
+                if (valid12 && void 0 !== data.tls) {
+                  let data15 = data.tls;
+                  if (!data15 || "object" != typeof data15 || Array.isArray(data15)) return validate201.errors = [ {
+                    instancePath: instancePath + "/tls",
+                    schemaPath: "#/properties/tls/type",
+                    keyword: "type",
+                    params: {
+                      type: "object"
+                    }
+                  } ], !1;
+                  {
+                    let _errs36 = 0;
+                    for (let key3 in data15) if ("mode" !== key3 && "ca_file" !== key3 && "cert_file" !== key3 && "key_file" !== key3) return validate201.errors = [ {
+                      instancePath: instancePath + "/tls",
+                      schemaPath: "#/properties/tls/additionalProperties",
+                      keyword: "additionalProperties",
+                      params: {
+                        additionalProperty: key3
+                      }
+                    } ], !1;
+                    if (0 === _errs36) {
+                      if (void 0 !== data15.mode) {
+                        let data16 = data15.mode, _errs37 = 0;
+                        if ("string" != typeof data16) return validate201.errors = [ {
+                          instancePath: instancePath + "/tls/mode",
+                          schemaPath: "#/properties/tls/properties/mode/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        if ("disabled" !== data16 && "system" !== data16 && "custom_ca" !== data16 && "mutual" !== data16) return validate201.errors = [ {
+                          instancePath: instancePath + "/tls/mode",
+                          schemaPath: "#/properties/tls/properties/mode/enum",
+                          keyword: "enum",
+                          params: {
+                            allowedValues: schema212.properties.tls.properties.mode.enum
+                          }
+                        } ], !1;
+                        var valid16 = 0 === _errs37;
+                      } else valid16 = !0;
+                      if (valid16) {
+                        if (void 0 !== data15.ca_file) {
+                          let data17 = data15.ca_file, _errs39 = 0;
+                          if (0 === _errs39) {
+                            if ("string" != typeof data17) return validate201.errors = [ {
+                              instancePath: instancePath + "/tls/ca_file",
+                              schemaPath: "#/properties/tls/properties/ca_file/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (func1(data17) > 511) return validate201.errors = [ {
+                              instancePath: instancePath + "/tls/ca_file",
+                              schemaPath: "#/properties/tls/properties/ca_file/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 511
+                              }
+                            } ], !1;
+                          }
+                          var valid17 = 0 === _errs39;
+                        } else valid17 = !0;
+                        if (valid17) {
+                          if (void 0 !== data15.cert_file) {
+                            let data18 = data15.cert_file, _errs41 = 0;
+                            if (0 === _errs41) {
+                              if ("string" != typeof data18) return validate201.errors = [ {
+                                instancePath: instancePath + "/tls/cert_file",
+                                schemaPath: "#/properties/tls/properties/cert_file/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              if (func1(data18) > 511) return validate201.errors = [ {
+                                instancePath: instancePath + "/tls/cert_file",
+                                schemaPath: "#/properties/tls/properties/cert_file/maxLength",
+                                keyword: "maxLength",
+                                params: {
+                                  limit: 511
+                                }
+                              } ], !1;
+                            }
+                            var valid18 = 0 === _errs41;
+                          } else valid18 = !0;
+                          if (valid18 && void 0 !== data15.key_file) {
+                            let data19 = data15.key_file;
+                            if ("string" != typeof data19) return validate201.errors = [ {
+                              instancePath: instancePath + "/tls/key_file",
+                              schemaPath: "#/properties/tls/properties/key_file/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (func1(data19) > 511) return validate201.errors = [ {
+                              instancePath: instancePath + "/tls/key_file",
+                              schemaPath: "#/properties/tls/properties/key_file/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 511
+                              }
+                            } ], !1;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate201.errors = [], !0;
+}
+
+validate201.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventDestinationUpdate = validate202, schema213 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    description: {
+      type: "string",
+      maxLength: 511
+    },
+    enabled: {
+      type: "boolean"
+    },
+    type: {
+      type: "string",
+      const: "mqtt"
+    },
+    broker: {
+      type: "object",
+      properties: {
+        host: {
+          type: "string",
+          maxLength: 255,
+          minLength: 1
+        },
+        port: {
+          type: "integer",
+          minimum: 1,
+          maximum: 65535
+        },
+        client_id: {
+          type: "string",
+          maxLength: 127,
+          minLength: 1
+        },
+        topic_template: {
+          type: "string",
+          maxLength: 511,
+          minLength: 1
+        },
+        status_topic_template: {
+          type: "string",
+          maxLength: 511
+        },
+        keepalive_seconds: {
+          type: "integer",
+          minimum: 5,
+          maximum: 3600
+        },
+        qos: {
+          type: "integer",
+          minimum: 0,
+          maximum: 2
+        }
+      },
+      required: [],
+      additionalProperties: !1
+    },
+    authentication: {
+      type: "object",
+      properties: {
+        username: {
+          type: "string",
+          maxLength: 127
+        },
+        password: {
+          type: [ "string", "null" ],
+          maxLength: 255
+        }
+      },
+      required: [],
+      additionalProperties: !1
+    },
+    tls: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          enum: [ "disabled", "system", "custom_ca", "mutual" ]
+        },
+        ca_file: {
+          type: "string",
+          maxLength: 511
+        },
+        cert_file: {
+          type: "string",
+          maxLength: 511
+        },
+        key_file: {
+          type: "string",
+          maxLength: 511
+        }
+      },
+      required: [],
+      additionalProperties: !1
+    },
+    revision: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9007199254740991
+    }
+  },
+  required: [ "revision" ],
+  additionalProperties: !1
+};
+
+function validate202(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate202.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.revision) return validate202.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "revision"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("name" !== key0 && "description" !== key0 && "enabled" !== key0 && "type" !== key0 && "broker" !== key0 && "authentication" !== key0 && "tls" !== key0 && "revision" !== key0) return validate202.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.name) {
+        let data0 = data.name, _errs2 = 0;
+        if (0 === _errs2) {
+          if ("string" != typeof data0) return validate202.errors = [ {
+            instancePath: instancePath + "/name",
+            schemaPath: "#/properties/name/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          if (func1(data0) > 127) return validate202.errors = [ {
+            instancePath: instancePath + "/name",
+            schemaPath: "#/properties/name/maxLength",
+            keyword: "maxLength",
+            params: {
+              limit: 127
+            }
+          } ], !1;
+          if (func1(data0) < 1) return validate202.errors = [ {
+            instancePath: instancePath + "/name",
+            schemaPath: "#/properties/name/minLength",
+            keyword: "minLength",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.description) {
+          let data1 = data.description, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("string" != typeof data1) return validate202.errors = [ {
+              instancePath: instancePath + "/description",
+              schemaPath: "#/properties/description/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data1) > 511) return validate202.errors = [ {
+              instancePath: instancePath + "/description",
+              schemaPath: "#/properties/description/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 511
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.enabled) {
+            let _errs6 = 0;
+            if ("boolean" != typeof data.enabled) return validate202.errors = [ {
+              instancePath: instancePath + "/enabled",
+              schemaPath: "#/properties/enabled/type",
+              keyword: "type",
+              params: {
+                type: "boolean"
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.type) {
+              let data3 = data.type, _errs8 = 0;
+              if ("string" != typeof data3) return validate202.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if ("mqtt" !== data3) return validate202.errors = [ {
+                instancePath: instancePath + "/type",
+                schemaPath: "#/properties/type/const",
+                keyword: "const",
+                params: {
+                  allowedValue: "mqtt"
+                }
+              } ], !1;
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.broker) {
+                let data4 = data.broker, _errs10 = 0;
+                if (0 === _errs10) {
+                  if (!data4 || "object" != typeof data4 || Array.isArray(data4)) return validate202.errors = [ {
+                    instancePath: instancePath + "/broker",
+                    schemaPath: "#/properties/broker/type",
+                    keyword: "type",
+                    params: {
+                      type: "object"
+                    }
+                  } ], !1;
+                  {
+                    let _errs12 = 0;
+                    for (let key1 in data4) if ("host" !== key1 && "port" !== key1 && "client_id" !== key1 && "topic_template" !== key1 && "status_topic_template" !== key1 && "keepalive_seconds" !== key1 && "qos" !== key1) return validate202.errors = [ {
+                      instancePath: instancePath + "/broker",
+                      schemaPath: "#/properties/broker/additionalProperties",
+                      keyword: "additionalProperties",
+                      params: {
+                        additionalProperty: key1
+                      }
+                    } ], !1;
+                    if (0 === _errs12) {
+                      if (void 0 !== data4.host) {
+                        let data5 = data4.host, _errs13 = 0;
+                        if (0 === _errs13) {
+                          if ("string" != typeof data5) return validate202.errors = [ {
+                            instancePath: instancePath + "/broker/host",
+                            schemaPath: "#/properties/broker/properties/host/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (func1(data5) > 255) return validate202.errors = [ {
+                            instancePath: instancePath + "/broker/host",
+                            schemaPath: "#/properties/broker/properties/host/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 255
+                            }
+                          } ], !1;
+                          if (func1(data5) < 1) return validate202.errors = [ {
+                            instancePath: instancePath + "/broker/host",
+                            schemaPath: "#/properties/broker/properties/host/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          } ], !1;
+                        }
+                        var valid5 = 0 === _errs13;
+                      } else valid5 = !0;
+                      if (valid5) {
+                        if (void 0 !== data4.port) {
+                          let data6 = data4.port, _errs15 = 0;
+                          if ("number" != typeof data6 || data6 % 1 || isNaN(data6) || !isFinite(data6)) return validate202.errors = [ {
+                            instancePath: instancePath + "/broker/port",
+                            schemaPath: "#/properties/broker/properties/port/type",
+                            keyword: "type",
+                            params: {
+                              type: "integer"
+                            }
+                          } ], !1;
+                          if (0 === _errs15 && "number" == typeof data6 && isFinite(data6)) {
+                            if (data6 > 65535 || isNaN(data6)) return validate202.errors = [ {
+                              instancePath: instancePath + "/broker/port",
+                              schemaPath: "#/properties/broker/properties/port/maximum",
+                              keyword: "maximum",
+                              params: {
+                                comparison: "<=",
+                                limit: 65535
+                              }
+                            } ], !1;
+                            if (data6 < 1 || isNaN(data6)) return validate202.errors = [ {
+                              instancePath: instancePath + "/broker/port",
+                              schemaPath: "#/properties/broker/properties/port/minimum",
+                              keyword: "minimum",
+                              params: {
+                                comparison: ">=",
+                                limit: 1
+                              }
+                            } ], !1;
+                          }
+                          var valid6 = 0 === _errs15;
+                        } else valid6 = !0;
+                        if (valid6) {
+                          if (void 0 !== data4.client_id) {
+                            let data7 = data4.client_id, _errs17 = 0;
+                            if (0 === _errs17) {
+                              if ("string" != typeof data7) return validate202.errors = [ {
+                                instancePath: instancePath + "/broker/client_id",
+                                schemaPath: "#/properties/broker/properties/client_id/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              if (func1(data7) > 127) return validate202.errors = [ {
+                                instancePath: instancePath + "/broker/client_id",
+                                schemaPath: "#/properties/broker/properties/client_id/maxLength",
+                                keyword: "maxLength",
+                                params: {
+                                  limit: 127
+                                }
+                              } ], !1;
+                              if (func1(data7) < 1) return validate202.errors = [ {
+                                instancePath: instancePath + "/broker/client_id",
+                                schemaPath: "#/properties/broker/properties/client_id/minLength",
+                                keyword: "minLength",
+                                params: {
+                                  limit: 1
+                                }
+                              } ], !1;
+                            }
+                            var valid7 = 0 === _errs17;
+                          } else valid7 = !0;
+                          if (valid7) {
+                            if (void 0 !== data4.topic_template) {
+                              let data8 = data4.topic_template, _errs19 = 0;
+                              if (0 === _errs19) {
+                                if ("string" != typeof data8) return validate202.errors = [ {
+                                  instancePath: instancePath + "/broker/topic_template",
+                                  schemaPath: "#/properties/broker/properties/topic_template/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                if (func1(data8) > 511) return validate202.errors = [ {
+                                  instancePath: instancePath + "/broker/topic_template",
+                                  schemaPath: "#/properties/broker/properties/topic_template/maxLength",
+                                  keyword: "maxLength",
+                                  params: {
+                                    limit: 511
+                                  }
+                                } ], !1;
+                                if (func1(data8) < 1) return validate202.errors = [ {
+                                  instancePath: instancePath + "/broker/topic_template",
+                                  schemaPath: "#/properties/broker/properties/topic_template/minLength",
+                                  keyword: "minLength",
+                                  params: {
+                                    limit: 1
+                                  }
+                                } ], !1;
+                              }
+                              var valid8 = 0 === _errs19;
+                            } else valid8 = !0;
+                            if (valid8) {
+                              if (void 0 !== data4.status_topic_template) {
+                                let data9 = data4.status_topic_template, _errs21 = 0;
+                                if (0 === _errs21) {
+                                  if ("string" != typeof data9) return validate202.errors = [ {
+                                    instancePath: instancePath + "/broker/status_topic_template",
+                                    schemaPath: "#/properties/broker/properties/status_topic_template/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  } ], !1;
+                                  if (func1(data9) > 511) return validate202.errors = [ {
+                                    instancePath: instancePath + "/broker/status_topic_template",
+                                    schemaPath: "#/properties/broker/properties/status_topic_template/maxLength",
+                                    keyword: "maxLength",
+                                    params: {
+                                      limit: 511
+                                    }
+                                  } ], !1;
+                                }
+                                var valid9 = 0 === _errs21;
+                              } else valid9 = !0;
+                              if (valid9) {
+                                if (void 0 !== data4.keepalive_seconds) {
+                                  let data10 = data4.keepalive_seconds, _errs23 = 0;
+                                  if ("number" != typeof data10 || data10 % 1 || isNaN(data10) || !isFinite(data10)) return validate202.errors = [ {
+                                    instancePath: instancePath + "/broker/keepalive_seconds",
+                                    schemaPath: "#/properties/broker/properties/keepalive_seconds/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  if (0 === _errs23 && "number" == typeof data10 && isFinite(data10)) {
+                                    if (data10 > 3600 || isNaN(data10)) return validate202.errors = [ {
+                                      instancePath: instancePath + "/broker/keepalive_seconds",
+                                      schemaPath: "#/properties/broker/properties/keepalive_seconds/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 3600
+                                      }
+                                    } ], !1;
+                                    if (data10 < 5 || isNaN(data10)) return validate202.errors = [ {
+                                      instancePath: instancePath + "/broker/keepalive_seconds",
+                                      schemaPath: "#/properties/broker/properties/keepalive_seconds/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 5
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid10 = 0 === _errs23;
+                                } else valid10 = !0;
+                                if (valid10 && void 0 !== data4.qos) {
+                                  let data11 = data4.qos, _errs25 = 0;
+                                  if ("number" != typeof data11 || data11 % 1 || isNaN(data11) || !isFinite(data11)) return validate202.errors = [ {
+                                    instancePath: instancePath + "/broker/qos",
+                                    schemaPath: "#/properties/broker/properties/qos/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  if (0 === _errs25 && "number" == typeof data11 && isFinite(data11)) {
+                                    if (data11 > 2 || isNaN(data11)) return validate202.errors = [ {
+                                      instancePath: instancePath + "/broker/qos",
+                                      schemaPath: "#/properties/broker/properties/qos/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 2
+                                      }
+                                    } ], !1;
+                                    if (data11 < 0 || isNaN(data11)) return validate202.errors = [ {
+                                      instancePath: instancePath + "/broker/qos",
+                                      schemaPath: "#/properties/broker/properties/qos/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 0
+                                      }
+                                    } ], !1;
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.authentication) {
+                  let data12 = data.authentication, _errs27 = 0;
+                  if (0 === _errs27) {
+                    if (!data12 || "object" != typeof data12 || Array.isArray(data12)) return validate202.errors = [ {
+                      instancePath: instancePath + "/authentication",
+                      schemaPath: "#/properties/authentication/type",
+                      keyword: "type",
+                      params: {
+                        type: "object"
+                      }
+                    } ], !1;
+                    {
+                      let _errs29 = 0;
+                      for (let key2 in data12) if ("username" !== key2 && "password" !== key2) return validate202.errors = [ {
+                        instancePath: instancePath + "/authentication",
+                        schemaPath: "#/properties/authentication/additionalProperties",
+                        keyword: "additionalProperties",
+                        params: {
+                          additionalProperty: key2
+                        }
+                      } ], !1;
+                      if (0 === _errs29) {
+                        if (void 0 !== data12.username) {
+                          let data13 = data12.username, _errs30 = 0;
+                          if (0 === _errs30) {
+                            if ("string" != typeof data13) return validate202.errors = [ {
+                              instancePath: instancePath + "/authentication/username",
+                              schemaPath: "#/properties/authentication/properties/username/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (func1(data13) > 127) return validate202.errors = [ {
+                              instancePath: instancePath + "/authentication/username",
+                              schemaPath: "#/properties/authentication/properties/username/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 127
+                              }
+                            } ], !1;
+                          }
+                          var valid13 = 0 === _errs30;
+                        } else valid13 = !0;
+                        if (valid13 && void 0 !== data12.password) {
+                          let data14 = data12.password, _errs32 = 0;
+                          if ("string" != typeof data14 && null !== data14) return validate202.errors = [ {
+                            instancePath: instancePath + "/authentication/password",
+                            schemaPath: "#/properties/authentication/properties/password/type",
+                            keyword: "type",
+                            params: {
+                              type: schema213.properties.authentication.properties.password.type
+                            }
+                          } ], !1;
+                          if (0 === _errs32 && "string" == typeof data14 && func1(data14) > 255) return validate202.errors = [ {
+                            instancePath: instancePath + "/authentication/password",
+                            schemaPath: "#/properties/authentication/properties/password/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 255
+                            }
+                          } ], !1;
+                        }
+                      }
+                    }
+                  }
+                  var valid12 = 0 === _errs27;
+                } else valid12 = !0;
+                if (valid12) {
+                  if (void 0 !== data.tls) {
+                    let data15 = data.tls, _errs34 = 0;
+                    if (0 === _errs34) {
+                      if (!data15 || "object" != typeof data15 || Array.isArray(data15)) return validate202.errors = [ {
+                        instancePath: instancePath + "/tls",
+                        schemaPath: "#/properties/tls/type",
+                        keyword: "type",
+                        params: {
+                          type: "object"
+                        }
+                      } ], !1;
+                      {
+                        let _errs36 = 0;
+                        for (let key3 in data15) if ("mode" !== key3 && "ca_file" !== key3 && "cert_file" !== key3 && "key_file" !== key3) return validate202.errors = [ {
+                          instancePath: instancePath + "/tls",
+                          schemaPath: "#/properties/tls/additionalProperties",
+                          keyword: "additionalProperties",
+                          params: {
+                            additionalProperty: key3
+                          }
+                        } ], !1;
+                        if (0 === _errs36) {
+                          if (void 0 !== data15.mode) {
+                            let data16 = data15.mode, _errs37 = 0;
+                            if ("string" != typeof data16) return validate202.errors = [ {
+                              instancePath: instancePath + "/tls/mode",
+                              schemaPath: "#/properties/tls/properties/mode/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if ("disabled" !== data16 && "system" !== data16 && "custom_ca" !== data16 && "mutual" !== data16) return validate202.errors = [ {
+                              instancePath: instancePath + "/tls/mode",
+                              schemaPath: "#/properties/tls/properties/mode/enum",
+                              keyword: "enum",
+                              params: {
+                                allowedValues: schema213.properties.tls.properties.mode.enum
+                              }
+                            } ], !1;
+                            var valid16 = 0 === _errs37;
+                          } else valid16 = !0;
+                          if (valid16) {
+                            if (void 0 !== data15.ca_file) {
+                              let data17 = data15.ca_file, _errs39 = 0;
+                              if (0 === _errs39) {
+                                if ("string" != typeof data17) return validate202.errors = [ {
+                                  instancePath: instancePath + "/tls/ca_file",
+                                  schemaPath: "#/properties/tls/properties/ca_file/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                if (func1(data17) > 511) return validate202.errors = [ {
+                                  instancePath: instancePath + "/tls/ca_file",
+                                  schemaPath: "#/properties/tls/properties/ca_file/maxLength",
+                                  keyword: "maxLength",
+                                  params: {
+                                    limit: 511
+                                  }
+                                } ], !1;
+                              }
+                              var valid17 = 0 === _errs39;
+                            } else valid17 = !0;
+                            if (valid17) {
+                              if (void 0 !== data15.cert_file) {
+                                let data18 = data15.cert_file, _errs41 = 0;
+                                if (0 === _errs41) {
+                                  if ("string" != typeof data18) return validate202.errors = [ {
+                                    instancePath: instancePath + "/tls/cert_file",
+                                    schemaPath: "#/properties/tls/properties/cert_file/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  } ], !1;
+                                  if (func1(data18) > 511) return validate202.errors = [ {
+                                    instancePath: instancePath + "/tls/cert_file",
+                                    schemaPath: "#/properties/tls/properties/cert_file/maxLength",
+                                    keyword: "maxLength",
+                                    params: {
+                                      limit: 511
+                                    }
+                                  } ], !1;
+                                }
+                                var valid18 = 0 === _errs41;
+                              } else valid18 = !0;
+                              if (valid18 && void 0 !== data15.key_file) {
+                                let data19 = data15.key_file;
+                                if ("string" != typeof data19) return validate202.errors = [ {
+                                  instancePath: instancePath + "/tls/key_file",
+                                  schemaPath: "#/properties/tls/properties/key_file/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                if (func1(data19) > 511) return validate202.errors = [ {
+                                  instancePath: instancePath + "/tls/key_file",
+                                  schemaPath: "#/properties/tls/properties/key_file/maxLength",
+                                  keyword: "maxLength",
+                                  params: {
+                                    limit: 511
+                                  }
+                                } ], !1;
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    var valid15 = 0 === _errs34;
+                  } else valid15 = !0;
+                  if (valid15 && void 0 !== data.revision) {
+                    let data20 = data.revision, _errs45 = 0;
+                    if ("number" != typeof data20 || data20 % 1 || isNaN(data20) || !isFinite(data20)) return validate202.errors = [ {
+                      instancePath: instancePath + "/revision",
+                      schemaPath: "#/properties/revision/type",
+                      keyword: "type",
+                      params: {
+                        type: "integer"
+                      }
+                    } ], !1;
+                    if (0 === _errs45 && "number" == typeof data20 && isFinite(data20)) {
+                      if (data20 > 9007199254740991 || isNaN(data20)) return validate202.errors = [ {
+                        instancePath: instancePath + "/revision",
+                        schemaPath: "#/properties/revision/maximum",
+                        keyword: "maximum",
+                        params: {
+                          comparison: "<=",
+                          limit: 9007199254740991
+                        }
+                      } ], !1;
+                      if (data20 < 1 || isNaN(data20)) return validate202.errors = [ {
+                        instancePath: instancePath + "/revision",
+                        schemaPath: "#/properties/revision/minimum",
+                        keyword: "minimum",
+                        params: {
+                          comparison: ">=",
+                          limit: 1
+                        }
+                      } ], !1;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate202.errors = [], !0;
+}
+
+validate202.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventDestinations = validate200;
+
+function validate200(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate200.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate200.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.default_destination) return validate200.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "default_destination"
+    }
+  } ], !1;
+  if (void 0 === data.count) return validate200.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "count"
+    }
+  } ], !1;
+  if (void 0 === data.destinations) return validate200.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "destinations"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("default_destination" !== key0 && "count" !== key0 && "destinations" !== key0) return validate200.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.default_destination) {
+        let data0 = data.default_destination, _errs2 = 0;
+        if (0 === _errs2) {
+          if (!data0 || "object" != typeof data0 || Array.isArray(data0)) return validate200.errors = [ {
+            instancePath: instancePath + "/default_destination",
+            schemaPath: "#/properties/default_destination/type",
+            keyword: "type",
+            params: {
+              type: "object"
+            }
+          } ], !1;
+          if (void 0 === data0.key) return validate200.errors = [ {
+            instancePath: instancePath + "/default_destination",
+            schemaPath: "#/properties/default_destination/required",
+            keyword: "required",
+            params: {
+              missingProperty: "key"
+            }
+          } ], !1;
+          if (void 0 === data0.name) return validate200.errors = [ {
+            instancePath: instancePath + "/default_destination",
+            schemaPath: "#/properties/default_destination/required",
+            keyword: "required",
+            params: {
+              missingProperty: "name"
+            }
+          } ], !1;
+          if (void 0 === data0.configuration_source) return validate200.errors = [ {
+            instancePath: instancePath + "/default_destination",
+            schemaPath: "#/properties/default_destination/required",
+            keyword: "required",
+            params: {
+              missingProperty: "configuration_source"
+            }
+          } ], !1;
+          if (void 0 === data0.managed) return validate200.errors = [ {
+            instancePath: instancePath + "/default_destination",
+            schemaPath: "#/properties/default_destination/required",
+            keyword: "required",
+            params: {
+              missingProperty: "managed"
+            }
+          } ], !1;
+          {
+            let _errs4 = 0;
+            for (let key1 in data0) if ("key" !== key1 && "name" !== key1 && "configuration_source" !== key1 && "managed" !== key1) return validate200.errors = [ {
+              instancePath: instancePath + "/default_destination",
+              schemaPath: "#/properties/default_destination/additionalProperties",
+              keyword: "additionalProperties",
+              params: {
+                additionalProperty: key1
+              }
+            } ], !1;
+            if (0 === _errs4) {
+              if (void 0 !== data0.key) {
+                let data1 = data0.key, _errs5 = 0;
+                if ("string" != typeof data1) return validate200.errors = [ {
+                  instancePath: instancePath + "/default_destination/key",
+                  schemaPath: "#/properties/default_destination/properties/key/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                if ("mqtt:default" !== data1) return validate200.errors = [ {
+                  instancePath: instancePath + "/default_destination/key",
+                  schemaPath: "#/properties/default_destination/properties/key/const",
+                  keyword: "const",
+                  params: {
+                    allowedValue: "mqtt:default"
+                  }
+                } ], !1;
+                var valid1 = 0 === _errs5;
+              } else valid1 = !0;
+              if (valid1) {
+                if (void 0 !== data0.name) {
+                  let _errs7 = 0;
+                  if ("string" != typeof data0.name) return validate200.errors = [ {
+                    instancePath: instancePath + "/default_destination/name",
+                    schemaPath: "#/properties/default_destination/properties/name/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  var valid2 = 0 === _errs7;
+                } else valid2 = !0;
+                if (valid2) {
+                  if (void 0 !== data0.configuration_source) {
+                    let data3 = data0.configuration_source, _errs9 = 0;
+                    if ("string" != typeof data3) return validate200.errors = [ {
+                      instancePath: instancePath + "/default_destination/configuration_source",
+                      schemaPath: "#/properties/default_destination/properties/configuration_source/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                    if ("settings" !== data3) return validate200.errors = [ {
+                      instancePath: instancePath + "/default_destination/configuration_source",
+                      schemaPath: "#/properties/default_destination/properties/configuration_source/const",
+                      keyword: "const",
+                      params: {
+                        allowedValue: "settings"
+                      }
+                    } ], !1;
+                    var valid3 = 0 === _errs9;
+                  } else valid3 = !0;
+                  if (valid3 && void 0 !== data0.managed) {
+                    let data4 = data0.managed;
+                    if ("boolean" != typeof data4) return validate200.errors = [ {
+                      instancePath: instancePath + "/default_destination/managed",
+                      schemaPath: "#/properties/default_destination/properties/managed/type",
+                      keyword: "type",
+                      params: {
+                        type: "boolean"
+                      }
+                    } ], !1;
+                    if (!1 !== data4) return validate200.errors = [ {
+                      instancePath: instancePath + "/default_destination/managed",
+                      schemaPath: "#/properties/default_destination/properties/managed/const",
+                      keyword: "const",
+                      params: {
+                        allowedValue: !1
+                      }
+                    } ], !1;
+                  }
+                }
+              }
+            }
+          }
+        }
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.count) {
+          let data5 = data.count, _errs13 = 0;
+          if ("number" != typeof data5 || data5 % 1 || isNaN(data5) || !isFinite(data5)) return validate200.errors = [ {
+            instancePath: instancePath + "/count",
+            schemaPath: "#/properties/count/type",
+            keyword: "type",
+            params: {
+              type: "integer"
+            }
+          } ], !1;
+          if (0 === _errs13 && "number" == typeof data5 && isFinite(data5)) {
+            if (data5 > 64 || isNaN(data5)) return validate200.errors = [ {
+              instancePath: instancePath + "/count",
+              schemaPath: "#/properties/count/maximum",
+              keyword: "maximum",
+              params: {
+                comparison: "<=",
+                limit: 64
+              }
+            } ], !1;
+            if (data5 < 0 || isNaN(data5)) return validate200.errors = [ {
+              instancePath: instancePath + "/count",
+              schemaPath: "#/properties/count/minimum",
+              keyword: "minimum",
+              params: {
+                comparison: ">=",
+                limit: 0
+              }
+            } ], !1;
+          }
+          var valid5 = 0 === _errs13;
+        } else valid5 = !0;
+        if (valid5 && void 0 !== data.destinations) {
+          let data6 = data.destinations;
+          if (!Array.isArray(data6)) return validate200.errors = [ {
+            instancePath: instancePath + "/destinations",
+            schemaPath: "#/properties/destinations/type",
+            keyword: "type",
+            params: {
+              type: "array"
+            }
+          } ], !1;
+          if (data6.length > 64) return validate200.errors = [ {
+            instancePath: instancePath + "/destinations",
+            schemaPath: "#/properties/destinations/maxItems",
+            keyword: "maxItems",
+            params: {
+              limit: 64
+            }
+          } ], !1;
+          {
+            let len0 = data6.length;
+            for (let i0 = 0; i0 < len0; i0++) {
+              let data7 = data6[i0], _errs17 = 0;
+              if (!data7 || "object" != typeof data7 || Array.isArray(data7)) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/type",
+                keyword: "type",
+                params: {
+                  type: "object"
+                }
+              } ], !1;
+              if (void 0 === data7.uuid) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "uuid"
+                }
+              } ], !1;
+              if (void 0 === data7.key) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "key"
+                }
+              } ], !1;
+              if (void 0 === data7.name) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "name"
+                }
+              } ], !1;
+              if (void 0 === data7.description) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "description"
+                }
+              } ], !1;
+              if (void 0 === data7.enabled) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "enabled"
+                }
+              } ], !1;
+              if (void 0 === data7.type) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "type"
+                }
+              } ], !1;
+              if (void 0 === data7.broker) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "broker"
+                }
+              } ], !1;
+              if (void 0 === data7.authentication) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "authentication"
+                }
+              } ], !1;
+              if (void 0 === data7.tls) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "tls"
+                }
+              } ], !1;
+              if (void 0 === data7.managed) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "managed"
+                }
+              } ], !1;
+              if (void 0 === data7.revision) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "revision"
+                }
+              } ], !1;
+              if (void 0 === data7.created_at) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "created_at"
+                }
+              } ], !1;
+              if (void 0 === data7.updated_at) return validate200.errors = [ {
+                instancePath: instancePath + "/destinations/" + i0,
+                schemaPath: "#/$defs/EventDestination/required",
+                keyword: "required",
+                params: {
+                  missingProperty: "updated_at"
+                }
+              } ], !1;
+              {
+                let _errs20 = 0;
+                for (let key2 in data7) if (!func5.call(schema209.properties, key2)) return validate200.errors = [ {
+                  instancePath: instancePath + "/destinations/" + i0,
+                  schemaPath: "#/$defs/EventDestination/additionalProperties",
+                  keyword: "additionalProperties",
+                  params: {
+                    additionalProperty: key2
+                  }
+                } ], !1;
+                if (0 === _errs20) {
+                  if (void 0 !== data7.uuid) {
+                    let data8 = data7.uuid, _errs21 = 0;
+                    if (0 === _errs21) {
+                      if ("string" != typeof data8) return validate200.errors = [ {
+                        instancePath: instancePath + "/destinations/" + i0 + "/uuid",
+                        schemaPath: "#/$defs/EventDestination/properties/uuid/type",
+                        keyword: "type",
+                        params: {
+                          type: "string"
+                        }
+                      } ], !1;
+                      if (!formats2.test(data8)) return validate200.errors = [ {
+                        instancePath: instancePath + "/destinations/" + i0 + "/uuid",
+                        schemaPath: "#/$defs/EventDestination/properties/uuid/format",
+                        keyword: "format",
+                        params: {
+                          format: "uuid"
+                        }
+                      } ], !1;
+                    }
+                    var valid9 = 0 === _errs21;
+                  } else valid9 = !0;
+                  if (valid9) {
+                    if (void 0 !== data7.key) {
+                      let data9 = data7.key, _errs23 = 0;
+                      if (0 === _errs23) {
+                        if ("string" != typeof data9) return validate200.errors = [ {
+                          instancePath: instancePath + "/destinations/" + i0 + "/key",
+                          schemaPath: "#/$defs/EventDestination/properties/key/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        if (func1(data9) > 63) return validate200.errors = [ {
+                          instancePath: instancePath + "/destinations/" + i0 + "/key",
+                          schemaPath: "#/$defs/EventDestination/properties/key/maxLength",
+                          keyword: "maxLength",
+                          params: {
+                            limit: 63
+                          }
+                        } ], !1;
+                        if (func1(data9) < 1) return validate200.errors = [ {
+                          instancePath: instancePath + "/destinations/" + i0 + "/key",
+                          schemaPath: "#/$defs/EventDestination/properties/key/minLength",
+                          keyword: "minLength",
+                          params: {
+                            limit: 1
+                          }
+                        } ], !1;
+                      }
+                      var valid10 = 0 === _errs23;
+                    } else valid10 = !0;
+                    if (valid10) {
+                      if (void 0 !== data7.name) {
+                        let data10 = data7.name, _errs25 = 0;
+                        if (0 === _errs25) {
+                          if ("string" != typeof data10) return validate200.errors = [ {
+                            instancePath: instancePath + "/destinations/" + i0 + "/name",
+                            schemaPath: "#/$defs/EventDestination/properties/name/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (func1(data10) > 127) return validate200.errors = [ {
+                            instancePath: instancePath + "/destinations/" + i0 + "/name",
+                            schemaPath: "#/$defs/EventDestination/properties/name/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 127
+                            }
+                          } ], !1;
+                          if (func1(data10) < 1) return validate200.errors = [ {
+                            instancePath: instancePath + "/destinations/" + i0 + "/name",
+                            schemaPath: "#/$defs/EventDestination/properties/name/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          } ], !1;
+                        }
+                        var valid11 = 0 === _errs25;
+                      } else valid11 = !0;
+                      if (valid11) {
+                        if (void 0 !== data7.description) {
+                          let data11 = data7.description, _errs27 = 0;
+                          if (0 === _errs27) {
+                            if ("string" != typeof data11) return validate200.errors = [ {
+                              instancePath: instancePath + "/destinations/" + i0 + "/description",
+                              schemaPath: "#/$defs/EventDestination/properties/description/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (func1(data11) > 511) return validate200.errors = [ {
+                              instancePath: instancePath + "/destinations/" + i0 + "/description",
+                              schemaPath: "#/$defs/EventDestination/properties/description/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 511
+                              }
+                            } ], !1;
+                          }
+                          var valid12 = 0 === _errs27;
+                        } else valid12 = !0;
+                        if (valid12) {
+                          if (void 0 !== data7.enabled) {
+                            let _errs29 = 0;
+                            if ("boolean" != typeof data7.enabled) return validate200.errors = [ {
+                              instancePath: instancePath + "/destinations/" + i0 + "/enabled",
+                              schemaPath: "#/$defs/EventDestination/properties/enabled/type",
+                              keyword: "type",
+                              params: {
+                                type: "boolean"
+                              }
+                            } ], !1;
+                            var valid13 = 0 === _errs29;
+                          } else valid13 = !0;
+                          if (valid13) {
+                            if (void 0 !== data7.type) {
+                              let data13 = data7.type, _errs31 = 0;
+                              if ("string" != typeof data13) return validate200.errors = [ {
+                                instancePath: instancePath + "/destinations/" + i0 + "/type",
+                                schemaPath: "#/$defs/EventDestination/properties/type/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              if ("mqtt" !== data13) return validate200.errors = [ {
+                                instancePath: instancePath + "/destinations/" + i0 + "/type",
+                                schemaPath: "#/$defs/EventDestination/properties/type/const",
+                                keyword: "const",
+                                params: {
+                                  allowedValue: "mqtt"
+                                }
+                              } ], !1;
+                              var valid14 = 0 === _errs31;
+                            } else valid14 = !0;
+                            if (valid14) {
+                              if (void 0 !== data7.broker) {
+                                let data14 = data7.broker, _errs33 = 0;
+                                if (0 === _errs33) {
+                                  if (!data14 || "object" != typeof data14 || Array.isArray(data14)) return validate200.errors = [ {
+                                    instancePath: instancePath + "/destinations/" + i0 + "/broker",
+                                    schemaPath: "#/$defs/EventDestination/properties/broker/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "object"
+                                    }
+                                  } ], !1;
+                                  if (void 0 === data14.host) return validate200.errors = [ {
+                                    instancePath: instancePath + "/destinations/" + i0 + "/broker",
+                                    schemaPath: "#/$defs/EventDestination/properties/broker/required",
+                                    keyword: "required",
+                                    params: {
+                                      missingProperty: "host"
+                                    }
+                                  } ], !1;
+                                  if (void 0 === data14.port) return validate200.errors = [ {
+                                    instancePath: instancePath + "/destinations/" + i0 + "/broker",
+                                    schemaPath: "#/$defs/EventDestination/properties/broker/required",
+                                    keyword: "required",
+                                    params: {
+                                      missingProperty: "port"
+                                    }
+                                  } ], !1;
+                                  if (void 0 === data14.client_id) return validate200.errors = [ {
+                                    instancePath: instancePath + "/destinations/" + i0 + "/broker",
+                                    schemaPath: "#/$defs/EventDestination/properties/broker/required",
+                                    keyword: "required",
+                                    params: {
+                                      missingProperty: "client_id"
+                                    }
+                                  } ], !1;
+                                  if (void 0 === data14.topic_template) return validate200.errors = [ {
+                                    instancePath: instancePath + "/destinations/" + i0 + "/broker",
+                                    schemaPath: "#/$defs/EventDestination/properties/broker/required",
+                                    keyword: "required",
+                                    params: {
+                                      missingProperty: "topic_template"
+                                    }
+                                  } ], !1;
+                                  if (void 0 === data14.status_topic_template) return validate200.errors = [ {
+                                    instancePath: instancePath + "/destinations/" + i0 + "/broker",
+                                    schemaPath: "#/$defs/EventDestination/properties/broker/required",
+                                    keyword: "required",
+                                    params: {
+                                      missingProperty: "status_topic_template"
+                                    }
+                                  } ], !1;
+                                  if (void 0 === data14.keepalive_seconds) return validate200.errors = [ {
+                                    instancePath: instancePath + "/destinations/" + i0 + "/broker",
+                                    schemaPath: "#/$defs/EventDestination/properties/broker/required",
+                                    keyword: "required",
+                                    params: {
+                                      missingProperty: "keepalive_seconds"
+                                    }
+                                  } ], !1;
+                                  if (void 0 === data14.qos) return validate200.errors = [ {
+                                    instancePath: instancePath + "/destinations/" + i0 + "/broker",
+                                    schemaPath: "#/$defs/EventDestination/properties/broker/required",
+                                    keyword: "required",
+                                    params: {
+                                      missingProperty: "qos"
+                                    }
+                                  } ], !1;
+                                  {
+                                    let _errs35 = 0;
+                                    for (let key3 in data14) if ("host" !== key3 && "port" !== key3 && "client_id" !== key3 && "topic_template" !== key3 && "status_topic_template" !== key3 && "keepalive_seconds" !== key3 && "qos" !== key3) return validate200.errors = [ {
+                                      instancePath: instancePath + "/destinations/" + i0 + "/broker",
+                                      schemaPath: "#/$defs/EventDestination/properties/broker/additionalProperties",
+                                      keyword: "additionalProperties",
+                                      params: {
+                                        additionalProperty: key3
+                                      }
+                                    } ], !1;
+                                    if (0 === _errs35) {
+                                      if (void 0 !== data14.host) {
+                                        let data15 = data14.host, _errs36 = 0;
+                                        if (0 === _errs36) {
+                                          if ("string" != typeof data15) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/broker/host",
+                                            schemaPath: "#/$defs/EventDestination/properties/broker/properties/host/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "string"
+                                            }
+                                          } ], !1;
+                                          if (func1(data15) > 255) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/broker/host",
+                                            schemaPath: "#/$defs/EventDestination/properties/broker/properties/host/maxLength",
+                                            keyword: "maxLength",
+                                            params: {
+                                              limit: 255
+                                            }
+                                          } ], !1;
+                                          if (func1(data15) < 1) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/broker/host",
+                                            schemaPath: "#/$defs/EventDestination/properties/broker/properties/host/minLength",
+                                            keyword: "minLength",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                        }
+                                        var valid16 = 0 === _errs36;
+                                      } else valid16 = !0;
+                                      if (valid16) {
+                                        if (void 0 !== data14.port) {
+                                          let data16 = data14.port, _errs38 = 0;
+                                          if ("number" != typeof data16 || data16 % 1 || isNaN(data16) || !isFinite(data16)) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/broker/port",
+                                            schemaPath: "#/$defs/EventDestination/properties/broker/properties/port/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "integer"
+                                            }
+                                          } ], !1;
+                                          if (0 === _errs38 && "number" == typeof data16 && isFinite(data16)) {
+                                            if (data16 > 65535 || isNaN(data16)) return validate200.errors = [ {
+                                              instancePath: instancePath + "/destinations/" + i0 + "/broker/port",
+                                              schemaPath: "#/$defs/EventDestination/properties/broker/properties/port/maximum",
+                                              keyword: "maximum",
+                                              params: {
+                                                comparison: "<=",
+                                                limit: 65535
+                                              }
+                                            } ], !1;
+                                            if (data16 < 1 || isNaN(data16)) return validate200.errors = [ {
+                                              instancePath: instancePath + "/destinations/" + i0 + "/broker/port",
+                                              schemaPath: "#/$defs/EventDestination/properties/broker/properties/port/minimum",
+                                              keyword: "minimum",
+                                              params: {
+                                                comparison: ">=",
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                          }
+                                          var valid17 = 0 === _errs38;
+                                        } else valid17 = !0;
+                                        if (valid17) {
+                                          if (void 0 !== data14.client_id) {
+                                            let data17 = data14.client_id, _errs40 = 0;
+                                            if (0 === _errs40) {
+                                              if ("string" != typeof data17) return validate200.errors = [ {
+                                                instancePath: instancePath + "/destinations/" + i0 + "/broker/client_id",
+                                                schemaPath: "#/$defs/EventDestination/properties/broker/properties/client_id/type",
+                                                keyword: "type",
+                                                params: {
+                                                  type: "string"
+                                                }
+                                              } ], !1;
+                                              if (func1(data17) > 127) return validate200.errors = [ {
+                                                instancePath: instancePath + "/destinations/" + i0 + "/broker/client_id",
+                                                schemaPath: "#/$defs/EventDestination/properties/broker/properties/client_id/maxLength",
+                                                keyword: "maxLength",
+                                                params: {
+                                                  limit: 127
+                                                }
+                                              } ], !1;
+                                              if (func1(data17) < 1) return validate200.errors = [ {
+                                                instancePath: instancePath + "/destinations/" + i0 + "/broker/client_id",
+                                                schemaPath: "#/$defs/EventDestination/properties/broker/properties/client_id/minLength",
+                                                keyword: "minLength",
+                                                params: {
+                                                  limit: 1
+                                                }
+                                              } ], !1;
+                                            }
+                                            var valid18 = 0 === _errs40;
+                                          } else valid18 = !0;
+                                          if (valid18) {
+                                            if (void 0 !== data14.topic_template) {
+                                              let data18 = data14.topic_template, _errs42 = 0;
+                                              if (0 === _errs42) {
+                                                if ("string" != typeof data18) return validate200.errors = [ {
+                                                  instancePath: instancePath + "/destinations/" + i0 + "/broker/topic_template",
+                                                  schemaPath: "#/$defs/EventDestination/properties/broker/properties/topic_template/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if (func1(data18) > 511) return validate200.errors = [ {
+                                                  instancePath: instancePath + "/destinations/" + i0 + "/broker/topic_template",
+                                                  schemaPath: "#/$defs/EventDestination/properties/broker/properties/topic_template/maxLength",
+                                                  keyword: "maxLength",
+                                                  params: {
+                                                    limit: 511
+                                                  }
+                                                } ], !1;
+                                                if (func1(data18) < 1) return validate200.errors = [ {
+                                                  instancePath: instancePath + "/destinations/" + i0 + "/broker/topic_template",
+                                                  schemaPath: "#/$defs/EventDestination/properties/broker/properties/topic_template/minLength",
+                                                  keyword: "minLength",
+                                                  params: {
+                                                    limit: 1
+                                                  }
+                                                } ], !1;
+                                              }
+                                              var valid19 = 0 === _errs42;
+                                            } else valid19 = !0;
+                                            if (valid19) {
+                                              if (void 0 !== data14.status_topic_template) {
+                                                let data19 = data14.status_topic_template, _errs44 = 0;
+                                                if (0 === _errs44) {
+                                                  if ("string" != typeof data19) return validate200.errors = [ {
+                                                    instancePath: instancePath + "/destinations/" + i0 + "/broker/status_topic_template",
+                                                    schemaPath: "#/$defs/EventDestination/properties/broker/properties/status_topic_template/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "string"
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data19) > 511) return validate200.errors = [ {
+                                                    instancePath: instancePath + "/destinations/" + i0 + "/broker/status_topic_template",
+                                                    schemaPath: "#/$defs/EventDestination/properties/broker/properties/status_topic_template/maxLength",
+                                                    keyword: "maxLength",
+                                                    params: {
+                                                      limit: 511
+                                                    }
+                                                  } ], !1;
+                                                }
+                                                var valid20 = 0 === _errs44;
+                                              } else valid20 = !0;
+                                              if (valid20) {
+                                                if (void 0 !== data14.keepalive_seconds) {
+                                                  let data20 = data14.keepalive_seconds, _errs46 = 0;
+                                                  if ("number" != typeof data20 || data20 % 1 || isNaN(data20) || !isFinite(data20)) return validate200.errors = [ {
+                                                    instancePath: instancePath + "/destinations/" + i0 + "/broker/keepalive_seconds",
+                                                    schemaPath: "#/$defs/EventDestination/properties/broker/properties/keepalive_seconds/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "integer"
+                                                    }
+                                                  } ], !1;
+                                                  if (0 === _errs46 && "number" == typeof data20 && isFinite(data20)) {
+                                                    if (data20 > 3600 || isNaN(data20)) return validate200.errors = [ {
+                                                      instancePath: instancePath + "/destinations/" + i0 + "/broker/keepalive_seconds",
+                                                      schemaPath: "#/$defs/EventDestination/properties/broker/properties/keepalive_seconds/maximum",
+                                                      keyword: "maximum",
+                                                      params: {
+                                                        comparison: "<=",
+                                                        limit: 3600
+                                                      }
+                                                    } ], !1;
+                                                    if (data20 < 5 || isNaN(data20)) return validate200.errors = [ {
+                                                      instancePath: instancePath + "/destinations/" + i0 + "/broker/keepalive_seconds",
+                                                      schemaPath: "#/$defs/EventDestination/properties/broker/properties/keepalive_seconds/minimum",
+                                                      keyword: "minimum",
+                                                      params: {
+                                                        comparison: ">=",
+                                                        limit: 5
+                                                      }
+                                                    } ], !1;
+                                                  }
+                                                  var valid21 = 0 === _errs46;
+                                                } else valid21 = !0;
+                                                if (valid21 && void 0 !== data14.qos) {
+                                                  let data21 = data14.qos, _errs48 = 0;
+                                                  if ("number" != typeof data21 || data21 % 1 || isNaN(data21) || !isFinite(data21)) return validate200.errors = [ {
+                                                    instancePath: instancePath + "/destinations/" + i0 + "/broker/qos",
+                                                    schemaPath: "#/$defs/EventDestination/properties/broker/properties/qos/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "integer"
+                                                    }
+                                                  } ], !1;
+                                                  if (0 === _errs48 && "number" == typeof data21 && isFinite(data21)) {
+                                                    if (data21 > 2 || isNaN(data21)) return validate200.errors = [ {
+                                                      instancePath: instancePath + "/destinations/" + i0 + "/broker/qos",
+                                                      schemaPath: "#/$defs/EventDestination/properties/broker/properties/qos/maximum",
+                                                      keyword: "maximum",
+                                                      params: {
+                                                        comparison: "<=",
+                                                        limit: 2
+                                                      }
+                                                    } ], !1;
+                                                    if (data21 < 0 || isNaN(data21)) return validate200.errors = [ {
+                                                      instancePath: instancePath + "/destinations/" + i0 + "/broker/qos",
+                                                      schemaPath: "#/$defs/EventDestination/properties/broker/properties/qos/minimum",
+                                                      keyword: "minimum",
+                                                      params: {
+                                                        comparison: ">=",
+                                                        limit: 0
+                                                      }
+                                                    } ], !1;
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                var valid15 = 0 === _errs33;
+                              } else valid15 = !0;
+                              if (valid15) {
+                                if (void 0 !== data7.authentication) {
+                                  let data22 = data7.authentication, _errs50 = 0;
+                                  if (0 === _errs50) {
+                                    if (!data22 || "object" != typeof data22 || Array.isArray(data22)) return validate200.errors = [ {
+                                      instancePath: instancePath + "/destinations/" + i0 + "/authentication",
+                                      schemaPath: "#/$defs/EventDestination/properties/authentication/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "object"
+                                      }
+                                    } ], !1;
+                                    if (void 0 === data22.username) return validate200.errors = [ {
+                                      instancePath: instancePath + "/destinations/" + i0 + "/authentication",
+                                      schemaPath: "#/$defs/EventDestination/properties/authentication/required",
+                                      keyword: "required",
+                                      params: {
+                                        missingProperty: "username"
+                                      }
+                                    } ], !1;
+                                    if (void 0 === data22.password_configured) return validate200.errors = [ {
+                                      instancePath: instancePath + "/destinations/" + i0 + "/authentication",
+                                      schemaPath: "#/$defs/EventDestination/properties/authentication/required",
+                                      keyword: "required",
+                                      params: {
+                                        missingProperty: "password_configured"
+                                      }
+                                    } ], !1;
+                                    {
+                                      let _errs52 = 0;
+                                      for (let key4 in data22) if ("username" !== key4 && "password_configured" !== key4) return validate200.errors = [ {
+                                        instancePath: instancePath + "/destinations/" + i0 + "/authentication",
+                                        schemaPath: "#/$defs/EventDestination/properties/authentication/additionalProperties",
+                                        keyword: "additionalProperties",
+                                        params: {
+                                          additionalProperty: key4
+                                        }
+                                      } ], !1;
+                                      if (0 === _errs52) {
+                                        if (void 0 !== data22.username) {
+                                          let data23 = data22.username, _errs53 = 0;
+                                          if (0 === _errs53) {
+                                            if ("string" != typeof data23) return validate200.errors = [ {
+                                              instancePath: instancePath + "/destinations/" + i0 + "/authentication/username",
+                                              schemaPath: "#/$defs/EventDestination/properties/authentication/properties/username/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "string"
+                                              }
+                                            } ], !1;
+                                            if (func1(data23) > 127) return validate200.errors = [ {
+                                              instancePath: instancePath + "/destinations/" + i0 + "/authentication/username",
+                                              schemaPath: "#/$defs/EventDestination/properties/authentication/properties/username/maxLength",
+                                              keyword: "maxLength",
+                                              params: {
+                                                limit: 127
+                                              }
+                                            } ], !1;
+                                          }
+                                          var valid24 = 0 === _errs53;
+                                        } else valid24 = !0;
+                                        if (valid24 && void 0 !== data22.password_configured && "boolean" != typeof data22.password_configured) return validate200.errors = [ {
+                                          instancePath: instancePath + "/destinations/" + i0 + "/authentication/password_configured",
+                                          schemaPath: "#/$defs/EventDestination/properties/authentication/properties/password_configured/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "boolean"
+                                          }
+                                        } ], !1;
+                                      }
+                                    }
+                                  }
+                                  var valid23 = 0 === _errs50;
+                                } else valid23 = !0;
+                                if (valid23) {
+                                  if (void 0 !== data7.tls) {
+                                    let data25 = data7.tls, _errs57 = 0;
+                                    if (0 === _errs57) {
+                                      if (!data25 || "object" != typeof data25 || Array.isArray(data25)) return validate200.errors = [ {
+                                        instancePath: instancePath + "/destinations/" + i0 + "/tls",
+                                        schemaPath: "#/$defs/EventDestination/properties/tls/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "object"
+                                        }
+                                      } ], !1;
+                                      if (void 0 === data25.mode) return validate200.errors = [ {
+                                        instancePath: instancePath + "/destinations/" + i0 + "/tls",
+                                        schemaPath: "#/$defs/EventDestination/properties/tls/required",
+                                        keyword: "required",
+                                        params: {
+                                          missingProperty: "mode"
+                                        }
+                                      } ], !1;
+                                      if (void 0 === data25.ca_file) return validate200.errors = [ {
+                                        instancePath: instancePath + "/destinations/" + i0 + "/tls",
+                                        schemaPath: "#/$defs/EventDestination/properties/tls/required",
+                                        keyword: "required",
+                                        params: {
+                                          missingProperty: "ca_file"
+                                        }
+                                      } ], !1;
+                                      if (void 0 === data25.cert_file) return validate200.errors = [ {
+                                        instancePath: instancePath + "/destinations/" + i0 + "/tls",
+                                        schemaPath: "#/$defs/EventDestination/properties/tls/required",
+                                        keyword: "required",
+                                        params: {
+                                          missingProperty: "cert_file"
+                                        }
+                                      } ], !1;
+                                      if (void 0 === data25.key_file) return validate200.errors = [ {
+                                        instancePath: instancePath + "/destinations/" + i0 + "/tls",
+                                        schemaPath: "#/$defs/EventDestination/properties/tls/required",
+                                        keyword: "required",
+                                        params: {
+                                          missingProperty: "key_file"
+                                        }
+                                      } ], !1;
+                                      {
+                                        let _errs59 = 0;
+                                        for (let key5 in data25) if ("mode" !== key5 && "ca_file" !== key5 && "cert_file" !== key5 && "key_file" !== key5) return validate200.errors = [ {
+                                          instancePath: instancePath + "/destinations/" + i0 + "/tls",
+                                          schemaPath: "#/$defs/EventDestination/properties/tls/additionalProperties",
+                                          keyword: "additionalProperties",
+                                          params: {
+                                            additionalProperty: key5
+                                          }
+                                        } ], !1;
+                                        if (0 === _errs59) {
+                                          if (void 0 !== data25.mode) {
+                                            let data26 = data25.mode, _errs60 = 0;
+                                            if ("string" != typeof data26) return validate200.errors = [ {
+                                              instancePath: instancePath + "/destinations/" + i0 + "/tls/mode",
+                                              schemaPath: "#/$defs/EventDestination/properties/tls/properties/mode/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "string"
+                                              }
+                                            } ], !1;
+                                            if ("disabled" !== data26 && "system" !== data26 && "custom_ca" !== data26 && "mutual" !== data26) return validate200.errors = [ {
+                                              instancePath: instancePath + "/destinations/" + i0 + "/tls/mode",
+                                              schemaPath: "#/$defs/EventDestination/properties/tls/properties/mode/enum",
+                                              keyword: "enum",
+                                              params: {
+                                                allowedValues: schema209.properties.tls.properties.mode.enum
+                                              }
+                                            } ], !1;
+                                            var valid27 = 0 === _errs60;
+                                          } else valid27 = !0;
+                                          if (valid27) {
+                                            if (void 0 !== data25.ca_file) {
+                                              let data27 = data25.ca_file, _errs62 = 0;
+                                              if (0 === _errs62) {
+                                                if ("string" != typeof data27) return validate200.errors = [ {
+                                                  instancePath: instancePath + "/destinations/" + i0 + "/tls/ca_file",
+                                                  schemaPath: "#/$defs/EventDestination/properties/tls/properties/ca_file/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if (func1(data27) > 511) return validate200.errors = [ {
+                                                  instancePath: instancePath + "/destinations/" + i0 + "/tls/ca_file",
+                                                  schemaPath: "#/$defs/EventDestination/properties/tls/properties/ca_file/maxLength",
+                                                  keyword: "maxLength",
+                                                  params: {
+                                                    limit: 511
+                                                  }
+                                                } ], !1;
+                                              }
+                                              var valid28 = 0 === _errs62;
+                                            } else valid28 = !0;
+                                            if (valid28) {
+                                              if (void 0 !== data25.cert_file) {
+                                                let data28 = data25.cert_file, _errs64 = 0;
+                                                if (0 === _errs64) {
+                                                  if ("string" != typeof data28) return validate200.errors = [ {
+                                                    instancePath: instancePath + "/destinations/" + i0 + "/tls/cert_file",
+                                                    schemaPath: "#/$defs/EventDestination/properties/tls/properties/cert_file/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "string"
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data28) > 511) return validate200.errors = [ {
+                                                    instancePath: instancePath + "/destinations/" + i0 + "/tls/cert_file",
+                                                    schemaPath: "#/$defs/EventDestination/properties/tls/properties/cert_file/maxLength",
+                                                    keyword: "maxLength",
+                                                    params: {
+                                                      limit: 511
+                                                    }
+                                                  } ], !1;
+                                                }
+                                                var valid29 = 0 === _errs64;
+                                              } else valid29 = !0;
+                                              if (valid29 && void 0 !== data25.key_file) {
+                                                let data29 = data25.key_file;
+                                                if ("string" != typeof data29) return validate200.errors = [ {
+                                                  instancePath: instancePath + "/destinations/" + i0 + "/tls/key_file",
+                                                  schemaPath: "#/$defs/EventDestination/properties/tls/properties/key_file/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if (func1(data29) > 511) return validate200.errors = [ {
+                                                  instancePath: instancePath + "/destinations/" + i0 + "/tls/key_file",
+                                                  schemaPath: "#/$defs/EventDestination/properties/tls/properties/key_file/maxLength",
+                                                  keyword: "maxLength",
+                                                  params: {
+                                                    limit: 511
+                                                  }
+                                                } ], !1;
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                    var valid26 = 0 === _errs57;
+                                  } else valid26 = !0;
+                                  if (valid26) {
+                                    if (void 0 !== data7.managed) {
+                                      let data30 = data7.managed, _errs68 = 0;
+                                      if ("boolean" != typeof data30) return validate200.errors = [ {
+                                        instancePath: instancePath + "/destinations/" + i0 + "/managed",
+                                        schemaPath: "#/$defs/EventDestination/properties/managed/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "boolean"
+                                        }
+                                      } ], !1;
+                                      if (!0 !== data30) return validate200.errors = [ {
+                                        instancePath: instancePath + "/destinations/" + i0 + "/managed",
+                                        schemaPath: "#/$defs/EventDestination/properties/managed/const",
+                                        keyword: "const",
+                                        params: {
+                                          allowedValue: !0
+                                        }
+                                      } ], !1;
+                                      var valid31 = 0 === _errs68;
+                                    } else valid31 = !0;
+                                    if (valid31) {
+                                      if (void 0 !== data7.revision) {
+                                        let data31 = data7.revision, _errs70 = 0;
+                                        if ("number" != typeof data31 || data31 % 1 || isNaN(data31) || !isFinite(data31)) return validate200.errors = [ {
+                                          instancePath: instancePath + "/destinations/" + i0 + "/revision",
+                                          schemaPath: "#/$defs/EventDestination/properties/revision/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "integer"
+                                          }
+                                        } ], !1;
+                                        if (0 === _errs70 && "number" == typeof data31 && isFinite(data31)) {
+                                          if (data31 > 9007199254740991 || isNaN(data31)) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/revision",
+                                            schemaPath: "#/$defs/EventDestination/properties/revision/maximum",
+                                            keyword: "maximum",
+                                            params: {
+                                              comparison: "<=",
+                                              limit: 9007199254740991
+                                            }
+                                          } ], !1;
+                                          if (data31 < 1 || isNaN(data31)) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/revision",
+                                            schemaPath: "#/$defs/EventDestination/properties/revision/minimum",
+                                            keyword: "minimum",
+                                            params: {
+                                              comparison: ">=",
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                        }
+                                        var valid32 = 0 === _errs70;
+                                      } else valid32 = !0;
+                                      if (valid32) {
+                                        if (void 0 !== data7.created_at) {
+                                          let data32 = data7.created_at, _errs72 = 0;
+                                          if ("number" != typeof data32 || data32 % 1 || isNaN(data32) || !isFinite(data32)) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/created_at",
+                                            schemaPath: "#/$defs/EventDestination/properties/created_at/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "integer"
+                                            }
+                                          } ], !1;
+                                          if (0 === _errs72 && "number" == typeof data32 && isFinite(data32) && (data32 < 0 || isNaN(data32))) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/created_at",
+                                            schemaPath: "#/$defs/EventDestination/properties/created_at/minimum",
+                                            keyword: "minimum",
+                                            params: {
+                                              comparison: ">=",
+                                              limit: 0
+                                            }
+                                          } ], !1;
+                                          var valid33 = 0 === _errs72;
+                                        } else valid33 = !0;
+                                        if (valid33 && void 0 !== data7.updated_at) {
+                                          let data33 = data7.updated_at, _errs74 = 0;
+                                          if ("number" != typeof data33 || data33 % 1 || isNaN(data33) || !isFinite(data33)) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/updated_at",
+                                            schemaPath: "#/$defs/EventDestination/properties/updated_at/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "integer"
+                                            }
+                                          } ], !1;
+                                          if (0 === _errs74 && "number" == typeof data33 && isFinite(data33) && (data33 < 0 || isNaN(data33))) return validate200.errors = [ {
+                                            instancePath: instancePath + "/destinations/" + i0 + "/updated_at",
+                                            schemaPath: "#/$defs/EventDestination/properties/updated_at/minimum",
+                                            keyword: "minimum",
+                                            params: {
+                                              comparison: ">=",
+                                              limit: 0
+                                            }
+                                          } ], !1;
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              if (0 !== _errs17) break;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate200.errors = [], !0;
+}
+
+validate200.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventMutationAck = validate219;
+
+function validate219(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate219.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate219.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate219.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0) return validate219.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1 && void 0 !== data.success) {
+      let data0 = data.success;
+      if ("boolean" != typeof data0) return validate219.errors = [ {
+        instancePath: instancePath + "/success",
+        schemaPath: "#/properties/success/type",
+        keyword: "type",
+        params: {
+          type: "boolean"
+        }
+      } ], !1;
+      if (!0 !== data0) return validate219.errors = [ {
+        instancePath: instancePath + "/success",
+        schemaPath: "#/properties/success/const",
+        keyword: "const",
+        params: {
+          allowedValue: !0
+        }
+      } ], !1;
+    }
+  }
+  return validate219.errors = [], !0;
+}
+
+validate219.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventPredicate = validate203, schema214 = {
+  type: "object",
+  properties: {
+    version: {
+      type: "integer",
+      const: 1
+    },
+    detection: {
+      type: "object",
+      properties: {
+        labels_any: {
+          type: "array",
+          items: {
+            type: "string",
+            maxLength: 127,
+            minLength: 1
+          },
+          minItems: 1,
+          maxItems: 64
+        },
+        zone_ids_any: {
+          type: "array",
+          items: {
+            type: "string",
+            maxLength: 127,
+            minLength: 1
+          },
+          minItems: 1,
+          maxItems: 64
+        },
+        min_confidence: {
+          type: "number",
+          minimum: 0,
+          maximum: 1
+        }
+      },
+      required: [],
+      additionalProperties: !1,
+      minProperties: 1
+    },
+    health: {
+      type: "object",
+      properties: {
+        condition_codes_any: {
+          type: "array",
+          items: {
+            type: "string",
+            maxLength: 127,
+            minLength: 1
+          },
+          minItems: 1,
+          maxItems: 64
+        },
+        severities_any: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: [ "warning", "error", "critical" ]
+          },
+          minItems: 1,
+          maxItems: 3
+        }
+      },
+      required: [],
+      additionalProperties: !1,
+      minProperties: 1
+    }
+  },
+  required: [ "version" ],
+  additionalProperties: !1
+};
+
+function validate203(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate203.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate203.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.version) return validate203.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "version"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("version" !== key0 && "detection" !== key0 && "health" !== key0) return validate203.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.version) {
+        let data0 = data.version, _errs2 = 0;
+        if ("number" != typeof data0 || data0 % 1 || isNaN(data0) || !isFinite(data0)) return validate203.errors = [ {
+          instancePath: instancePath + "/version",
+          schemaPath: "#/properties/version/type",
+          keyword: "type",
+          params: {
+            type: "integer"
+          }
+        } ], !1;
+        if (1 !== data0) return validate203.errors = [ {
+          instancePath: instancePath + "/version",
+          schemaPath: "#/properties/version/const",
+          keyword: "const",
+          params: {
+            allowedValue: 1
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.detection) {
+          let data1 = data.detection, _errs4 = 0;
+          if (0 === _errs4) {
+            if (!data1 || "object" != typeof data1 || Array.isArray(data1)) return validate203.errors = [ {
+              instancePath: instancePath + "/detection",
+              schemaPath: "#/properties/detection/type",
+              keyword: "type",
+              params: {
+                type: "object"
+              }
+            } ], !1;
+            if (Object.keys(data1).length < 1) return validate203.errors = [ {
+              instancePath: instancePath + "/detection",
+              schemaPath: "#/properties/detection/minProperties",
+              keyword: "minProperties",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+            {
+              let _errs6 = 0;
+              for (let key1 in data1) if ("labels_any" !== key1 && "zone_ids_any" !== key1 && "min_confidence" !== key1) return validate203.errors = [ {
+                instancePath: instancePath + "/detection",
+                schemaPath: "#/properties/detection/additionalProperties",
+                keyword: "additionalProperties",
+                params: {
+                  additionalProperty: key1
+                }
+              } ], !1;
+              if (0 === _errs6) {
+                if (void 0 !== data1.labels_any) {
+                  let data2 = data1.labels_any, _errs7 = 0;
+                  if (0 === _errs7) {
+                    if (!Array.isArray(data2)) return validate203.errors = [ {
+                      instancePath: instancePath + "/detection/labels_any",
+                      schemaPath: "#/properties/detection/properties/labels_any/type",
+                      keyword: "type",
+                      params: {
+                        type: "array"
+                      }
+                    } ], !1;
+                    if (data2.length > 64) return validate203.errors = [ {
+                      instancePath: instancePath + "/detection/labels_any",
+                      schemaPath: "#/properties/detection/properties/labels_any/maxItems",
+                      keyword: "maxItems",
+                      params: {
+                        limit: 64
+                      }
+                    } ], !1;
+                    if (data2.length < 1) return validate203.errors = [ {
+                      instancePath: instancePath + "/detection/labels_any",
+                      schemaPath: "#/properties/detection/properties/labels_any/minItems",
+                      keyword: "minItems",
+                      params: {
+                        limit: 1
+                      }
+                    } ], !1;
+                    {
+                      let len0 = data2.length;
+                      for (let i0 = 0; i0 < len0; i0++) {
+                        let data3 = data2[i0], _errs9 = 0;
+                        if (0 === _errs9) {
+                          if ("string" != typeof data3) return validate203.errors = [ {
+                            instancePath: instancePath + "/detection/labels_any/" + i0,
+                            schemaPath: "#/properties/detection/properties/labels_any/items/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (func1(data3) > 127) return validate203.errors = [ {
+                            instancePath: instancePath + "/detection/labels_any/" + i0,
+                            schemaPath: "#/properties/detection/properties/labels_any/items/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 127
+                            }
+                          } ], !1;
+                          if (func1(data3) < 1) return validate203.errors = [ {
+                            instancePath: instancePath + "/detection/labels_any/" + i0,
+                            schemaPath: "#/properties/detection/properties/labels_any/items/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          } ], !1;
+                        }
+                        if (0 !== _errs9) break;
+                      }
+                    }
+                  }
+                  var valid2 = 0 === _errs7;
+                } else valid2 = !0;
+                if (valid2) {
+                  if (void 0 !== data1.zone_ids_any) {
+                    let data4 = data1.zone_ids_any, _errs11 = 0;
+                    if (0 === _errs11) {
+                      if (!Array.isArray(data4)) return validate203.errors = [ {
+                        instancePath: instancePath + "/detection/zone_ids_any",
+                        schemaPath: "#/properties/detection/properties/zone_ids_any/type",
+                        keyword: "type",
+                        params: {
+                          type: "array"
+                        }
+                      } ], !1;
+                      if (data4.length > 64) return validate203.errors = [ {
+                        instancePath: instancePath + "/detection/zone_ids_any",
+                        schemaPath: "#/properties/detection/properties/zone_ids_any/maxItems",
+                        keyword: "maxItems",
+                        params: {
+                          limit: 64
+                        }
+                      } ], !1;
+                      if (data4.length < 1) return validate203.errors = [ {
+                        instancePath: instancePath + "/detection/zone_ids_any",
+                        schemaPath: "#/properties/detection/properties/zone_ids_any/minItems",
+                        keyword: "minItems",
+                        params: {
+                          limit: 1
+                        }
+                      } ], !1;
+                      {
+                        let len1 = data4.length;
+                        for (let i1 = 0; i1 < len1; i1++) {
+                          let data5 = data4[i1], _errs13 = 0;
+                          if (0 === _errs13) {
+                            if ("string" != typeof data5) return validate203.errors = [ {
+                              instancePath: instancePath + "/detection/zone_ids_any/" + i1,
+                              schemaPath: "#/properties/detection/properties/zone_ids_any/items/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (func1(data5) > 127) return validate203.errors = [ {
+                              instancePath: instancePath + "/detection/zone_ids_any/" + i1,
+                              schemaPath: "#/properties/detection/properties/zone_ids_any/items/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 127
+                              }
+                            } ], !1;
+                            if (func1(data5) < 1) return validate203.errors = [ {
+                              instancePath: instancePath + "/detection/zone_ids_any/" + i1,
+                              schemaPath: "#/properties/detection/properties/zone_ids_any/items/minLength",
+                              keyword: "minLength",
+                              params: {
+                                limit: 1
+                              }
+                            } ], !1;
+                          }
+                          if (0 !== _errs13) break;
+                        }
+                      }
+                    }
+                    var valid4 = 0 === _errs11;
+                  } else valid4 = !0;
+                  if (valid4 && void 0 !== data1.min_confidence) {
+                    let data6 = data1.min_confidence;
+                    if ("number" != typeof data6 || !isFinite(data6)) return validate203.errors = [ {
+                      instancePath: instancePath + "/detection/min_confidence",
+                      schemaPath: "#/properties/detection/properties/min_confidence/type",
+                      keyword: "type",
+                      params: {
+                        type: "number"
+                      }
+                    } ], !1;
+                    if (data6 > 1 || isNaN(data6)) return validate203.errors = [ {
+                      instancePath: instancePath + "/detection/min_confidence",
+                      schemaPath: "#/properties/detection/properties/min_confidence/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 1
+                      }
+                    } ], !1;
+                    if (data6 < 0 || isNaN(data6)) return validate203.errors = [ {
+                      instancePath: instancePath + "/detection/min_confidence",
+                      schemaPath: "#/properties/detection/properties/min_confidence/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 0
+                      }
+                    } ], !1;
+                  }
+                }
+              }
+            }
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.health) {
+          let data7 = data.health;
+          if (!data7 || "object" != typeof data7 || Array.isArray(data7)) return validate203.errors = [ {
+            instancePath: instancePath + "/health",
+            schemaPath: "#/properties/health/type",
+            keyword: "type",
+            params: {
+              type: "object"
+            }
+          } ], !1;
+          if (Object.keys(data7).length < 1) return validate203.errors = [ {
+            instancePath: instancePath + "/health",
+            schemaPath: "#/properties/health/minProperties",
+            keyword: "minProperties",
+            params: {
+              limit: 1
+            }
+          } ], !1;
+          {
+            let _errs19 = 0;
+            for (let key2 in data7) if ("condition_codes_any" !== key2 && "severities_any" !== key2) return validate203.errors = [ {
+              instancePath: instancePath + "/health",
+              schemaPath: "#/properties/health/additionalProperties",
+              keyword: "additionalProperties",
+              params: {
+                additionalProperty: key2
+              }
+            } ], !1;
+            if (0 === _errs19) {
+              if (void 0 !== data7.condition_codes_any) {
+                let data8 = data7.condition_codes_any, _errs20 = 0;
+                if (0 === _errs20) {
+                  if (!Array.isArray(data8)) return validate203.errors = [ {
+                    instancePath: instancePath + "/health/condition_codes_any",
+                    schemaPath: "#/properties/health/properties/condition_codes_any/type",
+                    keyword: "type",
+                    params: {
+                      type: "array"
+                    }
+                  } ], !1;
+                  if (data8.length > 64) return validate203.errors = [ {
+                    instancePath: instancePath + "/health/condition_codes_any",
+                    schemaPath: "#/properties/health/properties/condition_codes_any/maxItems",
+                    keyword: "maxItems",
+                    params: {
+                      limit: 64
+                    }
+                  } ], !1;
+                  if (data8.length < 1) return validate203.errors = [ {
+                    instancePath: instancePath + "/health/condition_codes_any",
+                    schemaPath: "#/properties/health/properties/condition_codes_any/minItems",
+                    keyword: "minItems",
+                    params: {
+                      limit: 1
+                    }
+                  } ], !1;
+                  {
+                    let len2 = data8.length;
+                    for (let i2 = 0; i2 < len2; i2++) {
+                      let data9 = data8[i2], _errs22 = 0;
+                      if (0 === _errs22) {
+                        if ("string" != typeof data9) return validate203.errors = [ {
+                          instancePath: instancePath + "/health/condition_codes_any/" + i2,
+                          schemaPath: "#/properties/health/properties/condition_codes_any/items/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        if (func1(data9) > 127) return validate203.errors = [ {
+                          instancePath: instancePath + "/health/condition_codes_any/" + i2,
+                          schemaPath: "#/properties/health/properties/condition_codes_any/items/maxLength",
+                          keyword: "maxLength",
+                          params: {
+                            limit: 127
+                          }
+                        } ], !1;
+                        if (func1(data9) < 1) return validate203.errors = [ {
+                          instancePath: instancePath + "/health/condition_codes_any/" + i2,
+                          schemaPath: "#/properties/health/properties/condition_codes_any/items/minLength",
+                          keyword: "minLength",
+                          params: {
+                            limit: 1
+                          }
+                        } ], !1;
+                      }
+                      if (0 !== _errs22) break;
+                    }
+                  }
+                }
+                var valid8 = 0 === _errs20;
+              } else valid8 = !0;
+              if (valid8 && void 0 !== data7.severities_any) {
+                let data10 = data7.severities_any;
+                if (!Array.isArray(data10)) return validate203.errors = [ {
+                  instancePath: instancePath + "/health/severities_any",
+                  schemaPath: "#/properties/health/properties/severities_any/type",
+                  keyword: "type",
+                  params: {
+                    type: "array"
+                  }
+                } ], !1;
+                if (data10.length > 3) return validate203.errors = [ {
+                  instancePath: instancePath + "/health/severities_any",
+                  schemaPath: "#/properties/health/properties/severities_any/maxItems",
+                  keyword: "maxItems",
+                  params: {
+                    limit: 3
+                  }
+                } ], !1;
+                if (data10.length < 1) return validate203.errors = [ {
+                  instancePath: instancePath + "/health/severities_any",
+                  schemaPath: "#/properties/health/properties/severities_any/minItems",
+                  keyword: "minItems",
+                  params: {
+                    limit: 1
+                  }
+                } ], !1;
+                {
+                  let len3 = data10.length;
+                  for (let i3 = 0; i3 < len3; i3++) {
+                    let data11 = data10[i3], _errs26 = 0;
+                    if ("string" != typeof data11) return validate203.errors = [ {
+                      instancePath: instancePath + "/health/severities_any/" + i3,
+                      schemaPath: "#/properties/health/properties/severities_any/items/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                    if ("warning" !== data11 && "error" !== data11 && "critical" !== data11) return validate203.errors = [ {
+                      instancePath: instancePath + "/health/severities_any/" + i3,
+                      schemaPath: "#/properties/health/properties/severities_any/items/enum",
+                      keyword: "enum",
+                      params: {
+                        allowedValues: schema214.properties.health.properties.severities_any.items.enum
+                      }
+                    } ], !1;
+                    if (0 !== _errs26) break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate203.errors = [], !0;
+}
+
+validate203.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventRoute = validate207, schema217 = {
+  type: "object",
+  properties: {
+    uuid: {
+      type: "string",
+      format: "uuid"
+    },
+    name: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    description: {
+      type: "string",
+      maxLength: 511
+    },
+    enabled: {
+      type: "boolean"
+    },
+    destination: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    event_types: {
+      type: "array",
+      items: {
+        type: "string",
+        maxLength: 127,
+        minLength: 1
+      },
+      minItems: 1,
+      maxItems: 32,
+      uniqueItems: !0
+    },
+    camera_scope: {
+      $ref: "#/$defs/EventCameraScope"
+    },
+    predicate: {
+      $ref: "#/$defs/EventPredicate"
+    },
+    schedule: {
+      $ref: "#/$defs/EventSchedule"
+    },
+    suppression: {
+      type: "object",
+      properties: {
+        debounce_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 86400
+        },
+        cooldown_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 604800
+        },
+        grouping_window_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 3600
+        },
+        max_events_per_minute: {
+          type: "integer",
+          minimum: 0,
+          maximum: 6e4
+        }
+      },
+      required: [ "debounce_seconds", "cooldown_seconds", "grouping_window_seconds", "max_events_per_minute" ],
+      additionalProperties: !1
+    },
+    revision: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9007199254740991
+    },
+    created_at: {
+      type: "integer",
+      minimum: 0
+    },
+    updated_at: {
+      type: "integer",
+      minimum: 0
+    }
+  },
+  required: [ "uuid", "name", "description", "enabled", "destination", "event_types", "camera_scope", "predicate", "schedule", "suppression", "revision", "created_at", "updated_at" ],
+  additionalProperties: !1
+}, pattern52 = new RegExp("^(?:[01][0-9]|2[0-3]):[0-5][0-9]$", "u");
+
+function validate207(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate207.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.uuid) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "uuid"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.description) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "description"
+      }
+    } ], !1;
+    if (void 0 === data.enabled) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "enabled"
+      }
+    } ], !1;
+    if (void 0 === data.destination) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "destination"
+      }
+    } ], !1;
+    if (void 0 === data.event_types) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "event_types"
+      }
+    } ], !1;
+    if (void 0 === data.camera_scope) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "camera_scope"
+      }
+    } ], !1;
+    if (void 0 === data.predicate) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "predicate"
+      }
+    } ], !1;
+    if (void 0 === data.schedule) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "schedule"
+      }
+    } ], !1;
+    if (void 0 === data.suppression) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "suppression"
+      }
+    } ], !1;
+    if (void 0 === data.revision) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "revision"
+      }
+    } ], !1;
+    if (void 0 === data.created_at) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "created_at"
+      }
+    } ], !1;
+    if (void 0 === data.updated_at) return validate207.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "updated_at"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if (!func5.call(schema217.properties, key0)) return validate207.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.uuid) {
+          let data0 = data.uuid, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate207.errors = [ {
+              instancePath: instancePath + "/uuid",
+              schemaPath: "#/properties/uuid/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (!formats2.test(data0)) return validate207.errors = [ {
+              instancePath: instancePath + "/uuid",
+              schemaPath: "#/properties/uuid/format",
+              keyword: "format",
+              params: {
+                format: "uuid"
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.name) {
+            let data1 = data.name, _errs4 = errors;
+            if (errors === _errs4) {
+              if ("string" != typeof data1) return validate207.errors = [ {
+                instancePath: instancePath + "/name",
+                schemaPath: "#/properties/name/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data1) > 127) return validate207.errors = [ {
+                instancePath: instancePath + "/name",
+                schemaPath: "#/properties/name/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 127
+                }
+              } ], !1;
+              if (func1(data1) < 1) return validate207.errors = [ {
+                instancePath: instancePath + "/name",
+                schemaPath: "#/properties/name/minLength",
+                keyword: "minLength",
+                params: {
+                  limit: 1
+                }
+              } ], !1;
+            }
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.description) {
+              let data2 = data.description, _errs6 = errors;
+              if (errors === _errs6) {
+                if ("string" != typeof data2) return validate207.errors = [ {
+                  instancePath: instancePath + "/description",
+                  schemaPath: "#/properties/description/type",
+                  keyword: "type",
+                  params: {
+                    type: "string"
+                  }
+                } ], !1;
+                if (func1(data2) > 511) return validate207.errors = [ {
+                  instancePath: instancePath + "/description",
+                  schemaPath: "#/properties/description/maxLength",
+                  keyword: "maxLength",
+                  params: {
+                    limit: 511
+                  }
+                } ], !1;
+              }
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.enabled) {
+                let _errs8 = errors;
+                if ("boolean" != typeof data.enabled) return validate207.errors = [ {
+                  instancePath: instancePath + "/enabled",
+                  schemaPath: "#/properties/enabled/type",
+                  keyword: "type",
+                  params: {
+                    type: "boolean"
+                  }
+                } ], !1;
+                var valid3 = _errs8 === errors;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data.destination) {
+                  let data4 = data.destination, _errs10 = errors;
+                  if (errors === _errs10) {
+                    if ("string" != typeof data4) return validate207.errors = [ {
+                      instancePath: instancePath + "/destination",
+                      schemaPath: "#/properties/destination/type",
+                      keyword: "type",
+                      params: {
+                        type: "string"
+                      }
+                    } ], !1;
+                    if (func1(data4) > 127) return validate207.errors = [ {
+                      instancePath: instancePath + "/destination",
+                      schemaPath: "#/properties/destination/maxLength",
+                      keyword: "maxLength",
+                      params: {
+                        limit: 127
+                      }
+                    } ], !1;
+                    if (func1(data4) < 1) return validate207.errors = [ {
+                      instancePath: instancePath + "/destination",
+                      schemaPath: "#/properties/destination/minLength",
+                      keyword: "minLength",
+                      params: {
+                        limit: 1
+                      }
+                    } ], !1;
+                  }
+                  var valid4 = _errs10 === errors;
+                } else valid4 = !0;
+                if (valid4) {
+                  if (void 0 !== data.event_types) {
+                    let data5 = data.event_types, _errs12 = errors;
+                    if (errors === _errs12) {
+                      if (!Array.isArray(data5)) return validate207.errors = [ {
+                        instancePath: instancePath + "/event_types",
+                        schemaPath: "#/properties/event_types/type",
+                        keyword: "type",
+                        params: {
+                          type: "array"
+                        }
+                      } ], !1;
+                      if (data5.length > 32) return validate207.errors = [ {
+                        instancePath: instancePath + "/event_types",
+                        schemaPath: "#/properties/event_types/maxItems",
+                        keyword: "maxItems",
+                        params: {
+                          limit: 32
+                        }
+                      } ], !1;
+                      if (data5.length < 1) return validate207.errors = [ {
+                        instancePath: instancePath + "/event_types",
+                        schemaPath: "#/properties/event_types/minItems",
+                        keyword: "minItems",
+                        params: {
+                          limit: 1
+                        }
+                      } ], !1;
+                      {
+                        var valid6 = !0;
+                        let len0 = data5.length;
+                        for (let i0 = 0; i0 < len0; i0++) {
+                          let data6 = data5[i0], _errs14 = errors;
+                          if (errors === _errs14) {
+                            if ("string" != typeof data6) return validate207.errors = [ {
+                              instancePath: instancePath + "/event_types/" + i0,
+                              schemaPath: "#/properties/event_types/items/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (func1(data6) > 127) return validate207.errors = [ {
+                              instancePath: instancePath + "/event_types/" + i0,
+                              schemaPath: "#/properties/event_types/items/maxLength",
+                              keyword: "maxLength",
+                              params: {
+                                limit: 127
+                              }
+                            } ], !1;
+                            if (func1(data6) < 1) return validate207.errors = [ {
+                              instancePath: instancePath + "/event_types/" + i0,
+                              schemaPath: "#/properties/event_types/items/minLength",
+                              keyword: "minLength",
+                              params: {
+                                limit: 1
+                              }
+                            } ], !1;
+                          }
+                          if (!(valid6 = _errs14 === errors)) break;
+                        }
+                        if (valid6) {
+                          let j0, i1 = data5.length;
+                          if (i1 > 1) {
+                            let indices0 = {};
+                            for (;i1--; ) {
+                              let item0 = data5[i1];
+                              if ("string" == typeof item0) {
+                                if ("number" == typeof indices0[item0]) return j0 = indices0[item0], validate207.errors = [ {
+                                  instancePath: instancePath + "/event_types",
+                                  schemaPath: "#/properties/event_types/uniqueItems",
+                                  keyword: "uniqueItems",
+                                  params: {
+                                    i: i1,
+                                    j: j0
+                                  }
+                                } ], !1;
+                                indices0[item0] = i1;
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    var valid5 = _errs12 === errors;
+                  } else valid5 = !0;
+                  if (valid5) {
+                    if (void 0 !== data.camera_scope) {
+                      let _errs16 = errors;
+                      validate204(data.camera_scope, {
+                        instancePath: instancePath + "/camera_scope",
+                        parentData: data,
+                        parentDataProperty: "camera_scope",
+                        rootData: rootData,
+                        dynamicAnchors: dynamicAnchors
+                      }) || (vErrors = vErrors.concat(validate204.errors), errors = vErrors.length);
+                      var valid8 = _errs16 === errors;
+                    } else valid8 = !0;
+                    if (valid8) {
+                      if (void 0 !== data.predicate) {
+                        let data8 = data.predicate, _errs17 = errors;
+                        if (errors == errors) {
+                          if (!data8 || "object" != typeof data8 || Array.isArray(data8)) return validate207.errors = [ {
+                            instancePath: instancePath + "/predicate",
+                            schemaPath: "#/$defs/EventPredicate/type",
+                            keyword: "type",
+                            params: {
+                              type: "object"
+                            }
+                          } ], !1;
+                          if (void 0 === data8.version) return validate207.errors = [ {
+                            instancePath: instancePath + "/predicate",
+                            schemaPath: "#/$defs/EventPredicate/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "version"
+                            }
+                          } ], !1;
+                          {
+                            let _errs20 = errors;
+                            for (let key1 in data8) if ("version" !== key1 && "detection" !== key1 && "health" !== key1) return validate207.errors = [ {
+                              instancePath: instancePath + "/predicate",
+                              schemaPath: "#/$defs/EventPredicate/additionalProperties",
+                              keyword: "additionalProperties",
+                              params: {
+                                additionalProperty: key1
+                              }
+                            } ], !1;
+                            if (_errs20 === errors) {
+                              if (void 0 !== data8.version) {
+                                let data9 = data8.version, _errs21 = errors;
+                                if ("number" != typeof data9 || data9 % 1 || isNaN(data9) || !isFinite(data9)) return validate207.errors = [ {
+                                  instancePath: instancePath + "/predicate/version",
+                                  schemaPath: "#/$defs/EventPredicate/properties/version/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (1 !== data9) return validate207.errors = [ {
+                                  instancePath: instancePath + "/predicate/version",
+                                  schemaPath: "#/$defs/EventPredicate/properties/version/const",
+                                  keyword: "const",
+                                  params: {
+                                    allowedValue: 1
+                                  }
+                                } ], !1;
+                                var valid11 = _errs21 === errors;
+                              } else valid11 = !0;
+                              if (valid11) {
+                                if (void 0 !== data8.detection) {
+                                  let data10 = data8.detection, _errs23 = errors;
+                                  if (errors === _errs23) {
+                                    if (!data10 || "object" != typeof data10 || Array.isArray(data10)) return validate207.errors = [ {
+                                      instancePath: instancePath + "/predicate/detection",
+                                      schemaPath: "#/$defs/EventPredicate/properties/detection/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "object"
+                                      }
+                                    } ], !1;
+                                    if (Object.keys(data10).length < 1) return validate207.errors = [ {
+                                      instancePath: instancePath + "/predicate/detection",
+                                      schemaPath: "#/$defs/EventPredicate/properties/detection/minProperties",
+                                      keyword: "minProperties",
+                                      params: {
+                                        limit: 1
+                                      }
+                                    } ], !1;
+                                    {
+                                      let _errs25 = errors;
+                                      for (let key2 in data10) if ("labels_any" !== key2 && "zone_ids_any" !== key2 && "min_confidence" !== key2) return validate207.errors = [ {
+                                        instancePath: instancePath + "/predicate/detection",
+                                        schemaPath: "#/$defs/EventPredicate/properties/detection/additionalProperties",
+                                        keyword: "additionalProperties",
+                                        params: {
+                                          additionalProperty: key2
+                                        }
+                                      } ], !1;
+                                      if (_errs25 === errors) {
+                                        if (void 0 !== data10.labels_any) {
+                                          let data11 = data10.labels_any, _errs26 = errors;
+                                          if (errors === _errs26) {
+                                            if (!Array.isArray(data11)) return validate207.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/labels_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "array"
+                                              }
+                                            } ], !1;
+                                            if (data11.length > 64) return validate207.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/labels_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/maxItems",
+                                              keyword: "maxItems",
+                                              params: {
+                                                limit: 64
+                                              }
+                                            } ], !1;
+                                            if (data11.length < 1) return validate207.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/labels_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/minItems",
+                                              keyword: "minItems",
+                                              params: {
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                            {
+                                              let len1 = data11.length;
+                                              for (let i2 = 0; i2 < len1; i2++) {
+                                                let data12 = data11[i2], _errs28 = errors;
+                                                if (errors === _errs28) {
+                                                  if ("string" != typeof data12) return validate207.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "string"
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data12) > 127) return validate207.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/maxLength",
+                                                    keyword: "maxLength",
+                                                    params: {
+                                                      limit: 127
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data12) < 1) return validate207.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/minLength",
+                                                    keyword: "minLength",
+                                                    params: {
+                                                      limit: 1
+                                                    }
+                                                  } ], !1;
+                                                }
+                                                if (_errs28 !== errors) break;
+                                              }
+                                            }
+                                          }
+                                          var valid13 = _errs26 === errors;
+                                        } else valid13 = !0;
+                                        if (valid13) {
+                                          if (void 0 !== data10.zone_ids_any) {
+                                            let data13 = data10.zone_ids_any, _errs30 = errors;
+                                            if (errors === _errs30) {
+                                              if (!Array.isArray(data13)) return validate207.errors = [ {
+                                                instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                                schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/type",
+                                                keyword: "type",
+                                                params: {
+                                                  type: "array"
+                                                }
+                                              } ], !1;
+                                              if (data13.length > 64) return validate207.errors = [ {
+                                                instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                                schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/maxItems",
+                                                keyword: "maxItems",
+                                                params: {
+                                                  limit: 64
+                                                }
+                                              } ], !1;
+                                              if (data13.length < 1) return validate207.errors = [ {
+                                                instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                                schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/minItems",
+                                                keyword: "minItems",
+                                                params: {
+                                                  limit: 1
+                                                }
+                                              } ], !1;
+                                              {
+                                                let len2 = data13.length;
+                                                for (let i3 = 0; i3 < len2; i3++) {
+                                                  let data14 = data13[i3], _errs32 = errors;
+                                                  if (errors === _errs32) {
+                                                    if ("string" != typeof data14) return validate207.errors = [ {
+                                                      instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                      schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "string"
+                                                      }
+                                                    } ], !1;
+                                                    if (func1(data14) > 127) return validate207.errors = [ {
+                                                      instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                      schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/maxLength",
+                                                      keyword: "maxLength",
+                                                      params: {
+                                                        limit: 127
+                                                      }
+                                                    } ], !1;
+                                                    if (func1(data14) < 1) return validate207.errors = [ {
+                                                      instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                      schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/minLength",
+                                                      keyword: "minLength",
+                                                      params: {
+                                                        limit: 1
+                                                      }
+                                                    } ], !1;
+                                                  }
+                                                  if (_errs32 !== errors) break;
+                                                }
+                                              }
+                                            }
+                                            var valid15 = _errs30 === errors;
+                                          } else valid15 = !0;
+                                          if (valid15 && void 0 !== data10.min_confidence) {
+                                            let data15 = data10.min_confidence;
+                                            if (errors == errors) {
+                                              if ("number" != typeof data15 || !isFinite(data15)) return validate207.errors = [ {
+                                                instancePath: instancePath + "/predicate/detection/min_confidence",
+                                                schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/type",
+                                                keyword: "type",
+                                                params: {
+                                                  type: "number"
+                                                }
+                                              } ], !1;
+                                              if (data15 > 1 || isNaN(data15)) return validate207.errors = [ {
+                                                instancePath: instancePath + "/predicate/detection/min_confidence",
+                                                schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/maximum",
+                                                keyword: "maximum",
+                                                params: {
+                                                  comparison: "<=",
+                                                  limit: 1
+                                                }
+                                              } ], !1;
+                                              if (data15 < 0 || isNaN(data15)) return validate207.errors = [ {
+                                                instancePath: instancePath + "/predicate/detection/min_confidence",
+                                                schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/minimum",
+                                                keyword: "minimum",
+                                                params: {
+                                                  comparison: ">=",
+                                                  limit: 0
+                                                }
+                                              } ], !1;
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                  var valid12 = _errs23 === errors;
+                                } else valid12 = !0;
+                                if (valid12 && void 0 !== data8.health) {
+                                  let data16 = data8.health;
+                                  if (errors == errors) {
+                                    if (!data16 || "object" != typeof data16 || Array.isArray(data16)) return validate207.errors = [ {
+                                      instancePath: instancePath + "/predicate/health",
+                                      schemaPath: "#/$defs/EventPredicate/properties/health/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "object"
+                                      }
+                                    } ], !1;
+                                    if (Object.keys(data16).length < 1) return validate207.errors = [ {
+                                      instancePath: instancePath + "/predicate/health",
+                                      schemaPath: "#/$defs/EventPredicate/properties/health/minProperties",
+                                      keyword: "minProperties",
+                                      params: {
+                                        limit: 1
+                                      }
+                                    } ], !1;
+                                    {
+                                      let _errs38 = errors;
+                                      for (let key3 in data16) if ("condition_codes_any" !== key3 && "severities_any" !== key3) return validate207.errors = [ {
+                                        instancePath: instancePath + "/predicate/health",
+                                        schemaPath: "#/$defs/EventPredicate/properties/health/additionalProperties",
+                                        keyword: "additionalProperties",
+                                        params: {
+                                          additionalProperty: key3
+                                        }
+                                      } ], !1;
+                                      if (_errs38 === errors) {
+                                        if (void 0 !== data16.condition_codes_any) {
+                                          let data17 = data16.condition_codes_any, _errs39 = errors;
+                                          if (errors === _errs39) {
+                                            if (!Array.isArray(data17)) return validate207.errors = [ {
+                                              instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "array"
+                                              }
+                                            } ], !1;
+                                            if (data17.length > 64) return validate207.errors = [ {
+                                              instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/maxItems",
+                                              keyword: "maxItems",
+                                              params: {
+                                                limit: 64
+                                              }
+                                            } ], !1;
+                                            if (data17.length < 1) return validate207.errors = [ {
+                                              instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/minItems",
+                                              keyword: "minItems",
+                                              params: {
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                            {
+                                              let len3 = data17.length;
+                                              for (let i4 = 0; i4 < len3; i4++) {
+                                                let data18 = data17[i4], _errs41 = errors;
+                                                if (errors === _errs41) {
+                                                  if ("string" != typeof data18) return validate207.errors = [ {
+                                                    instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "string"
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data18) > 127) return validate207.errors = [ {
+                                                    instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/maxLength",
+                                                    keyword: "maxLength",
+                                                    params: {
+                                                      limit: 127
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data18) < 1) return validate207.errors = [ {
+                                                    instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/minLength",
+                                                    keyword: "minLength",
+                                                    params: {
+                                                      limit: 1
+                                                    }
+                                                  } ], !1;
+                                                }
+                                                if (_errs41 !== errors) break;
+                                              }
+                                            }
+                                          }
+                                          var valid19 = _errs39 === errors;
+                                        } else valid19 = !0;
+                                        if (valid19 && void 0 !== data16.severities_any) {
+                                          let data19 = data16.severities_any;
+                                          if (errors == errors) {
+                                            if (!Array.isArray(data19)) return validate207.errors = [ {
+                                              instancePath: instancePath + "/predicate/health/severities_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "array"
+                                              }
+                                            } ], !1;
+                                            if (data19.length > 3) return validate207.errors = [ {
+                                              instancePath: instancePath + "/predicate/health/severities_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/maxItems",
+                                              keyword: "maxItems",
+                                              params: {
+                                                limit: 3
+                                              }
+                                            } ], !1;
+                                            if (data19.length < 1) return validate207.errors = [ {
+                                              instancePath: instancePath + "/predicate/health/severities_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/minItems",
+                                              keyword: "minItems",
+                                              params: {
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                            {
+                                              let len4 = data19.length;
+                                              for (let i5 = 0; i5 < len4; i5++) {
+                                                let data20 = data19[i5], _errs45 = errors;
+                                                if ("string" != typeof data20) return validate207.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/severities_any/" + i5,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/items/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if ("warning" !== data20 && "error" !== data20 && "critical" !== data20) return validate207.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/severities_any/" + i5,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/items/enum",
+                                                  keyword: "enum",
+                                                  params: {
+                                                    allowedValues: schema214.properties.health.properties.severities_any.items.enum
+                                                  }
+                                                } ], !1;
+                                                if (_errs45 !== errors) break;
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        var valid9 = _errs17 === errors;
+                      } else valid9 = !0;
+                      if (valid9) {
+                        if (void 0 !== data.schedule) {
+                          let data21 = data.schedule, _errs47 = errors;
+                          if (errors == errors) {
+                            if (!data21 || "object" != typeof data21 || Array.isArray(data21)) return validate207.errors = [ {
+                              instancePath: instancePath + "/schedule",
+                              schemaPath: "#/$defs/EventSchedule/type",
+                              keyword: "type",
+                              params: {
+                                type: "object"
+                              }
+                            } ], !1;
+                            if (void 0 === data21.version) return validate207.errors = [ {
+                              instancePath: instancePath + "/schedule",
+                              schemaPath: "#/$defs/EventSchedule/required",
+                              keyword: "required",
+                              params: {
+                                missingProperty: "version"
+                              }
+                            } ], !1;
+                            if (void 0 === data21.timezone) return validate207.errors = [ {
+                              instancePath: instancePath + "/schedule",
+                              schemaPath: "#/$defs/EventSchedule/required",
+                              keyword: "required",
+                              params: {
+                                missingProperty: "timezone"
+                              }
+                            } ], !1;
+                            if (void 0 === data21.windows) return validate207.errors = [ {
+                              instancePath: instancePath + "/schedule",
+                              schemaPath: "#/$defs/EventSchedule/required",
+                              keyword: "required",
+                              params: {
+                                missingProperty: "windows"
+                              }
+                            } ], !1;
+                            {
+                              let _errs50 = errors;
+                              for (let key4 in data21) if ("version" !== key4 && "timezone" !== key4 && "windows" !== key4) return validate207.errors = [ {
+                                instancePath: instancePath + "/schedule",
+                                schemaPath: "#/$defs/EventSchedule/additionalProperties",
+                                keyword: "additionalProperties",
+                                params: {
+                                  additionalProperty: key4
+                                }
+                              } ], !1;
+                              if (_errs50 === errors) {
+                                if (void 0 !== data21.version) {
+                                  let data22 = data21.version, _errs51 = errors;
+                                  if ("number" != typeof data22 || data22 % 1 || isNaN(data22) || !isFinite(data22)) return validate207.errors = [ {
+                                    instancePath: instancePath + "/schedule/version",
+                                    schemaPath: "#/$defs/EventSchedule/properties/version/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  if (1 !== data22) return validate207.errors = [ {
+                                    instancePath: instancePath + "/schedule/version",
+                                    schemaPath: "#/$defs/EventSchedule/properties/version/const",
+                                    keyword: "const",
+                                    params: {
+                                      allowedValue: 1
+                                    }
+                                  } ], !1;
+                                  var valid25 = _errs51 === errors;
+                                } else valid25 = !0;
+                                if (valid25) {
+                                  if (void 0 !== data21.timezone) {
+                                    let data23 = data21.timezone, _errs53 = errors;
+                                    if (errors === _errs53) {
+                                      if ("string" != typeof data23) return validate207.errors = [ {
+                                        instancePath: instancePath + "/schedule/timezone",
+                                        schemaPath: "#/$defs/EventSchedule/properties/timezone/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      } ], !1;
+                                      if (func1(data23) > 64) return validate207.errors = [ {
+                                        instancePath: instancePath + "/schedule/timezone",
+                                        schemaPath: "#/$defs/EventSchedule/properties/timezone/maxLength",
+                                        keyword: "maxLength",
+                                        params: {
+                                          limit: 64
+                                        }
+                                      } ], !1;
+                                      if (func1(data23) < 1) return validate207.errors = [ {
+                                        instancePath: instancePath + "/schedule/timezone",
+                                        schemaPath: "#/$defs/EventSchedule/properties/timezone/minLength",
+                                        keyword: "minLength",
+                                        params: {
+                                          limit: 1
+                                        }
+                                      } ], !1;
+                                    }
+                                    var valid26 = _errs53 === errors;
+                                  } else valid26 = !0;
+                                  if (valid26 && void 0 !== data21.windows) {
+                                    let data24 = data21.windows;
+                                    if (errors == errors) {
+                                      if (!Array.isArray(data24)) return validate207.errors = [ {
+                                        instancePath: instancePath + "/schedule/windows",
+                                        schemaPath: "#/$defs/EventSchedule/properties/windows/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "array"
+                                        }
+                                      } ], !1;
+                                      if (data24.length > 64) return validate207.errors = [ {
+                                        instancePath: instancePath + "/schedule/windows",
+                                        schemaPath: "#/$defs/EventSchedule/properties/windows/maxItems",
+                                        keyword: "maxItems",
+                                        params: {
+                                          limit: 64
+                                        }
+                                      } ], !1;
+                                      {
+                                        let len5 = data24.length;
+                                        for (let i6 = 0; i6 < len5; i6++) {
+                                          let data25 = data24[i6], _errs57 = errors;
+                                          if (errors === _errs57) {
+                                            if (!data25 || "object" != typeof data25 || Array.isArray(data25)) return validate207.errors = [ {
+                                              instancePath: instancePath + "/schedule/windows/" + i6,
+                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "object"
+                                              }
+                                            } ], !1;
+                                            if (void 0 === data25.days) return validate207.errors = [ {
+                                              instancePath: instancePath + "/schedule/windows/" + i6,
+                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                              keyword: "required",
+                                              params: {
+                                                missingProperty: "days"
+                                              }
+                                            } ], !1;
+                                            if (void 0 === data25.start) return validate207.errors = [ {
+                                              instancePath: instancePath + "/schedule/windows/" + i6,
+                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                              keyword: "required",
+                                              params: {
+                                                missingProperty: "start"
+                                              }
+                                            } ], !1;
+                                            if (void 0 === data25.end) return validate207.errors = [ {
+                                              instancePath: instancePath + "/schedule/windows/" + i6,
+                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                              keyword: "required",
+                                              params: {
+                                                missingProperty: "end"
+                                              }
+                                            } ], !1;
+                                            {
+                                              let _errs59 = errors;
+                                              for (let key5 in data25) if ("days" !== key5 && "start" !== key5 && "end" !== key5) return validate207.errors = [ {
+                                                instancePath: instancePath + "/schedule/windows/" + i6,
+                                                schemaPath: "#/$defs/EventSchedule/properties/windows/items/additionalProperties",
+                                                keyword: "additionalProperties",
+                                                params: {
+                                                  additionalProperty: key5
+                                                }
+                                              } ], !1;
+                                              if (_errs59 === errors) {
+                                                if (void 0 !== data25.days) {
+                                                  let data26 = data25.days, _errs60 = errors;
+                                                  if (errors === _errs60) {
+                                                    if (!Array.isArray(data26)) return validate207.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "array"
+                                                      }
+                                                    } ], !1;
+                                                    if (data26.length > 7) return validate207.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/maxItems",
+                                                      keyword: "maxItems",
+                                                      params: {
+                                                        limit: 7
+                                                      }
+                                                    } ], !1;
+                                                    if (data26.length < 1) return validate207.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/minItems",
+                                                      keyword: "minItems",
+                                                      params: {
+                                                        limit: 1
+                                                      }
+                                                    } ], !1;
+                                                    {
+                                                      var valid30 = !0;
+                                                      let len6 = data26.length;
+                                                      for (let i7 = 0; i7 < len6; i7++) {
+                                                        let data27 = data26[i7], _errs62 = errors;
+                                                        if ("number" != typeof data27 || data27 % 1 || isNaN(data27) || !isFinite(data27)) return validate207.errors = [ {
+                                                          instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                          schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/type",
+                                                          keyword: "type",
+                                                          params: {
+                                                            type: "integer"
+                                                          }
+                                                        } ], !1;
+                                                        if (errors === _errs62 && "number" == typeof data27 && isFinite(data27)) {
+                                                          if (data27 > 6 || isNaN(data27)) return validate207.errors = [ {
+                                                            instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/maximum",
+                                                            keyword: "maximum",
+                                                            params: {
+                                                              comparison: "<=",
+                                                              limit: 6
+                                                            }
+                                                          } ], !1;
+                                                          if (data27 < 0 || isNaN(data27)) return validate207.errors = [ {
+                                                            instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/minimum",
+                                                            keyword: "minimum",
+                                                            params: {
+                                                              comparison: ">=",
+                                                              limit: 0
+                                                            }
+                                                          } ], !1;
+                                                        }
+                                                        if (!(valid30 = _errs62 === errors)) break;
+                                                      }
+                                                      if (valid30) {
+                                                        let j1, i8 = data26.length;
+                                                        if (i8 > 1) {
+                                                          let indices1 = {};
+                                                          for (;i8--; ) {
+                                                            let item1 = data26[i8];
+                                                            if ("number" == typeof item1 && !(item1 % 1) && !isNaN(item1) && isFinite(item1)) {
+                                                              if ("number" == typeof indices1[item1]) return j1 = indices1[item1], validate207.errors = [ {
+                                                                instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                                schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/uniqueItems",
+                                                                keyword: "uniqueItems",
+                                                                params: {
+                                                                  i: i8,
+                                                                  j: j1
+                                                                }
+                                                              } ], !1;
+                                                              indices1[item1] = i8;
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                  var valid29 = _errs60 === errors;
+                                                } else valid29 = !0;
+                                                if (valid29) {
+                                                  if (void 0 !== data25.start) {
+                                                    let data28 = data25.start, _errs64 = errors;
+                                                    if (errors === _errs64) {
+                                                      if ("string" != typeof data28) return validate207.errors = [ {
+                                                        instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
+                                                        schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: "string"
+                                                        }
+                                                      } ], !1;
+                                                      if (!pattern52.test(data28)) return validate207.errors = [ {
+                                                        instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
+                                                        schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
+                                                        keyword: "pattern",
+                                                        params: {
+                                                          pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                                                        }
+                                                      } ], !1;
+                                                    }
+                                                    var valid32 = _errs64 === errors;
+                                                  } else valid32 = !0;
+                                                  if (valid32 && void 0 !== data25.end) {
+                                                    let data29 = data25.end;
+                                                    if (errors == errors) {
+                                                      if ("string" != typeof data29) return validate207.errors = [ {
+                                                        instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
+                                                        schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: "string"
+                                                        }
+                                                      } ], !1;
+                                                      if (!pattern52.test(data29)) return validate207.errors = [ {
+                                                        instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
+                                                        schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
+                                                        keyword: "pattern",
+                                                        params: {
+                                                          pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                                                        }
+                                                      } ], !1;
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                          if (_errs57 !== errors) break;
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          var valid23 = _errs47 === errors;
+                        } else valid23 = !0;
+                        if (valid23) {
+                          if (void 0 !== data.suppression) {
+                            let data30 = data.suppression, _errs68 = errors;
+                            if (errors === _errs68) {
+                              if (!data30 || "object" != typeof data30 || Array.isArray(data30)) return validate207.errors = [ {
+                                instancePath: instancePath + "/suppression",
+                                schemaPath: "#/properties/suppression/type",
+                                keyword: "type",
+                                params: {
+                                  type: "object"
+                                }
+                              } ], !1;
+                              if (void 0 === data30.debounce_seconds) return validate207.errors = [ {
+                                instancePath: instancePath + "/suppression",
+                                schemaPath: "#/properties/suppression/required",
+                                keyword: "required",
+                                params: {
+                                  missingProperty: "debounce_seconds"
+                                }
+                              } ], !1;
+                              if (void 0 === data30.cooldown_seconds) return validate207.errors = [ {
+                                instancePath: instancePath + "/suppression",
+                                schemaPath: "#/properties/suppression/required",
+                                keyword: "required",
+                                params: {
+                                  missingProperty: "cooldown_seconds"
+                                }
+                              } ], !1;
+                              if (void 0 === data30.grouping_window_seconds) return validate207.errors = [ {
+                                instancePath: instancePath + "/suppression",
+                                schemaPath: "#/properties/suppression/required",
+                                keyword: "required",
+                                params: {
+                                  missingProperty: "grouping_window_seconds"
+                                }
+                              } ], !1;
+                              if (void 0 === data30.max_events_per_minute) return validate207.errors = [ {
+                                instancePath: instancePath + "/suppression",
+                                schemaPath: "#/properties/suppression/required",
+                                keyword: "required",
+                                params: {
+                                  missingProperty: "max_events_per_minute"
+                                }
+                              } ], !1;
+                              {
+                                let _errs70 = errors;
+                                for (let key6 in data30) if ("debounce_seconds" !== key6 && "cooldown_seconds" !== key6 && "grouping_window_seconds" !== key6 && "max_events_per_minute" !== key6) return validate207.errors = [ {
+                                  instancePath: instancePath + "/suppression",
+                                  schemaPath: "#/properties/suppression/additionalProperties",
+                                  keyword: "additionalProperties",
+                                  params: {
+                                    additionalProperty: key6
+                                  }
+                                } ], !1;
+                                if (_errs70 === errors) {
+                                  if (void 0 !== data30.debounce_seconds) {
+                                    let data31 = data30.debounce_seconds, _errs71 = errors;
+                                    if ("number" != typeof data31 || data31 % 1 || isNaN(data31) || !isFinite(data31)) return validate207.errors = [ {
+                                      instancePath: instancePath + "/suppression/debounce_seconds",
+                                      schemaPath: "#/properties/suppression/properties/debounce_seconds/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "integer"
+                                      }
+                                    } ], !1;
+                                    if (errors === _errs71 && "number" == typeof data31 && isFinite(data31)) {
+                                      if (data31 > 86400 || isNaN(data31)) return validate207.errors = [ {
+                                        instancePath: instancePath + "/suppression/debounce_seconds",
+                                        schemaPath: "#/properties/suppression/properties/debounce_seconds/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 86400
+                                        }
+                                      } ], !1;
+                                      if (data31 < 0 || isNaN(data31)) return validate207.errors = [ {
+                                        instancePath: instancePath + "/suppression/debounce_seconds",
+                                        schemaPath: "#/properties/suppression/properties/debounce_seconds/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: 0
+                                        }
+                                      } ], !1;
+                                    }
+                                    var valid35 = _errs71 === errors;
+                                  } else valid35 = !0;
+                                  if (valid35) {
+                                    if (void 0 !== data30.cooldown_seconds) {
+                                      let data32 = data30.cooldown_seconds, _errs73 = errors;
+                                      if ("number" != typeof data32 || data32 % 1 || isNaN(data32) || !isFinite(data32)) return validate207.errors = [ {
+                                        instancePath: instancePath + "/suppression/cooldown_seconds",
+                                        schemaPath: "#/properties/suppression/properties/cooldown_seconds/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "integer"
+                                        }
+                                      } ], !1;
+                                      if (errors === _errs73 && "number" == typeof data32 && isFinite(data32)) {
+                                        if (data32 > 604800 || isNaN(data32)) return validate207.errors = [ {
+                                          instancePath: instancePath + "/suppression/cooldown_seconds",
+                                          schemaPath: "#/properties/suppression/properties/cooldown_seconds/maximum",
+                                          keyword: "maximum",
+                                          params: {
+                                            comparison: "<=",
+                                            limit: 604800
+                                          }
+                                        } ], !1;
+                                        if (data32 < 0 || isNaN(data32)) return validate207.errors = [ {
+                                          instancePath: instancePath + "/suppression/cooldown_seconds",
+                                          schemaPath: "#/properties/suppression/properties/cooldown_seconds/minimum",
+                                          keyword: "minimum",
+                                          params: {
+                                            comparison: ">=",
+                                            limit: 0
+                                          }
+                                        } ], !1;
+                                      }
+                                      var valid36 = _errs73 === errors;
+                                    } else valid36 = !0;
+                                    if (valid36) {
+                                      if (void 0 !== data30.grouping_window_seconds) {
+                                        let data33 = data30.grouping_window_seconds, _errs75 = errors;
+                                        if ("number" != typeof data33 || data33 % 1 || isNaN(data33) || !isFinite(data33)) return validate207.errors = [ {
+                                          instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                          schemaPath: "#/properties/suppression/properties/grouping_window_seconds/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "integer"
+                                          }
+                                        } ], !1;
+                                        if (errors === _errs75 && "number" == typeof data33 && isFinite(data33)) {
+                                          if (data33 > 3600 || isNaN(data33)) return validate207.errors = [ {
+                                            instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                            schemaPath: "#/properties/suppression/properties/grouping_window_seconds/maximum",
+                                            keyword: "maximum",
+                                            params: {
+                                              comparison: "<=",
+                                              limit: 3600
+                                            }
+                                          } ], !1;
+                                          if (data33 < 0 || isNaN(data33)) return validate207.errors = [ {
+                                            instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                            schemaPath: "#/properties/suppression/properties/grouping_window_seconds/minimum",
+                                            keyword: "minimum",
+                                            params: {
+                                              comparison: ">=",
+                                              limit: 0
+                                            }
+                                          } ], !1;
+                                        }
+                                        var valid37 = _errs75 === errors;
+                                      } else valid37 = !0;
+                                      if (valid37 && void 0 !== data30.max_events_per_minute) {
+                                        let data34 = data30.max_events_per_minute, _errs77 = errors;
+                                        if ("number" != typeof data34 || data34 % 1 || isNaN(data34) || !isFinite(data34)) return validate207.errors = [ {
+                                          instancePath: instancePath + "/suppression/max_events_per_minute",
+                                          schemaPath: "#/properties/suppression/properties/max_events_per_minute/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: "integer"
+                                          }
+                                        } ], !1;
+                                        if (errors === _errs77 && "number" == typeof data34 && isFinite(data34)) {
+                                          if (data34 > 6e4 || isNaN(data34)) return validate207.errors = [ {
+                                            instancePath: instancePath + "/suppression/max_events_per_minute",
+                                            schemaPath: "#/properties/suppression/properties/max_events_per_minute/maximum",
+                                            keyword: "maximum",
+                                            params: {
+                                              comparison: "<=",
+                                              limit: 6e4
+                                            }
+                                          } ], !1;
+                                          if (data34 < 0 || isNaN(data34)) return validate207.errors = [ {
+                                            instancePath: instancePath + "/suppression/max_events_per_minute",
+                                            schemaPath: "#/properties/suppression/properties/max_events_per_minute/minimum",
+                                            keyword: "minimum",
+                                            params: {
+                                              comparison: ">=",
+                                              limit: 0
+                                            }
+                                          } ], !1;
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            var valid34 = _errs68 === errors;
+                          } else valid34 = !0;
+                          if (valid34) {
+                            if (void 0 !== data.revision) {
+                              let data35 = data.revision, _errs79 = errors;
+                              if ("number" != typeof data35 || data35 % 1 || isNaN(data35) || !isFinite(data35)) return validate207.errors = [ {
+                                instancePath: instancePath + "/revision",
+                                schemaPath: "#/properties/revision/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              if (errors === _errs79 && "number" == typeof data35 && isFinite(data35)) {
+                                if (data35 > 9007199254740991 || isNaN(data35)) return validate207.errors = [ {
+                                  instancePath: instancePath + "/revision",
+                                  schemaPath: "#/properties/revision/maximum",
+                                  keyword: "maximum",
+                                  params: {
+                                    comparison: "<=",
+                                    limit: 9007199254740991
+                                  }
+                                } ], !1;
+                                if (data35 < 1 || isNaN(data35)) return validate207.errors = [ {
+                                  instancePath: instancePath + "/revision",
+                                  schemaPath: "#/properties/revision/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: 1
+                                  }
+                                } ], !1;
+                              }
+                              var valid39 = _errs79 === errors;
+                            } else valid39 = !0;
+                            if (valid39) {
+                              if (void 0 !== data.created_at) {
+                                let data36 = data.created_at, _errs81 = errors;
+                                if ("number" != typeof data36 || data36 % 1 || isNaN(data36) || !isFinite(data36)) return validate207.errors = [ {
+                                  instancePath: instancePath + "/created_at",
+                                  schemaPath: "#/properties/created_at/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (errors === _errs81 && "number" == typeof data36 && isFinite(data36) && (data36 < 0 || isNaN(data36))) return validate207.errors = [ {
+                                  instancePath: instancePath + "/created_at",
+                                  schemaPath: "#/properties/created_at/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: 0
+                                  }
+                                } ], !1;
+                                var valid40 = _errs81 === errors;
+                              } else valid40 = !0;
+                              if (valid40 && void 0 !== data.updated_at) {
+                                let data37 = data.updated_at, _errs83 = errors;
+                                if ("number" != typeof data37 || data37 % 1 || isNaN(data37) || !isFinite(data37)) return validate207.errors = [ {
+                                  instancePath: instancePath + "/updated_at",
+                                  schemaPath: "#/properties/updated_at/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (errors === _errs83 && "number" == typeof data37 && isFinite(data37) && (data37 < 0 || isNaN(data37))) return validate207.errors = [ {
+                                  instancePath: instancePath + "/updated_at",
+                                  schemaPath: "#/properties/updated_at/minimum",
+                                  keyword: "minimum",
+                                  params: {
+                                    comparison: ">=",
+                                    limit: 0
+                                  }
+                                } ], !1;
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate207.errors = vErrors, 0 === errors;
+}
+
+validate207.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventRouteCreate = validate211, schema221 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    description: {
+      type: "string",
+      maxLength: 511
+    },
+    enabled: {
+      type: "boolean"
+    },
+    destination: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    event_types: {
+      type: "array",
+      items: {
+        type: "string",
+        maxLength: 127,
+        minLength: 1
+      },
+      minItems: 1,
+      maxItems: 32,
+      uniqueItems: !0
+    },
+    camera_scope: {
+      $ref: "#/$defs/EventCameraScope"
+    },
+    predicate: {
+      $ref: "#/$defs/EventPredicate"
+    },
+    schedule: {
+      $ref: "#/$defs/EventSchedule"
+    },
+    suppression: {
+      type: "object",
+      properties: {
+        debounce_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 86400
+        },
+        cooldown_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 604800
+        },
+        grouping_window_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 3600
+        },
+        max_events_per_minute: {
+          type: "integer",
+          minimum: 0,
+          maximum: 6e4
+        }
+      },
+      required: [],
+      additionalProperties: !1
+    }
+  },
+  required: [ "name", "event_types" ],
+  additionalProperties: !1
+};
+
+function validate211(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate211.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate211.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate211.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.event_types) return validate211.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "event_types"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if (!func5.call(schema221.properties, key0)) return validate211.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate211.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate211.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate211.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.description) {
+            let data1 = data.description, _errs4 = errors;
+            if (errors === _errs4) {
+              if ("string" != typeof data1) return validate211.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data1) > 511) return validate211.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 511
+                }
+              } ], !1;
+            }
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.enabled) {
+              let _errs6 = errors;
+              if ("boolean" != typeof data.enabled) return validate211.errors = [ {
+                instancePath: instancePath + "/enabled",
+                schemaPath: "#/properties/enabled/type",
+                keyword: "type",
+                params: {
+                  type: "boolean"
+                }
+              } ], !1;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.destination) {
+                let data3 = data.destination, _errs8 = errors;
+                if (errors === _errs8) {
+                  if ("string" != typeof data3) return validate211.errors = [ {
+                    instancePath: instancePath + "/destination",
+                    schemaPath: "#/properties/destination/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  if (func1(data3) > 127) return validate211.errors = [ {
+                    instancePath: instancePath + "/destination",
+                    schemaPath: "#/properties/destination/maxLength",
+                    keyword: "maxLength",
+                    params: {
+                      limit: 127
+                    }
+                  } ], !1;
+                  if (func1(data3) < 1) return validate211.errors = [ {
+                    instancePath: instancePath + "/destination",
+                    schemaPath: "#/properties/destination/minLength",
+                    keyword: "minLength",
+                    params: {
+                      limit: 1
+                    }
+                  } ], !1;
+                }
+                var valid3 = _errs8 === errors;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data.event_types) {
+                  let data4 = data.event_types, _errs10 = errors;
+                  if (errors === _errs10) {
+                    if (!Array.isArray(data4)) return validate211.errors = [ {
+                      instancePath: instancePath + "/event_types",
+                      schemaPath: "#/properties/event_types/type",
+                      keyword: "type",
+                      params: {
+                        type: "array"
+                      }
+                    } ], !1;
+                    if (data4.length > 32) return validate211.errors = [ {
+                      instancePath: instancePath + "/event_types",
+                      schemaPath: "#/properties/event_types/maxItems",
+                      keyword: "maxItems",
+                      params: {
+                        limit: 32
+                      }
+                    } ], !1;
+                    if (data4.length < 1) return validate211.errors = [ {
+                      instancePath: instancePath + "/event_types",
+                      schemaPath: "#/properties/event_types/minItems",
+                      keyword: "minItems",
+                      params: {
+                        limit: 1
+                      }
+                    } ], !1;
+                    {
+                      var valid5 = !0;
+                      let len0 = data4.length;
+                      for (let i0 = 0; i0 < len0; i0++) {
+                        let data5 = data4[i0], _errs12 = errors;
+                        if (errors === _errs12) {
+                          if ("string" != typeof data5) return validate211.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0,
+                            schemaPath: "#/properties/event_types/items/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (func1(data5) > 127) return validate211.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0,
+                            schemaPath: "#/properties/event_types/items/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 127
+                            }
+                          } ], !1;
+                          if (func1(data5) < 1) return validate211.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0,
+                            schemaPath: "#/properties/event_types/items/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          } ], !1;
+                        }
+                        if (!(valid5 = _errs12 === errors)) break;
+                      }
+                      if (valid5) {
+                        let j0, i1 = data4.length;
+                        if (i1 > 1) {
+                          let indices0 = {};
+                          for (;i1--; ) {
+                            let item0 = data4[i1];
+                            if ("string" == typeof item0) {
+                              if ("number" == typeof indices0[item0]) return j0 = indices0[item0], validate211.errors = [ {
+                                instancePath: instancePath + "/event_types",
+                                schemaPath: "#/properties/event_types/uniqueItems",
+                                keyword: "uniqueItems",
+                                params: {
+                                  i: i1,
+                                  j: j0
+                                }
+                              } ], !1;
+                              indices0[item0] = i1;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  var valid4 = _errs10 === errors;
+                } else valid4 = !0;
+                if (valid4) {
+                  if (void 0 !== data.camera_scope) {
+                    let _errs14 = errors;
+                    validate204(data.camera_scope, {
+                      instancePath: instancePath + "/camera_scope",
+                      parentData: data,
+                      parentDataProperty: "camera_scope",
+                      rootData: rootData,
+                      dynamicAnchors: dynamicAnchors
+                    }) || (vErrors = vErrors.concat(validate204.errors), errors = vErrors.length);
+                    var valid7 = _errs14 === errors;
+                  } else valid7 = !0;
+                  if (valid7) {
+                    if (void 0 !== data.predicate) {
+                      let data7 = data.predicate, _errs15 = errors;
+                      if (errors == errors) {
+                        if (!data7 || "object" != typeof data7 || Array.isArray(data7)) return validate211.errors = [ {
+                          instancePath: instancePath + "/predicate",
+                          schemaPath: "#/$defs/EventPredicate/type",
+                          keyword: "type",
+                          params: {
+                            type: "object"
+                          }
+                        } ], !1;
+                        if (void 0 === data7.version) return validate211.errors = [ {
+                          instancePath: instancePath + "/predicate",
+                          schemaPath: "#/$defs/EventPredicate/required",
+                          keyword: "required",
+                          params: {
+                            missingProperty: "version"
+                          }
+                        } ], !1;
+                        {
+                          let _errs18 = errors;
+                          for (let key1 in data7) if ("version" !== key1 && "detection" !== key1 && "health" !== key1) return validate211.errors = [ {
+                            instancePath: instancePath + "/predicate",
+                            schemaPath: "#/$defs/EventPredicate/additionalProperties",
+                            keyword: "additionalProperties",
+                            params: {
+                              additionalProperty: key1
+                            }
+                          } ], !1;
+                          if (_errs18 === errors) {
+                            if (void 0 !== data7.version) {
+                              let data8 = data7.version, _errs19 = errors;
+                              if ("number" != typeof data8 || data8 % 1 || isNaN(data8) || !isFinite(data8)) return validate211.errors = [ {
+                                instancePath: instancePath + "/predicate/version",
+                                schemaPath: "#/$defs/EventPredicate/properties/version/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              if (1 !== data8) return validate211.errors = [ {
+                                instancePath: instancePath + "/predicate/version",
+                                schemaPath: "#/$defs/EventPredicate/properties/version/const",
+                                keyword: "const",
+                                params: {
+                                  allowedValue: 1
+                                }
+                              } ], !1;
+                              var valid10 = _errs19 === errors;
+                            } else valid10 = !0;
+                            if (valid10) {
+                              if (void 0 !== data7.detection) {
+                                let data9 = data7.detection, _errs21 = errors;
+                                if (errors === _errs21) {
+                                  if (!data9 || "object" != typeof data9 || Array.isArray(data9)) return validate211.errors = [ {
+                                    instancePath: instancePath + "/predicate/detection",
+                                    schemaPath: "#/$defs/EventPredicate/properties/detection/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "object"
+                                    }
+                                  } ], !1;
+                                  if (Object.keys(data9).length < 1) return validate211.errors = [ {
+                                    instancePath: instancePath + "/predicate/detection",
+                                    schemaPath: "#/$defs/EventPredicate/properties/detection/minProperties",
+                                    keyword: "minProperties",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  } ], !1;
+                                  {
+                                    let _errs23 = errors;
+                                    for (let key2 in data9) if ("labels_any" !== key2 && "zone_ids_any" !== key2 && "min_confidence" !== key2) return validate211.errors = [ {
+                                      instancePath: instancePath + "/predicate/detection",
+                                      schemaPath: "#/$defs/EventPredicate/properties/detection/additionalProperties",
+                                      keyword: "additionalProperties",
+                                      params: {
+                                        additionalProperty: key2
+                                      }
+                                    } ], !1;
+                                    if (_errs23 === errors) {
+                                      if (void 0 !== data9.labels_any) {
+                                        let data10 = data9.labels_any, _errs24 = errors;
+                                        if (errors === _errs24) {
+                                          if (!Array.isArray(data10)) return validate211.errors = [ {
+                                            instancePath: instancePath + "/predicate/detection/labels_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "array"
+                                            }
+                                          } ], !1;
+                                          if (data10.length > 64) return validate211.errors = [ {
+                                            instancePath: instancePath + "/predicate/detection/labels_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/maxItems",
+                                            keyword: "maxItems",
+                                            params: {
+                                              limit: 64
+                                            }
+                                          } ], !1;
+                                          if (data10.length < 1) return validate211.errors = [ {
+                                            instancePath: instancePath + "/predicate/detection/labels_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/minItems",
+                                            keyword: "minItems",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                          {
+                                            let len1 = data10.length;
+                                            for (let i2 = 0; i2 < len1; i2++) {
+                                              let data11 = data10[i2], _errs26 = errors;
+                                              if (errors === _errs26) {
+                                                if ("string" != typeof data11) return validate211.errors = [ {
+                                                  instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if (func1(data11) > 127) return validate211.errors = [ {
+                                                  instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/maxLength",
+                                                  keyword: "maxLength",
+                                                  params: {
+                                                    limit: 127
+                                                  }
+                                                } ], !1;
+                                                if (func1(data11) < 1) return validate211.errors = [ {
+                                                  instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/minLength",
+                                                  keyword: "minLength",
+                                                  params: {
+                                                    limit: 1
+                                                  }
+                                                } ], !1;
+                                              }
+                                              if (_errs26 !== errors) break;
+                                            }
+                                          }
+                                        }
+                                        var valid12 = _errs24 === errors;
+                                      } else valid12 = !0;
+                                      if (valid12) {
+                                        if (void 0 !== data9.zone_ids_any) {
+                                          let data12 = data9.zone_ids_any, _errs28 = errors;
+                                          if (errors === _errs28) {
+                                            if (!Array.isArray(data12)) return validate211.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "array"
+                                              }
+                                            } ], !1;
+                                            if (data12.length > 64) return validate211.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/maxItems",
+                                              keyword: "maxItems",
+                                              params: {
+                                                limit: 64
+                                              }
+                                            } ], !1;
+                                            if (data12.length < 1) return validate211.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/minItems",
+                                              keyword: "minItems",
+                                              params: {
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                            {
+                                              let len2 = data12.length;
+                                              for (let i3 = 0; i3 < len2; i3++) {
+                                                let data13 = data12[i3], _errs30 = errors;
+                                                if (errors === _errs30) {
+                                                  if ("string" != typeof data13) return validate211.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "string"
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data13) > 127) return validate211.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/maxLength",
+                                                    keyword: "maxLength",
+                                                    params: {
+                                                      limit: 127
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data13) < 1) return validate211.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/minLength",
+                                                    keyword: "minLength",
+                                                    params: {
+                                                      limit: 1
+                                                    }
+                                                  } ], !1;
+                                                }
+                                                if (_errs30 !== errors) break;
+                                              }
+                                            }
+                                          }
+                                          var valid14 = _errs28 === errors;
+                                        } else valid14 = !0;
+                                        if (valid14 && void 0 !== data9.min_confidence) {
+                                          let data14 = data9.min_confidence;
+                                          if (errors == errors) {
+                                            if ("number" != typeof data14 || !isFinite(data14)) return validate211.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/min_confidence",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "number"
+                                              }
+                                            } ], !1;
+                                            if (data14 > 1 || isNaN(data14)) return validate211.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/min_confidence",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/maximum",
+                                              keyword: "maximum",
+                                              params: {
+                                                comparison: "<=",
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                            if (data14 < 0 || isNaN(data14)) return validate211.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/min_confidence",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/minimum",
+                                              keyword: "minimum",
+                                              params: {
+                                                comparison: ">=",
+                                                limit: 0
+                                              }
+                                            } ], !1;
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                var valid11 = _errs21 === errors;
+                              } else valid11 = !0;
+                              if (valid11 && void 0 !== data7.health) {
+                                let data15 = data7.health;
+                                if (errors == errors) {
+                                  if (!data15 || "object" != typeof data15 || Array.isArray(data15)) return validate211.errors = [ {
+                                    instancePath: instancePath + "/predicate/health",
+                                    schemaPath: "#/$defs/EventPredicate/properties/health/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "object"
+                                    }
+                                  } ], !1;
+                                  if (Object.keys(data15).length < 1) return validate211.errors = [ {
+                                    instancePath: instancePath + "/predicate/health",
+                                    schemaPath: "#/$defs/EventPredicate/properties/health/minProperties",
+                                    keyword: "minProperties",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  } ], !1;
+                                  {
+                                    let _errs36 = errors;
+                                    for (let key3 in data15) if ("condition_codes_any" !== key3 && "severities_any" !== key3) return validate211.errors = [ {
+                                      instancePath: instancePath + "/predicate/health",
+                                      schemaPath: "#/$defs/EventPredicate/properties/health/additionalProperties",
+                                      keyword: "additionalProperties",
+                                      params: {
+                                        additionalProperty: key3
+                                      }
+                                    } ], !1;
+                                    if (_errs36 === errors) {
+                                      if (void 0 !== data15.condition_codes_any) {
+                                        let data16 = data15.condition_codes_any, _errs37 = errors;
+                                        if (errors === _errs37) {
+                                          if (!Array.isArray(data16)) return validate211.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "array"
+                                            }
+                                          } ], !1;
+                                          if (data16.length > 64) return validate211.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/maxItems",
+                                            keyword: "maxItems",
+                                            params: {
+                                              limit: 64
+                                            }
+                                          } ], !1;
+                                          if (data16.length < 1) return validate211.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/minItems",
+                                            keyword: "minItems",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                          {
+                                            let len3 = data16.length;
+                                            for (let i4 = 0; i4 < len3; i4++) {
+                                              let data17 = data16[i4], _errs39 = errors;
+                                              if (errors === _errs39) {
+                                                if ("string" != typeof data17) return validate211.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if (func1(data17) > 127) return validate211.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/maxLength",
+                                                  keyword: "maxLength",
+                                                  params: {
+                                                    limit: 127
+                                                  }
+                                                } ], !1;
+                                                if (func1(data17) < 1) return validate211.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/minLength",
+                                                  keyword: "minLength",
+                                                  params: {
+                                                    limit: 1
+                                                  }
+                                                } ], !1;
+                                              }
+                                              if (_errs39 !== errors) break;
+                                            }
+                                          }
+                                        }
+                                        var valid18 = _errs37 === errors;
+                                      } else valid18 = !0;
+                                      if (valid18 && void 0 !== data15.severities_any) {
+                                        let data18 = data15.severities_any;
+                                        if (errors == errors) {
+                                          if (!Array.isArray(data18)) return validate211.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/severities_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "array"
+                                            }
+                                          } ], !1;
+                                          if (data18.length > 3) return validate211.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/severities_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/maxItems",
+                                            keyword: "maxItems",
+                                            params: {
+                                              limit: 3
+                                            }
+                                          } ], !1;
+                                          if (data18.length < 1) return validate211.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/severities_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/minItems",
+                                            keyword: "minItems",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                          {
+                                            let len4 = data18.length;
+                                            for (let i5 = 0; i5 < len4; i5++) {
+                                              let data19 = data18[i5], _errs43 = errors;
+                                              if ("string" != typeof data19) return validate211.errors = [ {
+                                                instancePath: instancePath + "/predicate/health/severities_any/" + i5,
+                                                schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/items/type",
+                                                keyword: "type",
+                                                params: {
+                                                  type: "string"
+                                                }
+                                              } ], !1;
+                                              if ("warning" !== data19 && "error" !== data19 && "critical" !== data19) return validate211.errors = [ {
+                                                instancePath: instancePath + "/predicate/health/severities_any/" + i5,
+                                                schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/items/enum",
+                                                keyword: "enum",
+                                                params: {
+                                                  allowedValues: schema214.properties.health.properties.severities_any.items.enum
+                                                }
+                                              } ], !1;
+                                              if (_errs43 !== errors) break;
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      var valid8 = _errs15 === errors;
+                    } else valid8 = !0;
+                    if (valid8) {
+                      if (void 0 !== data.schedule) {
+                        let data20 = data.schedule, _errs45 = errors;
+                        if (errors == errors) {
+                          if (!data20 || "object" != typeof data20 || Array.isArray(data20)) return validate211.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/type",
+                            keyword: "type",
+                            params: {
+                              type: "object"
+                            }
+                          } ], !1;
+                          if (void 0 === data20.version) return validate211.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "version"
+                            }
+                          } ], !1;
+                          if (void 0 === data20.timezone) return validate211.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "timezone"
+                            }
+                          } ], !1;
+                          if (void 0 === data20.windows) return validate211.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "windows"
+                            }
+                          } ], !1;
+                          {
+                            let _errs48 = errors;
+                            for (let key4 in data20) if ("version" !== key4 && "timezone" !== key4 && "windows" !== key4) return validate211.errors = [ {
+                              instancePath: instancePath + "/schedule",
+                              schemaPath: "#/$defs/EventSchedule/additionalProperties",
+                              keyword: "additionalProperties",
+                              params: {
+                                additionalProperty: key4
+                              }
+                            } ], !1;
+                            if (_errs48 === errors) {
+                              if (void 0 !== data20.version) {
+                                let data21 = data20.version, _errs49 = errors;
+                                if ("number" != typeof data21 || data21 % 1 || isNaN(data21) || !isFinite(data21)) return validate211.errors = [ {
+                                  instancePath: instancePath + "/schedule/version",
+                                  schemaPath: "#/$defs/EventSchedule/properties/version/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (1 !== data21) return validate211.errors = [ {
+                                  instancePath: instancePath + "/schedule/version",
+                                  schemaPath: "#/$defs/EventSchedule/properties/version/const",
+                                  keyword: "const",
+                                  params: {
+                                    allowedValue: 1
+                                  }
+                                } ], !1;
+                                var valid24 = _errs49 === errors;
+                              } else valid24 = !0;
+                              if (valid24) {
+                                if (void 0 !== data20.timezone) {
+                                  let data22 = data20.timezone, _errs51 = errors;
+                                  if (errors === _errs51) {
+                                    if ("string" != typeof data22) return validate211.errors = [ {
+                                      instancePath: instancePath + "/schedule/timezone",
+                                      schemaPath: "#/$defs/EventSchedule/properties/timezone/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    if (func1(data22) > 64) return validate211.errors = [ {
+                                      instancePath: instancePath + "/schedule/timezone",
+                                      schemaPath: "#/$defs/EventSchedule/properties/timezone/maxLength",
+                                      keyword: "maxLength",
+                                      params: {
+                                        limit: 64
+                                      }
+                                    } ], !1;
+                                    if (func1(data22) < 1) return validate211.errors = [ {
+                                      instancePath: instancePath + "/schedule/timezone",
+                                      schemaPath: "#/$defs/EventSchedule/properties/timezone/minLength",
+                                      keyword: "minLength",
+                                      params: {
+                                        limit: 1
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid25 = _errs51 === errors;
+                                } else valid25 = !0;
+                                if (valid25 && void 0 !== data20.windows) {
+                                  let data23 = data20.windows;
+                                  if (errors == errors) {
+                                    if (!Array.isArray(data23)) return validate211.errors = [ {
+                                      instancePath: instancePath + "/schedule/windows",
+                                      schemaPath: "#/$defs/EventSchedule/properties/windows/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "array"
+                                      }
+                                    } ], !1;
+                                    if (data23.length > 64) return validate211.errors = [ {
+                                      instancePath: instancePath + "/schedule/windows",
+                                      schemaPath: "#/$defs/EventSchedule/properties/windows/maxItems",
+                                      keyword: "maxItems",
+                                      params: {
+                                        limit: 64
+                                      }
+                                    } ], !1;
+                                    {
+                                      let len5 = data23.length;
+                                      for (let i6 = 0; i6 < len5; i6++) {
+                                        let data24 = data23[i6], _errs55 = errors;
+                                        if (errors === _errs55) {
+                                          if (!data24 || "object" != typeof data24 || Array.isArray(data24)) return validate211.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "object"
+                                            }
+                                          } ], !1;
+                                          if (void 0 === data24.days) return validate211.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                            keyword: "required",
+                                            params: {
+                                              missingProperty: "days"
+                                            }
+                                          } ], !1;
+                                          if (void 0 === data24.start) return validate211.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                            keyword: "required",
+                                            params: {
+                                              missingProperty: "start"
+                                            }
+                                          } ], !1;
+                                          if (void 0 === data24.end) return validate211.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                            keyword: "required",
+                                            params: {
+                                              missingProperty: "end"
+                                            }
+                                          } ], !1;
+                                          {
+                                            let _errs57 = errors;
+                                            for (let key5 in data24) if ("days" !== key5 && "start" !== key5 && "end" !== key5) return validate211.errors = [ {
+                                              instancePath: instancePath + "/schedule/windows/" + i6,
+                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/additionalProperties",
+                                              keyword: "additionalProperties",
+                                              params: {
+                                                additionalProperty: key5
+                                              }
+                                            } ], !1;
+                                            if (_errs57 === errors) {
+                                              if (void 0 !== data24.days) {
+                                                let data25 = data24.days, _errs58 = errors;
+                                                if (errors === _errs58) {
+                                                  if (!Array.isArray(data25)) return validate211.errors = [ {
+                                                    instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                    schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "array"
+                                                    }
+                                                  } ], !1;
+                                                  if (data25.length > 7) return validate211.errors = [ {
+                                                    instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                    schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/maxItems",
+                                                    keyword: "maxItems",
+                                                    params: {
+                                                      limit: 7
+                                                    }
+                                                  } ], !1;
+                                                  if (data25.length < 1) return validate211.errors = [ {
+                                                    instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                    schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/minItems",
+                                                    keyword: "minItems",
+                                                    params: {
+                                                      limit: 1
+                                                    }
+                                                  } ], !1;
+                                                  {
+                                                    var valid29 = !0;
+                                                    let len6 = data25.length;
+                                                    for (let i7 = 0; i7 < len6; i7++) {
+                                                      let data26 = data25[i7], _errs60 = errors;
+                                                      if ("number" != typeof data26 || data26 % 1 || isNaN(data26) || !isFinite(data26)) return validate211.errors = [ {
+                                                        instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                        schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: "integer"
+                                                        }
+                                                      } ], !1;
+                                                      if (errors === _errs60 && "number" == typeof data26 && isFinite(data26)) {
+                                                        if (data26 > 6 || isNaN(data26)) return validate211.errors = [ {
+                                                          instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                          schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/maximum",
+                                                          keyword: "maximum",
+                                                          params: {
+                                                            comparison: "<=",
+                                                            limit: 6
+                                                          }
+                                                        } ], !1;
+                                                        if (data26 < 0 || isNaN(data26)) return validate211.errors = [ {
+                                                          instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                          schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/minimum",
+                                                          keyword: "minimum",
+                                                          params: {
+                                                            comparison: ">=",
+                                                            limit: 0
+                                                          }
+                                                        } ], !1;
+                                                      }
+                                                      if (!(valid29 = _errs60 === errors)) break;
+                                                    }
+                                                    if (valid29) {
+                                                      let j1, i8 = data25.length;
+                                                      if (i8 > 1) {
+                                                        let indices1 = {};
+                                                        for (;i8--; ) {
+                                                          let item1 = data25[i8];
+                                                          if ("number" == typeof item1 && !(item1 % 1) && !isNaN(item1) && isFinite(item1)) {
+                                                            if ("number" == typeof indices1[item1]) return j1 = indices1[item1], validate211.errors = [ {
+                                                              instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/uniqueItems",
+                                                              keyword: "uniqueItems",
+                                                              params: {
+                                                                i: i8,
+                                                                j: j1
+                                                              }
+                                                            } ], !1;
+                                                            indices1[item1] = i8;
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                                var valid28 = _errs58 === errors;
+                                              } else valid28 = !0;
+                                              if (valid28) {
+                                                if (void 0 !== data24.start) {
+                                                  let data27 = data24.start, _errs62 = errors;
+                                                  if (errors === _errs62) {
+                                                    if ("string" != typeof data27) return validate211.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "string"
+                                                      }
+                                                    } ], !1;
+                                                    if (!pattern52.test(data27)) return validate211.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
+                                                      keyword: "pattern",
+                                                      params: {
+                                                        pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                                                      }
+                                                    } ], !1;
+                                                  }
+                                                  var valid31 = _errs62 === errors;
+                                                } else valid31 = !0;
+                                                if (valid31 && void 0 !== data24.end) {
+                                                  let data28 = data24.end;
+                                                  if (errors == errors) {
+                                                    if ("string" != typeof data28) return validate211.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "string"
+                                                      }
+                                                    } ], !1;
+                                                    if (!pattern52.test(data28)) return validate211.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
+                                                      keyword: "pattern",
+                                                      params: {
+                                                        pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                                                      }
+                                                    } ], !1;
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                        if (_errs55 !== errors) break;
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        var valid22 = _errs45 === errors;
+                      } else valid22 = !0;
+                      if (valid22 && void 0 !== data.suppression) {
+                        let data29 = data.suppression;
+                        if (errors == errors) {
+                          if (!data29 || "object" != typeof data29 || Array.isArray(data29)) return validate211.errors = [ {
+                            instancePath: instancePath + "/suppression",
+                            schemaPath: "#/properties/suppression/type",
+                            keyword: "type",
+                            params: {
+                              type: "object"
+                            }
+                          } ], !1;
+                          {
+                            let _errs68 = errors;
+                            for (let key6 in data29) if ("debounce_seconds" !== key6 && "cooldown_seconds" !== key6 && "grouping_window_seconds" !== key6 && "max_events_per_minute" !== key6) return validate211.errors = [ {
+                              instancePath: instancePath + "/suppression",
+                              schemaPath: "#/properties/suppression/additionalProperties",
+                              keyword: "additionalProperties",
+                              params: {
+                                additionalProperty: key6
+                              }
+                            } ], !1;
+                            if (_errs68 === errors) {
+                              if (void 0 !== data29.debounce_seconds) {
+                                let data30 = data29.debounce_seconds, _errs69 = errors;
+                                if ("number" != typeof data30 || data30 % 1 || isNaN(data30) || !isFinite(data30)) return validate211.errors = [ {
+                                  instancePath: instancePath + "/suppression/debounce_seconds",
+                                  schemaPath: "#/properties/suppression/properties/debounce_seconds/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (errors === _errs69 && "number" == typeof data30 && isFinite(data30)) {
+                                  if (data30 > 86400 || isNaN(data30)) return validate211.errors = [ {
+                                    instancePath: instancePath + "/suppression/debounce_seconds",
+                                    schemaPath: "#/properties/suppression/properties/debounce_seconds/maximum",
+                                    keyword: "maximum",
+                                    params: {
+                                      comparison: "<=",
+                                      limit: 86400
+                                    }
+                                  } ], !1;
+                                  if (data30 < 0 || isNaN(data30)) return validate211.errors = [ {
+                                    instancePath: instancePath + "/suppression/debounce_seconds",
+                                    schemaPath: "#/properties/suppression/properties/debounce_seconds/minimum",
+                                    keyword: "minimum",
+                                    params: {
+                                      comparison: ">=",
+                                      limit: 0
+                                    }
+                                  } ], !1;
+                                }
+                                var valid34 = _errs69 === errors;
+                              } else valid34 = !0;
+                              if (valid34) {
+                                if (void 0 !== data29.cooldown_seconds) {
+                                  let data31 = data29.cooldown_seconds, _errs71 = errors;
+                                  if ("number" != typeof data31 || data31 % 1 || isNaN(data31) || !isFinite(data31)) return validate211.errors = [ {
+                                    instancePath: instancePath + "/suppression/cooldown_seconds",
+                                    schemaPath: "#/properties/suppression/properties/cooldown_seconds/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  if (errors === _errs71 && "number" == typeof data31 && isFinite(data31)) {
+                                    if (data31 > 604800 || isNaN(data31)) return validate211.errors = [ {
+                                      instancePath: instancePath + "/suppression/cooldown_seconds",
+                                      schemaPath: "#/properties/suppression/properties/cooldown_seconds/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 604800
+                                      }
+                                    } ], !1;
+                                    if (data31 < 0 || isNaN(data31)) return validate211.errors = [ {
+                                      instancePath: instancePath + "/suppression/cooldown_seconds",
+                                      schemaPath: "#/properties/suppression/properties/cooldown_seconds/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 0
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid35 = _errs71 === errors;
+                                } else valid35 = !0;
+                                if (valid35) {
+                                  if (void 0 !== data29.grouping_window_seconds) {
+                                    let data32 = data29.grouping_window_seconds, _errs73 = errors;
+                                    if ("number" != typeof data32 || data32 % 1 || isNaN(data32) || !isFinite(data32)) return validate211.errors = [ {
+                                      instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                      schemaPath: "#/properties/suppression/properties/grouping_window_seconds/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "integer"
+                                      }
+                                    } ], !1;
+                                    if (errors === _errs73 && "number" == typeof data32 && isFinite(data32)) {
+                                      if (data32 > 3600 || isNaN(data32)) return validate211.errors = [ {
+                                        instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                        schemaPath: "#/properties/suppression/properties/grouping_window_seconds/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 3600
+                                        }
+                                      } ], !1;
+                                      if (data32 < 0 || isNaN(data32)) return validate211.errors = [ {
+                                        instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                        schemaPath: "#/properties/suppression/properties/grouping_window_seconds/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: 0
+                                        }
+                                      } ], !1;
+                                    }
+                                    var valid36 = _errs73 === errors;
+                                  } else valid36 = !0;
+                                  if (valid36 && void 0 !== data29.max_events_per_minute) {
+                                    let data33 = data29.max_events_per_minute, _errs75 = errors;
+                                    if ("number" != typeof data33 || data33 % 1 || isNaN(data33) || !isFinite(data33)) return validate211.errors = [ {
+                                      instancePath: instancePath + "/suppression/max_events_per_minute",
+                                      schemaPath: "#/properties/suppression/properties/max_events_per_minute/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "integer"
+                                      }
+                                    } ], !1;
+                                    if (errors === _errs75 && "number" == typeof data33 && isFinite(data33)) {
+                                      if (data33 > 6e4 || isNaN(data33)) return validate211.errors = [ {
+                                        instancePath: instancePath + "/suppression/max_events_per_minute",
+                                        schemaPath: "#/properties/suppression/properties/max_events_per_minute/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 6e4
+                                        }
+                                      } ], !1;
+                                      if (data33 < 0 || isNaN(data33)) return validate211.errors = [ {
+                                        instancePath: instancePath + "/suppression/max_events_per_minute",
+                                        schemaPath: "#/properties/suppression/properties/max_events_per_minute/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: 0
+                                        }
+                                      } ], !1;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate211.errors = vErrors, 0 === errors;
+}
+
+validate211.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventRoutePreview = validate218, schema231 = {
+  type: "object",
+  properties: {
+    matched_camera_count: {
+      type: "integer",
+      minimum: 0
+    },
+    sample_limit: {
+      type: "integer",
+      const: 20
+    },
+    camera_sample: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          camera_uuid: {
+            type: "string",
+            format: "uuid"
+          },
+          name: {
+            type: "string"
+          },
+          location_path: {
+            type: "string"
+          }
+        },
+        required: [ "camera_uuid", "name", "location_path" ],
+        additionalProperties: !1
+      },
+      maxItems: 20
+    },
+    event_types: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: {
+            type: "string"
+          },
+          expected_rate: {
+            type: "string",
+            enum: [ "low", "medium", "high" ]
+          },
+          severity: {
+            type: "string",
+            enum: [ "debug", "info", "notice", "warning", "error", "critical" ]
+          },
+          dynamic_severity: {
+            type: "boolean"
+          },
+          minimum_severity: {
+            type: "string",
+            enum: [ "debug", "info", "notice", "warning", "error", "critical" ]
+          },
+          maximum_severity: {
+            type: "string",
+            enum: [ "debug", "info", "notice", "warning", "error", "critical" ]
+          },
+          subject_kind: {
+            type: "string",
+            enum: [ "camera", "storage", "system" ]
+          }
+        },
+        required: [ "type", "expected_rate", "severity", "dynamic_severity", "minimum_severity", "maximum_severity", "subject_kind" ],
+        additionalProperties: !1
+      }
+    },
+    would_publish: {
+      type: "boolean",
+      const: !1
+    }
+  },
+  required: [ "matched_camera_count", "sample_limit", "camera_sample", "event_types", "would_publish" ],
+  additionalProperties: !1
+};
+
+function validate218(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate218.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate218.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.matched_camera_count) return validate218.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "matched_camera_count"
+    }
+  } ], !1;
+  if (void 0 === data.sample_limit) return validate218.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "sample_limit"
+    }
+  } ], !1;
+  if (void 0 === data.camera_sample) return validate218.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "camera_sample"
+    }
+  } ], !1;
+  if (void 0 === data.event_types) return validate218.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "event_types"
+    }
+  } ], !1;
+  if (void 0 === data.would_publish) return validate218.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "would_publish"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("matched_camera_count" !== key0 && "sample_limit" !== key0 && "camera_sample" !== key0 && "event_types" !== key0 && "would_publish" !== key0) return validate218.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.matched_camera_count) {
+        let data0 = data.matched_camera_count, _errs2 = 0;
+        if ("number" != typeof data0 || data0 % 1 || isNaN(data0) || !isFinite(data0)) return validate218.errors = [ {
+          instancePath: instancePath + "/matched_camera_count",
+          schemaPath: "#/properties/matched_camera_count/type",
+          keyword: "type",
+          params: {
+            type: "integer"
+          }
+        } ], !1;
+        if (0 === _errs2 && "number" == typeof data0 && isFinite(data0) && (data0 < 0 || isNaN(data0))) return validate218.errors = [ {
+          instancePath: instancePath + "/matched_camera_count",
+          schemaPath: "#/properties/matched_camera_count/minimum",
+          keyword: "minimum",
+          params: {
+            comparison: ">=",
+            limit: 0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.sample_limit) {
+          let data1 = data.sample_limit, _errs4 = 0;
+          if ("number" != typeof data1 || data1 % 1 || isNaN(data1) || !isFinite(data1)) return validate218.errors = [ {
+            instancePath: instancePath + "/sample_limit",
+            schemaPath: "#/properties/sample_limit/type",
+            keyword: "type",
+            params: {
+              type: "integer"
+            }
+          } ], !1;
+          if (20 !== data1) return validate218.errors = [ {
+            instancePath: instancePath + "/sample_limit",
+            schemaPath: "#/properties/sample_limit/const",
+            keyword: "const",
+            params: {
+              allowedValue: 20
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.camera_sample) {
+            let data2 = data.camera_sample, _errs6 = 0;
+            if (0 === _errs6) {
+              if (!Array.isArray(data2)) return validate218.errors = [ {
+                instancePath: instancePath + "/camera_sample",
+                schemaPath: "#/properties/camera_sample/type",
+                keyword: "type",
+                params: {
+                  type: "array"
+                }
+              } ], !1;
+              if (data2.length > 20) return validate218.errors = [ {
+                instancePath: instancePath + "/camera_sample",
+                schemaPath: "#/properties/camera_sample/maxItems",
+                keyword: "maxItems",
+                params: {
+                  limit: 20
+                }
+              } ], !1;
+              {
+                let len0 = data2.length;
+                for (let i0 = 0; i0 < len0; i0++) {
+                  let data3 = data2[i0], _errs8 = 0;
+                  if (0 === _errs8) {
+                    if (!data3 || "object" != typeof data3 || Array.isArray(data3)) return validate218.errors = [ {
+                      instancePath: instancePath + "/camera_sample/" + i0,
+                      schemaPath: "#/properties/camera_sample/items/type",
+                      keyword: "type",
+                      params: {
+                        type: "object"
+                      }
+                    } ], !1;
+                    if (void 0 === data3.camera_uuid) return validate218.errors = [ {
+                      instancePath: instancePath + "/camera_sample/" + i0,
+                      schemaPath: "#/properties/camera_sample/items/required",
+                      keyword: "required",
+                      params: {
+                        missingProperty: "camera_uuid"
+                      }
+                    } ], !1;
+                    if (void 0 === data3.name) return validate218.errors = [ {
+                      instancePath: instancePath + "/camera_sample/" + i0,
+                      schemaPath: "#/properties/camera_sample/items/required",
+                      keyword: "required",
+                      params: {
+                        missingProperty: "name"
+                      }
+                    } ], !1;
+                    if (void 0 === data3.location_path) return validate218.errors = [ {
+                      instancePath: instancePath + "/camera_sample/" + i0,
+                      schemaPath: "#/properties/camera_sample/items/required",
+                      keyword: "required",
+                      params: {
+                        missingProperty: "location_path"
+                      }
+                    } ], !1;
+                    {
+                      let _errs10 = 0;
+                      for (let key1 in data3) if ("camera_uuid" !== key1 && "name" !== key1 && "location_path" !== key1) return validate218.errors = [ {
+                        instancePath: instancePath + "/camera_sample/" + i0,
+                        schemaPath: "#/properties/camera_sample/items/additionalProperties",
+                        keyword: "additionalProperties",
+                        params: {
+                          additionalProperty: key1
+                        }
+                      } ], !1;
+                      if (0 === _errs10) {
+                        if (void 0 !== data3.camera_uuid) {
+                          let data4 = data3.camera_uuid, _errs11 = 0;
+                          if (0 === _errs11) {
+                            if ("string" != typeof data4) return validate218.errors = [ {
+                              instancePath: instancePath + "/camera_sample/" + i0 + "/camera_uuid",
+                              schemaPath: "#/properties/camera_sample/items/properties/camera_uuid/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (!formats2.test(data4)) return validate218.errors = [ {
+                              instancePath: instancePath + "/camera_sample/" + i0 + "/camera_uuid",
+                              schemaPath: "#/properties/camera_sample/items/properties/camera_uuid/format",
+                              keyword: "format",
+                              params: {
+                                format: "uuid"
+                              }
+                            } ], !1;
+                          }
+                          var valid4 = 0 === _errs11;
+                        } else valid4 = !0;
+                        if (valid4) {
+                          if (void 0 !== data3.name) {
+                            let _errs13 = 0;
+                            if ("string" != typeof data3.name) return validate218.errors = [ {
+                              instancePath: instancePath + "/camera_sample/" + i0 + "/name",
+                              schemaPath: "#/properties/camera_sample/items/properties/name/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            var valid5 = 0 === _errs13;
+                          } else valid5 = !0;
+                          if (valid5 && void 0 !== data3.location_path && "string" != typeof data3.location_path) return validate218.errors = [ {
+                            instancePath: instancePath + "/camera_sample/" + i0 + "/location_path",
+                            schemaPath: "#/properties/camera_sample/items/properties/location_path/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                        }
+                      }
+                    }
+                  }
+                  if (0 !== _errs8) break;
+                }
+              }
+            }
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.event_types) {
+              let data7 = data.event_types, _errs17 = 0;
+              if (0 === _errs17) {
+                if (!Array.isArray(data7)) return validate218.errors = [ {
+                  instancePath: instancePath + "/event_types",
+                  schemaPath: "#/properties/event_types/type",
+                  keyword: "type",
+                  params: {
+                    type: "array"
+                  }
+                } ], !1;
+                {
+                  let len1 = data7.length;
+                  for (let i1 = 0; i1 < len1; i1++) {
+                    let data8 = data7[i1], _errs19 = 0;
+                    if (0 === _errs19) {
+                      if (!data8 || "object" != typeof data8 || Array.isArray(data8)) return validate218.errors = [ {
+                        instancePath: instancePath + "/event_types/" + i1,
+                        schemaPath: "#/properties/event_types/items/type",
+                        keyword: "type",
+                        params: {
+                          type: "object"
+                        }
+                      } ], !1;
+                      if (void 0 === data8.type) return validate218.errors = [ {
+                        instancePath: instancePath + "/event_types/" + i1,
+                        schemaPath: "#/properties/event_types/items/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "type"
+                        }
+                      } ], !1;
+                      if (void 0 === data8.expected_rate) return validate218.errors = [ {
+                        instancePath: instancePath + "/event_types/" + i1,
+                        schemaPath: "#/properties/event_types/items/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "expected_rate"
+                        }
+                      } ], !1;
+                      if (void 0 === data8.severity) return validate218.errors = [ {
+                        instancePath: instancePath + "/event_types/" + i1,
+                        schemaPath: "#/properties/event_types/items/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "severity"
+                        }
+                      } ], !1;
+                      if (void 0 === data8.dynamic_severity) return validate218.errors = [ {
+                        instancePath: instancePath + "/event_types/" + i1,
+                        schemaPath: "#/properties/event_types/items/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "dynamic_severity"
+                        }
+                      } ], !1;
+                      if (void 0 === data8.minimum_severity) return validate218.errors = [ {
+                        instancePath: instancePath + "/event_types/" + i1,
+                        schemaPath: "#/properties/event_types/items/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "minimum_severity"
+                        }
+                      } ], !1;
+                      if (void 0 === data8.maximum_severity) return validate218.errors = [ {
+                        instancePath: instancePath + "/event_types/" + i1,
+                        schemaPath: "#/properties/event_types/items/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "maximum_severity"
+                        }
+                      } ], !1;
+                      if (void 0 === data8.subject_kind) return validate218.errors = [ {
+                        instancePath: instancePath + "/event_types/" + i1,
+                        schemaPath: "#/properties/event_types/items/required",
+                        keyword: "required",
+                        params: {
+                          missingProperty: "subject_kind"
+                        }
+                      } ], !1;
+                      {
+                        let _errs21 = 0;
+                        for (let key2 in data8) if ("type" !== key2 && "expected_rate" !== key2 && "severity" !== key2 && "dynamic_severity" !== key2 && "minimum_severity" !== key2 && "maximum_severity" !== key2 && "subject_kind" !== key2) return validate218.errors = [ {
+                          instancePath: instancePath + "/event_types/" + i1,
+                          schemaPath: "#/properties/event_types/items/additionalProperties",
+                          keyword: "additionalProperties",
+                          params: {
+                            additionalProperty: key2
+                          }
+                        } ], !1;
+                        if (0 === _errs21) {
+                          if (void 0 !== data8.type) {
+                            let _errs22 = 0;
+                            if ("string" != typeof data8.type) return validate218.errors = [ {
+                              instancePath: instancePath + "/event_types/" + i1 + "/type",
+                              schemaPath: "#/properties/event_types/items/properties/type/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            var valid9 = 0 === _errs22;
+                          } else valid9 = !0;
+                          if (valid9) {
+                            if (void 0 !== data8.expected_rate) {
+                              let data10 = data8.expected_rate, _errs24 = 0;
+                              if ("string" != typeof data10) return validate218.errors = [ {
+                                instancePath: instancePath + "/event_types/" + i1 + "/expected_rate",
+                                schemaPath: "#/properties/event_types/items/properties/expected_rate/type",
+                                keyword: "type",
+                                params: {
+                                  type: "string"
+                                }
+                              } ], !1;
+                              if ("low" !== data10 && "medium" !== data10 && "high" !== data10) return validate218.errors = [ {
+                                instancePath: instancePath + "/event_types/" + i1 + "/expected_rate",
+                                schemaPath: "#/properties/event_types/items/properties/expected_rate/enum",
+                                keyword: "enum",
+                                params: {
+                                  allowedValues: schema231.properties.event_types.items.properties.expected_rate.enum
+                                }
+                              } ], !1;
+                              var valid10 = 0 === _errs24;
+                            } else valid10 = !0;
+                            if (valid10) {
+                              if (void 0 !== data8.severity) {
+                                let data11 = data8.severity, _errs26 = 0;
+                                if ("string" != typeof data11) return validate218.errors = [ {
+                                  instancePath: instancePath + "/event_types/" + i1 + "/severity",
+                                  schemaPath: "#/properties/event_types/items/properties/severity/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "string"
+                                  }
+                                } ], !1;
+                                if ("debug" !== data11 && "info" !== data11 && "notice" !== data11 && "warning" !== data11 && "error" !== data11 && "critical" !== data11) return validate218.errors = [ {
+                                  instancePath: instancePath + "/event_types/" + i1 + "/severity",
+                                  schemaPath: "#/properties/event_types/items/properties/severity/enum",
+                                  keyword: "enum",
+                                  params: {
+                                    allowedValues: schema231.properties.event_types.items.properties.severity.enum
+                                  }
+                                } ], !1;
+                                var valid11 = 0 === _errs26;
+                              } else valid11 = !0;
+                              if (valid11) {
+                                if (void 0 !== data8.dynamic_severity) {
+                                  let _errs28 = 0;
+                                  if ("boolean" != typeof data8.dynamic_severity) return validate218.errors = [ {
+                                    instancePath: instancePath + "/event_types/" + i1 + "/dynamic_severity",
+                                    schemaPath: "#/properties/event_types/items/properties/dynamic_severity/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "boolean"
+                                    }
+                                  } ], !1;
+                                  var valid12 = 0 === _errs28;
+                                } else valid12 = !0;
+                                if (valid12) {
+                                  if (void 0 !== data8.minimum_severity) {
+                                    let data13 = data8.minimum_severity, _errs30 = 0;
+                                    if ("string" != typeof data13) return validate218.errors = [ {
+                                      instancePath: instancePath + "/event_types/" + i1 + "/minimum_severity",
+                                      schemaPath: "#/properties/event_types/items/properties/minimum_severity/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    if ("debug" !== data13 && "info" !== data13 && "notice" !== data13 && "warning" !== data13 && "error" !== data13 && "critical" !== data13) return validate218.errors = [ {
+                                      instancePath: instancePath + "/event_types/" + i1 + "/minimum_severity",
+                                      schemaPath: "#/properties/event_types/items/properties/minimum_severity/enum",
+                                      keyword: "enum",
+                                      params: {
+                                        allowedValues: schema231.properties.event_types.items.properties.minimum_severity.enum
+                                      }
+                                    } ], !1;
+                                    var valid13 = 0 === _errs30;
+                                  } else valid13 = !0;
+                                  if (valid13) {
+                                    if (void 0 !== data8.maximum_severity) {
+                                      let data14 = data8.maximum_severity, _errs32 = 0;
+                                      if ("string" != typeof data14) return validate218.errors = [ {
+                                        instancePath: instancePath + "/event_types/" + i1 + "/maximum_severity",
+                                        schemaPath: "#/properties/event_types/items/properties/maximum_severity/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      } ], !1;
+                                      if ("debug" !== data14 && "info" !== data14 && "notice" !== data14 && "warning" !== data14 && "error" !== data14 && "critical" !== data14) return validate218.errors = [ {
+                                        instancePath: instancePath + "/event_types/" + i1 + "/maximum_severity",
+                                        schemaPath: "#/properties/event_types/items/properties/maximum_severity/enum",
+                                        keyword: "enum",
+                                        params: {
+                                          allowedValues: schema231.properties.event_types.items.properties.maximum_severity.enum
+                                        }
+                                      } ], !1;
+                                      var valid14 = 0 === _errs32;
+                                    } else valid14 = !0;
+                                    if (valid14 && void 0 !== data8.subject_kind) {
+                                      let data15 = data8.subject_kind;
+                                      if ("string" != typeof data15) return validate218.errors = [ {
+                                        instancePath: instancePath + "/event_types/" + i1 + "/subject_kind",
+                                        schemaPath: "#/properties/event_types/items/properties/subject_kind/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "string"
+                                        }
+                                      } ], !1;
+                                      if ("camera" !== data15 && "storage" !== data15 && "system" !== data15) return validate218.errors = [ {
+                                        instancePath: instancePath + "/event_types/" + i1 + "/subject_kind",
+                                        schemaPath: "#/properties/event_types/items/properties/subject_kind/enum",
+                                        keyword: "enum",
+                                        params: {
+                                          allowedValues: schema231.properties.event_types.items.properties.subject_kind.enum
+                                        }
+                                      } ], !1;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    if (0 !== _errs19) break;
+                  }
+                }
+              }
+              var valid7 = 0 === _errs17;
+            } else valid7 = !0;
+            if (valid7 && void 0 !== data.would_publish) {
+              let data16 = data.would_publish;
+              if ("boolean" != typeof data16) return validate218.errors = [ {
+                instancePath: instancePath + "/would_publish",
+                schemaPath: "#/properties/would_publish/type",
+                keyword: "type",
+                params: {
+                  type: "boolean"
+                }
+              } ], !1;
+              if (!1 !== data16) return validate218.errors = [ {
+                instancePath: instancePath + "/would_publish",
+                schemaPath: "#/properties/would_publish/const",
+                keyword: "const",
+                params: {
+                  allowedValue: !1
+                }
+              } ], !1;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate218.errors = [], !0;
+}
+
+validate218.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventRoutePreviewRequest = validate215, schema227 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    description: {
+      type: "string",
+      maxLength: 511
+    },
+    enabled: {
+      type: "boolean"
+    },
+    destination: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    event_types: {
+      type: "array",
+      items: {
+        type: "string",
+        maxLength: 127,
+        minLength: 1
+      },
+      minItems: 1,
+      maxItems: 32,
+      uniqueItems: !0
+    },
+    camera_scope: {
+      $ref: "#/$defs/EventCameraScope"
+    },
+    predicate: {
+      $ref: "#/$defs/EventPredicate"
+    },
+    schedule: {
+      $ref: "#/$defs/EventSchedule"
+    },
+    suppression: {
+      type: "object",
+      properties: {
+        debounce_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 86400
+        },
+        cooldown_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 604800
+        },
+        grouping_window_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 3600
+        },
+        max_events_per_minute: {
+          type: "integer",
+          minimum: 0,
+          maximum: 6e4
+        }
+      },
+      required: [],
+      additionalProperties: !1
+    }
+  },
+  required: [ "name", "event_types" ],
+  additionalProperties: !1
+};
+
+function validate215(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate215.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate215.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.name) return validate215.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "name"
+      }
+    } ], !1;
+    if (void 0 === data.event_types) return validate215.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "event_types"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if (!func5.call(schema227.properties, key0)) return validate215.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate215.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate215.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate215.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.description) {
+            let data1 = data.description, _errs4 = errors;
+            if (errors === _errs4) {
+              if ("string" != typeof data1) return validate215.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data1) > 511) return validate215.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 511
+                }
+              } ], !1;
+            }
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.enabled) {
+              let _errs6 = errors;
+              if ("boolean" != typeof data.enabled) return validate215.errors = [ {
+                instancePath: instancePath + "/enabled",
+                schemaPath: "#/properties/enabled/type",
+                keyword: "type",
+                params: {
+                  type: "boolean"
+                }
+              } ], !1;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.destination) {
+                let data3 = data.destination, _errs8 = errors;
+                if (errors === _errs8) {
+                  if ("string" != typeof data3) return validate215.errors = [ {
+                    instancePath: instancePath + "/destination",
+                    schemaPath: "#/properties/destination/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  if (func1(data3) > 127) return validate215.errors = [ {
+                    instancePath: instancePath + "/destination",
+                    schemaPath: "#/properties/destination/maxLength",
+                    keyword: "maxLength",
+                    params: {
+                      limit: 127
+                    }
+                  } ], !1;
+                  if (func1(data3) < 1) return validate215.errors = [ {
+                    instancePath: instancePath + "/destination",
+                    schemaPath: "#/properties/destination/minLength",
+                    keyword: "minLength",
+                    params: {
+                      limit: 1
+                    }
+                  } ], !1;
+                }
+                var valid3 = _errs8 === errors;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data.event_types) {
+                  let data4 = data.event_types, _errs10 = errors;
+                  if (errors === _errs10) {
+                    if (!Array.isArray(data4)) return validate215.errors = [ {
+                      instancePath: instancePath + "/event_types",
+                      schemaPath: "#/properties/event_types/type",
+                      keyword: "type",
+                      params: {
+                        type: "array"
+                      }
+                    } ], !1;
+                    if (data4.length > 32) return validate215.errors = [ {
+                      instancePath: instancePath + "/event_types",
+                      schemaPath: "#/properties/event_types/maxItems",
+                      keyword: "maxItems",
+                      params: {
+                        limit: 32
+                      }
+                    } ], !1;
+                    if (data4.length < 1) return validate215.errors = [ {
+                      instancePath: instancePath + "/event_types",
+                      schemaPath: "#/properties/event_types/minItems",
+                      keyword: "minItems",
+                      params: {
+                        limit: 1
+                      }
+                    } ], !1;
+                    {
+                      var valid5 = !0;
+                      let len0 = data4.length;
+                      for (let i0 = 0; i0 < len0; i0++) {
+                        let data5 = data4[i0], _errs12 = errors;
+                        if (errors === _errs12) {
+                          if ("string" != typeof data5) return validate215.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0,
+                            schemaPath: "#/properties/event_types/items/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (func1(data5) > 127) return validate215.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0,
+                            schemaPath: "#/properties/event_types/items/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 127
+                            }
+                          } ], !1;
+                          if (func1(data5) < 1) return validate215.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0,
+                            schemaPath: "#/properties/event_types/items/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          } ], !1;
+                        }
+                        if (!(valid5 = _errs12 === errors)) break;
+                      }
+                      if (valid5) {
+                        let j0, i1 = data4.length;
+                        if (i1 > 1) {
+                          let indices0 = {};
+                          for (;i1--; ) {
+                            let item0 = data4[i1];
+                            if ("string" == typeof item0) {
+                              if ("number" == typeof indices0[item0]) return j0 = indices0[item0], validate215.errors = [ {
+                                instancePath: instancePath + "/event_types",
+                                schemaPath: "#/properties/event_types/uniqueItems",
+                                keyword: "uniqueItems",
+                                params: {
+                                  i: i1,
+                                  j: j0
+                                }
+                              } ], !1;
+                              indices0[item0] = i1;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  var valid4 = _errs10 === errors;
+                } else valid4 = !0;
+                if (valid4) {
+                  if (void 0 !== data.camera_scope) {
+                    let _errs14 = errors;
+                    validate204(data.camera_scope, {
+                      instancePath: instancePath + "/camera_scope",
+                      parentData: data,
+                      parentDataProperty: "camera_scope",
+                      rootData: rootData,
+                      dynamicAnchors: dynamicAnchors
+                    }) || (vErrors = vErrors.concat(validate204.errors), errors = vErrors.length);
+                    var valid7 = _errs14 === errors;
+                  } else valid7 = !0;
+                  if (valid7) {
+                    if (void 0 !== data.predicate) {
+                      let data7 = data.predicate, _errs15 = errors;
+                      if (errors == errors) {
+                        if (!data7 || "object" != typeof data7 || Array.isArray(data7)) return validate215.errors = [ {
+                          instancePath: instancePath + "/predicate",
+                          schemaPath: "#/$defs/EventPredicate/type",
+                          keyword: "type",
+                          params: {
+                            type: "object"
+                          }
+                        } ], !1;
+                        if (void 0 === data7.version) return validate215.errors = [ {
+                          instancePath: instancePath + "/predicate",
+                          schemaPath: "#/$defs/EventPredicate/required",
+                          keyword: "required",
+                          params: {
+                            missingProperty: "version"
+                          }
+                        } ], !1;
+                        {
+                          let _errs18 = errors;
+                          for (let key1 in data7) if ("version" !== key1 && "detection" !== key1 && "health" !== key1) return validate215.errors = [ {
+                            instancePath: instancePath + "/predicate",
+                            schemaPath: "#/$defs/EventPredicate/additionalProperties",
+                            keyword: "additionalProperties",
+                            params: {
+                              additionalProperty: key1
+                            }
+                          } ], !1;
+                          if (_errs18 === errors) {
+                            if (void 0 !== data7.version) {
+                              let data8 = data7.version, _errs19 = errors;
+                              if ("number" != typeof data8 || data8 % 1 || isNaN(data8) || !isFinite(data8)) return validate215.errors = [ {
+                                instancePath: instancePath + "/predicate/version",
+                                schemaPath: "#/$defs/EventPredicate/properties/version/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              if (1 !== data8) return validate215.errors = [ {
+                                instancePath: instancePath + "/predicate/version",
+                                schemaPath: "#/$defs/EventPredicate/properties/version/const",
+                                keyword: "const",
+                                params: {
+                                  allowedValue: 1
+                                }
+                              } ], !1;
+                              var valid10 = _errs19 === errors;
+                            } else valid10 = !0;
+                            if (valid10) {
+                              if (void 0 !== data7.detection) {
+                                let data9 = data7.detection, _errs21 = errors;
+                                if (errors === _errs21) {
+                                  if (!data9 || "object" != typeof data9 || Array.isArray(data9)) return validate215.errors = [ {
+                                    instancePath: instancePath + "/predicate/detection",
+                                    schemaPath: "#/$defs/EventPredicate/properties/detection/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "object"
+                                    }
+                                  } ], !1;
+                                  if (Object.keys(data9).length < 1) return validate215.errors = [ {
+                                    instancePath: instancePath + "/predicate/detection",
+                                    schemaPath: "#/$defs/EventPredicate/properties/detection/minProperties",
+                                    keyword: "minProperties",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  } ], !1;
+                                  {
+                                    let _errs23 = errors;
+                                    for (let key2 in data9) if ("labels_any" !== key2 && "zone_ids_any" !== key2 && "min_confidence" !== key2) return validate215.errors = [ {
+                                      instancePath: instancePath + "/predicate/detection",
+                                      schemaPath: "#/$defs/EventPredicate/properties/detection/additionalProperties",
+                                      keyword: "additionalProperties",
+                                      params: {
+                                        additionalProperty: key2
+                                      }
+                                    } ], !1;
+                                    if (_errs23 === errors) {
+                                      if (void 0 !== data9.labels_any) {
+                                        let data10 = data9.labels_any, _errs24 = errors;
+                                        if (errors === _errs24) {
+                                          if (!Array.isArray(data10)) return validate215.errors = [ {
+                                            instancePath: instancePath + "/predicate/detection/labels_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "array"
+                                            }
+                                          } ], !1;
+                                          if (data10.length > 64) return validate215.errors = [ {
+                                            instancePath: instancePath + "/predicate/detection/labels_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/maxItems",
+                                            keyword: "maxItems",
+                                            params: {
+                                              limit: 64
+                                            }
+                                          } ], !1;
+                                          if (data10.length < 1) return validate215.errors = [ {
+                                            instancePath: instancePath + "/predicate/detection/labels_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/minItems",
+                                            keyword: "minItems",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                          {
+                                            let len1 = data10.length;
+                                            for (let i2 = 0; i2 < len1; i2++) {
+                                              let data11 = data10[i2], _errs26 = errors;
+                                              if (errors === _errs26) {
+                                                if ("string" != typeof data11) return validate215.errors = [ {
+                                                  instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if (func1(data11) > 127) return validate215.errors = [ {
+                                                  instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/maxLength",
+                                                  keyword: "maxLength",
+                                                  params: {
+                                                    limit: 127
+                                                  }
+                                                } ], !1;
+                                                if (func1(data11) < 1) return validate215.errors = [ {
+                                                  instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/minLength",
+                                                  keyword: "minLength",
+                                                  params: {
+                                                    limit: 1
+                                                  }
+                                                } ], !1;
+                                              }
+                                              if (_errs26 !== errors) break;
+                                            }
+                                          }
+                                        }
+                                        var valid12 = _errs24 === errors;
+                                      } else valid12 = !0;
+                                      if (valid12) {
+                                        if (void 0 !== data9.zone_ids_any) {
+                                          let data12 = data9.zone_ids_any, _errs28 = errors;
+                                          if (errors === _errs28) {
+                                            if (!Array.isArray(data12)) return validate215.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "array"
+                                              }
+                                            } ], !1;
+                                            if (data12.length > 64) return validate215.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/maxItems",
+                                              keyword: "maxItems",
+                                              params: {
+                                                limit: 64
+                                              }
+                                            } ], !1;
+                                            if (data12.length < 1) return validate215.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/minItems",
+                                              keyword: "minItems",
+                                              params: {
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                            {
+                                              let len2 = data12.length;
+                                              for (let i3 = 0; i3 < len2; i3++) {
+                                                let data13 = data12[i3], _errs30 = errors;
+                                                if (errors === _errs30) {
+                                                  if ("string" != typeof data13) return validate215.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "string"
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data13) > 127) return validate215.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/maxLength",
+                                                    keyword: "maxLength",
+                                                    params: {
+                                                      limit: 127
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data13) < 1) return validate215.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/minLength",
+                                                    keyword: "minLength",
+                                                    params: {
+                                                      limit: 1
+                                                    }
+                                                  } ], !1;
+                                                }
+                                                if (_errs30 !== errors) break;
+                                              }
+                                            }
+                                          }
+                                          var valid14 = _errs28 === errors;
+                                        } else valid14 = !0;
+                                        if (valid14 && void 0 !== data9.min_confidence) {
+                                          let data14 = data9.min_confidence;
+                                          if (errors == errors) {
+                                            if ("number" != typeof data14 || !isFinite(data14)) return validate215.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/min_confidence",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "number"
+                                              }
+                                            } ], !1;
+                                            if (data14 > 1 || isNaN(data14)) return validate215.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/min_confidence",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/maximum",
+                                              keyword: "maximum",
+                                              params: {
+                                                comparison: "<=",
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                            if (data14 < 0 || isNaN(data14)) return validate215.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/min_confidence",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/minimum",
+                                              keyword: "minimum",
+                                              params: {
+                                                comparison: ">=",
+                                                limit: 0
+                                              }
+                                            } ], !1;
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                var valid11 = _errs21 === errors;
+                              } else valid11 = !0;
+                              if (valid11 && void 0 !== data7.health) {
+                                let data15 = data7.health;
+                                if (errors == errors) {
+                                  if (!data15 || "object" != typeof data15 || Array.isArray(data15)) return validate215.errors = [ {
+                                    instancePath: instancePath + "/predicate/health",
+                                    schemaPath: "#/$defs/EventPredicate/properties/health/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "object"
+                                    }
+                                  } ], !1;
+                                  if (Object.keys(data15).length < 1) return validate215.errors = [ {
+                                    instancePath: instancePath + "/predicate/health",
+                                    schemaPath: "#/$defs/EventPredicate/properties/health/minProperties",
+                                    keyword: "minProperties",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  } ], !1;
+                                  {
+                                    let _errs36 = errors;
+                                    for (let key3 in data15) if ("condition_codes_any" !== key3 && "severities_any" !== key3) return validate215.errors = [ {
+                                      instancePath: instancePath + "/predicate/health",
+                                      schemaPath: "#/$defs/EventPredicate/properties/health/additionalProperties",
+                                      keyword: "additionalProperties",
+                                      params: {
+                                        additionalProperty: key3
+                                      }
+                                    } ], !1;
+                                    if (_errs36 === errors) {
+                                      if (void 0 !== data15.condition_codes_any) {
+                                        let data16 = data15.condition_codes_any, _errs37 = errors;
+                                        if (errors === _errs37) {
+                                          if (!Array.isArray(data16)) return validate215.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "array"
+                                            }
+                                          } ], !1;
+                                          if (data16.length > 64) return validate215.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/maxItems",
+                                            keyword: "maxItems",
+                                            params: {
+                                              limit: 64
+                                            }
+                                          } ], !1;
+                                          if (data16.length < 1) return validate215.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/minItems",
+                                            keyword: "minItems",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                          {
+                                            let len3 = data16.length;
+                                            for (let i4 = 0; i4 < len3; i4++) {
+                                              let data17 = data16[i4], _errs39 = errors;
+                                              if (errors === _errs39) {
+                                                if ("string" != typeof data17) return validate215.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if (func1(data17) > 127) return validate215.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/maxLength",
+                                                  keyword: "maxLength",
+                                                  params: {
+                                                    limit: 127
+                                                  }
+                                                } ], !1;
+                                                if (func1(data17) < 1) return validate215.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/minLength",
+                                                  keyword: "minLength",
+                                                  params: {
+                                                    limit: 1
+                                                  }
+                                                } ], !1;
+                                              }
+                                              if (_errs39 !== errors) break;
+                                            }
+                                          }
+                                        }
+                                        var valid18 = _errs37 === errors;
+                                      } else valid18 = !0;
+                                      if (valid18 && void 0 !== data15.severities_any) {
+                                        let data18 = data15.severities_any;
+                                        if (errors == errors) {
+                                          if (!Array.isArray(data18)) return validate215.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/severities_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "array"
+                                            }
+                                          } ], !1;
+                                          if (data18.length > 3) return validate215.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/severities_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/maxItems",
+                                            keyword: "maxItems",
+                                            params: {
+                                              limit: 3
+                                            }
+                                          } ], !1;
+                                          if (data18.length < 1) return validate215.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/severities_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/minItems",
+                                            keyword: "minItems",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                          {
+                                            let len4 = data18.length;
+                                            for (let i5 = 0; i5 < len4; i5++) {
+                                              let data19 = data18[i5], _errs43 = errors;
+                                              if ("string" != typeof data19) return validate215.errors = [ {
+                                                instancePath: instancePath + "/predicate/health/severities_any/" + i5,
+                                                schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/items/type",
+                                                keyword: "type",
+                                                params: {
+                                                  type: "string"
+                                                }
+                                              } ], !1;
+                                              if ("warning" !== data19 && "error" !== data19 && "critical" !== data19) return validate215.errors = [ {
+                                                instancePath: instancePath + "/predicate/health/severities_any/" + i5,
+                                                schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/items/enum",
+                                                keyword: "enum",
+                                                params: {
+                                                  allowedValues: schema214.properties.health.properties.severities_any.items.enum
+                                                }
+                                              } ], !1;
+                                              if (_errs43 !== errors) break;
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      var valid8 = _errs15 === errors;
+                    } else valid8 = !0;
+                    if (valid8) {
+                      if (void 0 !== data.schedule) {
+                        let data20 = data.schedule, _errs45 = errors;
+                        if (errors == errors) {
+                          if (!data20 || "object" != typeof data20 || Array.isArray(data20)) return validate215.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/type",
+                            keyword: "type",
+                            params: {
+                              type: "object"
+                            }
+                          } ], !1;
+                          if (void 0 === data20.version) return validate215.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "version"
+                            }
+                          } ], !1;
+                          if (void 0 === data20.timezone) return validate215.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "timezone"
+                            }
+                          } ], !1;
+                          if (void 0 === data20.windows) return validate215.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "windows"
+                            }
+                          } ], !1;
+                          {
+                            let _errs48 = errors;
+                            for (let key4 in data20) if ("version" !== key4 && "timezone" !== key4 && "windows" !== key4) return validate215.errors = [ {
+                              instancePath: instancePath + "/schedule",
+                              schemaPath: "#/$defs/EventSchedule/additionalProperties",
+                              keyword: "additionalProperties",
+                              params: {
+                                additionalProperty: key4
+                              }
+                            } ], !1;
+                            if (_errs48 === errors) {
+                              if (void 0 !== data20.version) {
+                                let data21 = data20.version, _errs49 = errors;
+                                if ("number" != typeof data21 || data21 % 1 || isNaN(data21) || !isFinite(data21)) return validate215.errors = [ {
+                                  instancePath: instancePath + "/schedule/version",
+                                  schemaPath: "#/$defs/EventSchedule/properties/version/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (1 !== data21) return validate215.errors = [ {
+                                  instancePath: instancePath + "/schedule/version",
+                                  schemaPath: "#/$defs/EventSchedule/properties/version/const",
+                                  keyword: "const",
+                                  params: {
+                                    allowedValue: 1
+                                  }
+                                } ], !1;
+                                var valid24 = _errs49 === errors;
+                              } else valid24 = !0;
+                              if (valid24) {
+                                if (void 0 !== data20.timezone) {
+                                  let data22 = data20.timezone, _errs51 = errors;
+                                  if (errors === _errs51) {
+                                    if ("string" != typeof data22) return validate215.errors = [ {
+                                      instancePath: instancePath + "/schedule/timezone",
+                                      schemaPath: "#/$defs/EventSchedule/properties/timezone/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    if (func1(data22) > 64) return validate215.errors = [ {
+                                      instancePath: instancePath + "/schedule/timezone",
+                                      schemaPath: "#/$defs/EventSchedule/properties/timezone/maxLength",
+                                      keyword: "maxLength",
+                                      params: {
+                                        limit: 64
+                                      }
+                                    } ], !1;
+                                    if (func1(data22) < 1) return validate215.errors = [ {
+                                      instancePath: instancePath + "/schedule/timezone",
+                                      schemaPath: "#/$defs/EventSchedule/properties/timezone/minLength",
+                                      keyword: "minLength",
+                                      params: {
+                                        limit: 1
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid25 = _errs51 === errors;
+                                } else valid25 = !0;
+                                if (valid25 && void 0 !== data20.windows) {
+                                  let data23 = data20.windows;
+                                  if (errors == errors) {
+                                    if (!Array.isArray(data23)) return validate215.errors = [ {
+                                      instancePath: instancePath + "/schedule/windows",
+                                      schemaPath: "#/$defs/EventSchedule/properties/windows/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "array"
+                                      }
+                                    } ], !1;
+                                    if (data23.length > 64) return validate215.errors = [ {
+                                      instancePath: instancePath + "/schedule/windows",
+                                      schemaPath: "#/$defs/EventSchedule/properties/windows/maxItems",
+                                      keyword: "maxItems",
+                                      params: {
+                                        limit: 64
+                                      }
+                                    } ], !1;
+                                    {
+                                      let len5 = data23.length;
+                                      for (let i6 = 0; i6 < len5; i6++) {
+                                        let data24 = data23[i6], _errs55 = errors;
+                                        if (errors === _errs55) {
+                                          if (!data24 || "object" != typeof data24 || Array.isArray(data24)) return validate215.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "object"
+                                            }
+                                          } ], !1;
+                                          if (void 0 === data24.days) return validate215.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                            keyword: "required",
+                                            params: {
+                                              missingProperty: "days"
+                                            }
+                                          } ], !1;
+                                          if (void 0 === data24.start) return validate215.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                            keyword: "required",
+                                            params: {
+                                              missingProperty: "start"
+                                            }
+                                          } ], !1;
+                                          if (void 0 === data24.end) return validate215.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                            keyword: "required",
+                                            params: {
+                                              missingProperty: "end"
+                                            }
+                                          } ], !1;
+                                          {
+                                            let _errs57 = errors;
+                                            for (let key5 in data24) if ("days" !== key5 && "start" !== key5 && "end" !== key5) return validate215.errors = [ {
+                                              instancePath: instancePath + "/schedule/windows/" + i6,
+                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/additionalProperties",
+                                              keyword: "additionalProperties",
+                                              params: {
+                                                additionalProperty: key5
+                                              }
+                                            } ], !1;
+                                            if (_errs57 === errors) {
+                                              if (void 0 !== data24.days) {
+                                                let data25 = data24.days, _errs58 = errors;
+                                                if (errors === _errs58) {
+                                                  if (!Array.isArray(data25)) return validate215.errors = [ {
+                                                    instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                    schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "array"
+                                                    }
+                                                  } ], !1;
+                                                  if (data25.length > 7) return validate215.errors = [ {
+                                                    instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                    schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/maxItems",
+                                                    keyword: "maxItems",
+                                                    params: {
+                                                      limit: 7
+                                                    }
+                                                  } ], !1;
+                                                  if (data25.length < 1) return validate215.errors = [ {
+                                                    instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                    schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/minItems",
+                                                    keyword: "minItems",
+                                                    params: {
+                                                      limit: 1
+                                                    }
+                                                  } ], !1;
+                                                  {
+                                                    var valid29 = !0;
+                                                    let len6 = data25.length;
+                                                    for (let i7 = 0; i7 < len6; i7++) {
+                                                      let data26 = data25[i7], _errs60 = errors;
+                                                      if ("number" != typeof data26 || data26 % 1 || isNaN(data26) || !isFinite(data26)) return validate215.errors = [ {
+                                                        instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                        schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: "integer"
+                                                        }
+                                                      } ], !1;
+                                                      if (errors === _errs60 && "number" == typeof data26 && isFinite(data26)) {
+                                                        if (data26 > 6 || isNaN(data26)) return validate215.errors = [ {
+                                                          instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                          schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/maximum",
+                                                          keyword: "maximum",
+                                                          params: {
+                                                            comparison: "<=",
+                                                            limit: 6
+                                                          }
+                                                        } ], !1;
+                                                        if (data26 < 0 || isNaN(data26)) return validate215.errors = [ {
+                                                          instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                          schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/minimum",
+                                                          keyword: "minimum",
+                                                          params: {
+                                                            comparison: ">=",
+                                                            limit: 0
+                                                          }
+                                                        } ], !1;
+                                                      }
+                                                      if (!(valid29 = _errs60 === errors)) break;
+                                                    }
+                                                    if (valid29) {
+                                                      let j1, i8 = data25.length;
+                                                      if (i8 > 1) {
+                                                        let indices1 = {};
+                                                        for (;i8--; ) {
+                                                          let item1 = data25[i8];
+                                                          if ("number" == typeof item1 && !(item1 % 1) && !isNaN(item1) && isFinite(item1)) {
+                                                            if ("number" == typeof indices1[item1]) return j1 = indices1[item1], validate215.errors = [ {
+                                                              instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/uniqueItems",
+                                                              keyword: "uniqueItems",
+                                                              params: {
+                                                                i: i8,
+                                                                j: j1
+                                                              }
+                                                            } ], !1;
+                                                            indices1[item1] = i8;
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                                var valid28 = _errs58 === errors;
+                                              } else valid28 = !0;
+                                              if (valid28) {
+                                                if (void 0 !== data24.start) {
+                                                  let data27 = data24.start, _errs62 = errors;
+                                                  if (errors === _errs62) {
+                                                    if ("string" != typeof data27) return validate215.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "string"
+                                                      }
+                                                    } ], !1;
+                                                    if (!pattern52.test(data27)) return validate215.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
+                                                      keyword: "pattern",
+                                                      params: {
+                                                        pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                                                      }
+                                                    } ], !1;
+                                                  }
+                                                  var valid31 = _errs62 === errors;
+                                                } else valid31 = !0;
+                                                if (valid31 && void 0 !== data24.end) {
+                                                  let data28 = data24.end;
+                                                  if (errors == errors) {
+                                                    if ("string" != typeof data28) return validate215.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "string"
+                                                      }
+                                                    } ], !1;
+                                                    if (!pattern52.test(data28)) return validate215.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
+                                                      keyword: "pattern",
+                                                      params: {
+                                                        pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                                                      }
+                                                    } ], !1;
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                        if (_errs55 !== errors) break;
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        var valid22 = _errs45 === errors;
+                      } else valid22 = !0;
+                      if (valid22 && void 0 !== data.suppression) {
+                        let data29 = data.suppression;
+                        if (errors == errors) {
+                          if (!data29 || "object" != typeof data29 || Array.isArray(data29)) return validate215.errors = [ {
+                            instancePath: instancePath + "/suppression",
+                            schemaPath: "#/properties/suppression/type",
+                            keyword: "type",
+                            params: {
+                              type: "object"
+                            }
+                          } ], !1;
+                          {
+                            let _errs68 = errors;
+                            for (let key6 in data29) if ("debounce_seconds" !== key6 && "cooldown_seconds" !== key6 && "grouping_window_seconds" !== key6 && "max_events_per_minute" !== key6) return validate215.errors = [ {
+                              instancePath: instancePath + "/suppression",
+                              schemaPath: "#/properties/suppression/additionalProperties",
+                              keyword: "additionalProperties",
+                              params: {
+                                additionalProperty: key6
+                              }
+                            } ], !1;
+                            if (_errs68 === errors) {
+                              if (void 0 !== data29.debounce_seconds) {
+                                let data30 = data29.debounce_seconds, _errs69 = errors;
+                                if ("number" != typeof data30 || data30 % 1 || isNaN(data30) || !isFinite(data30)) return validate215.errors = [ {
+                                  instancePath: instancePath + "/suppression/debounce_seconds",
+                                  schemaPath: "#/properties/suppression/properties/debounce_seconds/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (errors === _errs69 && "number" == typeof data30 && isFinite(data30)) {
+                                  if (data30 > 86400 || isNaN(data30)) return validate215.errors = [ {
+                                    instancePath: instancePath + "/suppression/debounce_seconds",
+                                    schemaPath: "#/properties/suppression/properties/debounce_seconds/maximum",
+                                    keyword: "maximum",
+                                    params: {
+                                      comparison: "<=",
+                                      limit: 86400
+                                    }
+                                  } ], !1;
+                                  if (data30 < 0 || isNaN(data30)) return validate215.errors = [ {
+                                    instancePath: instancePath + "/suppression/debounce_seconds",
+                                    schemaPath: "#/properties/suppression/properties/debounce_seconds/minimum",
+                                    keyword: "minimum",
+                                    params: {
+                                      comparison: ">=",
+                                      limit: 0
+                                    }
+                                  } ], !1;
+                                }
+                                var valid34 = _errs69 === errors;
+                              } else valid34 = !0;
+                              if (valid34) {
+                                if (void 0 !== data29.cooldown_seconds) {
+                                  let data31 = data29.cooldown_seconds, _errs71 = errors;
+                                  if ("number" != typeof data31 || data31 % 1 || isNaN(data31) || !isFinite(data31)) return validate215.errors = [ {
+                                    instancePath: instancePath + "/suppression/cooldown_seconds",
+                                    schemaPath: "#/properties/suppression/properties/cooldown_seconds/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  if (errors === _errs71 && "number" == typeof data31 && isFinite(data31)) {
+                                    if (data31 > 604800 || isNaN(data31)) return validate215.errors = [ {
+                                      instancePath: instancePath + "/suppression/cooldown_seconds",
+                                      schemaPath: "#/properties/suppression/properties/cooldown_seconds/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 604800
+                                      }
+                                    } ], !1;
+                                    if (data31 < 0 || isNaN(data31)) return validate215.errors = [ {
+                                      instancePath: instancePath + "/suppression/cooldown_seconds",
+                                      schemaPath: "#/properties/suppression/properties/cooldown_seconds/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 0
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid35 = _errs71 === errors;
+                                } else valid35 = !0;
+                                if (valid35) {
+                                  if (void 0 !== data29.grouping_window_seconds) {
+                                    let data32 = data29.grouping_window_seconds, _errs73 = errors;
+                                    if ("number" != typeof data32 || data32 % 1 || isNaN(data32) || !isFinite(data32)) return validate215.errors = [ {
+                                      instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                      schemaPath: "#/properties/suppression/properties/grouping_window_seconds/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "integer"
+                                      }
+                                    } ], !1;
+                                    if (errors === _errs73 && "number" == typeof data32 && isFinite(data32)) {
+                                      if (data32 > 3600 || isNaN(data32)) return validate215.errors = [ {
+                                        instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                        schemaPath: "#/properties/suppression/properties/grouping_window_seconds/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 3600
+                                        }
+                                      } ], !1;
+                                      if (data32 < 0 || isNaN(data32)) return validate215.errors = [ {
+                                        instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                        schemaPath: "#/properties/suppression/properties/grouping_window_seconds/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: 0
+                                        }
+                                      } ], !1;
+                                    }
+                                    var valid36 = _errs73 === errors;
+                                  } else valid36 = !0;
+                                  if (valid36 && void 0 !== data29.max_events_per_minute) {
+                                    let data33 = data29.max_events_per_minute, _errs75 = errors;
+                                    if ("number" != typeof data33 || data33 % 1 || isNaN(data33) || !isFinite(data33)) return validate215.errors = [ {
+                                      instancePath: instancePath + "/suppression/max_events_per_minute",
+                                      schemaPath: "#/properties/suppression/properties/max_events_per_minute/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "integer"
+                                      }
+                                    } ], !1;
+                                    if (errors === _errs75 && "number" == typeof data33 && isFinite(data33)) {
+                                      if (data33 > 6e4 || isNaN(data33)) return validate215.errors = [ {
+                                        instancePath: instancePath + "/suppression/max_events_per_minute",
+                                        schemaPath: "#/properties/suppression/properties/max_events_per_minute/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 6e4
+                                        }
+                                      } ], !1;
+                                      if (data33 < 0 || isNaN(data33)) return validate215.errors = [ {
+                                        instancePath: instancePath + "/suppression/max_events_per_minute",
+                                        schemaPath: "#/properties/suppression/properties/max_events_per_minute/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: 0
+                                        }
+                                      } ], !1;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate215.errors = vErrors, 0 === errors;
+}
+
+validate215.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventRouteUpdate = validate213, schema224 = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    description: {
+      type: "string",
+      maxLength: 511
+    },
+    enabled: {
+      type: "boolean"
+    },
+    destination: {
+      type: "string",
+      maxLength: 127,
+      minLength: 1
+    },
+    event_types: {
+      type: "array",
+      items: {
+        type: "string",
+        maxLength: 127,
+        minLength: 1
+      },
+      minItems: 1,
+      maxItems: 32,
+      uniqueItems: !0
+    },
+    camera_scope: {
+      $ref: "#/$defs/EventCameraScope"
+    },
+    predicate: {
+      $ref: "#/$defs/EventPredicate"
+    },
+    schedule: {
+      $ref: "#/$defs/EventSchedule"
+    },
+    suppression: {
+      type: "object",
+      properties: {
+        debounce_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 86400
+        },
+        cooldown_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 604800
+        },
+        grouping_window_seconds: {
+          type: "integer",
+          minimum: 0,
+          maximum: 3600
+        },
+        max_events_per_minute: {
+          type: "integer",
+          minimum: 0,
+          maximum: 6e4
+        }
+      },
+      required: [],
+      additionalProperties: !1
+    },
+    revision: {
+      type: "integer",
+      minimum: 1,
+      maximum: 9007199254740991
+    }
+  },
+  required: [ "revision" ],
+  additionalProperties: !1
+};
+
+function validate213(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate213.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate213.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.revision) return validate213.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "revision"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if (!func5.call(schema224.properties, key0)) return validate213.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.name) {
+          let data0 = data.name, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate213.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) > 127) return validate213.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 127
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate213.errors = [ {
+              instancePath: instancePath + "/name",
+              schemaPath: "#/properties/name/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.description) {
+            let data1 = data.description, _errs4 = errors;
+            if (errors === _errs4) {
+              if ("string" != typeof data1) return validate213.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/type",
+                keyword: "type",
+                params: {
+                  type: "string"
+                }
+              } ], !1;
+              if (func1(data1) > 511) return validate213.errors = [ {
+                instancePath: instancePath + "/description",
+                schemaPath: "#/properties/description/maxLength",
+                keyword: "maxLength",
+                params: {
+                  limit: 511
+                }
+              } ], !1;
+            }
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.enabled) {
+              let _errs6 = errors;
+              if ("boolean" != typeof data.enabled) return validate213.errors = [ {
+                instancePath: instancePath + "/enabled",
+                schemaPath: "#/properties/enabled/type",
+                keyword: "type",
+                params: {
+                  type: "boolean"
+                }
+              } ], !1;
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.destination) {
+                let data3 = data.destination, _errs8 = errors;
+                if (errors === _errs8) {
+                  if ("string" != typeof data3) return validate213.errors = [ {
+                    instancePath: instancePath + "/destination",
+                    schemaPath: "#/properties/destination/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  if (func1(data3) > 127) return validate213.errors = [ {
+                    instancePath: instancePath + "/destination",
+                    schemaPath: "#/properties/destination/maxLength",
+                    keyword: "maxLength",
+                    params: {
+                      limit: 127
+                    }
+                  } ], !1;
+                  if (func1(data3) < 1) return validate213.errors = [ {
+                    instancePath: instancePath + "/destination",
+                    schemaPath: "#/properties/destination/minLength",
+                    keyword: "minLength",
+                    params: {
+                      limit: 1
+                    }
+                  } ], !1;
+                }
+                var valid3 = _errs8 === errors;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data.event_types) {
+                  let data4 = data.event_types, _errs10 = errors;
+                  if (errors === _errs10) {
+                    if (!Array.isArray(data4)) return validate213.errors = [ {
+                      instancePath: instancePath + "/event_types",
+                      schemaPath: "#/properties/event_types/type",
+                      keyword: "type",
+                      params: {
+                        type: "array"
+                      }
+                    } ], !1;
+                    if (data4.length > 32) return validate213.errors = [ {
+                      instancePath: instancePath + "/event_types",
+                      schemaPath: "#/properties/event_types/maxItems",
+                      keyword: "maxItems",
+                      params: {
+                        limit: 32
+                      }
+                    } ], !1;
+                    if (data4.length < 1) return validate213.errors = [ {
+                      instancePath: instancePath + "/event_types",
+                      schemaPath: "#/properties/event_types/minItems",
+                      keyword: "minItems",
+                      params: {
+                        limit: 1
+                      }
+                    } ], !1;
+                    {
+                      var valid5 = !0;
+                      let len0 = data4.length;
+                      for (let i0 = 0; i0 < len0; i0++) {
+                        let data5 = data4[i0], _errs12 = errors;
+                        if (errors === _errs12) {
+                          if ("string" != typeof data5) return validate213.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0,
+                            schemaPath: "#/properties/event_types/items/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (func1(data5) > 127) return validate213.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0,
+                            schemaPath: "#/properties/event_types/items/maxLength",
+                            keyword: "maxLength",
+                            params: {
+                              limit: 127
+                            }
+                          } ], !1;
+                          if (func1(data5) < 1) return validate213.errors = [ {
+                            instancePath: instancePath + "/event_types/" + i0,
+                            schemaPath: "#/properties/event_types/items/minLength",
+                            keyword: "minLength",
+                            params: {
+                              limit: 1
+                            }
+                          } ], !1;
+                        }
+                        if (!(valid5 = _errs12 === errors)) break;
+                      }
+                      if (valid5) {
+                        let j0, i1 = data4.length;
+                        if (i1 > 1) {
+                          let indices0 = {};
+                          for (;i1--; ) {
+                            let item0 = data4[i1];
+                            if ("string" == typeof item0) {
+                              if ("number" == typeof indices0[item0]) return j0 = indices0[item0], validate213.errors = [ {
+                                instancePath: instancePath + "/event_types",
+                                schemaPath: "#/properties/event_types/uniqueItems",
+                                keyword: "uniqueItems",
+                                params: {
+                                  i: i1,
+                                  j: j0
+                                }
+                              } ], !1;
+                              indices0[item0] = i1;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  var valid4 = _errs10 === errors;
+                } else valid4 = !0;
+                if (valid4) {
+                  if (void 0 !== data.camera_scope) {
+                    let _errs14 = errors;
+                    validate204(data.camera_scope, {
+                      instancePath: instancePath + "/camera_scope",
+                      parentData: data,
+                      parentDataProperty: "camera_scope",
+                      rootData: rootData,
+                      dynamicAnchors: dynamicAnchors
+                    }) || (vErrors = vErrors.concat(validate204.errors), errors = vErrors.length);
+                    var valid7 = _errs14 === errors;
+                  } else valid7 = !0;
+                  if (valid7) {
+                    if (void 0 !== data.predicate) {
+                      let data7 = data.predicate, _errs15 = errors;
+                      if (errors == errors) {
+                        if (!data7 || "object" != typeof data7 || Array.isArray(data7)) return validate213.errors = [ {
+                          instancePath: instancePath + "/predicate",
+                          schemaPath: "#/$defs/EventPredicate/type",
+                          keyword: "type",
+                          params: {
+                            type: "object"
+                          }
+                        } ], !1;
+                        if (void 0 === data7.version) return validate213.errors = [ {
+                          instancePath: instancePath + "/predicate",
+                          schemaPath: "#/$defs/EventPredicate/required",
+                          keyword: "required",
+                          params: {
+                            missingProperty: "version"
+                          }
+                        } ], !1;
+                        {
+                          let _errs18 = errors;
+                          for (let key1 in data7) if ("version" !== key1 && "detection" !== key1 && "health" !== key1) return validate213.errors = [ {
+                            instancePath: instancePath + "/predicate",
+                            schemaPath: "#/$defs/EventPredicate/additionalProperties",
+                            keyword: "additionalProperties",
+                            params: {
+                              additionalProperty: key1
+                            }
+                          } ], !1;
+                          if (_errs18 === errors) {
+                            if (void 0 !== data7.version) {
+                              let data8 = data7.version, _errs19 = errors;
+                              if ("number" != typeof data8 || data8 % 1 || isNaN(data8) || !isFinite(data8)) return validate213.errors = [ {
+                                instancePath: instancePath + "/predicate/version",
+                                schemaPath: "#/$defs/EventPredicate/properties/version/type",
+                                keyword: "type",
+                                params: {
+                                  type: "integer"
+                                }
+                              } ], !1;
+                              if (1 !== data8) return validate213.errors = [ {
+                                instancePath: instancePath + "/predicate/version",
+                                schemaPath: "#/$defs/EventPredicate/properties/version/const",
+                                keyword: "const",
+                                params: {
+                                  allowedValue: 1
+                                }
+                              } ], !1;
+                              var valid10 = _errs19 === errors;
+                            } else valid10 = !0;
+                            if (valid10) {
+                              if (void 0 !== data7.detection) {
+                                let data9 = data7.detection, _errs21 = errors;
+                                if (errors === _errs21) {
+                                  if (!data9 || "object" != typeof data9 || Array.isArray(data9)) return validate213.errors = [ {
+                                    instancePath: instancePath + "/predicate/detection",
+                                    schemaPath: "#/$defs/EventPredicate/properties/detection/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "object"
+                                    }
+                                  } ], !1;
+                                  if (Object.keys(data9).length < 1) return validate213.errors = [ {
+                                    instancePath: instancePath + "/predicate/detection",
+                                    schemaPath: "#/$defs/EventPredicate/properties/detection/minProperties",
+                                    keyword: "minProperties",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  } ], !1;
+                                  {
+                                    let _errs23 = errors;
+                                    for (let key2 in data9) if ("labels_any" !== key2 && "zone_ids_any" !== key2 && "min_confidence" !== key2) return validate213.errors = [ {
+                                      instancePath: instancePath + "/predicate/detection",
+                                      schemaPath: "#/$defs/EventPredicate/properties/detection/additionalProperties",
+                                      keyword: "additionalProperties",
+                                      params: {
+                                        additionalProperty: key2
+                                      }
+                                    } ], !1;
+                                    if (_errs23 === errors) {
+                                      if (void 0 !== data9.labels_any) {
+                                        let data10 = data9.labels_any, _errs24 = errors;
+                                        if (errors === _errs24) {
+                                          if (!Array.isArray(data10)) return validate213.errors = [ {
+                                            instancePath: instancePath + "/predicate/detection/labels_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "array"
+                                            }
+                                          } ], !1;
+                                          if (data10.length > 64) return validate213.errors = [ {
+                                            instancePath: instancePath + "/predicate/detection/labels_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/maxItems",
+                                            keyword: "maxItems",
+                                            params: {
+                                              limit: 64
+                                            }
+                                          } ], !1;
+                                          if (data10.length < 1) return validate213.errors = [ {
+                                            instancePath: instancePath + "/predicate/detection/labels_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/minItems",
+                                            keyword: "minItems",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                          {
+                                            let len1 = data10.length;
+                                            for (let i2 = 0; i2 < len1; i2++) {
+                                              let data11 = data10[i2], _errs26 = errors;
+                                              if (errors === _errs26) {
+                                                if ("string" != typeof data11) return validate213.errors = [ {
+                                                  instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if (func1(data11) > 127) return validate213.errors = [ {
+                                                  instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/maxLength",
+                                                  keyword: "maxLength",
+                                                  params: {
+                                                    limit: 127
+                                                  }
+                                                } ], !1;
+                                                if (func1(data11) < 1) return validate213.errors = [ {
+                                                  instancePath: instancePath + "/predicate/detection/labels_any/" + i2,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/detection/properties/labels_any/items/minLength",
+                                                  keyword: "minLength",
+                                                  params: {
+                                                    limit: 1
+                                                  }
+                                                } ], !1;
+                                              }
+                                              if (_errs26 !== errors) break;
+                                            }
+                                          }
+                                        }
+                                        var valid12 = _errs24 === errors;
+                                      } else valid12 = !0;
+                                      if (valid12) {
+                                        if (void 0 !== data9.zone_ids_any) {
+                                          let data12 = data9.zone_ids_any, _errs28 = errors;
+                                          if (errors === _errs28) {
+                                            if (!Array.isArray(data12)) return validate213.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "array"
+                                              }
+                                            } ], !1;
+                                            if (data12.length > 64) return validate213.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/maxItems",
+                                              keyword: "maxItems",
+                                              params: {
+                                                limit: 64
+                                              }
+                                            } ], !1;
+                                            if (data12.length < 1) return validate213.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/zone_ids_any",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/minItems",
+                                              keyword: "minItems",
+                                              params: {
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                            {
+                                              let len2 = data12.length;
+                                              for (let i3 = 0; i3 < len2; i3++) {
+                                                let data13 = data12[i3], _errs30 = errors;
+                                                if (errors === _errs30) {
+                                                  if ("string" != typeof data13) return validate213.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "string"
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data13) > 127) return validate213.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/maxLength",
+                                                    keyword: "maxLength",
+                                                    params: {
+                                                      limit: 127
+                                                    }
+                                                  } ], !1;
+                                                  if (func1(data13) < 1) return validate213.errors = [ {
+                                                    instancePath: instancePath + "/predicate/detection/zone_ids_any/" + i3,
+                                                    schemaPath: "#/$defs/EventPredicate/properties/detection/properties/zone_ids_any/items/minLength",
+                                                    keyword: "minLength",
+                                                    params: {
+                                                      limit: 1
+                                                    }
+                                                  } ], !1;
+                                                }
+                                                if (_errs30 !== errors) break;
+                                              }
+                                            }
+                                          }
+                                          var valid14 = _errs28 === errors;
+                                        } else valid14 = !0;
+                                        if (valid14 && void 0 !== data9.min_confidence) {
+                                          let data14 = data9.min_confidence;
+                                          if (errors == errors) {
+                                            if ("number" != typeof data14 || !isFinite(data14)) return validate213.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/min_confidence",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: "number"
+                                              }
+                                            } ], !1;
+                                            if (data14 > 1 || isNaN(data14)) return validate213.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/min_confidence",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/maximum",
+                                              keyword: "maximum",
+                                              params: {
+                                                comparison: "<=",
+                                                limit: 1
+                                              }
+                                            } ], !1;
+                                            if (data14 < 0 || isNaN(data14)) return validate213.errors = [ {
+                                              instancePath: instancePath + "/predicate/detection/min_confidence",
+                                              schemaPath: "#/$defs/EventPredicate/properties/detection/properties/min_confidence/minimum",
+                                              keyword: "minimum",
+                                              params: {
+                                                comparison: ">=",
+                                                limit: 0
+                                              }
+                                            } ], !1;
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                var valid11 = _errs21 === errors;
+                              } else valid11 = !0;
+                              if (valid11 && void 0 !== data7.health) {
+                                let data15 = data7.health;
+                                if (errors == errors) {
+                                  if (!data15 || "object" != typeof data15 || Array.isArray(data15)) return validate213.errors = [ {
+                                    instancePath: instancePath + "/predicate/health",
+                                    schemaPath: "#/$defs/EventPredicate/properties/health/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "object"
+                                    }
+                                  } ], !1;
+                                  if (Object.keys(data15).length < 1) return validate213.errors = [ {
+                                    instancePath: instancePath + "/predicate/health",
+                                    schemaPath: "#/$defs/EventPredicate/properties/health/minProperties",
+                                    keyword: "minProperties",
+                                    params: {
+                                      limit: 1
+                                    }
+                                  } ], !1;
+                                  {
+                                    let _errs36 = errors;
+                                    for (let key3 in data15) if ("condition_codes_any" !== key3 && "severities_any" !== key3) return validate213.errors = [ {
+                                      instancePath: instancePath + "/predicate/health",
+                                      schemaPath: "#/$defs/EventPredicate/properties/health/additionalProperties",
+                                      keyword: "additionalProperties",
+                                      params: {
+                                        additionalProperty: key3
+                                      }
+                                    } ], !1;
+                                    if (_errs36 === errors) {
+                                      if (void 0 !== data15.condition_codes_any) {
+                                        let data16 = data15.condition_codes_any, _errs37 = errors;
+                                        if (errors === _errs37) {
+                                          if (!Array.isArray(data16)) return validate213.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "array"
+                                            }
+                                          } ], !1;
+                                          if (data16.length > 64) return validate213.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/maxItems",
+                                            keyword: "maxItems",
+                                            params: {
+                                              limit: 64
+                                            }
+                                          } ], !1;
+                                          if (data16.length < 1) return validate213.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/condition_codes_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/minItems",
+                                            keyword: "minItems",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                          {
+                                            let len3 = data16.length;
+                                            for (let i4 = 0; i4 < len3; i4++) {
+                                              let data17 = data16[i4], _errs39 = errors;
+                                              if (errors === _errs39) {
+                                                if ("string" != typeof data17) return validate213.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/type",
+                                                  keyword: "type",
+                                                  params: {
+                                                    type: "string"
+                                                  }
+                                                } ], !1;
+                                                if (func1(data17) > 127) return validate213.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/maxLength",
+                                                  keyword: "maxLength",
+                                                  params: {
+                                                    limit: 127
+                                                  }
+                                                } ], !1;
+                                                if (func1(data17) < 1) return validate213.errors = [ {
+                                                  instancePath: instancePath + "/predicate/health/condition_codes_any/" + i4,
+                                                  schemaPath: "#/$defs/EventPredicate/properties/health/properties/condition_codes_any/items/minLength",
+                                                  keyword: "minLength",
+                                                  params: {
+                                                    limit: 1
+                                                  }
+                                                } ], !1;
+                                              }
+                                              if (_errs39 !== errors) break;
+                                            }
+                                          }
+                                        }
+                                        var valid18 = _errs37 === errors;
+                                      } else valid18 = !0;
+                                      if (valid18 && void 0 !== data15.severities_any) {
+                                        let data18 = data15.severities_any;
+                                        if (errors == errors) {
+                                          if (!Array.isArray(data18)) return validate213.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/severities_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "array"
+                                            }
+                                          } ], !1;
+                                          if (data18.length > 3) return validate213.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/severities_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/maxItems",
+                                            keyword: "maxItems",
+                                            params: {
+                                              limit: 3
+                                            }
+                                          } ], !1;
+                                          if (data18.length < 1) return validate213.errors = [ {
+                                            instancePath: instancePath + "/predicate/health/severities_any",
+                                            schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/minItems",
+                                            keyword: "minItems",
+                                            params: {
+                                              limit: 1
+                                            }
+                                          } ], !1;
+                                          {
+                                            let len4 = data18.length;
+                                            for (let i5 = 0; i5 < len4; i5++) {
+                                              let data19 = data18[i5], _errs43 = errors;
+                                              if ("string" != typeof data19) return validate213.errors = [ {
+                                                instancePath: instancePath + "/predicate/health/severities_any/" + i5,
+                                                schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/items/type",
+                                                keyword: "type",
+                                                params: {
+                                                  type: "string"
+                                                }
+                                              } ], !1;
+                                              if ("warning" !== data19 && "error" !== data19 && "critical" !== data19) return validate213.errors = [ {
+                                                instancePath: instancePath + "/predicate/health/severities_any/" + i5,
+                                                schemaPath: "#/$defs/EventPredicate/properties/health/properties/severities_any/items/enum",
+                                                keyword: "enum",
+                                                params: {
+                                                  allowedValues: schema214.properties.health.properties.severities_any.items.enum
+                                                }
+                                              } ], !1;
+                                              if (_errs43 !== errors) break;
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      var valid8 = _errs15 === errors;
+                    } else valid8 = !0;
+                    if (valid8) {
+                      if (void 0 !== data.schedule) {
+                        let data20 = data.schedule, _errs45 = errors;
+                        if (errors == errors) {
+                          if (!data20 || "object" != typeof data20 || Array.isArray(data20)) return validate213.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/type",
+                            keyword: "type",
+                            params: {
+                              type: "object"
+                            }
+                          } ], !1;
+                          if (void 0 === data20.version) return validate213.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "version"
+                            }
+                          } ], !1;
+                          if (void 0 === data20.timezone) return validate213.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "timezone"
+                            }
+                          } ], !1;
+                          if (void 0 === data20.windows) return validate213.errors = [ {
+                            instancePath: instancePath + "/schedule",
+                            schemaPath: "#/$defs/EventSchedule/required",
+                            keyword: "required",
+                            params: {
+                              missingProperty: "windows"
+                            }
+                          } ], !1;
+                          {
+                            let _errs48 = errors;
+                            for (let key4 in data20) if ("version" !== key4 && "timezone" !== key4 && "windows" !== key4) return validate213.errors = [ {
+                              instancePath: instancePath + "/schedule",
+                              schemaPath: "#/$defs/EventSchedule/additionalProperties",
+                              keyword: "additionalProperties",
+                              params: {
+                                additionalProperty: key4
+                              }
+                            } ], !1;
+                            if (_errs48 === errors) {
+                              if (void 0 !== data20.version) {
+                                let data21 = data20.version, _errs49 = errors;
+                                if ("number" != typeof data21 || data21 % 1 || isNaN(data21) || !isFinite(data21)) return validate213.errors = [ {
+                                  instancePath: instancePath + "/schedule/version",
+                                  schemaPath: "#/$defs/EventSchedule/properties/version/type",
+                                  keyword: "type",
+                                  params: {
+                                    type: "integer"
+                                  }
+                                } ], !1;
+                                if (1 !== data21) return validate213.errors = [ {
+                                  instancePath: instancePath + "/schedule/version",
+                                  schemaPath: "#/$defs/EventSchedule/properties/version/const",
+                                  keyword: "const",
+                                  params: {
+                                    allowedValue: 1
+                                  }
+                                } ], !1;
+                                var valid24 = _errs49 === errors;
+                              } else valid24 = !0;
+                              if (valid24) {
+                                if (void 0 !== data20.timezone) {
+                                  let data22 = data20.timezone, _errs51 = errors;
+                                  if (errors === _errs51) {
+                                    if ("string" != typeof data22) return validate213.errors = [ {
+                                      instancePath: instancePath + "/schedule/timezone",
+                                      schemaPath: "#/$defs/EventSchedule/properties/timezone/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "string"
+                                      }
+                                    } ], !1;
+                                    if (func1(data22) > 64) return validate213.errors = [ {
+                                      instancePath: instancePath + "/schedule/timezone",
+                                      schemaPath: "#/$defs/EventSchedule/properties/timezone/maxLength",
+                                      keyword: "maxLength",
+                                      params: {
+                                        limit: 64
+                                      }
+                                    } ], !1;
+                                    if (func1(data22) < 1) return validate213.errors = [ {
+                                      instancePath: instancePath + "/schedule/timezone",
+                                      schemaPath: "#/$defs/EventSchedule/properties/timezone/minLength",
+                                      keyword: "minLength",
+                                      params: {
+                                        limit: 1
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid25 = _errs51 === errors;
+                                } else valid25 = !0;
+                                if (valid25 && void 0 !== data20.windows) {
+                                  let data23 = data20.windows;
+                                  if (errors == errors) {
+                                    if (!Array.isArray(data23)) return validate213.errors = [ {
+                                      instancePath: instancePath + "/schedule/windows",
+                                      schemaPath: "#/$defs/EventSchedule/properties/windows/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "array"
+                                      }
+                                    } ], !1;
+                                    if (data23.length > 64) return validate213.errors = [ {
+                                      instancePath: instancePath + "/schedule/windows",
+                                      schemaPath: "#/$defs/EventSchedule/properties/windows/maxItems",
+                                      keyword: "maxItems",
+                                      params: {
+                                        limit: 64
+                                      }
+                                    } ], !1;
+                                    {
+                                      let len5 = data23.length;
+                                      for (let i6 = 0; i6 < len5; i6++) {
+                                        let data24 = data23[i6], _errs55 = errors;
+                                        if (errors === _errs55) {
+                                          if (!data24 || "object" != typeof data24 || Array.isArray(data24)) return validate213.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/type",
+                                            keyword: "type",
+                                            params: {
+                                              type: "object"
+                                            }
+                                          } ], !1;
+                                          if (void 0 === data24.days) return validate213.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                            keyword: "required",
+                                            params: {
+                                              missingProperty: "days"
+                                            }
+                                          } ], !1;
+                                          if (void 0 === data24.start) return validate213.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                            keyword: "required",
+                                            params: {
+                                              missingProperty: "start"
+                                            }
+                                          } ], !1;
+                                          if (void 0 === data24.end) return validate213.errors = [ {
+                                            instancePath: instancePath + "/schedule/windows/" + i6,
+                                            schemaPath: "#/$defs/EventSchedule/properties/windows/items/required",
+                                            keyword: "required",
+                                            params: {
+                                              missingProperty: "end"
+                                            }
+                                          } ], !1;
+                                          {
+                                            let _errs57 = errors;
+                                            for (let key5 in data24) if ("days" !== key5 && "start" !== key5 && "end" !== key5) return validate213.errors = [ {
+                                              instancePath: instancePath + "/schedule/windows/" + i6,
+                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/additionalProperties",
+                                              keyword: "additionalProperties",
+                                              params: {
+                                                additionalProperty: key5
+                                              }
+                                            } ], !1;
+                                            if (_errs57 === errors) {
+                                              if (void 0 !== data24.days) {
+                                                let data25 = data24.days, _errs58 = errors;
+                                                if (errors === _errs58) {
+                                                  if (!Array.isArray(data25)) return validate213.errors = [ {
+                                                    instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                    schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/type",
+                                                    keyword: "type",
+                                                    params: {
+                                                      type: "array"
+                                                    }
+                                                  } ], !1;
+                                                  if (data25.length > 7) return validate213.errors = [ {
+                                                    instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                    schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/maxItems",
+                                                    keyword: "maxItems",
+                                                    params: {
+                                                      limit: 7
+                                                    }
+                                                  } ], !1;
+                                                  if (data25.length < 1) return validate213.errors = [ {
+                                                    instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                    schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/minItems",
+                                                    keyword: "minItems",
+                                                    params: {
+                                                      limit: 1
+                                                    }
+                                                  } ], !1;
+                                                  {
+                                                    var valid29 = !0;
+                                                    let len6 = data25.length;
+                                                    for (let i7 = 0; i7 < len6; i7++) {
+                                                      let data26 = data25[i7], _errs60 = errors;
+                                                      if ("number" != typeof data26 || data26 % 1 || isNaN(data26) || !isFinite(data26)) return validate213.errors = [ {
+                                                        instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                        schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: "integer"
+                                                        }
+                                                      } ], !1;
+                                                      if (errors === _errs60 && "number" == typeof data26 && isFinite(data26)) {
+                                                        if (data26 > 6 || isNaN(data26)) return validate213.errors = [ {
+                                                          instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                          schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/maximum",
+                                                          keyword: "maximum",
+                                                          params: {
+                                                            comparison: "<=",
+                                                            limit: 6
+                                                          }
+                                                        } ], !1;
+                                                        if (data26 < 0 || isNaN(data26)) return validate213.errors = [ {
+                                                          instancePath: instancePath + "/schedule/windows/" + i6 + "/days/" + i7,
+                                                          schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/items/minimum",
+                                                          keyword: "minimum",
+                                                          params: {
+                                                            comparison: ">=",
+                                                            limit: 0
+                                                          }
+                                                        } ], !1;
+                                                      }
+                                                      if (!(valid29 = _errs60 === errors)) break;
+                                                    }
+                                                    if (valid29) {
+                                                      let j1, i8 = data25.length;
+                                                      if (i8 > 1) {
+                                                        let indices1 = {};
+                                                        for (;i8--; ) {
+                                                          let item1 = data25[i8];
+                                                          if ("number" == typeof item1 && !(item1 % 1) && !isNaN(item1) && isFinite(item1)) {
+                                                            if ("number" == typeof indices1[item1]) return j1 = indices1[item1], validate213.errors = [ {
+                                                              instancePath: instancePath + "/schedule/windows/" + i6 + "/days",
+                                                              schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/days/uniqueItems",
+                                                              keyword: "uniqueItems",
+                                                              params: {
+                                                                i: i8,
+                                                                j: j1
+                                                              }
+                                                            } ], !1;
+                                                            indices1[item1] = i8;
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                                var valid28 = _errs58 === errors;
+                                              } else valid28 = !0;
+                                              if (valid28) {
+                                                if (void 0 !== data24.start) {
+                                                  let data27 = data24.start, _errs62 = errors;
+                                                  if (errors === _errs62) {
+                                                    if ("string" != typeof data27) return validate213.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "string"
+                                                      }
+                                                    } ], !1;
+                                                    if (!pattern52.test(data27)) return validate213.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/start",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/start/pattern",
+                                                      keyword: "pattern",
+                                                      params: {
+                                                        pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                                                      }
+                                                    } ], !1;
+                                                  }
+                                                  var valid31 = _errs62 === errors;
+                                                } else valid31 = !0;
+                                                if (valid31 && void 0 !== data24.end) {
+                                                  let data28 = data24.end;
+                                                  if (errors == errors) {
+                                                    if ("string" != typeof data28) return validate213.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "string"
+                                                      }
+                                                    } ], !1;
+                                                    if (!pattern52.test(data28)) return validate213.errors = [ {
+                                                      instancePath: instancePath + "/schedule/windows/" + i6 + "/end",
+                                                      schemaPath: "#/$defs/EventSchedule/properties/windows/items/properties/end/pattern",
+                                                      keyword: "pattern",
+                                                      params: {
+                                                        pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                                                      }
+                                                    } ], !1;
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                        if (_errs55 !== errors) break;
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        var valid22 = _errs45 === errors;
+                      } else valid22 = !0;
+                      if (valid22) {
+                        if (void 0 !== data.suppression) {
+                          let data29 = data.suppression, _errs66 = errors;
+                          if (errors === _errs66) {
+                            if (!data29 || "object" != typeof data29 || Array.isArray(data29)) return validate213.errors = [ {
+                              instancePath: instancePath + "/suppression",
+                              schemaPath: "#/properties/suppression/type",
+                              keyword: "type",
+                              params: {
+                                type: "object"
+                              }
+                            } ], !1;
+                            {
+                              let _errs68 = errors;
+                              for (let key6 in data29) if ("debounce_seconds" !== key6 && "cooldown_seconds" !== key6 && "grouping_window_seconds" !== key6 && "max_events_per_minute" !== key6) return validate213.errors = [ {
+                                instancePath: instancePath + "/suppression",
+                                schemaPath: "#/properties/suppression/additionalProperties",
+                                keyword: "additionalProperties",
+                                params: {
+                                  additionalProperty: key6
+                                }
+                              } ], !1;
+                              if (_errs68 === errors) {
+                                if (void 0 !== data29.debounce_seconds) {
+                                  let data30 = data29.debounce_seconds, _errs69 = errors;
+                                  if ("number" != typeof data30 || data30 % 1 || isNaN(data30) || !isFinite(data30)) return validate213.errors = [ {
+                                    instancePath: instancePath + "/suppression/debounce_seconds",
+                                    schemaPath: "#/properties/suppression/properties/debounce_seconds/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "integer"
+                                    }
+                                  } ], !1;
+                                  if (errors === _errs69 && "number" == typeof data30 && isFinite(data30)) {
+                                    if (data30 > 86400 || isNaN(data30)) return validate213.errors = [ {
+                                      instancePath: instancePath + "/suppression/debounce_seconds",
+                                      schemaPath: "#/properties/suppression/properties/debounce_seconds/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 86400
+                                      }
+                                    } ], !1;
+                                    if (data30 < 0 || isNaN(data30)) return validate213.errors = [ {
+                                      instancePath: instancePath + "/suppression/debounce_seconds",
+                                      schemaPath: "#/properties/suppression/properties/debounce_seconds/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 0
+                                      }
+                                    } ], !1;
+                                  }
+                                  var valid34 = _errs69 === errors;
+                                } else valid34 = !0;
+                                if (valid34) {
+                                  if (void 0 !== data29.cooldown_seconds) {
+                                    let data31 = data29.cooldown_seconds, _errs71 = errors;
+                                    if ("number" != typeof data31 || data31 % 1 || isNaN(data31) || !isFinite(data31)) return validate213.errors = [ {
+                                      instancePath: instancePath + "/suppression/cooldown_seconds",
+                                      schemaPath: "#/properties/suppression/properties/cooldown_seconds/type",
+                                      keyword: "type",
+                                      params: {
+                                        type: "integer"
+                                      }
+                                    } ], !1;
+                                    if (errors === _errs71 && "number" == typeof data31 && isFinite(data31)) {
+                                      if (data31 > 604800 || isNaN(data31)) return validate213.errors = [ {
+                                        instancePath: instancePath + "/suppression/cooldown_seconds",
+                                        schemaPath: "#/properties/suppression/properties/cooldown_seconds/maximum",
+                                        keyword: "maximum",
+                                        params: {
+                                          comparison: "<=",
+                                          limit: 604800
+                                        }
+                                      } ], !1;
+                                      if (data31 < 0 || isNaN(data31)) return validate213.errors = [ {
+                                        instancePath: instancePath + "/suppression/cooldown_seconds",
+                                        schemaPath: "#/properties/suppression/properties/cooldown_seconds/minimum",
+                                        keyword: "minimum",
+                                        params: {
+                                          comparison: ">=",
+                                          limit: 0
+                                        }
+                                      } ], !1;
+                                    }
+                                    var valid35 = _errs71 === errors;
+                                  } else valid35 = !0;
+                                  if (valid35) {
+                                    if (void 0 !== data29.grouping_window_seconds) {
+                                      let data32 = data29.grouping_window_seconds, _errs73 = errors;
+                                      if ("number" != typeof data32 || data32 % 1 || isNaN(data32) || !isFinite(data32)) return validate213.errors = [ {
+                                        instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                        schemaPath: "#/properties/suppression/properties/grouping_window_seconds/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "integer"
+                                        }
+                                      } ], !1;
+                                      if (errors === _errs73 && "number" == typeof data32 && isFinite(data32)) {
+                                        if (data32 > 3600 || isNaN(data32)) return validate213.errors = [ {
+                                          instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                          schemaPath: "#/properties/suppression/properties/grouping_window_seconds/maximum",
+                                          keyword: "maximum",
+                                          params: {
+                                            comparison: "<=",
+                                            limit: 3600
+                                          }
+                                        } ], !1;
+                                        if (data32 < 0 || isNaN(data32)) return validate213.errors = [ {
+                                          instancePath: instancePath + "/suppression/grouping_window_seconds",
+                                          schemaPath: "#/properties/suppression/properties/grouping_window_seconds/minimum",
+                                          keyword: "minimum",
+                                          params: {
+                                            comparison: ">=",
+                                            limit: 0
+                                          }
+                                        } ], !1;
+                                      }
+                                      var valid36 = _errs73 === errors;
+                                    } else valid36 = !0;
+                                    if (valid36 && void 0 !== data29.max_events_per_minute) {
+                                      let data33 = data29.max_events_per_minute, _errs75 = errors;
+                                      if ("number" != typeof data33 || data33 % 1 || isNaN(data33) || !isFinite(data33)) return validate213.errors = [ {
+                                        instancePath: instancePath + "/suppression/max_events_per_minute",
+                                        schemaPath: "#/properties/suppression/properties/max_events_per_minute/type",
+                                        keyword: "type",
+                                        params: {
+                                          type: "integer"
+                                        }
+                                      } ], !1;
+                                      if (errors === _errs75 && "number" == typeof data33 && isFinite(data33)) {
+                                        if (data33 > 6e4 || isNaN(data33)) return validate213.errors = [ {
+                                          instancePath: instancePath + "/suppression/max_events_per_minute",
+                                          schemaPath: "#/properties/suppression/properties/max_events_per_minute/maximum",
+                                          keyword: "maximum",
+                                          params: {
+                                            comparison: "<=",
+                                            limit: 6e4
+                                          }
+                                        } ], !1;
+                                        if (data33 < 0 || isNaN(data33)) return validate213.errors = [ {
+                                          instancePath: instancePath + "/suppression/max_events_per_minute",
+                                          schemaPath: "#/properties/suppression/properties/max_events_per_minute/minimum",
+                                          keyword: "minimum",
+                                          params: {
+                                            comparison: ">=",
+                                            limit: 0
+                                          }
+                                        } ], !1;
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          var valid33 = _errs66 === errors;
+                        } else valid33 = !0;
+                        if (valid33 && void 0 !== data.revision) {
+                          let data34 = data.revision, _errs77 = errors;
+                          if ("number" != typeof data34 || data34 % 1 || isNaN(data34) || !isFinite(data34)) return validate213.errors = [ {
+                            instancePath: instancePath + "/revision",
+                            schemaPath: "#/properties/revision/type",
+                            keyword: "type",
+                            params: {
+                              type: "integer"
+                            }
+                          } ], !1;
+                          if (errors === _errs77 && "number" == typeof data34 && isFinite(data34)) {
+                            if (data34 > 9007199254740991 || isNaN(data34)) return validate213.errors = [ {
+                              instancePath: instancePath + "/revision",
+                              schemaPath: "#/properties/revision/maximum",
+                              keyword: "maximum",
+                              params: {
+                                comparison: "<=",
+                                limit: 9007199254740991
+                              }
+                            } ], !1;
+                            if (data34 < 1 || isNaN(data34)) return validate213.errors = [ {
+                              instancePath: instancePath + "/revision",
+                              schemaPath: "#/properties/revision/minimum",
+                              keyword: "minimum",
+                              params: {
+                                comparison: ">=",
+                                limit: 1
+                              }
+                            } ], !1;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate213.errors = vErrors, 0 === errors;
+}
+
+validate213.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventRoutes = validate209;
+
+function validate209(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate209.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate209.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.routes) return validate209.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "routes"
+      }
+    } ], !1;
+    if (void 0 === data.count) return validate209.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "count"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("routes" !== key0 && "count" !== key0) return validate209.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.routes) {
+          let data0 = data.routes, _errs2 = errors;
+          if (errors === _errs2) {
+            if (!Array.isArray(data0)) return validate209.errors = [ {
+              instancePath: instancePath + "/routes",
+              schemaPath: "#/properties/routes/type",
+              keyword: "type",
+              params: {
+                type: "array"
+              }
+            } ], !1;
+            if (data0.length > 512) return validate209.errors = [ {
+              instancePath: instancePath + "/routes",
+              schemaPath: "#/properties/routes/maxItems",
+              keyword: "maxItems",
+              params: {
+                limit: 512
+              }
+            } ], !1;
+            {
+              let len0 = data0.length;
+              for (let i0 = 0; i0 < len0; i0++) {
+                let _errs4 = errors;
+                if (validate207(data0[i0], {
+                  instancePath: instancePath + "/routes/" + i0,
+                  parentData: data0,
+                  parentDataProperty: i0,
+                  rootData: rootData,
+                  dynamicAnchors: dynamicAnchors
+                }) || (vErrors = vErrors.concat(validate207.errors), errors = vErrors.length), _errs4 !== errors) break;
+              }
+            }
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0 && void 0 !== data.count) {
+          let data2 = data.count, _errs5 = errors;
+          if ("number" != typeof data2 || data2 % 1 || isNaN(data2) || !isFinite(data2)) return validate209.errors = [ {
+            instancePath: instancePath + "/count",
+            schemaPath: "#/properties/count/type",
+            keyword: "type",
+            params: {
+              type: "integer"
+            }
+          } ], !1;
+          if (errors === _errs5 && "number" == typeof data2 && isFinite(data2)) {
+            if (data2 > 512 || isNaN(data2)) return validate209.errors = [ {
+              instancePath: instancePath + "/count",
+              schemaPath: "#/properties/count/maximum",
+              keyword: "maximum",
+              params: {
+                comparison: "<=",
+                limit: 512
+              }
+            } ], !1;
+            if (data2 < 0 || isNaN(data2)) return validate209.errors = [ {
+              instancePath: instancePath + "/count",
+              schemaPath: "#/properties/count/minimum",
+              keyword: "minimum",
+              params: {
+                comparison: ">=",
+                limit: 0
+              }
+            } ], !1;
+          }
+        }
+      }
+    }
+  }
+  return validate209.errors = vErrors, 0 === errors;
+}
+
+validate209.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_EventSchedule = validate206;
+
+function validate206(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate206.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate206.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.version) return validate206.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "version"
+    }
+  } ], !1;
+  if (void 0 === data.timezone) return validate206.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "timezone"
+    }
+  } ], !1;
+  if (void 0 === data.windows) return validate206.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "windows"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("version" !== key0 && "timezone" !== key0 && "windows" !== key0) return validate206.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.version) {
+        let data0 = data.version, _errs2 = 0;
+        if ("number" != typeof data0 || data0 % 1 || isNaN(data0) || !isFinite(data0)) return validate206.errors = [ {
+          instancePath: instancePath + "/version",
+          schemaPath: "#/properties/version/type",
+          keyword: "type",
+          params: {
+            type: "integer"
+          }
+        } ], !1;
+        if (1 !== data0) return validate206.errors = [ {
+          instancePath: instancePath + "/version",
+          schemaPath: "#/properties/version/const",
+          keyword: "const",
+          params: {
+            allowedValue: 1
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.timezone) {
+          let data1 = data.timezone, _errs4 = 0;
+          if (0 === _errs4) {
+            if ("string" != typeof data1) return validate206.errors = [ {
+              instancePath: instancePath + "/timezone",
+              schemaPath: "#/properties/timezone/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data1) > 64) return validate206.errors = [ {
+              instancePath: instancePath + "/timezone",
+              schemaPath: "#/properties/timezone/maxLength",
+              keyword: "maxLength",
+              params: {
+                limit: 64
+              }
+            } ], !1;
+            if (func1(data1) < 1) return validate206.errors = [ {
+              instancePath: instancePath + "/timezone",
+              schemaPath: "#/properties/timezone/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1 && void 0 !== data.windows) {
+          let data2 = data.windows;
+          if (!Array.isArray(data2)) return validate206.errors = [ {
+            instancePath: instancePath + "/windows",
+            schemaPath: "#/properties/windows/type",
+            keyword: "type",
+            params: {
+              type: "array"
+            }
+          } ], !1;
+          if (data2.length > 64) return validate206.errors = [ {
+            instancePath: instancePath + "/windows",
+            schemaPath: "#/properties/windows/maxItems",
+            keyword: "maxItems",
+            params: {
+              limit: 64
+            }
+          } ], !1;
+          {
+            let len0 = data2.length;
+            for (let i0 = 0; i0 < len0; i0++) {
+              let data3 = data2[i0], _errs8 = 0;
+              if (0 === _errs8) {
+                if (!data3 || "object" != typeof data3 || Array.isArray(data3)) return validate206.errors = [ {
+                  instancePath: instancePath + "/windows/" + i0,
+                  schemaPath: "#/properties/windows/items/type",
+                  keyword: "type",
+                  params: {
+                    type: "object"
+                  }
+                } ], !1;
+                if (void 0 === data3.days) return validate206.errors = [ {
+                  instancePath: instancePath + "/windows/" + i0,
+                  schemaPath: "#/properties/windows/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "days"
+                  }
+                } ], !1;
+                if (void 0 === data3.start) return validate206.errors = [ {
+                  instancePath: instancePath + "/windows/" + i0,
+                  schemaPath: "#/properties/windows/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "start"
+                  }
+                } ], !1;
+                if (void 0 === data3.end) return validate206.errors = [ {
+                  instancePath: instancePath + "/windows/" + i0,
+                  schemaPath: "#/properties/windows/items/required",
+                  keyword: "required",
+                  params: {
+                    missingProperty: "end"
+                  }
+                } ], !1;
+                {
+                  let _errs10 = 0;
+                  for (let key1 in data3) if ("days" !== key1 && "start" !== key1 && "end" !== key1) return validate206.errors = [ {
+                    instancePath: instancePath + "/windows/" + i0,
+                    schemaPath: "#/properties/windows/items/additionalProperties",
+                    keyword: "additionalProperties",
+                    params: {
+                      additionalProperty: key1
+                    }
+                  } ], !1;
+                  if (0 === _errs10) {
+                    if (void 0 !== data3.days) {
+                      let data4 = data3.days, _errs11 = 0;
+                      if (0 === _errs11) {
+                        if (!Array.isArray(data4)) return validate206.errors = [ {
+                          instancePath: instancePath + "/windows/" + i0 + "/days",
+                          schemaPath: "#/properties/windows/items/properties/days/type",
+                          keyword: "type",
+                          params: {
+                            type: "array"
+                          }
+                        } ], !1;
+                        if (data4.length > 7) return validate206.errors = [ {
+                          instancePath: instancePath + "/windows/" + i0 + "/days",
+                          schemaPath: "#/properties/windows/items/properties/days/maxItems",
+                          keyword: "maxItems",
+                          params: {
+                            limit: 7
+                          }
+                        } ], !1;
+                        if (data4.length < 1) return validate206.errors = [ {
+                          instancePath: instancePath + "/windows/" + i0 + "/days",
+                          schemaPath: "#/properties/windows/items/properties/days/minItems",
+                          keyword: "minItems",
+                          params: {
+                            limit: 1
+                          }
+                        } ], !1;
+                        {
+                          var valid5 = !0;
+                          let len1 = data4.length;
+                          for (let i1 = 0; i1 < len1; i1++) {
+                            let data5 = data4[i1], _errs13 = 0;
+                            if ("number" != typeof data5 || data5 % 1 || isNaN(data5) || !isFinite(data5)) return validate206.errors = [ {
+                              instancePath: instancePath + "/windows/" + i0 + "/days/" + i1,
+                              schemaPath: "#/properties/windows/items/properties/days/items/type",
+                              keyword: "type",
+                              params: {
+                                type: "integer"
+                              }
+                            } ], !1;
+                            if (0 === _errs13 && "number" == typeof data5 && isFinite(data5)) {
+                              if (data5 > 6 || isNaN(data5)) return validate206.errors = [ {
+                                instancePath: instancePath + "/windows/" + i0 + "/days/" + i1,
+                                schemaPath: "#/properties/windows/items/properties/days/items/maximum",
+                                keyword: "maximum",
+                                params: {
+                                  comparison: "<=",
+                                  limit: 6
+                                }
+                              } ], !1;
+                              if (data5 < 0 || isNaN(data5)) return validate206.errors = [ {
+                                instancePath: instancePath + "/windows/" + i0 + "/days/" + i1,
+                                schemaPath: "#/properties/windows/items/properties/days/items/minimum",
+                                keyword: "minimum",
+                                params: {
+                                  comparison: ">=",
+                                  limit: 0
+                                }
+                              } ], !1;
+                            }
+                            if (!(valid5 = 0 === _errs13)) break;
+                          }
+                          if (valid5) {
+                            let j0, i2 = data4.length;
+                            if (i2 > 1) {
+                              let indices0 = {};
+                              for (;i2--; ) {
+                                let item0 = data4[i2];
+                                if ("number" == typeof item0 && !(item0 % 1) && !isNaN(item0) && isFinite(item0)) {
+                                  if ("number" == typeof indices0[item0]) return j0 = indices0[item0], validate206.errors = [ {
+                                    instancePath: instancePath + "/windows/" + i0 + "/days",
+                                    schemaPath: "#/properties/windows/items/properties/days/uniqueItems",
+                                    keyword: "uniqueItems",
+                                    params: {
+                                      i: i2,
+                                      j: j0
+                                    }
+                                  } ], !1;
+                                  indices0[item0] = i2;
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      var valid4 = 0 === _errs11;
+                    } else valid4 = !0;
+                    if (valid4) {
+                      if (void 0 !== data3.start) {
+                        let data6 = data3.start, _errs15 = 0;
+                        if (0 === _errs15) {
+                          if ("string" != typeof data6) return validate206.errors = [ {
+                            instancePath: instancePath + "/windows/" + i0 + "/start",
+                            schemaPath: "#/properties/windows/items/properties/start/type",
+                            keyword: "type",
+                            params: {
+                              type: "string"
+                            }
+                          } ], !1;
+                          if (!pattern52.test(data6)) return validate206.errors = [ {
+                            instancePath: instancePath + "/windows/" + i0 + "/start",
+                            schemaPath: "#/properties/windows/items/properties/start/pattern",
+                            keyword: "pattern",
+                            params: {
+                              pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                            }
+                          } ], !1;
+                        }
+                        var valid7 = 0 === _errs15;
+                      } else valid7 = !0;
+                      if (valid7 && void 0 !== data3.end) {
+                        let data7 = data3.end;
+                        if ("string" != typeof data7) return validate206.errors = [ {
+                          instancePath: instancePath + "/windows/" + i0 + "/end",
+                          schemaPath: "#/properties/windows/items/properties/end/type",
+                          keyword: "type",
+                          params: {
+                            type: "string"
+                          }
+                        } ], !1;
+                        if (!pattern52.test(data7)) return validate206.errors = [ {
+                          instancePath: instancePath + "/windows/" + i0 + "/end",
+                          schemaPath: "#/properties/windows/items/properties/end/pattern",
+                          keyword: "pattern",
+                          params: {
+                            pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+                          }
+                        } ], !1;
+                      }
+                    }
+                  }
+                }
+              }
+              if (0 !== _errs8) break;
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate206.errors = [], !0;
+}
+
+validate206.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
 var __contract_FleetLocation = validate163, schema169 = {
   type: "object",
   properties: {
@@ -18773,6 +29607,732 @@ function validate55(data, {instancePath: instancePath = "", parentData: parentDa
 }
 
 validate55.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_MotionTrigger = validate220, schema233 = {
+  type: "object",
+  properties: {
+    stream: {
+      type: "string",
+      minLength: 1
+    },
+    action: {
+      type: "string",
+      enum: [ "start", "stop", "pulse" ]
+    },
+    duration_ms: {
+      type: "integer",
+      minimum: 1,
+      maximum: 6e5
+    },
+    label: {
+      type: "string",
+      minLength: 1
+    },
+    confidence: {
+      type: "number",
+      minimum: 0,
+      maximum: 1
+    },
+    objects: {
+      type: "array",
+      items: {
+        oneOf: [ {
+          type: "string",
+          minLength: 1
+        }, {
+          type: "object",
+          properties: {
+            label: {
+              type: "string",
+              minLength: 1
+            },
+            confidence: {
+              type: "number",
+              minimum: 0,
+              maximum: 1
+            }
+          },
+          required: [ "label" ],
+          additionalProperties: !1
+        } ]
+      }
+    },
+    tags: {
+      type: "array",
+      items: {
+        type: "string",
+        minLength: 1
+      }
+    }
+  },
+  required: [ "stream", "action" ],
+  additionalProperties: !1
+};
+
+function validate220(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let vErrors = [], errors = 0, evaluated0 = validate220.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  0 === errors) {
+    if (!data || "object" != typeof data || Array.isArray(data)) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: {
+        type: "object"
+      }
+    } ], !1;
+    if (void 0 === data.stream) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "stream"
+      }
+    } ], !1;
+    if (void 0 === data.action) return validate220.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/required",
+      keyword: "required",
+      params: {
+        missingProperty: "action"
+      }
+    } ], !1;
+    {
+      let _errs1 = errors;
+      for (let key0 in data) if ("stream" !== key0 && "action" !== key0 && "duration_ms" !== key0 && "label" !== key0 && "confidence" !== key0 && "objects" !== key0 && "tags" !== key0) return validate220.errors = [ {
+        instancePath: instancePath,
+        schemaPath: "#/additionalProperties",
+        keyword: "additionalProperties",
+        params: {
+          additionalProperty: key0
+        }
+      } ], !1;
+      if (_errs1 === errors) {
+        if (void 0 !== data.stream) {
+          let data0 = data.stream, _errs2 = errors;
+          if (errors === _errs2) {
+            if ("string" != typeof data0) return validate220.errors = [ {
+              instancePath: instancePath + "/stream",
+              schemaPath: "#/properties/stream/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if (func1(data0) < 1) return validate220.errors = [ {
+              instancePath: instancePath + "/stream",
+              schemaPath: "#/properties/stream/minLength",
+              keyword: "minLength",
+              params: {
+                limit: 1
+              }
+            } ], !1;
+          }
+          var valid0 = _errs2 === errors;
+        } else valid0 = !0;
+        if (valid0) {
+          if (void 0 !== data.action) {
+            let data1 = data.action, _errs4 = errors;
+            if ("string" != typeof data1) return validate220.errors = [ {
+              instancePath: instancePath + "/action",
+              schemaPath: "#/properties/action/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if ("start" !== data1 && "stop" !== data1 && "pulse" !== data1) return validate220.errors = [ {
+              instancePath: instancePath + "/action",
+              schemaPath: "#/properties/action/enum",
+              keyword: "enum",
+              params: {
+                allowedValues: schema233.properties.action.enum
+              }
+            } ], !1;
+            var valid1 = _errs4 === errors;
+          } else valid1 = !0;
+          if (valid1) {
+            if (void 0 !== data.duration_ms) {
+              let data2 = data.duration_ms, _errs6 = errors;
+              if ("number" != typeof data2 || data2 % 1 || isNaN(data2) || !isFinite(data2)) return validate220.errors = [ {
+                instancePath: instancePath + "/duration_ms",
+                schemaPath: "#/properties/duration_ms/type",
+                keyword: "type",
+                params: {
+                  type: "integer"
+                }
+              } ], !1;
+              if (errors === _errs6 && "number" == typeof data2 && isFinite(data2)) {
+                if (data2 > 6e5 || isNaN(data2)) return validate220.errors = [ {
+                  instancePath: instancePath + "/duration_ms",
+                  schemaPath: "#/properties/duration_ms/maximum",
+                  keyword: "maximum",
+                  params: {
+                    comparison: "<=",
+                    limit: 6e5
+                  }
+                } ], !1;
+                if (data2 < 1 || isNaN(data2)) return validate220.errors = [ {
+                  instancePath: instancePath + "/duration_ms",
+                  schemaPath: "#/properties/duration_ms/minimum",
+                  keyword: "minimum",
+                  params: {
+                    comparison: ">=",
+                    limit: 1
+                  }
+                } ], !1;
+              }
+              var valid2 = _errs6 === errors;
+            } else valid2 = !0;
+            if (valid2) {
+              if (void 0 !== data.label) {
+                let data3 = data.label, _errs8 = errors;
+                if (errors === _errs8) {
+                  if ("string" != typeof data3) return validate220.errors = [ {
+                    instancePath: instancePath + "/label",
+                    schemaPath: "#/properties/label/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                  if (func1(data3) < 1) return validate220.errors = [ {
+                    instancePath: instancePath + "/label",
+                    schemaPath: "#/properties/label/minLength",
+                    keyword: "minLength",
+                    params: {
+                      limit: 1
+                    }
+                  } ], !1;
+                }
+                var valid3 = _errs8 === errors;
+              } else valid3 = !0;
+              if (valid3) {
+                if (void 0 !== data.confidence) {
+                  let data4 = data.confidence, _errs10 = errors;
+                  if (errors === _errs10) {
+                    if ("number" != typeof data4 || !isFinite(data4)) return validate220.errors = [ {
+                      instancePath: instancePath + "/confidence",
+                      schemaPath: "#/properties/confidence/type",
+                      keyword: "type",
+                      params: {
+                        type: "number"
+                      }
+                    } ], !1;
+                    if (data4 > 1 || isNaN(data4)) return validate220.errors = [ {
+                      instancePath: instancePath + "/confidence",
+                      schemaPath: "#/properties/confidence/maximum",
+                      keyword: "maximum",
+                      params: {
+                        comparison: "<=",
+                        limit: 1
+                      }
+                    } ], !1;
+                    if (data4 < 0 || isNaN(data4)) return validate220.errors = [ {
+                      instancePath: instancePath + "/confidence",
+                      schemaPath: "#/properties/confidence/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 0
+                      }
+                    } ], !1;
+                  }
+                  var valid4 = _errs10 === errors;
+                } else valid4 = !0;
+                if (valid4) {
+                  if (void 0 !== data.objects) {
+                    let data5 = data.objects, _errs12 = errors;
+                    if (errors === _errs12) {
+                      if (!Array.isArray(data5)) return validate220.errors = [ {
+                        instancePath: instancePath + "/objects",
+                        schemaPath: "#/properties/objects/type",
+                        keyword: "type",
+                        params: {
+                          type: "array"
+                        }
+                      } ], !1;
+                      {
+                        let len0 = data5.length;
+                        for (let i0 = 0; i0 < len0; i0++) {
+                          let data6 = data5[i0], _errs14 = errors, _errs15 = errors, valid7 = !1, passing0 = null, _errs16 = errors;
+                          if (errors === _errs16) if ("string" == typeof data6) {
+                            if (func1(data6) < 1) {
+                              let err0 = {
+                                instancePath: instancePath + "/objects/" + i0,
+                                schemaPath: "#/properties/objects/items/oneOf/0/minLength",
+                                keyword: "minLength",
+                                params: {
+                                  limit: 1
+                                }
+                              };
+                              vErrors.push(err0), errors++;
+                            }
+                          } else {
+                            let err1 = {
+                              instancePath: instancePath + "/objects/" + i0,
+                              schemaPath: "#/properties/objects/items/oneOf/0/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            };
+                            vErrors.push(err1), errors++;
+                          }
+                          _errs16 === errors && (valid7 = !0, passing0 = 0);
+                          let _errs18 = errors;
+                          if (errors === _errs18) if (data6 && "object" == typeof data6 && !Array.isArray(data6)) if (void 0 === data6.label) {
+                            let err2 = {
+                              instancePath: instancePath + "/objects/" + i0,
+                              schemaPath: "#/properties/objects/items/oneOf/1/required",
+                              keyword: "required",
+                              params: {
+                                missingProperty: "label"
+                              }
+                            };
+                            vErrors.push(err2), errors++;
+                          } else {
+                            let _errs20 = errors;
+                            for (let key1 in data6) if ("label" !== key1 && "confidence" !== key1) {
+                              let err3 = {
+                                instancePath: instancePath + "/objects/" + i0,
+                                schemaPath: "#/properties/objects/items/oneOf/1/additionalProperties",
+                                keyword: "additionalProperties",
+                                params: {
+                                  additionalProperty: key1
+                                }
+                              };
+                              vErrors.push(err3), errors++;
+                              break;
+                            }
+                            if (_errs20 === errors) {
+                              if (void 0 !== data6.label) {
+                                let data7 = data6.label, _errs21 = errors;
+                                if (errors === _errs21) if ("string" == typeof data7) {
+                                  if (func1(data7) < 1) {
+                                    let err4 = {
+                                      instancePath: instancePath + "/objects/" + i0 + "/label",
+                                      schemaPath: "#/properties/objects/items/oneOf/1/properties/label/minLength",
+                                      keyword: "minLength",
+                                      params: {
+                                        limit: 1
+                                      }
+                                    };
+                                    vErrors.push(err4), errors++;
+                                  }
+                                } else {
+                                  let err5 = {
+                                    instancePath: instancePath + "/objects/" + i0 + "/label",
+                                    schemaPath: "#/properties/objects/items/oneOf/1/properties/label/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "string"
+                                    }
+                                  };
+                                  vErrors.push(err5), errors++;
+                                }
+                                var valid8 = _errs21 === errors;
+                              } else valid8 = !0;
+                              if (valid8 && void 0 !== data6.confidence) {
+                                let data8 = data6.confidence;
+                                if (errors == errors) if ("number" == typeof data8 && isFinite(data8)) {
+                                  if (data8 > 1 || isNaN(data8)) {
+                                    let err6 = {
+                                      instancePath: instancePath + "/objects/" + i0 + "/confidence",
+                                      schemaPath: "#/properties/objects/items/oneOf/1/properties/confidence/maximum",
+                                      keyword: "maximum",
+                                      params: {
+                                        comparison: "<=",
+                                        limit: 1
+                                      }
+                                    };
+                                    vErrors.push(err6), errors++;
+                                  } else if (data8 < 0 || isNaN(data8)) {
+                                    let err7 = {
+                                      instancePath: instancePath + "/objects/" + i0 + "/confidence",
+                                      schemaPath: "#/properties/objects/items/oneOf/1/properties/confidence/minimum",
+                                      keyword: "minimum",
+                                      params: {
+                                        comparison: ">=",
+                                        limit: 0
+                                      }
+                                    };
+                                    vErrors.push(err7), errors++;
+                                  }
+                                } else {
+                                  let err8 = {
+                                    instancePath: instancePath + "/objects/" + i0 + "/confidence",
+                                    schemaPath: "#/properties/objects/items/oneOf/1/properties/confidence/type",
+                                    keyword: "type",
+                                    params: {
+                                      type: "number"
+                                    }
+                                  };
+                                  vErrors.push(err8), errors++;
+                                }
+                              }
+                            }
+                          } else {
+                            let err9 = {
+                              instancePath: instancePath + "/objects/" + i0,
+                              schemaPath: "#/properties/objects/items/oneOf/1/type",
+                              keyword: "type",
+                              params: {
+                                type: "object"
+                              }
+                            };
+                            vErrors.push(err9), errors++;
+                          }
+                          var _valid0;
+                          if ((_valid0 = _errs18 === errors) && valid7 ? (valid7 = !1, passing0 = [ passing0, 1 ]) : _valid0 && (valid7 = !0,
+                          passing0 = 1), !valid7) {
+                            let err10 = {
+                              instancePath: instancePath + "/objects/" + i0,
+                              schemaPath: "#/properties/objects/items/oneOf",
+                              keyword: "oneOf",
+                              params: {
+                                passingSchemas: passing0
+                              }
+                            };
+                            return vErrors.push(err10), errors++, validate220.errors = vErrors, !1;
+                          }
+                          if (errors = _errs15, vErrors.length = _errs15, _errs14 !== errors) break;
+                        }
+                      }
+                    }
+                    var valid5 = _errs12 === errors;
+                  } else valid5 = !0;
+                  if (valid5 && void 0 !== data.tags) {
+                    let data9 = data.tags;
+                    if (errors == errors) {
+                      if (!Array.isArray(data9)) return validate220.errors = [ {
+                        instancePath: instancePath + "/tags",
+                        schemaPath: "#/properties/tags/type",
+                        keyword: "type",
+                        params: {
+                          type: "array"
+                        }
+                      } ], !1;
+                      {
+                        let len1 = data9.length;
+                        for (let i1 = 0; i1 < len1; i1++) {
+                          let data10 = data9[i1], _errs27 = errors;
+                          if (errors === _errs27) {
+                            if ("string" != typeof data10) return validate220.errors = [ {
+                              instancePath: instancePath + "/tags/" + i1,
+                              schemaPath: "#/properties/tags/items/type",
+                              keyword: "type",
+                              params: {
+                                type: "string"
+                              }
+                            } ], !1;
+                            if (func1(data10) < 1) return validate220.errors = [ {
+                              instancePath: instancePath + "/tags/" + i1,
+                              schemaPath: "#/properties/tags/items/minLength",
+                              keyword: "minLength",
+                              params: {
+                                limit: 1
+                              }
+                            } ], !1;
+                          }
+                          if (_errs27 !== errors) break;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate220.errors = vErrors, 0 === errors;
+}
+
+validate220.evaluated = {
+  props: !0,
+  dynamicProps: !1,
+  dynamicItems: !1
+};
+
+var __contract_MotionTriggered = validate221, schema234 = {
+  type: "object",
+  properties: {
+    success: {
+      type: "boolean",
+      const: !0
+    },
+    stream: {
+      type: "string"
+    },
+    action: {
+      type: "string",
+      enum: [ "start", "stop", "pulse" ]
+    },
+    duration_ms: {
+      type: "integer",
+      minimum: 1,
+      maximum: 6e5
+    },
+    recording_triggered: {
+      type: "boolean"
+    },
+    detections_stored: {
+      type: "integer",
+      minimum: 0
+    },
+    tags_applied: {
+      type: "integer",
+      minimum: 0
+    },
+    warning: {
+      type: "string"
+    }
+  },
+  required: [ "success", "stream", "action", "recording_triggered", "detections_stored", "tags_applied" ],
+  additionalProperties: !1
+};
+
+function validate221(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
+  let evaluated0 = validate221.evaluated;
+  if (evaluated0.dynamicProps && (evaluated0.props = void 0), evaluated0.dynamicItems && (evaluated0.items = void 0),
+  !data || "object" != typeof data || Array.isArray(data)) return validate221.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/type",
+    keyword: "type",
+    params: {
+      type: "object"
+    }
+  } ], !1;
+  if (void 0 === data.success) return validate221.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "success"
+    }
+  } ], !1;
+  if (void 0 === data.stream) return validate221.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "stream"
+    }
+  } ], !1;
+  if (void 0 === data.action) return validate221.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "action"
+    }
+  } ], !1;
+  if (void 0 === data.recording_triggered) return validate221.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "recording_triggered"
+    }
+  } ], !1;
+  if (void 0 === data.detections_stored) return validate221.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "detections_stored"
+    }
+  } ], !1;
+  if (void 0 === data.tags_applied) return validate221.errors = [ {
+    instancePath: instancePath,
+    schemaPath: "#/required",
+    keyword: "required",
+    params: {
+      missingProperty: "tags_applied"
+    }
+  } ], !1;
+  {
+    let _errs1 = 0;
+    for (let key0 in data) if ("success" !== key0 && "stream" !== key0 && "action" !== key0 && "duration_ms" !== key0 && "recording_triggered" !== key0 && "detections_stored" !== key0 && "tags_applied" !== key0 && "warning" !== key0) return validate221.errors = [ {
+      instancePath: instancePath,
+      schemaPath: "#/additionalProperties",
+      keyword: "additionalProperties",
+      params: {
+        additionalProperty: key0
+      }
+    } ], !1;
+    if (0 === _errs1) {
+      if (void 0 !== data.success) {
+        let data0 = data.success, _errs2 = 0;
+        if ("boolean" != typeof data0) return validate221.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/type",
+          keyword: "type",
+          params: {
+            type: "boolean"
+          }
+        } ], !1;
+        if (!0 !== data0) return validate221.errors = [ {
+          instancePath: instancePath + "/success",
+          schemaPath: "#/properties/success/const",
+          keyword: "const",
+          params: {
+            allowedValue: !0
+          }
+        } ], !1;
+        var valid0 = 0 === _errs2;
+      } else valid0 = !0;
+      if (valid0) {
+        if (void 0 !== data.stream) {
+          let _errs4 = 0;
+          if ("string" != typeof data.stream) return validate221.errors = [ {
+            instancePath: instancePath + "/stream",
+            schemaPath: "#/properties/stream/type",
+            keyword: "type",
+            params: {
+              type: "string"
+            }
+          } ], !1;
+          var valid1 = 0 === _errs4;
+        } else valid1 = !0;
+        if (valid1) {
+          if (void 0 !== data.action) {
+            let data2 = data.action, _errs6 = 0;
+            if ("string" != typeof data2) return validate221.errors = [ {
+              instancePath: instancePath + "/action",
+              schemaPath: "#/properties/action/type",
+              keyword: "type",
+              params: {
+                type: "string"
+              }
+            } ], !1;
+            if ("start" !== data2 && "stop" !== data2 && "pulse" !== data2) return validate221.errors = [ {
+              instancePath: instancePath + "/action",
+              schemaPath: "#/properties/action/enum",
+              keyword: "enum",
+              params: {
+                allowedValues: schema234.properties.action.enum
+              }
+            } ], !1;
+            var valid2 = 0 === _errs6;
+          } else valid2 = !0;
+          if (valid2) {
+            if (void 0 !== data.duration_ms) {
+              let data3 = data.duration_ms, _errs8 = 0;
+              if ("number" != typeof data3 || data3 % 1 || isNaN(data3) || !isFinite(data3)) return validate221.errors = [ {
+                instancePath: instancePath + "/duration_ms",
+                schemaPath: "#/properties/duration_ms/type",
+                keyword: "type",
+                params: {
+                  type: "integer"
+                }
+              } ], !1;
+              if (0 === _errs8 && "number" == typeof data3 && isFinite(data3)) {
+                if (data3 > 6e5 || isNaN(data3)) return validate221.errors = [ {
+                  instancePath: instancePath + "/duration_ms",
+                  schemaPath: "#/properties/duration_ms/maximum",
+                  keyword: "maximum",
+                  params: {
+                    comparison: "<=",
+                    limit: 6e5
+                  }
+                } ], !1;
+                if (data3 < 1 || isNaN(data3)) return validate221.errors = [ {
+                  instancePath: instancePath + "/duration_ms",
+                  schemaPath: "#/properties/duration_ms/minimum",
+                  keyword: "minimum",
+                  params: {
+                    comparison: ">=",
+                    limit: 1
+                  }
+                } ], !1;
+              }
+              var valid3 = 0 === _errs8;
+            } else valid3 = !0;
+            if (valid3) {
+              if (void 0 !== data.recording_triggered) {
+                let _errs10 = 0;
+                if ("boolean" != typeof data.recording_triggered) return validate221.errors = [ {
+                  instancePath: instancePath + "/recording_triggered",
+                  schemaPath: "#/properties/recording_triggered/type",
+                  keyword: "type",
+                  params: {
+                    type: "boolean"
+                  }
+                } ], !1;
+                var valid4 = 0 === _errs10;
+              } else valid4 = !0;
+              if (valid4) {
+                if (void 0 !== data.detections_stored) {
+                  let data5 = data.detections_stored, _errs12 = 0;
+                  if ("number" != typeof data5 || data5 % 1 || isNaN(data5) || !isFinite(data5)) return validate221.errors = [ {
+                    instancePath: instancePath + "/detections_stored",
+                    schemaPath: "#/properties/detections_stored/type",
+                    keyword: "type",
+                    params: {
+                      type: "integer"
+                    }
+                  } ], !1;
+                  if (0 === _errs12 && "number" == typeof data5 && isFinite(data5) && (data5 < 0 || isNaN(data5))) return validate221.errors = [ {
+                    instancePath: instancePath + "/detections_stored",
+                    schemaPath: "#/properties/detections_stored/minimum",
+                    keyword: "minimum",
+                    params: {
+                      comparison: ">=",
+                      limit: 0
+                    }
+                  } ], !1;
+                  var valid5 = 0 === _errs12;
+                } else valid5 = !0;
+                if (valid5) {
+                  if (void 0 !== data.tags_applied) {
+                    let data6 = data.tags_applied, _errs14 = 0;
+                    if ("number" != typeof data6 || data6 % 1 || isNaN(data6) || !isFinite(data6)) return validate221.errors = [ {
+                      instancePath: instancePath + "/tags_applied",
+                      schemaPath: "#/properties/tags_applied/type",
+                      keyword: "type",
+                      params: {
+                        type: "integer"
+                      }
+                    } ], !1;
+                    if (0 === _errs14 && "number" == typeof data6 && isFinite(data6) && (data6 < 0 || isNaN(data6))) return validate221.errors = [ {
+                      instancePath: instancePath + "/tags_applied",
+                      schemaPath: "#/properties/tags_applied/minimum",
+                      keyword: "minimum",
+                      params: {
+                        comparison: ">=",
+                        limit: 0
+                      }
+                    } ], !1;
+                    var valid6 = 0 === _errs14;
+                  } else valid6 = !0;
+                  if (valid6 && void 0 !== data.warning && "string" != typeof data.warning) return validate221.errors = [ {
+                    instancePath: instancePath + "/warning",
+                    schemaPath: "#/properties/warning/type",
+                    keyword: "type",
+                    params: {
+                      type: "string"
+                    }
+                  } ], !1;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return validate221.errors = [], !0;
+}
+
+validate221.evaluated = {
   props: !0,
   dynamicProps: !1,
   dynamicItems: !1
@@ -38854,6 +50414,126 @@ function validateCredentialRevoked(value) {
   })), valid;
 }
 
+function validateEventCameraScope(value) {
+  let valid = __contract_EventCameraScope(value);
+  return validateEventCameraScope.errors = valid ? null : (__contract_EventCameraScope.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventCatalog(value) {
+  let valid = __contract_EventCatalog(value);
+  return validateEventCatalog.errors = valid ? null : (__contract_EventCatalog.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventDestination(value) {
+  let valid = __contract_EventDestination(value);
+  return validateEventDestination.errors = valid ? null : (__contract_EventDestination.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventDestinationCreate(value) {
+  let valid = __contract_EventDestinationCreate(value);
+  return validateEventDestinationCreate.errors = valid ? null : (__contract_EventDestinationCreate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventDestinationUpdate(value) {
+  let valid = __contract_EventDestinationUpdate(value);
+  return validateEventDestinationUpdate.errors = valid ? null : (__contract_EventDestinationUpdate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventDestinations(value) {
+  let valid = __contract_EventDestinations(value);
+  return validateEventDestinations.errors = valid ? null : (__contract_EventDestinations.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventMutationAck(value) {
+  let valid = __contract_EventMutationAck(value);
+  return validateEventMutationAck.errors = valid ? null : (__contract_EventMutationAck.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventPredicate(value) {
+  let valid = __contract_EventPredicate(value);
+  return validateEventPredicate.errors = valid ? null : (__contract_EventPredicate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventRoute(value) {
+  let valid = __contract_EventRoute(value);
+  return validateEventRoute.errors = valid ? null : (__contract_EventRoute.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventRouteCreate(value) {
+  let valid = __contract_EventRouteCreate(value);
+  return validateEventRouteCreate.errors = valid ? null : (__contract_EventRouteCreate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventRoutePreview(value) {
+  let valid = __contract_EventRoutePreview(value);
+  return validateEventRoutePreview.errors = valid ? null : (__contract_EventRoutePreview.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventRoutePreviewRequest(value) {
+  let valid = __contract_EventRoutePreviewRequest(value);
+  return validateEventRoutePreviewRequest.errors = valid ? null : (__contract_EventRoutePreviewRequest.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventRouteUpdate(value) {
+  let valid = __contract_EventRouteUpdate(value);
+  return validateEventRouteUpdate.errors = valid ? null : (__contract_EventRouteUpdate.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventRoutes(value) {
+  let valid = __contract_EventRoutes(value);
+  return validateEventRoutes.errors = valid ? null : (__contract_EventRoutes.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateEventSchedule(value) {
+  let valid = __contract_EventSchedule(value);
+  return validateEventSchedule.errors = valid ? null : (__contract_EventSchedule.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
 function validateFleetLocation(value) {
   let valid = __contract_FleetLocation(value);
   return validateFleetLocation.errors = valid ? null : (__contract_FleetLocation.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
@@ -39049,6 +50729,22 @@ function validateLogoutResponse(value) {
 function validateLprStreamSummaryPage(value) {
   let valid = __contract_LprStreamSummaryPage(value);
   return validateLprStreamSummaryPage.errors = valid ? null : (__contract_LprStreamSummaryPage.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateMotionTrigger(value) {
+  let valid = __contract_MotionTrigger(value);
+  return validateMotionTrigger.errors = valid ? null : (__contract_MotionTrigger.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
+    keyword: keyword,
+    schemaPath: schemaPath
+  })), valid;
+}
+
+function validateMotionTriggered(value) {
+  let valid = __contract_MotionTriggered(value);
+  return validateMotionTriggered.errors = valid ? null : (__contract_MotionTriggered.errors || []).map(({keyword: keyword, schemaPath: schemaPath}) => ({
     keyword: keyword,
     schemaPath: schemaPath
   })), valid;
@@ -39560,17 +51256,24 @@ validateAuthSessionsResponse.errors = null, validateAuthVerifyResponse.errors = 
 validateCameraCollection.errors = null, validateCameraCollectionMembersResponse.errors = null,
 validateCameraCollectionPreview.errors = null, validateCameraCollectionsResponse.errors = null,
 validateCameraTagAssignmentsResponse.errors = null, validateClientConfig.errors = null,
-validateCredentialRevoked.errors = null, validateFleetLocation.errors = null, validateFleetLocationsResponse.errors = null,
-validateFleetPreviewRequest.errors = null, validateFleetPreviewResponse.errors = null,
-validateFleetQueryRequest.errors = null, validateFleetQueryResponse.errors = null,
-validateFleetSavedView.errors = null, validateFleetSavedViewsResponse.errors = null,
-validateFleetTag.errors = null, validateFleetTagsResponse.errors = null, validateGo2rtcConfigurationInput.errors = null,
-validateGo2rtcConfigurationValidation.errors = null, validateGo2rtcEffectiveConfiguration.errors = null,
-validateGo2rtcOverrideDiagnostics.errors = null, validateHlsHealth.errors = null,
-validateHostHealth.errors = null, validateHostHealthIncidents.errors = null, validateLiveStreamSummaryPage.errors = null,
-validateLoginConfig.errors = null, validateLoginMfaChallenge.errors = null, validateLoginRequest.errors = null,
-validateLoginResponse.errors = null, validateLoginSuccess.errors = null, validateLogoutResponse.errors = null,
-validateLprStreamSummaryPage.errors = null, validateOpenApiDocument.errors = null,
+validateCredentialRevoked.errors = null, validateEventCameraScope.errors = null,
+validateEventCatalog.errors = null, validateEventDestination.errors = null, validateEventDestinationCreate.errors = null,
+validateEventDestinationUpdate.errors = null, validateEventDestinations.errors = null,
+validateEventMutationAck.errors = null, validateEventPredicate.errors = null, validateEventRoute.errors = null,
+validateEventRouteCreate.errors = null, validateEventRoutePreview.errors = null,
+validateEventRoutePreviewRequest.errors = null, validateEventRouteUpdate.errors = null,
+validateEventRoutes.errors = null, validateEventSchedule.errors = null, validateFleetLocation.errors = null,
+validateFleetLocationsResponse.errors = null, validateFleetPreviewRequest.errors = null,
+validateFleetPreviewResponse.errors = null, validateFleetQueryRequest.errors = null,
+validateFleetQueryResponse.errors = null, validateFleetSavedView.errors = null,
+validateFleetSavedViewsResponse.errors = null, validateFleetTag.errors = null, validateFleetTagsResponse.errors = null,
+validateGo2rtcConfigurationInput.errors = null, validateGo2rtcConfigurationValidation.errors = null,
+validateGo2rtcEffectiveConfiguration.errors = null, validateGo2rtcOverrideDiagnostics.errors = null,
+validateHlsHealth.errors = null, validateHostHealth.errors = null, validateHostHealthIncidents.errors = null,
+validateLiveStreamSummaryPage.errors = null, validateLoginConfig.errors = null,
+validateLoginMfaChallenge.errors = null, validateLoginRequest.errors = null, validateLoginResponse.errors = null,
+validateLoginSuccess.errors = null, validateLogoutResponse.errors = null, validateLprStreamSummaryPage.errors = null,
+validateMotionTrigger.errors = null, validateMotionTriggered.errors = null, validateOpenApiDocument.errors = null,
 validatePasswordAdminReset.errors = null, validatePasswordChangeRequest.errors = null,
 validatePasswordChangedResponse.errors = null, validatePasswordSelfChange.errors = null,
 validatePlayerTelemetry.errors = null, validateProcessLiveness.errors = null, validateRecordingBatchProtectionRequest.errors = null,
@@ -39601,4 +51304,4 @@ validateTotpSetupResponse.errors = null, validateTotpStatusResponse.errors = nul
 validateTrustedDevicesResponse.errors = null, validateWorkspacesResponse.errors = null,
 validateWorkspacesUpdate.errors = null;
 
-export { validateApiError, validateApiTokenCreateRequest, validateApiTokenCreated, validateApiTokenList, validateApiTokenMetadata, validateAuthSessionsResponse, validateAuthVerifyResponse, validateCameraCollection, validateCameraCollectionMembersResponse, validateCameraCollectionPreview, validateCameraCollectionsResponse, validateCameraTagAssignmentsResponse, validateClientConfig, validateCredentialRevoked, validateFleetLocation, validateFleetLocationsResponse, validateFleetPreviewRequest, validateFleetPreviewResponse, validateFleetQueryRequest, validateFleetQueryResponse, validateFleetSavedView, validateFleetSavedViewsResponse, validateFleetTag, validateFleetTagsResponse, validateGo2rtcConfigurationInput, validateGo2rtcConfigurationValidation, validateGo2rtcEffectiveConfiguration, validateGo2rtcOverrideDiagnostics, validateHlsHealth, validateHostHealth, validateHostHealthIncidents, validateLiveStreamSummaryPage, validateLoginConfig, validateLoginMfaChallenge, validateLoginRequest, validateLoginResponse, validateLoginSuccess, validateLogoutResponse, validateLprStreamSummaryPage, validateOpenApiDocument, validatePasswordAdminReset, validatePasswordChangeRequest, validatePasswordChangedResponse, validatePasswordSelfChange, validatePlayerTelemetry, validateProcessLiveness, validateRecordingBatchProtectionRequest, validateRecordingBatchProtectionResult, validateRecordingBatchTagsRequest, validateRecordingBatchTagsResult, validateRecordingDeletionFilter, validateRecordingDeletionJobAccepted, validateRecordingDeletionProgress, validateRecordingDeletionRequest, validateRecordingDeletionResult, validateRecordingDetail, validateRecordingDetectionLabels, validateRecordingExportAccepted, validateRecordingExportRequest, validateRecordingExportStatus, validateRecordingPlaybackPreparing, validateRecordingPlaybackReady, validateRecordingProtectionRequest, validateRecordingProtectionResult, validateRecordingRetentionRequest, validateRecordingRetentionResult, validateRecordingTags, validateRecordingTagsById, validateRecordingTagsRequest, validateRecordingTimeline, validateRecordingTimelineByIds, validateRecordingsPage, validateSetupStatus, validateSetupUpdate, validateSetupUpdated, validateStreamCompatibilityList, validateStreamFullResponse, validateStreamHealth, validateStreamHealthHistory, validateStreamPrivacyUpdated, validateStreamSummaryPage, validateStreamUpdateAccepted, validateStreamUpdateRequest, validateSuccessResponse, validateSystemActionAccepted, validateSystemBackupCreated, validateSystemInformation, validateSystemLogs, validateSystemSettings, validateSystemSettingsSaved, validateSystemSettingsUpdate, validateSystemStatus, validateTotpChangedResponse, validateTotpCodeRequest, validateTotpLoginRequest, validateTotpLoginResponse, validateTotpSetupResponse, validateTotpStatusResponse, validateTrustedDevicesResponse, validateWorkspacesResponse, validateWorkspacesUpdate };
+export { validateApiError, validateApiTokenCreateRequest, validateApiTokenCreated, validateApiTokenList, validateApiTokenMetadata, validateAuthSessionsResponse, validateAuthVerifyResponse, validateCameraCollection, validateCameraCollectionMembersResponse, validateCameraCollectionPreview, validateCameraCollectionsResponse, validateCameraTagAssignmentsResponse, validateClientConfig, validateCredentialRevoked, validateEventCameraScope, validateEventCatalog, validateEventDestination, validateEventDestinationCreate, validateEventDestinationUpdate, validateEventDestinations, validateEventMutationAck, validateEventPredicate, validateEventRoute, validateEventRouteCreate, validateEventRoutePreview, validateEventRoutePreviewRequest, validateEventRouteUpdate, validateEventRoutes, validateEventSchedule, validateFleetLocation, validateFleetLocationsResponse, validateFleetPreviewRequest, validateFleetPreviewResponse, validateFleetQueryRequest, validateFleetQueryResponse, validateFleetSavedView, validateFleetSavedViewsResponse, validateFleetTag, validateFleetTagsResponse, validateGo2rtcConfigurationInput, validateGo2rtcConfigurationValidation, validateGo2rtcEffectiveConfiguration, validateGo2rtcOverrideDiagnostics, validateHlsHealth, validateHostHealth, validateHostHealthIncidents, validateLiveStreamSummaryPage, validateLoginConfig, validateLoginMfaChallenge, validateLoginRequest, validateLoginResponse, validateLoginSuccess, validateLogoutResponse, validateLprStreamSummaryPage, validateMotionTrigger, validateMotionTriggered, validateOpenApiDocument, validatePasswordAdminReset, validatePasswordChangeRequest, validatePasswordChangedResponse, validatePasswordSelfChange, validatePlayerTelemetry, validateProcessLiveness, validateRecordingBatchProtectionRequest, validateRecordingBatchProtectionResult, validateRecordingBatchTagsRequest, validateRecordingBatchTagsResult, validateRecordingDeletionFilter, validateRecordingDeletionJobAccepted, validateRecordingDeletionProgress, validateRecordingDeletionRequest, validateRecordingDeletionResult, validateRecordingDetail, validateRecordingDetectionLabels, validateRecordingExportAccepted, validateRecordingExportRequest, validateRecordingExportStatus, validateRecordingPlaybackPreparing, validateRecordingPlaybackReady, validateRecordingProtectionRequest, validateRecordingProtectionResult, validateRecordingRetentionRequest, validateRecordingRetentionResult, validateRecordingTags, validateRecordingTagsById, validateRecordingTagsRequest, validateRecordingTimeline, validateRecordingTimelineByIds, validateRecordingsPage, validateSetupStatus, validateSetupUpdate, validateSetupUpdated, validateStreamCompatibilityList, validateStreamFullResponse, validateStreamHealth, validateStreamHealthHistory, validateStreamPrivacyUpdated, validateStreamSummaryPage, validateStreamUpdateAccepted, validateStreamUpdateRequest, validateSuccessResponse, validateSystemActionAccepted, validateSystemBackupCreated, validateSystemInformation, validateSystemLogs, validateSystemSettings, validateSystemSettingsSaved, validateSystemSettingsUpdate, validateSystemStatus, validateTotpChangedResponse, validateTotpCodeRequest, validateTotpLoginRequest, validateTotpLoginResponse, validateTotpSetupResponse, validateTotpStatusResponse, validateTrustedDevicesResponse, validateWorkspacesResponse, validateWorkspacesUpdate };

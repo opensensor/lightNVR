@@ -491,6 +491,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/event-destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List event destinations
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["listEventDestinations"];
+        put?: never;
+        /**
+         * Create event destination
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        post: operations["createEventDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-destinations/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get event destination
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["getEventDestination"];
+        /**
+         * Update event destination
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        put: operations["updateEventDestination"];
+        post?: never;
+        /**
+         * Delete event destination
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        delete: operations["deleteEventDestination"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List event routes
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["listEventRoutes"];
+        put?: never;
+        /**
+         * Create event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        post: operations["createEventRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-routes/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["getEventRoute"];
+        /**
+         * Update event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        put: operations["updateEventRoute"];
+        post?: never;
+        /**
+         * Delete event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        delete: operations["deleteEventRoute"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/event-routes/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview event route
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        post: operations["previewEventRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get event catalog
+         * @description Global event administration. Native validation additionally enforces referenced destinations, registered event/health types, compatible predicates, available timezones and topic/TLS constraints. Preview never publishes; mutation acknowledgments do not imply delivery.
+         */
+        get: operations["getEventCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/cameras/query": {
         parameters: {
             query?: never;
@@ -656,6 +800,26 @@ export interface paths {
         get: operations["getMetrics"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/motion/trigger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger motion
+         * @description Requires camera.configure on the named stream. Start/stop/pulse report annotation, tag and recording effects independently; tags require an active recording and detection-recording schedules may suppress recording. Pulse is bounded to 600000 ms. Invalid requests may return 400 before principal evaluation.
+         */
+        post: operations["triggerMotion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1751,6 +1915,269 @@ export interface components {
             /** @constant */
             success: true;
         };
+        EventCameraScope: {
+            /** @constant */
+            type: "all";
+        } | {
+            selector: components["schemas"]["FleetSelector"];
+            /** @constant */
+            type: "selector";
+        };
+        EventCatalog: {
+            count: number;
+            event_types: {
+                default_expiry_seconds: number;
+                description: string;
+                dynamic_severity: boolean;
+                /** @enum {string} */
+                expected_rate: "low" | "medium" | "high";
+                family: string;
+                /** @enum {string} */
+                maximum_severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                media_policy: string;
+                /** @enum {string} */
+                minimum_severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                sensitivity: string;
+                /** @enum {string} */
+                severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                /** @enum {string} */
+                subject_kind: "camera" | "storage" | "system";
+                type: string;
+            }[];
+            /** @constant */
+            schema_version: 1;
+        };
+        EventDestination: {
+            authentication: {
+                password_configured: boolean;
+                username: string;
+            };
+            broker: {
+                client_id: string;
+                host: string;
+                keepalive_seconds: number;
+                port: number;
+                qos: number;
+                status_topic_template: string;
+                topic_template: string;
+            };
+            created_at: number;
+            description: string;
+            enabled: boolean;
+            key: string;
+            /** @constant */
+            managed: true;
+            name: string;
+            revision: number;
+            tls: {
+                ca_file: string;
+                cert_file: string;
+                key_file: string;
+                /** @enum {string} */
+                mode: "disabled" | "system" | "custom_ca" | "mutual";
+            };
+            /** @constant */
+            type: "mqtt";
+            updated_at: number;
+            /** Format: uuid */
+            uuid: string;
+        };
+        EventDestinationCreate: {
+            authentication?: {
+                password?: string | null;
+                username?: string;
+            };
+            broker: {
+                client_id?: string;
+                host: string;
+                keepalive_seconds?: number;
+                port?: number;
+                qos?: number;
+                status_topic_template?: string;
+                topic_template?: string;
+            };
+            description?: string;
+            enabled?: boolean;
+            name: string;
+            tls?: {
+                ca_file?: string;
+                cert_file?: string;
+                key_file?: string;
+                /** @enum {string} */
+                mode?: "disabled" | "system" | "custom_ca" | "mutual";
+            };
+            /** @constant */
+            type?: "mqtt";
+        };
+        EventDestinations: {
+            count: number;
+            default_destination: {
+                /** @constant */
+                configuration_source: "settings";
+                /** @constant */
+                key: "mqtt:default";
+                /** @constant */
+                managed: false;
+                name: string;
+            };
+            destinations: components["schemas"]["EventDestination"][];
+        };
+        EventDestinationUpdate: {
+            authentication?: {
+                password?: string | null;
+                username?: string;
+            };
+            broker?: {
+                client_id?: string;
+                host?: string;
+                keepalive_seconds?: number;
+                port?: number;
+                qos?: number;
+                status_topic_template?: string;
+                topic_template?: string;
+            };
+            description?: string;
+            enabled?: boolean;
+            name?: string;
+            revision: number;
+            tls?: {
+                ca_file?: string;
+                cert_file?: string;
+                key_file?: string;
+                /** @enum {string} */
+                mode?: "disabled" | "system" | "custom_ca" | "mutual";
+            };
+            /** @constant */
+            type?: "mqtt";
+        };
+        EventMutationAck: {
+            /** @constant */
+            success: true;
+        };
+        EventPredicate: {
+            detection?: {
+                labels_any?: string[];
+                min_confidence?: number;
+                zone_ids_any?: string[];
+            };
+            health?: {
+                condition_codes_any?: string[];
+                severities_any?: ("warning" | "error" | "critical")[];
+            };
+            /** @constant */
+            version: 1;
+        };
+        EventRoute: {
+            camera_scope: components["schemas"]["EventCameraScope"];
+            created_at: number;
+            description: string;
+            destination: string;
+            enabled: boolean;
+            event_types: string[];
+            name: string;
+            predicate: components["schemas"]["EventPredicate"];
+            revision: number;
+            schedule: components["schemas"]["EventSchedule"];
+            suppression: {
+                cooldown_seconds: number;
+                debounce_seconds: number;
+                grouping_window_seconds: number;
+                max_events_per_minute: number;
+            };
+            updated_at: number;
+            /** Format: uuid */
+            uuid: string;
+        };
+        EventRouteCreate: {
+            camera_scope?: components["schemas"]["EventCameraScope"];
+            description?: string;
+            destination?: string;
+            enabled?: boolean;
+            event_types: string[];
+            name: string;
+            predicate?: components["schemas"]["EventPredicate"];
+            schedule?: components["schemas"]["EventSchedule"];
+            suppression?: {
+                cooldown_seconds?: number;
+                debounce_seconds?: number;
+                grouping_window_seconds?: number;
+                max_events_per_minute?: number;
+            };
+        };
+        EventRoutePreview: {
+            camera_sample: {
+                /** Format: uuid */
+                camera_uuid: string;
+                location_path: string;
+                name: string;
+            }[];
+            event_types: {
+                dynamic_severity: boolean;
+                /** @enum {string} */
+                expected_rate: "low" | "medium" | "high";
+                /** @enum {string} */
+                maximum_severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                /** @enum {string} */
+                minimum_severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                /** @enum {string} */
+                severity: "debug" | "info" | "notice" | "warning" | "error" | "critical";
+                /** @enum {string} */
+                subject_kind: "camera" | "storage" | "system";
+                type: string;
+            }[];
+            matched_camera_count: number;
+            /** @constant */
+            sample_limit: 20;
+            /** @constant */
+            would_publish: false;
+        };
+        EventRoutePreviewRequest: {
+            camera_scope?: components["schemas"]["EventCameraScope"];
+            description?: string;
+            destination?: string;
+            enabled?: boolean;
+            event_types: string[];
+            name: string;
+            predicate?: components["schemas"]["EventPredicate"];
+            schedule?: components["schemas"]["EventSchedule"];
+            suppression?: {
+                cooldown_seconds?: number;
+                debounce_seconds?: number;
+                grouping_window_seconds?: number;
+                max_events_per_minute?: number;
+            };
+        };
+        EventRoutes: {
+            count: number;
+            routes: components["schemas"]["EventRoute"][];
+        };
+        EventRouteUpdate: {
+            camera_scope?: components["schemas"]["EventCameraScope"];
+            description?: string;
+            destination?: string;
+            enabled?: boolean;
+            event_types?: string[];
+            name?: string;
+            predicate?: components["schemas"]["EventPredicate"];
+            revision: number;
+            schedule?: components["schemas"]["EventSchedule"];
+            suppression?: {
+                cooldown_seconds?: number;
+                debounce_seconds?: number;
+                grouping_window_seconds?: number;
+                max_events_per_minute?: number;
+            };
+        };
+        EventSchedule: {
+            timezone: string;
+            /** @constant */
+            version: 1;
+            windows: {
+                days: number[];
+                end: string;
+                start: string;
+            }[];
+        };
         FleetCamera: {
             address: string;
             /** @enum {unknown} */
@@ -2350,6 +2777,31 @@ export interface components {
             total_pages: number;
         } & {
             [key: string]: unknown;
+        };
+        MotionTrigger: {
+            /** @enum {string} */
+            action: "start" | "stop" | "pulse";
+            confidence?: number;
+            duration_ms?: number;
+            label?: string;
+            objects?: (string | {
+                confidence?: number;
+                label: string;
+            })[];
+            stream: string;
+            tags?: string[];
+        };
+        MotionTriggered: {
+            /** @enum {string} */
+            action: "start" | "stop" | "pulse";
+            detections_stored: number;
+            duration_ms?: number;
+            recording_triggered: boolean;
+            stream: string;
+            /** @constant */
+            success: true;
+            tags_applied: number;
+            warning?: string;
         };
         /** @description Describes the canonical pilot coverage, not user or camera identities. Omission of an unspecified API is not a denial of access. */
         OpenApiCoverage: {
@@ -5412,6 +5864,930 @@ export interface operations {
             };
         };
     };
+    listEventDestinations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDestinations"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createEventDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventDestinationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDestination"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEventDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDestination"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateEventDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventDestinationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDestination"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteEventDestination: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMutationAck"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listEventRoutes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoutes"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createEventRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRouteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoute"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEventRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoute"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateEventRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRouteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoute"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteEventRoute: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMutationAck"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    previewEventRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRoutePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRoutePreview"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getEventCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventCatalog"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     queryFleetCameras: {
         parameters: {
             query?: never;
@@ -6007,6 +7383,84 @@ export interface operations {
             };
             /** @description Service temporarily unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    triggerMotion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MotionTrigger"];
+            };
+        };
+        responses: {
+            /** @description Accepted motion effects are enumerated separately. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionTriggered"];
+                };
+            };
+            /** @description Invalid request or reference. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Required effective authority denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Object not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision conflict, name conflict, limit or referenced object. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Persistence or internal failure. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

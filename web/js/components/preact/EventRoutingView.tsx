@@ -1,7 +1,8 @@
+import {eventJSON} from '../../api/events.ts';
 import {getSystemSettings} from '../../api/system.ts';
 import { listFleetLocations, listFleetTags } from '../../api/fleet.ts';
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { fetchJSON, useQuery, useQueryClient } from '../../query-client.ts';
+import { useQuery, useQueryClient } from '../../query-client.ts';
 import { useI18n } from '../../i18n.ts';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { EventDestinationEditor } from './events/EventDestinationEditor.tsx';
@@ -186,9 +187,9 @@ export function EventRoutingView() {
   const [busyKey, setBusyKey] = useState('');
   const [deleteCandidate, setDeleteCandidate] = useState<DeleteCandidate | null>(null);
 
-  const routesQuery = useQuery<EventRoutesResponse, RequestError>(['event-routes'], '/api/event-routes', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const destinationsQuery = useQuery<EventDestinationsResponse, RequestError>(['event-destinations'], '/api/event-destinations', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const catalogQuery = useQuery<EventCatalogResponse, RequestError>(['event-catalog'], '/api/events/catalog', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 60000 });
+  const routesQuery = useQuery<EventRoutesResponse, RequestError>({queryKey:['event-routes'],queryFn:({signal})=>eventJSON<EventRoutesResponse>('/api/event-routes',{signal}),staleTime:5000});
+  const destinationsQuery = useQuery<EventDestinationsResponse, RequestError>({queryKey:['event-destinations'],queryFn:({signal})=>eventJSON<EventDestinationsResponse>('/api/event-destinations',{signal}),staleTime:5000});
+  const catalogQuery = useQuery<EventCatalogResponse, RequestError>({queryKey:['event-catalog'],queryFn:({signal})=>eventJSON<EventCatalogResponse>('/api/events/catalog',{signal}),staleTime:60000});
   const healthRegistryQuery = useQuery<HealthPolicySettings>({queryKey:['settings-health-registry'],queryFn:({signal})=>getSystemSettings({signal,retries:0}),staleTime:60000});
   const locationsQuery = useQuery<FleetLocationsResponse>({queryKey: ['fleet-locations'], queryFn: ({signal}) => listFleetLocations({signal}), staleTime: 60000 });
   const tagsQuery = useQuery<FleetTagsResponse>({queryKey: ['fleet-tags'], queryFn: ({signal}) => listFleetTags({signal}), staleTime: 60000 });
@@ -229,25 +230,25 @@ export function EventRoutingView() {
 
   const saveRoute = async (payload: EventRoutePayload) => {
     const editing = Boolean(routeEditor?.uuid);
-    const response = await staleAware(() => fetchJSON<EventRoute>(editing ? `/api/event-routes/${encodeURIComponent((routeEditor as EventRoute).uuid)}` : '/api/event-routes', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }), routesQuery.refetch);
+    const response = await staleAware(() => eventJSON<EventRoute>(editing ? `/api/event-routes/${encodeURIComponent((routeEditor as EventRoute).uuid)}` : '/api/event-routes', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }), routesQuery.refetch);
     await queryClient.invalidateQueries({ queryKey: ['event-routes'] });
     setRouteEditor(null);
     showStatusMessage(t(editing ? 'events.route.updated' : 'events.route.created'), 'success');
     return response;
   };
-  const previewRoute = (payload: EventRoutePayload) => staleAware(() => fetchJSON<EventRoutePreview>('/api/event-routes/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }));
+  const previewRoute = ({revision: _revision, ...payload}: EventRoutePayload) => staleAware(() => eventJSON<EventRoutePreview>('/api/event-routes/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }));
   const toggleRoute = async (route: EventRoute) => {
     setBusyKey(route.uuid);
-    try { await staleAware(() => fetchJSON(`/api/event-routes/${encodeURIComponent(route.uuid)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !route.enabled, revision: route.revision }), timeout: 15000, retries: 0 }), routesQuery.refetch); await routesQuery.refetch(); showStatusMessage(t(route.enabled ? 'events.route.disabled' : 'events.route.enabledMessage'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
+    try { await staleAware(() => eventJSON(`/api/event-routes/${encodeURIComponent(route.uuid)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !route.enabled, revision: route.revision }), timeout: 15000, retries: 0 }), routesQuery.refetch); await routesQuery.refetch(); showStatusMessage(t(route.enabled ? 'events.route.disabled' : 'events.route.enabledMessage'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
   const deleteRoute = async (route: EventRoute) => {
     setBusyKey(route.uuid);
-    try { await staleAware(() => fetchJSON(`/api/event-routes/${encodeURIComponent(route.uuid)}?revision=${encodeURIComponent(route.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 }), routesQuery.refetch); await routesQuery.refetch(); showStatusMessage(t('events.route.deleted'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
+    try { await staleAware(() => eventJSON(`/api/event-routes/${encodeURIComponent(route.uuid)}?revision=${encodeURIComponent(route.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 }), routesQuery.refetch); await routesQuery.refetch(); showStatusMessage(t('events.route.deleted'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
 
   const saveDestination = async (payload: EventDestinationPayload) => {
     const editing = Boolean(destinationEditor?.uuid);
-    const response = await staleAware(() => fetchJSON<EventDestination>(editing ? `/api/event-destinations/${encodeURIComponent((destinationEditor as EventDestination).uuid)}` : '/api/event-destinations', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }), destinationsQuery.refetch);
+    const response = await staleAware(() => eventJSON<EventDestination>(editing ? `/api/event-destinations/${encodeURIComponent((destinationEditor as EventDestination).uuid)}` : '/api/event-destinations', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }), destinationsQuery.refetch);
     await queryClient.invalidateQueries({ queryKey: ['event-destinations'] });
     setDestinationEditor(null);
     showStatusMessage(t(editing ? 'events.destination.updated' : 'events.destination.created'), 'success');
@@ -255,11 +256,11 @@ export function EventRoutingView() {
   };
   const toggleDestination = async (destination: EventDestination) => {
     setBusyKey(destination.uuid);
-    try { await staleAware(() => fetchJSON(`/api/event-destinations/${encodeURIComponent(destination.uuid)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !destination.enabled, revision: destination.revision }), timeout: 15000, retries: 0 }), destinationsQuery.refetch); await destinationsQuery.refetch(); showStatusMessage(t(destination.enabled ? 'events.destination.pausedMessage' : 'events.destination.enabledMessage'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
+    try { await staleAware(() => eventJSON(`/api/event-destinations/${encodeURIComponent(destination.uuid)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !destination.enabled, revision: destination.revision }), timeout: 15000, retries: 0 }), destinationsQuery.refetch); await destinationsQuery.refetch(); showStatusMessage(t(destination.enabled ? 'events.destination.pausedMessage' : 'events.destination.enabledMessage'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
   const deleteDestination = async (destination: EventDestination) => {
     setBusyKey(destination.uuid);
-    try { await staleAware(() => fetchJSON(`/api/event-destinations/${encodeURIComponent(destination.uuid)}?revision=${encodeURIComponent(destination.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 }), destinationsQuery.refetch); await destinationsQuery.refetch(); showStatusMessage(t('events.destination.deleted'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
+    try { await staleAware(() => eventJSON(`/api/event-destinations/${encodeURIComponent(destination.uuid)}?revision=${encodeURIComponent(destination.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 }), destinationsQuery.refetch); await destinationsQuery.refetch(); showStatusMessage(t('events.destination.deleted'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
 
   const sections: [string, string, number][] = [

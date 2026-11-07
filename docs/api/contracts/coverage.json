@@ -85,8 +85,9 @@
       "handler": "handle_post_motion_trigger",
       "source": "src/web/libuv_api_handlers.c",
       "line": 108,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "triggerMotion"
     },
     {
       "method": "GET",
@@ -1404,8 +1405,9 @@
       "handler": "handle_get_event_catalog",
       "source": "src/web/libuv_api_handlers.c",
       "line": 366,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "getEventCatalog"
     },
     {
       "method": "GET",
@@ -1413,8 +1415,9 @@
       "handler": "handle_get_event_destinations",
       "source": "src/web/libuv_api_handlers.c",
       "line": 368,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "listEventDestinations"
     },
     {
       "method": "POST",
@@ -1422,8 +1425,9 @@
       "handler": "handle_post_event_destination",
       "source": "src/web/libuv_api_handlers.c",
       "line": 370,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "createEventDestination"
     },
     {
       "method": "GET",
@@ -1431,8 +1435,9 @@
       "handler": "handle_get_event_destination",
       "source": "src/web/libuv_api_handlers.c",
       "line": 372,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "getEventDestination"
     },
     {
       "method": "PUT",
@@ -1440,8 +1445,9 @@
       "handler": "handle_put_event_destination",
       "source": "src/web/libuv_api_handlers.c",
       "line": 374,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateEventDestination"
     },
     {
       "method": "DELETE",
@@ -1449,8 +1455,9 @@
       "handler": "handle_delete_event_destination",
       "source": "src/web/libuv_api_handlers.c",
       "line": 376,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteEventDestination"
     },
     {
       "method": "GET",
@@ -1692,8 +1699,9 @@
       "handler": "handle_post_event_route_preview",
       "source": "src/web/libuv_api_handlers.c",
       "line": 430,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "previewEventRoute"
     },
     {
       "method": "GET",
@@ -1701,8 +1709,9 @@
       "handler": "handle_get_event_routes",
       "source": "src/web/libuv_api_handlers.c",
       "line": 432,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "listEventRoutes"
     },
     {
       "method": "POST",
@@ -1710,8 +1719,9 @@
       "handler": "handle_post_event_route",
       "source": "src/web/libuv_api_handlers.c",
       "line": 434,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "createEventRoute"
     },
     {
       "method": "GET",
@@ -1719,8 +1729,9 @@
       "handler": "handle_get_event_route",
       "source": "src/web/libuv_api_handlers.c",
       "line": 436,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "getEventRoute"
     },
     {
       "method": "PUT",
@@ -1728,8 +1739,9 @@
       "handler": "handle_put_event_route",
       "source": "src/web/libuv_api_handlers.c",
       "line": 438,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "updateEventRoute"
     },
     {
       "method": "DELETE",
@@ -1737,8 +1749,9 @@
       "handler": "handle_delete_event_route",
       "source": "src/web/libuv_api_handlers.c",
       "line": 440,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "event-routing",
+      "classification": "protected-review-per-route",
+      "operation_id": "deleteEventRoute"
     },
     {
       "method": "POST",
