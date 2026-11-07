@@ -547,6 +547,7 @@ static const unsigned char ws_request_frame[] = {
 static const unsigned char ws_media_frame[] = {0x82, 0x08, 0, 0, 0, 8, 'f', 't', 'y', 'p'};
 static const char ws_upgrade_response[] =
     "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+    "X-LightNVR-Media-Policy: 1\r\n"
     "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
 
 typedef struct {
