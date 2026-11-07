@@ -88,7 +88,7 @@ Key files:
 - Direct camera connections (RTSP, ONVIF, HTTP, etc.)
 - WebRTC streaming for ultra-low-latency live viewing
 - RTSP server for local re-streaming (used by MP4/HLS recorders)
-- HLS segment generation
+- RTSP output consumed by LightNVR writers (including the HLS Writer that generates `.ts` segments)
 - Frame extraction via `frame.jpeg` endpoint (used for detection)
 - Two-way audio (backchannel) support
 
@@ -156,7 +156,7 @@ LightNVR supports four recording modes based on the `record` and `detection_base
 In **annotation mode**, the unified detection thread runs but does NOT create separate MP4 files. Instead, detections are stored in the database with a `recording_id` foreign key linking to the ongoing continuous recording.
 
 Key files:
-- `src/video/unified_detection_thread.c`: Unified per-stream detection thread with buffering and annotation mode
+- `src/video/unified_detection_thread.c`: Unified per-stream detection thread with buffering and annotation mode; reads the camera, buffers, runs detection, and records (detection- and ONVIF-triggered recording both run here)
 - `src/video/detection.c`: Core detection logic
 - `src/video/detection_config.c`: Detection configuration management
 - `src/video/detection_embedded.c`: Embedded detection (SOD/TFLite)
@@ -169,7 +169,6 @@ Key files:
 - `src/video/sod_realnet.c`: SOD RealNet face detection
 - `src/video/onvif_detection.c`: ONVIF event-based detection
 - `src/video/onvif_event.c`: Parsing ONVIF event notifications, including licence-plate reads
-- `src/video/unified_detection_thread.c`: Per-stream detection thread: reads the camera, buffers, runs detection, and records (detection- and ONVIF-triggered recording both run here)
 - `src/video/motion_detection.c`: Motion detection processing
 - `src/video/cross_stream_motion_trigger.c`: Lets motion on one stream trigger recording on others
 - `src/video/packet_buffer.c`: Pre-detection packet ring buffer, flushed into the recording when a detection starts
