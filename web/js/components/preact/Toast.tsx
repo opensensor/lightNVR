@@ -15,6 +15,14 @@ interface ToastEntry {
   exiting?: boolean;
 }
 
+interface ToastContainerApi {
+  addToast: (message: string, type?: string, duration?: number) => number;
+}
+
+interface ToastContainerProps {
+  onReady?: (api: ToastContainerApi) => void;
+}
+
 interface ToastItemProps {
   id: number;
   message: string;
@@ -253,7 +261,7 @@ class ToastContainer extends Component<object, ToastContainerState> {
  * This component provides the toast functionality to the entire app
  */
 export class ToastProvider extends Component<ToastProviderProps> {
-  declare toastContainerRef: ToastContainer | null;
+  declare toastContainerRef: ToastContainerApi | null;
 
   constructor(props: ToastProviderProps) {
     super(props);
@@ -268,9 +276,15 @@ export class ToastProvider extends Component<ToastProviderProps> {
       containerElement.id = 'toast-container-root';
       document.body.appendChild(containerElement);
       
-      // Render the ToastContainer into the DOM
-      // render() returns nothing; this code assumes it returns the instance (bug logged in the migration plan).
-      this.toastContainerRef = render(<ToastContainer />, containerElement) as unknown as ToastContainer;
+      // Render the ToastContainer into the DOM and capture its API via callback
+      render(
+        <ToastContainer
+          onReady={(api) => {
+            this.toastContainerRef = api;
+          }}
+        />,
+        containerElement
+      );
       
       console.log('Toast container initialized');
     }
