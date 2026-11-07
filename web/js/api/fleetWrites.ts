@@ -62,7 +62,7 @@ export async function fleetWriteJSON<T=unknown>(url:string,options:EnhancedFetch
       throw new ContractValidationError(op.id,'request','FloorPlanBackground');
   }
   let response:Response;
-  try{response=await enhancedFetch(url,{timeout:20000,...options,headers,method,retries:0,cache:'no-store',sensitive:true});}
+  try{response=await enhancedFetch(url,{timeout:20000,...options,headers,method,retries:0,cache:'no-store',sensitive:true,credentials:'same-origin',redirect:'error'});}
   catch(error:unknown){
     if(options.signal?.aborted||(error instanceof Error&&error.name==='AbortError'))throw new DOMException('Request cancelled','AbortError');
     const status=typeof error==='object'&&error!==null&&'status'in error&&typeof error.status==='number'?error.status:undefined;
