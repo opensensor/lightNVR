@@ -200,7 +200,7 @@ Save the override, restart go2rtc, then open the go2rtc web UI and click **Sugge
 wyze://10.0.1.242?dtls=true&enr=<encrypted-key>&mac=2CAA8E1460B5&model=WYZEC1-JZ&uid=11D6C733WYJZC2LA111A
 ```
 
-You can either paste those URLs into **Settings → Streams** in the LightNVR dashboard, or define them config-as-code in the same override file:
+You can either paste those URLs into a new stream on the **Streams** page, or define them config-as-code in the same override file:
 
 ```yaml
 streams:

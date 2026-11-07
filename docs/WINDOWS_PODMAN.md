@@ -227,8 +227,8 @@ Then open **http://localhost:8080**.
 
 > **Change the password immediately.** The container ships with `admin` / `admin` and the
 > web server binds to `0.0.0.0`. Once you expose port 8080 to your LAN, those credentials
-> are all that stands in front of your cameras. Change it under **Settings → Users** on
-> first login.
+> are all that stands in front of your cameras. LightNVR makes you replace it
+> on first login; do that before exposing the port.
 
 ### Ports, and which ones you actually need
 

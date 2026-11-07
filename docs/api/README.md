@@ -1,6 +1,6 @@
 # API guides
 
-- [OpenAPI JSON](openapi.json) — canonical, partial API contract
+- [OpenAPI JSON](openapi.json) — canonical API contract: every public route except the media-protocol surfaces
 - [Permission-aware discovery design](contracts/design.md) — current-principal
   projection, scoped tokens and the read-only `/api-docs.html` explorer
 - [Coverage map](contracts/coverage.json) — covered operations and remaining routes

@@ -4,12 +4,23 @@ This document describes the REST API endpoints provided by LightNVR.
 
 ## Machine-readable contracts and API explorer
 
-The [canonical OpenAPI 3.1.1 document](api/openapi.json) covers Streams list,
-full-detail and update, personalized discovery, selected authentication/token
-operations, and recording reads/playback/protection/tags/deletion/export jobs.
-It currently specifies 33 operations across 30 paths. Coverage is partial;
-consult its `covered_operations` and the [route coverage map](api/contracts/coverage.json)
-for the exact subset and remaining surface.
+The [canonical OpenAPI 3.1.1 document](api/openapi.json) is the complete endpoint
+reference: 232 operations across 168 paths, covering authentication and administration,
+fleet and workspaces, streams and devices, recordings and investigations, storage,
+events, system settings and setup. The only routes outside it are the media-protocol
+surfaces (HLS, WebRTC/MSE signalling through the go2rtc proxy) and the internal
+media-lease callback; the [route coverage map](api/contracts/coverage.json) lists them.
+This page is the narrative guide; where the two differ, the OpenAPI document and the
+code are authoritative.
+
+Endpoint groups described only in the OpenAPI document include camera tags
+(`/api/camera-tags`, `/api/cameras/{id}/tags`), locations and floor plans
+(`/api/locations`, `/api/live/plans`), saved live layouts and fleet views
+(`/api/live/layouts`, `/api/fleet/views`, `/api/ui/workspaces`), camera imaging and
+day/night control (`/api/streams/{name}/imaging/*`, `/api/streams/{name}/daynight`),
+session and trusted-device management (`/api/auth/sessions`, `/api/auth/trusted-devices`),
+first-run setup (`/api/setup/status`), storage health and cleanup, and multi-recording
+ZIP downloads (`/api/recordings/batch-download`).
 
 Authenticated `GET /api/openapi.json` returns a document projected for the current
 session, Basic credential, legacy key or scoped token. Operation eligibility and

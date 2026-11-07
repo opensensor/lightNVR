@@ -323,7 +323,7 @@ web_thread_pool_size = 8
 - `ssl_key_path`: PEM private key for that certificate (unencrypted). If either file is missing, unreadable or does not match the other, LightNVR does not start the web server; it never falls back to plain HTTP.
 - `auth_enabled`: Whether to enable authentication for the web interface
 - `username`: Username for web interface authentication
-- `password`: Password used **only** when the admin account is first created. If unset, the account is created as `admin` / `admin` — see the warning below. Once the account exists this setting is ignored; passwords live in the database and are changed from **Settings → Users**.
+- `password`: Password used **only** when the admin account is first created. If unset, the account is created as `admin` / `admin` — see the warning below. Once the account exists this setting is ignored; passwords live in the database and are changed from the **Users** page.
 - `auth_timeout_hours`: Session timeout in hours (default: 24)
 - `audio_disabled`: Instance-wide compliance policy (default: false). When true,
   LightNVR prevents audio in new recordings, live listening, and two-way talk;
