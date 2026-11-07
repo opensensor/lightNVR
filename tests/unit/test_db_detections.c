@@ -111,6 +111,28 @@ void test_store_and_get_detections(void) {
     TEST_ASSERT_GREATER_THAN(0, n);
 }
 
+/* Invalid counts must fail before a transaction or any array access. */
+void test_store_rejects_invalid_detection_counts(void) {
+    detection_result_t r = make_result("person", 0.9f);
+    const int invalid_counts[] = {-1, MAX_DETECTIONS + 1};
+    for (size_t i = 0; i < sizeof(invalid_counts) / sizeof(invalid_counts[0]); i++) {
+        r.count = invalid_counts[i];
+        TEST_ASSERT_EQUAL_INT(-1, store_detections_in_db("cam1", &r, 100, 0));
+        TEST_ASSERT_EQUAL_INT(-1, store_detections_in_db_for_camera(
+            "00000000-0000-4000-8000-000000000001", "cam1", &r, 100, 0));
+        TEST_ASSERT_EQUAL_INT(-1, store_external_motion_detections("cam1", &r, 100, 0));
+        TEST_ASSERT_TRUE(sqlite3_get_autocommit(get_db_handle()));
+        detection_result_t out;
+        TEST_ASSERT_EQUAL_INT(0, get_detections_from_db("cam1", &out, 0));
+    }
+    r.count = 0;
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam1", &r, 100, 0));
+    r.count = 1;
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam1", &r, 100, 0));
+    detection_result_t out;
+    TEST_ASSERT_EQUAL_INT(1, get_detections_from_db("cam1", &out, 0));
+}
+
 /* time range filter */
 void test_get_detections_time_range(void) {
     time_t now = time(NULL);
@@ -618,6 +640,7 @@ int main(void) {
     }
     UNITY_BEGIN();
     RUN_TEST(test_store_and_get_detections);
+    RUN_TEST(test_store_rejects_invalid_detection_counts);
     RUN_TEST(test_get_detections_time_range);
     RUN_TEST(test_has_detections_in_time_range_found);
     RUN_TEST(test_has_detections_in_time_range_not_found);
