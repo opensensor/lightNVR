@@ -27,11 +27,23 @@ sudo apt-get install -y \
     zlib1g-dev \
     libcurl4-openssl-dev \
     libmbedtls-dev \
+    libmosquitto-dev \
+    libyaml-dev \
     curl \
     wget
 ```
 
-**Note**: `libmbedtls-dev` is **required** for ONVIF support and authentication system (cryptographic functions).
+**Notes:**
+- **FFmpeg 7.1 or newer is required** (`libavcodec` ≥ 61, `libavformat` ≥ 61, `libavutil` ≥ 59,
+  `libswscale` ≥ 8, `libswresample` ≥ 5), tested up to FFmpeg 9.0. Debian 13 and Ubuntu 24.04+
+  ship a compatible version; Debian 12 and Ubuntu 22.04 do not, so build FFmpeg from source
+  there.
+- `libmbedtls-dev` is **required** for ONVIF and authentication.
+- `libmosquitto-dev` (≥ 2.0) and `libyaml-dev` are optional. Without them CMake prints a
+  warning and builds without MQTT, or without go2rtc override validation.
+- Building the web UI needs **Node.js 24** (the version in `.nvmrc`). Distribution packages
+  are often older; use [NodeSource](https://github.com/nodesource/distributions) or
+  [nvm](https://github.com/nvm-sh/nvm).
 
 ### Fedora/RHEL/CentOS
 
@@ -45,6 +57,8 @@ sudo dnf install -y \
     git \
     sqlite-devel \
     ffmpeg-devel \
+    mosquitto-devel \
+    libyaml-devel \
     libcurl-devel \
     libuv-devel \
     cjson-devel \
@@ -65,6 +79,8 @@ sudo pacman -S \
     git \
     sqlite \
     ffmpeg \
+    mosquitto \
+    libyaml \
     libuv \
     cjson \
     zlib \
@@ -151,6 +167,30 @@ HTTPS is then turned on at runtime with `ssl_enabled`, `ssl_cert_path` and
 [HTTPS without a reverse proxy](REVERSE_PROXY.md#https-without-a-reverse-proxy).
 The former `USE_MBEDTLS` and `USE_WOLFSSL` options were removed; they only
 linked libraries that nothing used.
+
+### Build options
+
+Pass these to CMake as `-D<OPTION>=ON|OFF`. "Profile" means `ON` in the default `full`
+profile and `OFF` in the `embedded` profile.
+
+| Option | Default | What it controls |
+|---|---|---|
+| `LIGHTNVR_PROFILE` | `full` | `full` or `embedded` (see below) |
+| `ENABLE_GO2RTC` | `ON` | go2rtc integration for WebRTC, MSE and HLS live view |
+| `GO2RTC_BINARY_PATH` | `/usr/local/bin/go2rtc` | Default go2rtc executable path (`[go2rtc] binary_path` overrides it at runtime) |
+| `GO2RTC_CONFIG_DIR` | `/etc/lightnvr/go2rtc` | Default go2rtc configuration directory |
+| `ENABLE_SSL` | `OFF` | HTTPS in the built-in web server (mbedTLS) |
+| `ENABLE_SOD` | profile | Embedded SOD motion/object detection ([SOD](SOD_INTEGRATION.md)) |
+| `SOD_DYNAMIC_LINK` | `OFF` | Link SOD as a shared library instead of statically |
+| `ENABLE_LITERT` | profile | In-process LiteRT (TFLite) detection engine (`[detection_engine]` in [Configuration](CONFIGURATION.md#in-process-litert-engine)) |
+| `LITERT_WITH_XNNPACK` | `ON` | Compile the XNNPACK CPU delegate into LiteRT |
+| `LITERT_WITH_GPU` | `OFF` | Compile the OpenCL/GLES GPU delegate into LiteRT |
+| `ENABLE_MQTT` | profile | MQTT event publishing and Home Assistant discovery (needs libmosquitto) |
+| `ENABLE_S3_ARCHIVE` | `ON` | S3 archive targets (needs libcurl 7.75+; see [Storage & Archive](STORAGE_ARCHIVE.md)) |
+| `ENABLE_AUDIO_FILTERS` | `ON` | libavfilter voice enhancement (below) |
+| `ENABLE_AUDIO_DENOISE` | profile | The afftdn denoiser within voice enhancement |
+| `ENABLE_SENTRY` | `OFF` | Optional Sentry native crash reporting |
+| `BUILD_TESTS` | `OFF` | Build the C unit and integration tests |
 
 ### Embedded build profile
 

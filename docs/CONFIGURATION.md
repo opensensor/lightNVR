@@ -424,7 +424,7 @@ detection_threshold = 50      ; Default confidence threshold (0-100%)
   it must match one of the detectors the server lists at `GET /detectors`.
 - `detection_threshold`: Default confidence threshold (0-100%) for streams that
   do not set their own.
-- `pre_detection_buffer`: Default seconds of video kept before a detection for streams that do not set their own (default: 5, range 0-60). See [Motion Buffer](MOTION_BUFFER.md).
+- `pre_detection_buffer`: Default seconds of video kept before a detection for streams that do not set their own (default: 5, range 0-60; the ring buffer holds at most 30 seconds, so larger values behave as 30). See [Pre- and Post-Event Buffering](MOTION_BUFFER.md).
 - `post_detection_buffer`: Default seconds recorded after the last detection (default: 10, range 0-300).
 
 ### Detection Behaviour
@@ -656,8 +656,10 @@ LightNVR supports the following command line options:
 
 - `-c, --config FILE`: Use the specified configuration file
 - `-d, --daemon`: Run as a daemon
+- `--verbose`: Log at debug level, overriding `log_level`
+- `--generate-go2rtc-config`: Write `go2rtc.yaml` from the saved settings and exit (the container entrypoint uses this before starting go2rtc)
 - `-h, --help`: Show help message
-- `-v, --version`: Show version information
+- `-v, --version`: Print the version and exit
 
 ## Memory Optimization for Ingenic A1
 

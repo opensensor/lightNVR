@@ -1,68 +1,38 @@
 # Detection Zone Configuration
 
-This document describes the detection zone configuration feature for lightNVR.
+Detection zones limit where on a camera's image detections count. Use them to ignore trees,
+roads or the sky, or to record only when something is at a doorway or in a driveway.
 
-## Overview
+## How zones filter detections
 
-Detection zones allow you to define specific regions in your camera's field of view where object detection should be active. This helps:
+LightNVR applies zones itself after every detection, whatever produced it: an external API
+(light-object-detect, DOODS2), embedded SOD, the in-process LiteRT engine, or ONVIF
+camera events that carry boxes. The detector never sees the zones.
 
-- **Reduce false positives** by ignoring areas like trees, roads, or sky
-- **Focus on areas of interest** like doorways, driveways, or specific zones
-- **Improve performance** by limiting detection to relevant areas
-- **Configure per-zone settings** like class filters and confidence thresholds
+- **No enabled zones on a stream:** every detection counts.
+- **One or more enabled zones:** a detection counts only if the **centre of its bounding
+  box** is inside an enabled zone whose class filter and minimum confidence it also
+  passes. Zones are checked in order and the first match wins; its ID is stored with the
+  detection, and Investigation can filter by it.
+- **Class filter** (`filter_classes`): comma-separated labels such as `person,car`. Empty
+  accepts every class.
+- **Minimum confidence** (`min_confidence`, 0.0-1.0): `0` accepts any confidence.
 
-## Features
+Each stream can have up to 16 zones of 3 to 32 points.
 
-### Interactive Zone Editor
+## Drawing zones
 
-- **Visual polygon drawing** on live camera snapshot
-- **Multiple zones per stream** with different configurations
-- **Color-coded zones** for easy identification
-- **Enable/disable zones** individually
-- **Per-zone class filtering** (e.g., only detect persons in entrance zone)
-- **Per-zone confidence thresholds**
+1. Open **Streams**, and **Edit** the stream.
+2. Turn on **Enable AI Detection-Based Recording**.
+3. Under **Detection Zones**, click **Configure Zones** (or **Edit Zones**).
+4. Click **Draw Zone**, then click points on the snapshot. Click **Complete Zone** when the
+   polygon is closed. If no snapshot is available you can still draw on a grid.
+5. Use **Select** to pick a zone and change its name, colour or **Enabled** switch, and
+   **Delete** to remove one.
+6. Click **Save Zones**.
 
-### Zone Modes
-
-When a zone is configured, detections are filtered based on the zone mode:
-
-- **Center mode**: Detection's bounding box center must be in zone
-- **Any mode**: Any part of detection's bounding box must overlap with zone
-- **All mode**: Entire detection's bounding box must be within zone
-
-## User Interface
-
-### Accessing the Zone Editor
-
-1. Navigate to **Streams** page
-2. Click **Edit** on a stream
-3. Enable **AI Detection Recording**
-4. Expand the **Detection Zones** section
-5. Click **Configure Zones** button
-
-### Drawing Zones
-
-1. Click **Draw Zone** button
-2. Click on the camera preview to add points
-3. Click multiple points to create a polygon (minimum 3 points)
-4. Click **Complete Zone** when done
-5. Repeat for additional zones
-
-### Editing Zones
-
-1. Click **Select** mode
-2. Click on a zone to select it
-3. Edit zone properties in the sidebar:
-   - Zone name
-   - Color
-   - Enabled/disabled status
-4. Click **Save Zones** when done
-
-### Deleting Zones
-
-1. Click **Delete** mode
-2. Click on a zone to delete it
-3. Or select a zone and use the delete button in the sidebar
+The editor sets a zone's shape, name, colour and enabled state. Set **class filters and
+minimum confidence through the API** ([below](#api-endpoints)).
 
 ## Database Schema
 
@@ -169,18 +139,6 @@ Content-Type: application/json
 DELETE /api/streams/{stream_name}/zones
 ```
 
-## Integration with light-object-detect
-
-When detection is triggered, lightNVR sends zone configuration to the light-object-detect API:
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/detect" \
-  -F "file=@frame.jpg" \
-  -F "zones={\"zones\":[...],\"zone_mode\":\"center\"}"
-```
-
-The API filters detections based on the zones and returns only detections within the configured zones.
-
 ## Configuration Example
 
 ### Example 1: Entrance Monitoring
@@ -267,7 +225,7 @@ Combine multiple zones for comprehensive monitoring:
 
 1. **Start with simple zones**: Begin with one or two zones and refine as needed
 2. **Use appropriate confidence thresholds**: Higher for critical areas, lower for general monitoring
-3. **Avoid overlapping zones**: Can cause duplicate detections
+3. **Order overlapping zones deliberately**: a detection is attributed to the first matching zone
 4. **Test your zones**: Use the live preview to verify zone coverage
 5. **Name zones descriptively**: Makes it easier to identify in logs and alerts
 6. **Disable unused zones**: Rather than deleting, disable zones you might need later
@@ -284,23 +242,12 @@ Combine multiple zones for comprehensive monitoring:
 
 - Verify zones are enabled
 - Check zone polygon coordinates are valid (0.0 - 1.0)
-- Ensure light-object-detect API is receiving zone configuration
-- Check API logs for zone filtering errors
+- Remember that only the bounding-box centre is tested
+- Check class names match the detector's labels exactly (`person`, not `Person`)
+- Run with `log_level = 3`; each rejection is logged with its reason
 
 ### Performance issues
 
-- Reduce number of zones (max 16 per stream recommended)
+- Reduce the number of zones (the limit is 16 per stream)
 - Simplify polygon shapes (fewer points)
 - Use larger zones rather than many small ones
-
-## Future Enhancements
-
-Potential future improvements:
-
-- Zone crossing detection and counting
-- Heatmap generation from zone detections
-- Zone-based alerts and notifications
-- Time-based zone activation
-- Zone templates for common scenarios
-- Zone analytics and statistics
-

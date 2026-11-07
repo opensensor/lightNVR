@@ -2177,13 +2177,8 @@ retention behavior are in [ONVIF Detection](ONVIF_DETECTION.md).
 
 ### Motion Recording
 
-#### Test Motion Event
-
-```
-POST /api/motion/test/{stream_name}
-```
-
-Triggers a test motion event for debugging.
+To raise a test motion event, use [`POST /api/motion/trigger`](#trigger-motion-event)
+with `"action": "pulse"`.
 
 ### HLS Streaming
 

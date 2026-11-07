@@ -4,7 +4,7 @@ This document explains how SOD (an embedded computer vision & machine learning l
 
 ## Overview
 
-SOD is used for object detection in video streams. In previous versions of LightNVR, SOD was directly linked into the binary. Now, SOD is compiled as a standalone library that is optional and used only when available.
+SOD provides embedded motion and object detection that runs inside LightNVR, with no external detection service. It is built as a separate shared library (`libsod.so`) and is optional.
 
 ## Building Options
 
@@ -106,8 +106,8 @@ If you build LightNVR without SOD support, you can still install SOD separately:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/lightnvr.git
-cd lightnvr
+git clone https://github.com/opensensor/lightNVR.git
+cd lightNVR
 
 # Build just the SOD library
 mkdir -p build_sod
@@ -133,7 +133,7 @@ The following detection model types are supported:
 - TensorFlow Lite models (`.tflite` extension)
 
 SOD and SOD RealNet models require SOD to be available (either built-in or dynamically loaded).
-TensorFlow Lite models require the TensorFlow Lite library to be available.
+TensorFlow Lite models run on the in-process LiteRT engine, which needs a build with `-DENABLE_LITERT=ON` and `[detection_engine] enabled = true` (see [Configuration](CONFIGURATION.md#in-process-litert-engine)). For larger models, an external detector such as light-object-detect is usually the better fit; see [Detection Engines](DETECTION_ENGINES.md).
 
 ## Unified Detection Interface
 
@@ -141,22 +141,12 @@ LightNVR now includes a unified detection interface that supports both RealNet a
 
 For more information, see [SOD Unified Detection](internal/SOD_UNIFIED_DETECTION.md).
 
-### Test Programs
+### Test program
 
-Two test programs are provided to demonstrate SOD integration:
+`test_sod_unified` runs a RealNet or CNN model against a still image, detecting the model
+type automatically. It is built with the test suite (`-DBUILD_TESTS=ON`) when SOD is enabled:
 
-1. `test_sod_realnet` - Tests SOD RealNet face detection
-   ```bash
-   ./test_sod_realnet test.jpg face.realnet.sod output.jpg
-   ```
-
-2. `test_sod_unified` - Tests both RealNet and CNN face detection with auto-detection of model type
-   ```bash
-   # For RealNet models
-   ./test_sod_unified test.jpg face.realnet.sod output.jpg
-   
-   # For CNN models
-   ./test_sod_unified test.jpg face_cnn.sod output.jpg
-   ```
-
-These test programs are built automatically when SOD support is enabled.
+```bash
+./test_sod_unified test.jpg face.realnet.sod output.jpg
+./test_sod_unified test.jpg face_cnn.sod output.jpg
+```

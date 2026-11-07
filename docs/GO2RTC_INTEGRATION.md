@@ -210,7 +210,8 @@ LightNVR includes a health monitoring system for go2rtc:
 - **Auto-restart**: Automatically restarts go2rtc if it becomes unresponsive
 
 Key files:
-- `src/video/go2rtc/go2rtc_health.c`: Health monitoring implementation
+- `src/video/go2rtc/go2rtc_integration.c`: the unified health monitor thread and `go2rtc_integration_check_health()`
+- `src/video/go2rtc/go2rtc_process.c`: starting, supervising and restarting the go2rtc child process
 
 ## Frame Extraction for Detection
 

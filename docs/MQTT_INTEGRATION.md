@@ -351,6 +351,37 @@ automation:
                 password: "your_lightnvr_password"
 ```
 
+## Home Assistant Auto-Discovery
+
+With discovery on, Home Assistant creates LightNVR's entities itself; no YAML needed.
+
+```ini
+[mqtt]
+enabled = true
+broker_host = 192.168.1.10
+ha_discovery = true
+ha_discovery_prefix = homeassistant   ; must match Home Assistant's discovery prefix
+ha_snapshot_interval = 30             ; seconds between camera images, 0 = off
+```
+
+For each stream, LightNVR publishes retained discovery configs under
+`{ha_discovery_prefix}/.../lightnvr/...` for:
+
+| Entity | State topic | Behaviour |
+|---|---|---|
+| Camera `<stream>` | `{topic_prefix}/cameras/<stream>/snapshot` | A JPEG snapshot every `ha_snapshot_interval` seconds |
+| Binary sensor `<stream> Motion` (`device_class: motion`) | `{topic_prefix}/cameras/<stream>/motion` | `ON` when a detection arrives, `OFF` 30 seconds after the last one |
+| Sensor `<stream> Detections` | `{topic_prefix}/cameras/<stream>/detection_count` | Objects in the latest detection |
+
+Per-class counts are also published to `{topic_prefix}/cameras/<stream>/<label>` (for
+example `.../cameras/driveway/person`). Two installation-wide sensors, **System Health**
+and **Active Health Incidents**, come from the [health presence](mqtt/system-health.md)
+messages. Every entity uses `{topic_prefix}/availability` (`online`/`offline`) for
+availability, so it goes unavailable when LightNVR disconnects.
+
+Stream names are sanitized for topics. Discovery configs are retained, so deleting a stream
+in LightNVR leaves its entities in Home Assistant until you remove them there.
+
 ## Integration Examples
 
 ### Home Assistant
@@ -359,7 +390,8 @@ automation:
 > see [LightNVR on Home Assistant](HOME_ASSISTANT.md). The MQTT setup below is the same
 > either way.
 
-Add the following to your `configuration.yaml`:
+Prefer [auto-discovery](#home-assistant-auto-discovery) above. To define entities by
+hand instead, add the following to your `configuration.yaml`:
 
 ```yaml
 mqtt:

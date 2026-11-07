@@ -40,15 +40,6 @@ int get_protected_recordings_count(const char *stream_name);
 // Apply retention policy for all streams
 int apply_retention_policy(void);
 
-// Apply retention policy for specific stream
-static int apply_retention_policy_for_stream(const char *stream_name);
-
-// Enforce storage quota for stream
-static int enforce_storage_quota(const char *stream_name, uint64_t max_mb);
-
-// Cleanup orphaned files and DB entries
-static int cleanup_orphaned_files(void);
-static int cleanup_orphaned_db_entries(void);
 ```
 
 ## REST API Endpoints
