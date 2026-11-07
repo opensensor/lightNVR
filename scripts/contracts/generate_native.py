@@ -56,6 +56,22 @@ def validate(doc, projected=False):
             else:
                 raise ValueError(f'Unresolved local reference: {reference}')
         return target
+    def resolve_path_item(path_item):
+        if not isinstance(path_item, dict):
+            raise ValueError('Path item must be an object')
+        seen = set()
+        resolved = path_item
+        while '$ref' in resolved:
+            reference = resolved.get('$ref')
+            if not isinstance(reference, str) or not reference.startswith('#/'):
+                raise ValueError('Only local JSON Pointer references are supported')
+            if reference in seen:
+                raise ValueError(f'Cyclic local reference: {reference}')
+            seen.add(reference)
+            resolved = resolve_pointer(reference)
+            if not isinstance(resolved, dict):
+                raise ValueError('Path item must be an object')
+        return resolved
     named_maps = {'properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas',
                   'schemas', 'securitySchemes', 'requestBodies', 'parameters', 'responses',
                   'links', 'callbacks', 'pathItems', 'examples', 'encoding', 'headers', 'paths'}
@@ -99,9 +115,8 @@ def validate(doc, projected=False):
     walk(doc)
     ids = set()
     for item in doc['paths'].values():
-        if not isinstance(item, dict):
-            raise ValueError('Path item must be an object')
-        for method, operation in item.items():
+        resolved_item = resolve_path_item(item)
+        for method, operation in resolved_item.items():
             if method not in METHODS:
                 continue
             if not isinstance(operation, dict) or not isinstance(operation.get('operationId'), str):
