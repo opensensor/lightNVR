@@ -47,7 +47,7 @@
   ],
   "x-lightnvr-coverage": {
     "partial": true,
-    "canonical_revision": "eng-api-recording-reads-v3",
+    "canonical_revision": "eng-api-fleet-writes-v1",
     "covered_operations": [
       "listStreams",
       "getStreamFull",
@@ -106,6 +106,37 @@
       "listFleetTags",
       "getFleetTag",
       "getCameraTagAssignments",
+      "createFleetLocation",
+      "updateFleetLocation",
+      "deleteFleetLocation",
+      "createFleetTag",
+      "updateFleetTag",
+      "deleteFleetTag",
+      "createCameraCollection",
+      "updateCameraCollection",
+      "deleteCameraCollection",
+      "setCameraLocation",
+      "setCameraTags",
+      "mergeFleetTag",
+      "setCameraCollectionMembers",
+      "createFleetView",
+      "updateFleetView",
+      "deleteFleetView",
+      "listLiveLayouts",
+      "createLiveLayout",
+      "updateLiveLayout",
+      "deleteLiveLayout",
+      "listCameraFavorites",
+      "addCameraFavorite",
+      "deleteCameraFavorite",
+      "listFloorPlans",
+      "getFloorPlan",
+      "createFloorPlan",
+      "updateFloorPlan",
+      "deleteFloorPlan",
+      "getFloorPlanBackground",
+      "setFloorPlanBackground",
+      "deleteFloorPlanBackground",
       "listAdminUsers",
       "createAdminUser",
       "getAdminUser",
@@ -127,7 +158,7 @@
       "getAuditSettings",
       "updateAuditSettings"
     ],
-    "description": "Partial contract coverage: Streams pilot, identity/token, recording reads and twelve recording action/job operations. The covered operation list is independent of authorization; omitted projected operations may be covered but denied. Uncovered APIs are not permission decisions. Identity includes session/trusted-device lifecycle, MFA completion/enrollment, password change and legacy logout. F3 adds user administration, role/policy management, action simulation and audit events/settings/CSV; all direct targets remain independently authorized."
+    "description": "Reviewed operations are enumerated in covered_operations. Discovery is filtered independently by current authority; coverage never grants access."
   },
   "x-lightnvr-validators": [
     "StreamSummaryPage",
@@ -207,6 +238,43 @@
     "CameraCollectionsResponse",
     "CameraCollectionMembersResponse",
     "CameraCollectionPreview",
+    "FleetMutationAck",
+    "FleetLocationCreate",
+    "FleetLocationUpdate",
+    "CameraLocationAssignmentRequest",
+    "CameraLocationAssignment",
+    "FleetTagCreate",
+    "FleetTagUpdate",
+    "FleetTagMergeRequest",
+    "FleetTagMergeResult",
+    "CameraTagAssignmentsRequest",
+    "CameraCollectionCreate",
+    "CameraCollectionUpdate",
+    "CameraCollectionMembersRequest",
+    "FleetViewCreate",
+    "FleetViewUpdate",
+    "FleetRevisionRequest",
+    "LiveCameraSlot",
+    "LiveLayoutCreate",
+    "LiveLayoutUpdate",
+    "LiveLayout",
+    "LiveLayoutsResponse",
+    "CameraFavorite",
+    "CameraFavoritesResponse",
+    "CameraFavoriteRemoval",
+    "FloorSketchRect",
+    "FloorSketchWall",
+    "FloorSketchArea",
+    "FloorSketchLabel",
+    "FloorSketch",
+    "FloorPlanCamera",
+    "FloorPlanCameraRequest",
+    "FloorPlanCreate",
+    "FloorPlanUpdate",
+    "FloorPlan",
+    "FloorPlansResponse",
+    "FloorPlanDeletion",
+    "CameraUuid",
     "AdminUser",
     "AdminUsers",
     "AdminUserCreate",
@@ -5867,6 +5935,114 @@
           }
         },
         "description": "Owned and shared saved filter configurations; up to 256 list entries. Stored selector references do not grant camera access and must be reauthorized on query. Existing can_share reflects the legacy admin role, not arbitrary action grants. Mutation contracts remain outside this read slice."
+      },
+      "post": {
+        "operationId": "createFleetView",
+        "summary": "CreateFleetView",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetSavedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetViewCreate"
+              }
+            }
+          }
+        }
       }
     },
     "/api/fleet/views/{uuid}": {
@@ -5968,6 +6144,242 @@
           }
         ],
         "description": "Owned and shared saved filter configurations; up to 256 list entries. Stored selector references do not grant camera access and must be reauthorized on query. Existing can_share reflects the legacy admin role, not arbitrary action grants. Mutation contracts remain outside this read slice."
+      },
+      "put": {
+        "operationId": "updateFleetView",
+        "summary": "UpdateFleetView",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetSavedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetViewUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFleetView",
+        "summary": "DeleteFleetView",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMutationAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetRevisionRequest"
+              }
+            }
+          }
+        }
       }
     },
     "/api/camera-collections": {
@@ -6058,6 +6470,120 @@
           }
         },
         "description": "Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation."
+      },
+      "post": {
+        "operationId": "createCameraCollection",
+        "summary": "CreateCameraCollection",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraCollection"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CameraCollectionCreate"
+              }
+            }
+          }
+        }
       }
     },
     "/api/camera-collections/{uuid}": {
@@ -6159,6 +6685,244 @@
           }
         ],
         "description": "Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation."
+      },
+      "put": {
+        "operationId": "updateCameraCollection",
+        "summary": "UpdateCameraCollection",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraCollection"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CameraCollectionUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCameraCollection",
+        "summary": "DeleteCameraCollection",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMutationAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
       }
     },
     "/api/camera-collections/{uuid}/members": {
@@ -6270,6 +7034,130 @@
           }
         ],
         "description": "Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation."
+      },
+      "put": {
+        "operationId": "setCameraCollectionMembers",
+        "summary": "SetCameraCollectionMembers",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraCollectionMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CameraCollectionMembersRequest"
+              }
+            }
+          }
+        }
       }
     },
     "/api/camera-collections/{uuid}/preview": {
@@ -6460,7 +7348,121 @@
             }
           }
         },
-        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      },
+      "post": {
+        "operationId": "createFleetLocation",
+        "summary": "CreateFleetLocation",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetLocation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetLocationCreate"
+              }
+            }
+          }
+        }
       }
     },
     "/api/locations/{uuid}": {
@@ -6561,7 +7563,245 @@
             }
           }
         ],
-        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      },
+      "put": {
+        "operationId": "updateFleetLocation",
+        "summary": "UpdateFleetLocation",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetLocation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetLocationUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFleetLocation",
+        "summary": "DeleteFleetLocation",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMutationAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
       }
     },
     "/api/camera-tags": {
@@ -6651,7 +7891,121 @@
             }
           }
         },
-        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      },
+      "post": {
+        "operationId": "createFleetTag",
+        "summary": "CreateFleetTag",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetTag"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetTagCreate"
+              }
+            }
+          }
+        }
       }
     },
     "/api/camera-tags/{uuid}": {
@@ -6752,7 +8106,245 @@
             }
           }
         ],
-        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      },
+      "put": {
+        "operationId": "updateFleetTag",
+        "summary": "UpdateFleetTag",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetTag"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetTagUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFleetTag",
+        "summary": "DeleteFleetTag",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMutationAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
       }
     },
     "/api/cameras/{uuid}/tags": {
@@ -6859,7 +8451,2113 @@
             }
           }
         ],
-        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      },
+      "put": {
+        "operationId": "setCameraTags",
+        "summary": "SetCameraTags",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            },
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraTagAssignmentsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CameraTagAssignmentsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{uuid}/location": {
+      "put": {
+        "operationId": "setCameraLocation",
+        "summary": "SetCameraLocation",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraLocationAssignment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CameraLocationAssignmentRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/camera-tags/{uuid}/merge": {
+      "post": {
+        "operationId": "mergeFleetTag",
+        "summary": "MergeFleetTag",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetTagMergeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetTagMergeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/live/layouts": {
+      "get": {
+        "operationId": "listLiveLayouts",
+        "summary": "ListLiveLayouts",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLayoutsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply."
+      },
+      "post": {
+        "operationId": "createLiveLayout",
+        "summary": "CreateLiveLayout",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_identity"
+        },
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLayout"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Personal layouts are owner-managed. Only administrators share. Scoped tokens and demo identities cannot mutate. Camera slots must all be live.view-visible; columns times rows must not exceed 36 and slots cannot exceed capacity. Updates/deletion require current revision.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveLayoutCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/live/layouts/{uuid}": {
+      "put": {
+        "operationId": "updateLiveLayout",
+        "summary": "UpdateLiveLayout",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_identity"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLayout"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Personal layouts are owner-managed. Only administrators share. Scoped tokens and demo identities cannot mutate. Camera slots must all be live.view-visible; columns times rows must not exceed 36 and slots cannot exceed capacity. Updates/deletion require current revision.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveLayoutUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteLiveLayout",
+        "summary": "DeleteLiveLayout",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_identity"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMutationAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Personal layouts are owner-managed. Only administrators share. Scoped tokens and demo identities cannot mutate. Camera slots must all be live.view-visible; columns times rows must not exceed 36 and slots cannot exceed capacity. Updates/deletion require current revision.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetRevisionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/camera-favorites": {
+      "get": {
+        "operationId": "listCameraFavorites",
+        "summary": "ListCameraFavorites",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraFavoritesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply."
+      }
+    },
+    "/api/camera-favorites/{uuid}": {
+      "put": {
+        "operationId": "addCameraFavorite",
+        "summary": "AddCameraFavorite",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraFavorite"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteCameraFavorite",
+        "summary": "DeleteCameraFavorite",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_identity"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraFavoriteRemoval"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove only the current user favorite, including cameras no longer visible. Idempotent; scoped tokens and demo identities cannot mutate.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/live/plans": {
+      "get": {
+        "operationId": "listFloorPlans",
+        "summary": "ListFloorPlans",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorPlansResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply."
+      },
+      "post": {
+        "operationId": "createFloorPlan",
+        "summary": "CreateFloorPlan",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Shared plan library. Requires global camera.configure and a non-scoped identity; demo identities cannot mutate. Camera placements must be visible. Updates/deletion require current revision. Omitted sketch preserves it; null clears it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FloorPlanCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/live/plans/{uuid}": {
+      "get": {
+        "operationId": "getFloorPlan",
+        "summary": "GetFloorPlan",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateFloorPlan",
+        "summary": "UpdateFloorPlan",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Shared plan library. Requires global camera.configure and a non-scoped identity; demo identities cannot mutate. Camera placements must be visible. Updates/deletion require current revision. Omitted sketch preserves it; null clears it.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FloorPlanUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFloorPlan",
+        "summary": "DeleteFloorPlan",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorPlanDeletion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Shared plan library. Requires global camera.configure and a non-scoped identity; demo identities cannot mutate. Camera placements must be visible. Updates/deletion require current revision. Omitted sketch preserves it; null clears it.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetRevisionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/live/plans/{uuid}/background": {
+      "get": {
+        "operationId": "getFloorPlanBackground",
+        "summary": "GetFloorPlanBackground",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Exact uploaded PNG/JPEG bytes, accessible only when the plan is visible.",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "setFloorPlanBackground",
+        "summary": "SetFloorPlanBackground",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Image too large or too short.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported image content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Raw structurally validated PNG/JPEG, at most 786432 bytes. Atomic publication preserves previous bytes on invalid upload. Returns the new plan revision; no request revision is used.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/png": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 786432
+              }
+            },
+            "image/jpeg": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 786432
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFloorPlanBackground",
+        "summary": "DeleteFloorPlanBackground",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "non_scoped_global",
+          "requirements": [
+            {
+              "action": "camera.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation is not allowed for this principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
       }
     },
     "/api/auth/users": {
@@ -14330,6 +18028,1311 @@
           "sample"
         ],
         "additionalProperties": false
+      },
+      "FleetMutationAck": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "additionalProperties": false
+      },
+      "FleetLocationCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 63
+          },
+          "parent_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sort_order": {
+            "type": "number"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "FleetLocationUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 63
+          },
+          "parent_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sort_order": {
+            "type": "number"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "CameraLocationAssignmentRequest": {
+        "type": "object",
+        "properties": {
+          "location_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          }
+        },
+        "required": [
+          "location_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "CameraLocationAssignment": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "camera_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "location_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          }
+        },
+        "required": [
+          "success",
+          "camera_uuid",
+          "location_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "FleetTagCreate": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^(|#[0-9a-fA-F]{6})$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 511
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "FleetTagUpdate": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^(|#[0-9a-fA-F]{6})$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 511
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "FleetTagMergeRequest": {
+        "type": "object",
+        "properties": {
+          "target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          }
+        },
+        "required": [
+          "target_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "FleetTagMergeResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "source_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          }
+        },
+        "required": [
+          "success",
+          "source_uuid",
+          "target_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "CameraTagAssignmentsRequest": {
+        "type": "object",
+        "properties": {
+          "tag_uuids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CameraUuid"
+            },
+            "maxItems": 64
+          }
+        },
+        "required": [
+          "tag_uuids"
+        ],
+        "additionalProperties": false
+      },
+      "CameraCollectionCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 511
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "static",
+              "smart"
+            ]
+          },
+          "shared": {
+            "type": "boolean"
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "CameraCollectionUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 511
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "static",
+              "smart"
+            ]
+          },
+          "shared": {
+            "type": "boolean"
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "CameraCollectionMembersRequest": {
+        "type": "object",
+        "properties": {
+          "camera_uuids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CameraUuid"
+            },
+            "maxItems": 4096
+          }
+        },
+        "required": [
+          "camera_uuids"
+        ],
+        "additionalProperties": false
+      },
+      "FleetViewCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          },
+          "search": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sort_by": {
+            "enum": [
+              "name",
+              "camera_uuid",
+              "location",
+              "health",
+              "enabled",
+              "recording_mode",
+              "address"
+            ]
+          },
+          "sort_order": {
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "is_shared": {
+            "type": "boolean"
+          },
+          "collection_uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "selector"
+        ],
+        "additionalProperties": false
+      },
+      "FleetViewUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          },
+          "search": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sort_by": {
+            "enum": [
+              "name",
+              "camera_uuid",
+              "location",
+              "health",
+              "enabled",
+              "recording_mode",
+              "address"
+            ]
+          },
+          "sort_order": {
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "is_shared": {
+            "type": "boolean"
+          },
+          "collection_uuid": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "name",
+          "selector",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "FleetRevisionRequest": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "LiveCameraSlot": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          }
+        },
+        "required": [
+          "camera_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "LiveLayoutCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "is_shared": {
+            "type": "boolean"
+          },
+          "location_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "all",
+              "live",
+              "offline",
+              "never_connected",
+              "disabled"
+            ]
+          },
+          "columns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "camera_slots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiveCameraSlot"
+            },
+            "maxItems": 36
+          }
+        },
+        "required": [
+          "name",
+          "availability",
+          "columns",
+          "rows",
+          "camera_slots"
+        ],
+        "additionalProperties": false
+      },
+      "LiveLayoutUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "is_shared": {
+            "type": "boolean"
+          },
+          "location_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "all",
+              "live",
+              "offline",
+              "never_connected",
+              "disabled"
+            ]
+          },
+          "columns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "camera_slots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiveCameraSlot"
+            },
+            "maxItems": 36
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "name",
+          "availability",
+          "columns",
+          "rows",
+          "camera_slots",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "LiveLayout": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "is_shared": {
+            "type": "boolean"
+          },
+          "location_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "all",
+              "live",
+              "offline",
+              "never_connected",
+              "disabled"
+            ]
+          },
+          "columns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "camera_slots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiveCameraSlot"
+            },
+            "maxItems": 36
+          },
+          "uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "owned": {
+            "type": "boolean"
+          },
+          "partially_authorized": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "is_shared",
+          "location_uuid",
+          "availability",
+          "columns",
+          "rows",
+          "camera_slots",
+          "uuid",
+          "owned",
+          "partially_authorized",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false
+      },
+      "LiveLayoutsResponse": {
+        "type": "object",
+        "properties": {
+          "layouts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiveLayout"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "can_share": {
+            "type": "boolean"
+          },
+          "can_modify": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "layouts",
+          "count",
+          "can_share",
+          "can_modify"
+        ],
+        "additionalProperties": false
+      },
+      "CameraFavorite": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "camera_uuid",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "CameraFavoritesResponse": {
+        "type": "object",
+        "properties": {
+          "favorites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CameraFavorite"
+            }
+          },
+          "can_modify": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "favorites",
+          "can_modify"
+        ],
+        "additionalProperties": false
+      },
+      "CameraFavoriteRemoval": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "removed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "removed"
+        ],
+        "additionalProperties": false
+      },
+      "FloorSketchRect": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 31
+          },
+          "tone": {
+            "type": "string",
+            "enum": [
+              "slate",
+              "blue",
+              "green",
+              "amber",
+              "red",
+              "violet"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "const": "rect"
+          },
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "w": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "h": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "filled": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 95
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "additionalProperties": false
+      },
+      "FloorSketchWall": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 31
+          },
+          "tone": {
+            "type": "string",
+            "enum": [
+              "slate",
+              "blue",
+              "green",
+              "amber",
+              "red",
+              "violet"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "const": "wall"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 2,
+            "maxItems": 64
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 95
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "points"
+        ],
+        "additionalProperties": false
+      },
+      "FloorSketchArea": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 31
+          },
+          "tone": {
+            "type": "string",
+            "enum": [
+              "slate",
+              "blue",
+              "green",
+              "amber",
+              "red",
+              "violet"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "const": "area"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 3,
+            "maxItems": 64
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 95
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "points"
+        ],
+        "additionalProperties": false
+      },
+      "FloorSketchLabel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 31
+          },
+          "tone": {
+            "type": "string",
+            "enum": [
+              "slate",
+              "blue",
+              "green",
+              "amber",
+              "red",
+              "violet"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "const": "label"
+          },
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 95
+          },
+          "size": {
+            "type": "string",
+            "enum": [
+              "sm",
+              "md",
+              "lg"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "x",
+          "y",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "FloorSketch": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "const": 1
+          },
+          "shapes": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/FloorSketchRect"
+                },
+                {
+                  "$ref": "#/components/schemas/FloorSketchWall"
+                },
+                {
+                  "$ref": "#/components/schemas/FloorSketchArea"
+                },
+                {
+                  "$ref": "#/components/schemas/FloorSketchLabel"
+                }
+              ]
+            },
+            "maxItems": 400
+          }
+        },
+        "required": [
+          "version",
+          "shapes"
+        ],
+        "additionalProperties": false
+      },
+      "FloorPlanCamera": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "fov": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 180
+          }
+        },
+        "required": [
+          "camera_uuid",
+          "x",
+          "y",
+          "rotation",
+          "fov"
+        ],
+        "additionalProperties": false
+      },
+      "FloorPlanCameraRequest": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "fov": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 180
+          }
+        },
+        "required": [
+          "camera_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "FloorPlanCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "location_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_plan_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canvas_width": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 4000
+          },
+          "canvas_height": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 4000
+          },
+          "sketch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FloorSketch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cameras": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FloorPlanCameraRequest"
+            },
+            "maxItems": 1000
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "FloorPlanUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "location_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_plan_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canvas_width": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 4000
+          },
+          "canvas_height": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 4000
+          },
+          "sketch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FloorSketch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cameras": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FloorPlanCameraRequest"
+            },
+            "maxItems": 1000
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "name",
+          "cameras",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "FloorPlan": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "location_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_plan_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canvas_width": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 4000
+          },
+          "canvas_height": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 4000
+          },
+          "sketch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FloorSketch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cameras": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FloorPlanCamera"
+            },
+            "maxItems": 1000
+          },
+          "uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "background_mime": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              null
+            ]
+          },
+          "partially_authorized": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "can_modify": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location_uuid",
+          "parent_plan_uuid",
+          "canvas_width",
+          "canvas_height",
+          "sketch",
+          "cameras",
+          "uuid",
+          "background_mime",
+          "partially_authorized",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false
+      },
+      "FloorPlansResponse": {
+        "type": "object",
+        "properties": {
+          "plans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FloorPlan"
+            }
+          },
+          "can_modify": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "plans",
+          "can_modify"
+        ],
+        "additionalProperties": false
+      },
+      "FloorPlanDeletion": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "additionalProperties": false
+      },
+      "CameraUuid": {
+        "type": "string",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
       },
       "AdminUser": {
         "type": "object",

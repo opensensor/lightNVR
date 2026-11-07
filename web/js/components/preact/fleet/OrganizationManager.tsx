@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
+import { fleetWriteJSON } from '../../../api/fleetWrites.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog } from '../common/ModalDialog.tsx';
 import { buildLocationRows, locationParentOptions } from './fleetOrganization.ts';
@@ -37,7 +37,7 @@ function LocationEditor({ editor, locations, onSaved, onCancel, t }: LocationEdi
     event.preventDefault();
     setSaving(true);
     try {
-      await fetchJSON(item ? `/api/locations/${item.uuid}` : '/api/locations', {
+      await fleetWriteJSON(item ? `/api/locations/${item.uuid}` : '/api/locations', {
         method: item ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -108,7 +108,7 @@ function LocationsTab({ locations, loading, onRefresh, t }: LocationsTabProps) {
 
   const deleteLocation = async (location: FleetLocation) => {
     try {
-      await fetchJSON(`/api/locations/${location.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
+      await fleetWriteJSON(`/api/locations/${location.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
       showStatusMessage(t('fleet.organization.locationDeleted'), 'success');
       await onRefresh();
     } catch (error) {
@@ -204,12 +204,12 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }: TagEditorProps) {
     setSaving(true);
     try {
       if (merging) {
-        await fetchJSON(`/api/camera-tags/${item!.uuid}/merge`, {
+        await fleetWriteJSON(`/api/camera-tags/${item!.uuid}/merge`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ target_uuid: form.target_uuid }), timeout: 15000, retries: 1,
         });
       } else {
-        await fetchJSON(item ? `/api/camera-tags/${item.uuid}` : '/api/camera-tags', {
+        await fleetWriteJSON(item ? `/api/camera-tags/${item.uuid}` : '/api/camera-tags', {
           method: item ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ label: form.label.trim(), color: form.color.trim(), description: form.description.trim() }),
           timeout: 15000, retries: 1,
@@ -276,7 +276,7 @@ function TagsTab({ tags, loading, onRefresh, t }: TagsTabProps) {
   const sortedTags = useMemo(() => [...tags].sort((left, right) => left.label.localeCompare(right.label)), [tags]);
   const deleteTag = async (tag: FleetTag) => {
     try {
-      await fetchJSON(`/api/camera-tags/${tag.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
+      await fleetWriteJSON(`/api/camera-tags/${tag.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
       showStatusMessage(t('fleet.organization.tagDeleted'), 'success');
       await onRefresh();
     } catch (error) {

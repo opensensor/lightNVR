@@ -1,3 +1,4 @@
+import { fleetWriteJSON } from '../../../api/fleetWrites.ts';
 import { listFleetLocations } from '../../../api/fleet.ts';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.ts';
@@ -145,12 +146,12 @@ export function LiveOperatorNavigator({
   });
   const layoutsQuery = useQuery<LiveLayoutsResponse>({
     queryKey: ['live-layouts'],
-    queryFn: ({ signal }) => fetchJSON('/api/live/layouts', { signal }),
+    queryFn: ({ signal }) => fleetWriteJSON('/api/live/layouts', { signal }),
     staleTime: 15000,
   });
   const plansQuery = useQuery<FloorPlansResponse>({
     queryKey: ['operator-floor-plans'],
-    queryFn: ({ signal }) => fetchJSON('/api/live/plans', { signal }),
+    queryFn: ({ signal }) => fleetWriteJSON('/api/live/plans', { signal }),
     staleTime: 15000,
   });
 
@@ -329,7 +330,7 @@ export function LiveOperatorNavigator({
     const isShared = layoutsQuery.data?.can_share ? shareRequested : false;
     setBusy(true);
     try {
-      const layout = await fetchJSON<LiveLayout>('/api/live/layouts', {
+      const layout = await fleetWriteJSON<LiveLayout>('/api/live/layouts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildLiveLayoutPayload({
@@ -381,7 +382,7 @@ export function LiveOperatorNavigator({
           }),
           camera_slots: layout.camera_slots || [],
         };
-      const updated = await fetchJSON<LiveLayout>(`/api/live/layouts/${layout.uuid}`, {
+      const updated = await fleetWriteJSON<LiveLayout>(`/api/live/layouts/${layout.uuid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...payload, revision: layout.revision }),
@@ -408,7 +409,7 @@ export function LiveOperatorNavigator({
   const deleteLayout = async (layout: LiveLayout) => {
     setBusy(true);
     try {
-      await fetchJSON(`/api/live/layouts/${layout.uuid}`, {
+      await fleetWriteJSON(`/api/live/layouts/${layout.uuid}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ revision: layout.revision }),

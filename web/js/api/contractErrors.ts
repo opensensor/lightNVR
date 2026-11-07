@@ -2,10 +2,11 @@
 export type StreamOperation = 'listStreams' | 'listStreamSummaries' | 'getStreamFull' | 'updateStream';
 
 import type { AdministrationOperation } from './administration.ts';
+import type { FleetWorkspaceOperation } from './fleetWrites.ts';
 import type { FleetOperation } from './fleet.ts';
 import type { AuthenticationOperation } from './authentication.ts';
 
-type ContractOperation = AdministrationOperation | FleetOperation | AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
+type ContractOperation = AdministrationOperation | FleetWorkspaceOperation | FleetOperation | AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
 
 export class ContractValidationError extends Error {
   readonly name = 'ContractValidationError';
@@ -19,7 +20,7 @@ export class ContractValidationError extends Error {
     readonly issue: 'shape' | 'json' | 'status' = 'shape',
   ) {
     super(`Invalid ${operation} ${phase}: ${schema} (${issue}).`);
-    this.mayHaveApplied = ['createAdminUser', 'updateAdminUser', 'deleteAdminUser', 'createLegacyApiKey', 'setUserPasswordLock', 'clearUserLoginLockout', 'createAuthorizationRole', 'updateAuthorizationRole', 'deleteAuthorizationRole', 'setUserAuthorizationPolicy', 'updateAuditSettings', 'updateStream', 'revokeAuthSession', 'revokeTrustedDevice', 'login', 'logout', 'completeTotpLogin', 'setupTotp', 'verifyTotp', 'disableTotp', 'changePassword'].includes(operation) && phase === 'response';
+    this.mayHaveApplied = ['createFleetLocation', 'updateFleetLocation', 'deleteFleetLocation', 'createFleetTag', 'updateFleetTag', 'deleteFleetTag', 'createCameraCollection', 'updateCameraCollection', 'deleteCameraCollection', 'setCameraLocation', 'setCameraTags', 'mergeFleetTag', 'setCameraCollectionMembers', 'createFleetView', 'updateFleetView', 'deleteFleetView', 'createLiveLayout', 'updateLiveLayout', 'deleteLiveLayout', 'addCameraFavorite', 'deleteCameraFavorite', 'createFloorPlan', 'updateFloorPlan', 'deleteFloorPlan', 'setFloorPlanBackground', 'deleteFloorPlanBackground', 'updateStream', 'revokeAuthSession', 'revokeTrustedDevice', 'login', 'logout', 'completeTotpLogin', 'setupTotp', 'verifyTotp', 'disableTotp', 'changePassword', 'createAdminUser', 'updateAdminUser', 'deleteAdminUser', 'createLegacyApiKey', 'setUserPasswordLock', 'clearUserLoginLockout', 'createAuthorizationRole', 'updateAuthorizationRole', 'deleteAuthorizationRole', 'setUserAuthorizationPolicy', 'updateAuditSettings'].includes(operation) && phase === 'response';
   }
 }
 
