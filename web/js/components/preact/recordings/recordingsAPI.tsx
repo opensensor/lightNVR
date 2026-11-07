@@ -444,7 +444,7 @@ export const recordingsAPI = {
   deleteSelectedRecordings: async (selectedRecordings: RecordingSelection): Promise<BatchDeleteCounts> => {
     const selectedIds = Object.entries(selectedRecordings)
       .filter(([id, isSelected]) => isSelected)
-      .map(([id]) => parseInt(id, 10));
+      .map(([id]) => id);
 
     if (selectedIds.length === 0) {
       showStatusMessage(t('recordings.noRecordingsSelected'));
