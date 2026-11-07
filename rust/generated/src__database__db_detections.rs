@@ -275,6 +275,18 @@ unsafe extern "C" fn store_detections_with_source(
         );
         return -1 as ::core::ffi::c_int;
     }
+    if (*result).count < 0 as ::core::ffi::c_int || (*result).count > MAX_DETECTIONS {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Invalid detection count: %d (expected 0..%d)\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            (*result).count,
+            20 as ::core::ffi::c_int,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
     if timestamp == 0 as time_t {
         timestamp = time(::core::ptr::null_mut::<time_t>());
     }

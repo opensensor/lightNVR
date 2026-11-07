@@ -269,9 +269,9 @@
     },
     {
       "c": "src/database/db_detections.c",
-      "c_sha256": "67d706fec7bfba7ecd163e9a7073e5570f611b14fb69c5ab3eb1ac2e5f6e4355",
+      "c_sha256": "9df9543bbc74df2d7f422631be32b5be460fde98296ae2674bda007aae87de31",
       "rust": "generated/src__database__db_detections.rs",
-      "rust_sha256": "5b7ea2f437ade7610eeb73ee40aaa1816b71c87818b1ea7245be0666f215e1d8",
+      "rust_sha256": "2a1f3cddb49a13e935bf5a7dcadfe9a59eca282c526ea22d9952c34080620198",
       "adapted": false
     },
     {
@@ -1473,9 +1473,9 @@
     },
     {
       "c": "src/web/api_handlers_motion.c",
-      "c_sha256": "b5161686a7602295db0455a8195110f12204fc0d9d120ab46cd75103de43eaf5",
+      "c_sha256": "f45e8b794bf1fa7a17b1ec994bf7459d556a746eb715e7011573584a10fcaf6b",
       "rust": "generated/src__web__api_handlers_motion.rs",
-      "rust_sha256": "61a9bbfa4c657b9e40ebbb609db643837d706a444f39112536595ee45e396d8c",
+      "rust_sha256": "0d6d8de7fc0799e802ff3a7cf22a50ec56b8cbb8d4dfa0295db22098681a8cbb",
       "adapted": false
     },
     {
@@ -1487,9 +1487,9 @@
     },
     {
       "c": "src/web/api_handlers_openapi.c",
-      "c_sha256": "238693c2204ad0ae5c702e59173df57a61d68f54c7dc1ae2a7d221843d9956cf",
+      "c_sha256": "24a7f45bda510214f89f5d12cf395fe8df2b97b28dfc920fa73705fe18d3fbe5",
       "rust": "generated/src__web__api_handlers_openapi.rs",
-      "rust_sha256": "117dcb18e5ef8de4f165d26ce77e23bcf1baf804d0bcfc8fa99bbe9e369afd9f",
+      "rust_sha256": "b6f545fe89566ab740378848dd9b42088e8dd3cf2e1dd8e28a6901007748ae54",
       "adapted": false
     },
     {
@@ -1522,16 +1522,16 @@
     },
     {
       "c": "src/web/api_handlers_recordings_backend_agnostic.c",
-      "c_sha256": "9355feac2e79eeb01419fe346bcae8f525cb504f5d2bd1ee3172b5d737a96722",
+      "c_sha256": "0a493c562c0a879f892029adfde79f9c6ed0219dfecde074ffb4ab438764e4eb",
       "rust": "generated/src__web__api_handlers_recordings_backend_agnostic.rs",
-      "rust_sha256": "c6ba8b36669baa679278c0472f0eb57d045abb1b028e62352102d5266e224a5a",
+      "rust_sha256": "2866b7f1adc0110fa3627d7c27b0a9fc1db51d25a64e80c525a6bcffdda4a723",
       "adapted": false
     },
     {
       "c": "src/web/api_handlers_recordings_batch_download.c",
-      "c_sha256": "b839a2ee4323e4b76414c9d07c27d3612ae56aced69328b561c61519c9f57c41",
+      "c_sha256": "036acc396cd9c9a752ec63aa10a2698427876b6bfcdf3e347192df64e36ef44e",
       "rust": "generated/src__web__api_handlers_recordings_batch_download.rs",
-      "rust_sha256": "3f03da820976f10eb9005fef5e43afb742448fe771cd206cd96230e385acdbb0",
+      "rust_sha256": "15037ca2be91c818fb5bb6d22e593f2e4b4e20f52e15e1b75bd3dd47968b25e1",
       "adapted": false
     },
     {
@@ -1704,9 +1704,9 @@
     },
     {
       "c": "src/web/api_handlers_timeline.c",
-      "c_sha256": "d8455ae2a91f45027ace0052c9db24e39b70325954027fda2c41ade5c4a43643",
+      "c_sha256": "fcf56fbafa4a16c3b81af9b1141bea2abeda5f3de28038f5ee78748db895cb6f",
       "rust": "generated/src__web__api_handlers_timeline.rs",
-      "rust_sha256": "07efb8a2cd2772b20f220ec88457c22737b8bbdd885097711b36243ea8cd0aaf",
+      "rust_sha256": "237fcf79de6f14f649ebc92705e4e3148807a066c5205322616cb33416caced7",
       "adapted": false
     },
     {
@@ -1843,6 +1843,13 @@
       "adapted": true
     },
     {
+      "c": "src/web/recording_id.c",
+      "c_sha256": "cc3d44491d89bc5743619349591dca23322f8df179cd2f84d71feb459ef03ecd",
+      "rust": "generated/src__web__recording_id.rs",
+      "rust_sha256": "8e2b14f6f120e419cfa32ea49bd136465c13800433c8e0158672156df08b1122",
+      "adapted": false
+    },
+    {
       "c": "src/web/recording_source.c",
       "c_sha256": "4c2fa553bdbcb77fec5a70a97c3d33885d863541b434a1265a00ba45a2202c3f",
       "rust": "generated/src__web__recording_source.rs",
@@ -1858,9 +1865,9 @@
     },
     {
       "c": "src/web/request_response.c",
-      "c_sha256": "89aaff3359076817a5cca8ec156f0960eb2f0844f23fde1163032edca6debc72",
+      "c_sha256": "e50497861943078d9dea3ed138c98bb9e17e9bd2e5527e117a5a2cad3d80363a",
       "rust": "generated/src__web__request_response.rs",
-      "rust_sha256": "89783d6536574c1f91a683e49b917119c217e7e5939ee86e98525530deeb9672",
+      "rust_sha256": "f7dbd2fc8026ea6063aef5b3b92f667cd4d8f36726d6469b9405da97b1b9a5f5",
       "adapted": false
     },
     {

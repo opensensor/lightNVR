@@ -82,7 +82,6 @@ unsafe extern "C" {
         object: *const cJSON,
         string: *const ::core::ffi::c_char,
     ) -> *mut cJSON;
-    unsafe fn cJSON_IsNumber(item: *const cJSON) -> cJSON_bool;
     unsafe fn cJSON_IsString(item: *const cJSON) -> cJSON_bool;
     unsafe fn cJSON_IsArray(item: *const cJSON) -> cJSON_bool;
     unsafe fn cJSON_CreateObject() -> *mut cJSON;
@@ -119,6 +118,7 @@ unsafe extern "C" {
         content_type: *const ::core::ffi::c_char,
         extra_headers: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
+    unsafe fn recording_id_parse_json(item: *const cJSON, id: *mut uint64_t) -> bool;
     unsafe fn httpd_parse_json_body(req: *const http_request_t) -> *mut cJSON;
     unsafe fn httpd_get_effective_client_ip(
         req: *const http_request_t,
@@ -1956,12 +1956,14 @@ pub unsafe extern "C" fn handle_batch_download_recordings(
     {
         filename_raw = (*r#fn).valuestring;
     }
+    let mut parsed_ids: [uint64_t; 200] = [0; 200];
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < count {
         let mut item: *mut cJSON = cJSON_GetArrayItem(ids_arr, i);
-        if cJSON_IsNumber(item) == 0
-            || (*item).valuedouble <= 0 as ::core::ffi::c_int as ::core::ffi::c_double
-        {
+        if !recording_id_parse_json(
+            item,
+            (&raw mut parsed_ids as *mut uint64_t).offset(i as isize),
+        ) {
             cJSON_Delete(json);
             http_response_set_json_error(
                 res,
@@ -1995,7 +1997,7 @@ pub unsafe extern "C" fn handle_batch_download_recordings(
             disk_pressure_eligible: false,
             schedule_restricted: 0,
         };
-        if get_recording_metadata_by_id((*item).valuedouble as uint64_t, &raw mut recording)
+        if get_recording_metadata_by_id(parsed_ids[i as usize], &raw mut recording)
             != 0 as ::core::ffi::c_int
         {
             cJSON_Delete(json);
@@ -2145,12 +2147,7 @@ pub unsafe extern "C" fn handle_batch_download_recordings(
     (*job).is_active = r#true != 0;
     let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i_0 < count {
-        let mut item_0: *mut cJSON = cJSON_GetArrayItem(ids_arr, i_0);
-        (*job).ids[i_0 as usize] = (if cJSON_IsNumber(item_0) != 0 {
-            (*item_0).valuedouble
-        } else {
-            0 as ::core::ffi::c_int as ::core::ffi::c_double
-        }) as uint64_t;
+        (*job).ids[i_0 as usize] = parsed_ids[i_0 as usize];
         i_0 += 1;
     }
     let mut job_id: [::core::ffi::c_char; 64] = [0; 64];

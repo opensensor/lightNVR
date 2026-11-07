@@ -6,6 +6,7 @@ unsafe extern "C" {
         __format: *const ::core::ffi::c_char,
         ...
     ) -> ::core::ffi::c_int;
+    unsafe fn __ctype_b_loc() -> *mut *const ::core::ffi::c_ushort;
     unsafe fn time(__timer: *mut time_t) -> time_t;
     unsafe fn difftime(__time1: time_t, __time0: time_t) -> ::core::ffi::c_double;
     unsafe fn strftime(
@@ -47,11 +48,14 @@ unsafe extern "C" {
         object: *const cJSON,
         string: *const ::core::ffi::c_char,
     ) -> *mut cJSON;
+    unsafe fn cJSON_HasObjectItem(
+        object: *const cJSON,
+        string: *const ::core::ffi::c_char,
+    ) -> cJSON_bool;
     unsafe fn cJSON_IsNumber(item: *const cJSON) -> cJSON_bool;
     unsafe fn cJSON_IsString(item: *const cJSON) -> cJSON_bool;
     unsafe fn cJSON_IsArray(item: *const cJSON) -> cJSON_bool;
     unsafe fn cJSON_IsObject(item: *const cJSON) -> cJSON_bool;
-    unsafe fn cJSON_CreateNumber(num: ::core::ffi::c_double) -> *mut cJSON;
     unsafe fn cJSON_CreateArray() -> *mut cJSON;
     unsafe fn cJSON_CreateObject() -> *mut cJSON;
     unsafe fn cJSON_AddItemToArray(array: *mut cJSON, item: *mut cJSON) -> cJSON_bool;
@@ -64,6 +68,7 @@ unsafe extern "C" {
         object: *mut cJSON,
         string: *const ::core::ffi::c_char,
     );
+    unsafe fn cJSON_Duplicate(item: *const cJSON, recurse: cJSON_bool) -> *mut cJSON;
     unsafe fn cJSON_AddNullToObject(
         object: *mut cJSON,
         name: *const ::core::ffi::c_char,
@@ -99,6 +104,11 @@ unsafe extern "C" {
         status_code: ::core::ffi::c_int,
         error_message: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
+    unsafe fn recording_id_parse_decimal(
+        text: *const ::core::ffi::c_char,
+        id: *mut uint64_t,
+    ) -> bool;
+    unsafe fn recording_id_parse_json(item: *const cJSON, id: *mut uint64_t) -> bool;
     unsafe fn authorization_filter_cameras(
         user: *const user_t,
         action: authorization_action_t,
@@ -282,17 +292,24 @@ unsafe extern "C" {
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
+    unsafe fn strchr(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
+    unsafe fn strstr(
+        __haystack: *const ::core::ffi::c_char,
+        __needle: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
     unsafe fn strtok_r(
         __s: *mut ::core::ffi::c_char,
         __delim: *const ::core::ffi::c_char,
         __save_ptr: *mut *mut ::core::ffi::c_char,
     ) -> *mut ::core::ffi::c_char;
     unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
-    unsafe fn strtoull(
-        __nptr: *const ::core::ffi::c_char,
-        __endptr: *mut *mut ::core::ffi::c_char,
-        __base: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_ulonglong;
+    unsafe fn strcasecmp(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
     unsafe fn malloc(__size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
 }
@@ -326,6 +343,23 @@ pub struct tm {
 #[repr(transparent)]
 pub struct C2Rust_Unnamed(pub ::core::ffi::c_uint);
 impl C2Rust_Unnamed {
+    pub const _ISupper: Self = Self(256);
+    pub const _ISlower: Self = Self(512);
+    pub const _ISalpha: Self = Self(1024);
+    pub const _ISdigit: Self = Self(2048);
+    pub const _ISxdigit: Self = Self(4096);
+    pub const _ISspace: Self = Self(8192);
+    pub const _ISprint: Self = Self(16384);
+    pub const _ISgraph: Self = Self(32768);
+    pub const _ISblank: Self = Self(1);
+    pub const _IScntrl: Self = Self(2);
+    pub const _ISpunct: Self = Self(4);
+    pub const _ISalnum: Self = Self(8);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct C2Rust_Unnamed_0(pub ::core::ffi::c_uint);
+impl C2Rust_Unnamed_0 {
     pub const PTHREAD_CREATE_JOINABLE: Self = Self(0);
     pub const PTHREAD_CREATE_DETACHED: Self = Self(1);
 }
@@ -636,6 +670,8 @@ pub struct batch_delete_thread_data_t {
     pub job_id: [::core::ffi::c_char; 64],
     pub json: *mut cJSON,
     pub preflight_error_count: ::core::ffi::c_int,
+    pub start_time: time_t,
+    pub end_time: time_t,
     pub camera_scope_count: ::core::ffi::c_int,
     pub camera_scope: [[::core::ffi::c_char; 37]; 1024],
     pub owner_user_id: int64_t,
@@ -644,6 +680,13 @@ pub struct batch_delete_thread_data_t {
     pub owner_api_token_uuid: [::core::ffi::c_char; 37],
     pub audit_request_id: [::core::ffi::c_char; 65],
     pub audit_client_ip: [::core::ffi::c_char; 64],
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed_1 {
+    pub name: *const ::core::ffi::c_char,
+    pub max_length: size_t,
+    pub numeric: bool,
 }
 pub const CAMERA_UUID_STRING_SIZE: ::core::ffi::c_int = 37 as ::core::ffi::c_int;
 pub const MAX_STREAMS: ::core::ffi::c_int = LIGHTNVR_MAX_STREAMS;
@@ -758,12 +801,18 @@ pub unsafe extern "C" fn handle_get_recording(
         );
         return;
     }
-    let mut id: uint64_t = strtoull(
-        &raw mut id_str as *mut ::core::ffi::c_char,
-        ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
-        10 as ::core::ffi::c_int,
-    ) as uint64_t;
-    if id == 0 as uint64_t {
+    let mut encoded_nul: *const ::core::ffi::c_char = strstr(
+        &raw const (*req).path as *const ::core::ffi::c_char,
+        b"%00\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    let mut query: *const ::core::ffi::c_char = strchr(
+        &raw const (*req).path as *const ::core::ffi::c_char,
+        '?' as ::core::ffi::c_int,
+    );
+    let mut id: uint64_t = 0;
+    if !encoded_nul.is_null() && (query.is_null() || encoded_nul < query)
+        || !recording_id_parse_decimal(&raw mut id_str as *mut ::core::ffi::c_char, &raw mut id)
+    {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT.as_ptr(),
@@ -1320,12 +1369,18 @@ pub unsafe extern "C" fn handle_delete_recording(
         );
         return;
     }
-    let mut id: uint64_t = strtoull(
-        &raw mut id_str as *mut ::core::ffi::c_char,
-        ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
-        10 as ::core::ffi::c_int,
-    ) as uint64_t;
-    if id == 0 as uint64_t {
+    let mut encoded_nul: *const ::core::ffi::c_char = strstr(
+        &raw const (*req).path as *const ::core::ffi::c_char,
+        b"%00\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    let mut query: *const ::core::ffi::c_char = strchr(
+        &raw const (*req).path as *const ::core::ffi::c_char,
+        '?' as ::core::ffi::c_int,
+    );
+    let mut id: uint64_t = 0;
+    if !encoded_nul.is_null() && (query.is_null() || encoded_nul < query)
+        || !recording_id_parse_decimal(&raw mut id_str as *mut ::core::ffi::c_char, &raw mut id)
+    {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT.as_ptr(),
@@ -1719,11 +1774,12 @@ unsafe extern "C" fn batch_delete_worker_thread(
     let mut pending_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     if !ids_array.is_null() && cJSON_IsArray(ids_array) != 0 {
         let mut array_size: ::core::ffi::c_int = cJSON_GetArraySize(ids_array);
+        let mut total_count: ::core::ffi::c_int = array_size + (*data).preflight_error_count;
         batch_delete_progress_update(
             job_id,
+            (*data).preflight_error_count,
             0 as ::core::ffi::c_int,
-            0 as ::core::ffi::c_int,
-            0 as ::core::ffi::c_int,
+            (*data).preflight_error_count,
             b"Starting batch delete operation...\0".as_ptr() as *const ::core::ffi::c_char,
         );
         let mut success_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -1731,7 +1787,8 @@ unsafe extern "C" fn batch_delete_worker_thread(
         let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
         while i < array_size {
             let mut id_item: *mut cJSON = cJSON_GetArrayItem(ids_array, i);
-            if id_item.is_null() || cJSON_IsNumber(id_item) == 0 {
+            let mut id: uint64_t = 0;
+            if !recording_id_parse_json(id_item, &raw mut id) {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_WARN,
                     LOG_COMPONENT.as_ptr(),
@@ -1741,7 +1798,6 @@ unsafe extern "C" fn batch_delete_worker_thread(
                 );
                 error_count += 1;
             } else {
-                let mut id: uint64_t = (*id_item).valuedouble as uint64_t;
                 let mut recording: recording_metadata_t = recording_metadata_t {
                     id: 0,
                     stream_name: [0; 64],
@@ -1823,12 +1879,12 @@ unsafe extern "C" fn batch_delete_worker_thread(
                         &raw mut status_msg as *mut ::core::ffi::c_char,
                         ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
                         b"Deleting recordings... %d/%d\0".as_ptr() as *const ::core::ffi::c_char,
-                        i + 1 as ::core::ffi::c_int,
-                        array_size,
+                        i + 1 as ::core::ffi::c_int + (*data).preflight_error_count,
+                        total_count,
                     );
                     batch_delete_progress_update(
                         job_id,
-                        i + 1 as ::core::ffi::c_int,
+                        i + 1 as ::core::ffi::c_int + (*data).preflight_error_count,
                         success_count,
                         error_count,
                         &raw mut status_msg as *mut ::core::ffi::c_char,
@@ -1855,7 +1911,7 @@ unsafe extern "C" fn batch_delete_worker_thread(
             } else {
                 b"partial_failure\0".as_ptr() as *const ::core::ffi::c_char
             },
-            array_size,
+            total_count,
             success_count,
             error_count,
         );
@@ -1870,8 +1926,8 @@ unsafe extern "C" fn batch_delete_worker_thread(
             error_count,
         );
     } else if !filter.is_null() && cJSON_IsObject(filter) != 0 {
-        let mut start_time: time_t = 0 as time_t;
-        let mut end_time: time_t = 0 as time_t;
+        let mut start_time: time_t = (*data).start_time;
+        let mut end_time: time_t = (*data).end_time;
         let mut has_detection: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
         let mut detection_label: [::core::ffi::c_char; 256] = [
             0 as ::core::ffi::c_char,
@@ -2776,10 +2832,6 @@ unsafe extern "C" fn batch_delete_worker_thread(
             0,
         ];
         let mut protected_filter: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
-        let mut start: *mut cJSON =
-            cJSON_GetObjectItem(filter, b"start\0".as_ptr() as *const ::core::ffi::c_char);
-        let mut end: *mut cJSON =
-            cJSON_GetObjectItem(filter, b"end\0".as_ptr() as *const ::core::ffi::c_char);
         let mut detection: *mut cJSON = cJSON_GetObjectItem(
             filter,
             b"detection\0".as_ptr() as *const ::core::ffi::c_char,
@@ -2798,92 +2850,6 @@ unsafe extern "C" fn batch_delete_worker_thread(
             filter,
             b"protected\0".as_ptr() as *const ::core::ffi::c_char,
         );
-        if !start.is_null() && cJSON_IsString(start) != 0 {
-            let mut tm: tm = tm {
-                tm_sec: 0 as ::core::ffi::c_int,
-                tm_min: 0,
-                tm_hour: 0,
-                tm_mday: 0,
-                tm_mon: 0,
-                tm_year: 0,
-                tm_wday: 0,
-                tm_yday: 0,
-                tm_isdst: 0,
-                tm_gmtoff: 0,
-                tm_zone: ::core::ptr::null::<::core::ffi::c_char>(),
-            };
-            if !strptime(
-                (*start).valuestring,
-                b"%Y-%m-%dT%H:%M:%S\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut tm,
-            )
-            .is_null()
-                || !strptime(
-                    (*start).valuestring,
-                    b"%Y-%m-%dT%H:%M:%S.000Z\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut tm,
-                )
-                .is_null()
-                || !strptime(
-                    (*start).valuestring,
-                    b"%Y-%m-%dT%H:%M:%S.000\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut tm,
-                )
-                .is_null()
-                || !strptime(
-                    (*start).valuestring,
-                    b"%Y-%m-%dT%H:%M:%SZ\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut tm,
-                )
-                .is_null()
-            {
-                tm.tm_isdst = 0 as ::core::ffi::c_int;
-                start_time = timegm(&raw mut tm);
-            }
-        }
-        if !end.is_null() && cJSON_IsString(end) != 0 {
-            let mut tm_0: tm = tm {
-                tm_sec: 0 as ::core::ffi::c_int,
-                tm_min: 0,
-                tm_hour: 0,
-                tm_mday: 0,
-                tm_mon: 0,
-                tm_year: 0,
-                tm_wday: 0,
-                tm_yday: 0,
-                tm_isdst: 0,
-                tm_gmtoff: 0,
-                tm_zone: ::core::ptr::null::<::core::ffi::c_char>(),
-            };
-            if !strptime(
-                (*end).valuestring,
-                b"%Y-%m-%dT%H:%M:%S\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut tm_0,
-            )
-            .is_null()
-                || !strptime(
-                    (*end).valuestring,
-                    b"%Y-%m-%dT%H:%M:%S.000Z\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut tm_0,
-                )
-                .is_null()
-                || !strptime(
-                    (*end).valuestring,
-                    b"%Y-%m-%dT%H:%M:%S.000\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut tm_0,
-                )
-                .is_null()
-                || !strptime(
-                    (*end).valuestring,
-                    b"%Y-%m-%dT%H:%M:%SZ\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut tm_0,
-                )
-                .is_null()
-            {
-                tm_0.tm_isdst = 0 as ::core::ffi::c_int;
-                end_time = timegm(&raw mut tm_0);
-            }
-        }
         if !detection.is_null() && cJSON_IsNumber(detection) != 0 {
             has_detection = (*detection).valueint;
         }
@@ -2938,7 +2904,7 @@ unsafe extern "C" fn batch_delete_worker_thread(
                     .offset(i_0 as isize) as *mut ::core::ffi::c_char;
             i_0 += 1;
         }
-        let mut total_count: ::core::ffi::c_int = get_recording_count_for_cameras(
+        let mut total_count_0: ::core::ffi::c_int = get_recording_count_for_cameras(
             start_time,
             end_time,
             ::core::ptr::null::<::core::ffi::c_char>(),
@@ -2963,7 +2929,7 @@ unsafe extern "C" fn batch_delete_worker_thread(
             },
             r#false != 0,
         );
-        if total_count < 0 as ::core::ffi::c_int {
+        if total_count_0 < 0 as ::core::ffi::c_int {
             batch_delete_progress_error(
                 job_id,
                 b"Failed to count recordings\0".as_ptr() as *const ::core::ffi::c_char,
@@ -2980,7 +2946,7 @@ unsafe extern "C" fn batch_delete_worker_thread(
             free(data as *mut ::core::ffi::c_void);
             return NULL;
         }
-        if total_count == 0 as ::core::ffi::c_int {
+        if total_count_0 == 0 as ::core::ffi::c_int {
             batch_delete_progress_complete(
                 job_id,
                 0 as ::core::ffi::c_int,
@@ -2998,7 +2964,7 @@ unsafe extern "C" fn batch_delete_worker_thread(
             free(data as *mut ::core::ffi::c_void);
             return NULL;
         }
-        batch_delete_progress_set_total(job_id, total_count);
+        batch_delete_progress_set_total(job_id, total_count_0);
         batch_delete_progress_update(
             job_id,
             0 as ::core::ffi::c_int,
@@ -3007,7 +2973,7 @@ unsafe extern "C" fn batch_delete_worker_thread(
             b"Loading recordings to delete...\0".as_ptr() as *const ::core::ffi::c_char,
         );
         let mut recordings: *mut recording_metadata_t = malloc(
-            (total_count as size_t).wrapping_mul(::core::mem::size_of::<recording_metadata_t>()),
+            (total_count_0 as size_t).wrapping_mul(::core::mem::size_of::<recording_metadata_t>()),
         ) as *mut recording_metadata_t;
         if recordings.is_null() {
             _log_message_ctx(
@@ -3025,7 +2991,7 @@ unsafe extern "C" fn batch_delete_worker_thread(
                 data,
                 b"error\0".as_ptr() as *const ::core::ffi::c_char,
                 b"allocation_failed\0".as_ptr() as *const ::core::ffi::c_char,
-                total_count,
+                total_count_0,
                 0 as ::core::ffi::c_int,
                 0 as ::core::ffi::c_int,
             );
@@ -3047,7 +3013,7 @@ unsafe extern "C" fn batch_delete_worker_thread(
             b"id\0".as_ptr() as *const ::core::ffi::c_char,
             b"asc\0".as_ptr() as *const ::core::ffi::c_char,
             recordings,
-            total_count,
+            total_count_0,
             0 as ::core::ffi::c_int,
             &raw mut camera_scope as *mut *const ::core::ffi::c_char,
             (*data).camera_scope_count,
@@ -3073,7 +3039,7 @@ unsafe extern "C" fn batch_delete_worker_thread(
                 data,
                 b"error\0".as_ptr() as *const ::core::ffi::c_char,
                 b"query_failed\0".as_ptr() as *const ::core::ffi::c_char,
-                total_count,
+                total_count_0,
                 0 as ::core::ffi::c_int,
                 0 as ::core::ffi::c_int,
             );
@@ -3244,12 +3210,10 @@ unsafe extern "C" fn authorize_batch_delete_ids(
         ::core::ptr::null_mut::<cJSON>()
     }) as *mut cJSON;
     while !item.is_null() {
-        if cJSON_IsNumber(item) == 0
-            || (*item).valuedouble <= 0 as ::core::ffi::c_int as ::core::ffi::c_double
-        {
+        let mut id: uint64_t = 0;
+        if !recording_id_parse_json(item, &raw mut id) {
             *failure_count += 1;
         } else {
-            let mut id: uint64_t = (*item).valuedouble as uint64_t;
             let mut recording: recording_metadata_t = recording_metadata_t {
                 id: 0,
                 stream_name: [0; 64],
@@ -3316,7 +3280,17 @@ unsafe extern "C" fn authorize_batch_delete_ids(
                     );
                     return 0 as ::core::ffi::c_int;
                 }
-                cJSON_AddItemToArray(authorized, cJSON_CreateNumber(id as ::core::ffi::c_double));
+                let mut copy: *mut cJSON = cJSON_Duplicate(item, r#true);
+                if copy.is_null() || cJSON_AddItemToArray(authorized, copy) == 0 {
+                    cJSON_Delete(copy);
+                    cJSON_Delete(authorized);
+                    http_response_set_json_error(
+                        res,
+                        500 as ::core::ffi::c_int,
+                        b"Failed to authorize batch\0".as_ptr() as *const ::core::ffi::c_char,
+                    );
+                    return 0 as ::core::ffi::c_int;
+                }
             }
         }
         item = (*item).next as *mut cJSON;
@@ -3328,6 +3302,248 @@ unsafe extern "C" fn authorize_batch_delete_ids(
         authorized,
     );
     return 1 as ::core::ffi::c_int;
+}
+unsafe extern "C" fn parse_delete_time_bound(
+    mut item: *const cJSON,
+    mut value: *mut time_t,
+) -> bool {
+    *value = 0 as time_t;
+    if item.is_null() {
+        return r#true != 0;
+    }
+    if cJSON_IsString(item) == 0 || (*item).valuestring.is_null() {
+        return r#false != 0;
+    }
+    let mut text: *const ::core::ffi::c_char = (*item).valuestring;
+    let mut length: size_t = strlen(text);
+    if length < 19 as size_t || length > 64 as size_t {
+        return r#false != 0;
+    }
+    let mut i: size_t = 0 as size_t;
+    while i < 19 as size_t {
+        let mut separator: ::core::ffi::c_char = (if i == 4 as size_t || i == 7 as size_t {
+            '-' as ::core::ffi::c_int
+        } else if i == 10 as size_t {
+            'T' as ::core::ffi::c_int
+        } else if i == 13 as size_t || i == 16 as size_t {
+            ':' as ::core::ffi::c_int
+        } else {
+            0 as ::core::ffi::c_int
+        }) as ::core::ffi::c_char;
+        if if separator as ::core::ffi::c_int != 0 {
+            (*text.offset(i as isize) as ::core::ffi::c_int != separator as ::core::ffi::c_int)
+                as ::core::ffi::c_int
+        } else {
+            ((*text.offset(i as isize) as ::core::ffi::c_int) < '0' as ::core::ffi::c_int
+                || *text.offset(i as isize) as ::core::ffi::c_int > '9' as ::core::ffi::c_int)
+                as ::core::ffi::c_int
+        } != 0
+        {
+            return r#false != 0;
+        }
+        i = i.wrapping_add(1);
+    }
+    let mut parsed: tm = tm {
+        tm_sec: 0 as ::core::ffi::c_int,
+        tm_min: 0,
+        tm_hour: 0,
+        tm_mday: 0,
+        tm_mon: 0,
+        tm_year: 0,
+        tm_wday: 0,
+        tm_yday: 0,
+        tm_isdst: 0,
+        tm_gmtoff: 0,
+        tm_zone: ::core::ptr::null::<::core::ffi::c_char>(),
+    };
+    let mut end: *mut ::core::ffi::c_char = strptime(
+        text,
+        b"%Y-%m-%dT%H:%M:%S\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut parsed,
+    );
+    if end.is_null() {
+        return r#false != 0;
+    }
+    if *end as ::core::ffi::c_int == '.' as ::core::ffi::c_int {
+        end = end.offset(1);
+        if (*end as ::core::ffi::c_int) < '0' as ::core::ffi::c_int
+            || *end as ::core::ffi::c_int > '9' as ::core::ffi::c_int
+        {
+            return r#false != 0;
+        }
+        while *end as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+            && *end as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+        {
+            end = end.offset(1);
+        }
+    }
+    if *end as ::core::ffi::c_int == 'Z' as ::core::ffi::c_int {
+        end = end.offset(1);
+    }
+    if *end != 0 {
+        return r#false != 0;
+    }
+    let mut original: tm = parsed;
+    let mut result: time_t = timegm(&raw mut parsed);
+    let mut normalized: tm = tm {
+        tm_sec: 0,
+        tm_min: 0,
+        tm_hour: 0,
+        tm_mday: 0,
+        tm_mon: 0,
+        tm_year: 0,
+        tm_wday: 0,
+        tm_yday: 0,
+        tm_isdst: 0,
+        tm_gmtoff: 0,
+        tm_zone: ::core::ptr::null::<::core::ffi::c_char>(),
+    };
+    if result <= 0 as time_t
+        || gmtime_r(&raw mut result, &raw mut normalized).is_null()
+        || normalized.tm_year != original.tm_year
+        || normalized.tm_mon != original.tm_mon
+        || normalized.tm_mday != original.tm_mday
+        || normalized.tm_hour != original.tm_hour
+        || normalized.tm_min != original.tm_min
+        || normalized.tm_sec != original.tm_sec
+    {
+        return r#false != 0;
+    }
+    *value = result;
+    return r#true != 0;
+}
+unsafe extern "C" fn validate_batch_delete_filter(mut filter: *const cJSON) -> bool {
+    static mut fields: [C2Rust_Unnamed_1; 10] = [
+        C2Rust_Unnamed_1 {
+            name: b"start\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: 64 as size_t,
+            numeric: r#false != 0,
+        },
+        C2Rust_Unnamed_1 {
+            name: b"end\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: 64 as size_t,
+            numeric: r#false != 0,
+        },
+        C2Rust_Unnamed_1 {
+            name: b"stream\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: 255 as size_t,
+            numeric: r#false != 0,
+        },
+        C2Rust_Unnamed_1 {
+            name: b"stream_name\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: 255 as size_t,
+            numeric: r#false != 0,
+        },
+        C2Rust_Unnamed_1 {
+            name: b"collection_uuid\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: (CAMERA_UUID_STRING_SIZE - 1 as ::core::ffi::c_int) as size_t,
+            numeric: r#false != 0,
+        },
+        C2Rust_Unnamed_1 {
+            name: b"detection\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: 0 as size_t,
+            numeric: r#true != 0,
+        },
+        C2Rust_Unnamed_1 {
+            name: b"protected\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: 0 as size_t,
+            numeric: r#true != 0,
+        },
+        C2Rust_Unnamed_1 {
+            name: b"detection_label\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: 255 as size_t,
+            numeric: r#false != 0,
+        },
+        C2Rust_Unnamed_1 {
+            name: b"tag\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: 511 as size_t,
+            numeric: r#false != 0,
+        },
+        C2Rust_Unnamed_1 {
+            name: b"capture_method\0".as_ptr() as *const ::core::ffi::c_char,
+            max_length: 127 as size_t,
+            numeric: r#false != 0,
+        },
+    ];
+    let mut item: *const cJSON = ::core::ptr::null::<cJSON>();
+    item = if !filter.is_null() {
+        (*filter).child
+    } else {
+        ::core::ptr::null_mut::<cJSON>()
+    };
+    while !item.is_null() {
+        if (*item).string.is_null() {
+            return r#false != 0;
+        }
+        let mut field: size_t = 0 as size_t;
+        while field
+            < ::core::mem::size_of::<[C2Rust_Unnamed_1; 10]>()
+                .wrapping_div(::core::mem::size_of::<C2Rust_Unnamed_1>())
+        {
+            if if field < 2 as size_t {
+                strcasecmp((*item).string, fields[field].name)
+            } else {
+                strcmp((*item).string, fields[field].name)
+            } == 0 as ::core::ffi::c_int
+            {
+                break;
+            }
+            field = field.wrapping_add(1);
+        }
+        if field
+            == ::core::mem::size_of::<[C2Rust_Unnamed_1; 10]>()
+                .wrapping_div(::core::mem::size_of::<C2Rust_Unnamed_1>())
+        {
+            return r#false != 0;
+        }
+        let mut prior: *const cJSON = (*filter).child;
+        while prior != item {
+            if strcasecmp((*prior).string, (*item).string) == 0 as ::core::ffi::c_int {
+                return r#false != 0;
+            }
+            prior = (*prior).next;
+        }
+        if fields[field].numeric {
+            if cJSON_IsNumber(item) == 0
+                || (*item).valuedouble != -1 as ::core::ffi::c_int as ::core::ffi::c_double
+                    && (*item).valuedouble != 0 as ::core::ffi::c_int as ::core::ffi::c_double
+                    && (*item).valuedouble != 1 as ::core::ffi::c_int as ::core::ffi::c_double
+            {
+                return r#false != 0;
+            }
+        } else {
+            if cJSON_IsString(item) == 0
+                || (*item).valuestring.is_null()
+                || strlen((*item).valuestring) > fields[field].max_length
+            {
+                return r#false != 0;
+            }
+            let mut has_value: bool = r#false != 0;
+            let mut p: *const ::core::ffi::c_uchar =
+                (*item).valuestring as *const ::core::ffi::c_uchar;
+            while *p != 0 {
+                if *p as ::core::ffi::c_int != ',' as ::core::ffi::c_int
+                    && *(*__ctype_b_loc()).offset(*p as ::core::ffi::c_int as isize)
+                        as ::core::ffi::c_int
+                        & C2Rust_Unnamed::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                            as ::core::ffi::c_int
+                        == 0
+                {
+                    has_value = r#true != 0;
+                }
+                p = p.offset(1);
+            }
+            if !has_value {
+                return r#false != 0;
+            }
+        }
+        item = (*item).next;
+    }
+    return !(cJSON_HasObjectItem(filter, b"stream\0".as_ptr() as *const ::core::ffi::c_char) != 0
+        && cJSON_HasObjectItem(
+            filter,
+            b"stream_name\0".as_ptr() as *const ::core::ffi::c_char,
+        ) != 0);
 }
 unsafe extern "C" fn authorize_batch_delete_filter(
     mut user: *const user_t,
@@ -4886,6 +5102,8 @@ pub unsafe extern "C" fn handle_batch_delete_recordings(
         cJSON_GetObjectItem(json, b"filter\0".as_ptr() as *const ::core::ffi::c_char);
     let mut total_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     let mut preflight_error_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut start_time: time_t = 0 as time_t;
+    let mut end_time: time_t = 0 as time_t;
     let mut camera_scope: [[::core::ffi::c_char; 37]; 1024] = [
         [
             0 as ::core::ffi::c_char,
@@ -5976,6 +6194,16 @@ pub unsafe extern "C" fn handle_batch_delete_recordings(
         }
     } else if !filter.is_null() && cJSON_IsObject(filter) != 0 {
         total_count = 0 as ::core::ffi::c_int;
+        if !validate_batch_delete_filter(filter) {
+            cJSON_Delete(json);
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Unknown, duplicate, or invalid deletion filter field\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+            );
+            return;
+        }
         if authorize_batch_delete_filter(
             &raw mut user,
             filter,
@@ -5985,6 +6213,22 @@ pub unsafe extern "C" fn handle_batch_delete_recordings(
         ) == 0
         {
             cJSON_Delete(json);
+            return;
+        }
+        if !parse_delete_time_bound(
+            cJSON_GetObjectItem(filter, b"start\0".as_ptr() as *const ::core::ffi::c_char),
+            &raw mut start_time,
+        ) || !parse_delete_time_bound(
+            cJSON_GetObjectItem(filter, b"end\0".as_ptr() as *const ::core::ffi::c_char),
+            &raw mut end_time,
+        ) || start_time != 0 && end_time != 0 && start_time > end_time
+        {
+            cJSON_Delete(json);
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Invalid deletion date range\0".as_ptr() as *const ::core::ffi::c_char,
+            );
             return;
         }
     } else {
@@ -6075,6 +6319,8 @@ pub unsafe extern "C" fn handle_batch_delete_recordings(
     );
     (*thread_data).json = json;
     (*thread_data).preflight_error_count = preflight_error_count;
+    (*thread_data).start_time = start_time;
+    (*thread_data).end_time = end_time;
     (*thread_data).camera_scope_count = camera_scope_count;
     memcpy(
         &raw mut (*thread_data).camera_scope as *mut [::core::ffi::c_char; 37]
@@ -6127,7 +6373,7 @@ pub unsafe extern "C" fn handle_batch_delete_recordings(
     pthread_attr_init(&raw mut attr);
     pthread_attr_setdetachstate(
         &raw mut attr,
-        C2Rust_Unnamed::PTHREAD_CREATE_DETACHED.0 as ::core::ffi::c_int,
+        C2Rust_Unnamed_0::PTHREAD_CREATE_DETACHED.0 as ::core::ffi::c_int,
     );
     if pthread_create(
         &raw mut thread,

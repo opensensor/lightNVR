@@ -14,11 +14,6 @@ unsafe extern "C" {
         __format: *const ::core::ffi::c_char,
         ...
     ) -> ::core::ffi::c_int;
-    unsafe fn sscanf(
-        __s: *const ::core::ffi::c_char,
-        __format: *const ::core::ffi::c_char,
-        ...
-    ) -> ::core::ffi::c_int;
     unsafe fn __ctype_b_loc() -> *mut *const ::core::ffi::c_ushort;
     unsafe fn getrandom(
         __buffer: *mut ::core::ffi::c_void,
@@ -750,53 +745,80 @@ unsafe extern "C" fn generate_request_id(mut output: *mut ::core::ffi::c_char) {
         (counter ^ getpid() as uint64_t) as ::core::ffi::c_ulonglong,
     );
 }
+unsafe extern "C" fn hex_digit_value(mut c: ::core::ffi::c_uchar) -> ::core::ffi::c_int {
+    if c as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+        && c as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+    {
+        return c as ::core::ffi::c_int - '0' as ::core::ffi::c_int;
+    }
+    if c as ::core::ffi::c_int >= 'a' as ::core::ffi::c_int
+        && c as ::core::ffi::c_int <= 'f' as ::core::ffi::c_int
+    {
+        return c as ::core::ffi::c_int - 'a' as ::core::ffi::c_int + 10 as ::core::ffi::c_int;
+    }
+    if c as ::core::ffi::c_int >= 'A' as ::core::ffi::c_int
+        && c as ::core::ffi::c_int <= 'F' as ::core::ffi::c_int
+    {
+        return c as ::core::ffi::c_int - 'A' as ::core::ffi::c_int + 10 as ::core::ffi::c_int;
+    }
+    return -1 as ::core::ffi::c_int;
+}
+unsafe extern "C" fn url_decode_span(
+    mut src: *const ::core::ffi::c_char,
+    mut src_len: size_t,
+    mut dst: *mut ::core::ffi::c_char,
+    mut dst_size: size_t,
+    mut allow_truncation: bool,
+) -> ::core::ffi::c_int {
+    if src.is_null() || dst.is_null() || dst_size == 0 as size_t {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut j: size_t = 0 as size_t;
+    let mut i: size_t = 0 as size_t;
+    while i < src_len {
+        let mut decoded: ::core::ffi::c_uchar = *src.offset(i as isize) as ::core::ffi::c_uchar;
+        if *src.offset(i as isize) as ::core::ffi::c_int == '%' as ::core::ffi::c_int
+            && i.wrapping_add(2 as size_t) < src_len
+        {
+            let mut high: ::core::ffi::c_int = hex_digit_value(
+                *src.offset(i.wrapping_add(1 as size_t) as isize) as ::core::ffi::c_uchar,
+            );
+            let mut low: ::core::ffi::c_int = hex_digit_value(
+                *src.offset(i.wrapping_add(2 as size_t) as isize) as ::core::ffi::c_uchar,
+            );
+            if high >= 0 as ::core::ffi::c_int && low >= 0 as ::core::ffi::c_int {
+                decoded = (high << 4 as ::core::ffi::c_int | low) as ::core::ffi::c_uchar;
+                i = i.wrapping_add(2 as size_t);
+            }
+        } else if *src.offset(i as isize) as ::core::ffi::c_int == '+' as ::core::ffi::c_int {
+            decoded = ' ' as ::core::ffi::c_uchar;
+        }
+        if decoded as ::core::ffi::c_int == 0 as ::core::ffi::c_int
+            || j == dst_size.wrapping_sub(1 as size_t) && !allow_truncation
+        {
+            *dst.offset(0isize) = '\0' as ::core::ffi::c_char;
+            return -1 as ::core::ffi::c_int;
+        }
+        if j < dst_size.wrapping_sub(1 as size_t) {
+            let c2rust_fresh0 = j;
+            j = j.wrapping_add(1);
+            *dst.offset(c2rust_fresh0 as isize) = decoded as ::core::ffi::c_char;
+        }
+        i = i.wrapping_add(1);
+    }
+    *dst.offset(j as isize) = '\0' as ::core::ffi::c_char;
+    return 0 as ::core::ffi::c_int;
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn url_decode(
     mut src: *const ::core::ffi::c_char,
     mut dst: *mut ::core::ffi::c_char,
     mut dst_size: size_t,
 ) -> ::core::ffi::c_int {
-    if src.is_null() || dst.is_null() || dst_size == 0 as size_t {
+    if src.is_null() {
         return -1 as ::core::ffi::c_int;
     }
-    let mut src_len: size_t = strlen(src);
-    let mut i: size_t = 0;
-    let mut j: size_t = 0 as size_t;
-    i = 0 as size_t;
-    while i < src_len && j < dst_size.wrapping_sub(1 as size_t) {
-        if *src.offset(i as isize) as ::core::ffi::c_int == '%' as ::core::ffi::c_int
-            && i.wrapping_add(2 as size_t) < src_len
-        {
-            let mut value: ::core::ffi::c_uint = 0;
-            if sscanf(
-                src.offset(i as isize)
-                    .offset(1 as ::core::ffi::c_int as isize),
-                b"%2x\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut value,
-            ) == 1 as ::core::ffi::c_int
-            {
-                let c2rust_fresh0 = j;
-                j = j.wrapping_add(1);
-                *dst.offset(c2rust_fresh0 as isize) = value as ::core::ffi::c_char;
-                i = i.wrapping_add(2 as size_t);
-            } else {
-                let c2rust_fresh1 = j;
-                j = j.wrapping_add(1);
-                *dst.offset(c2rust_fresh1 as isize) = *src.offset(i as isize);
-            }
-        } else if *src.offset(i as isize) as ::core::ffi::c_int == '+' as ::core::ffi::c_int {
-            let c2rust_fresh2 = j;
-            j = j.wrapping_add(1);
-            *dst.offset(c2rust_fresh2 as isize) = ' ' as ::core::ffi::c_char;
-        } else {
-            let c2rust_fresh3 = j;
-            j = j.wrapping_add(1);
-            *dst.offset(c2rust_fresh3 as isize) = *src.offset(i as isize);
-        }
-        i = i.wrapping_add(1);
-    }
-    *dst.offset(j as isize) = '\0' as ::core::ffi::c_char;
-    return 0 as ::core::ffi::c_int;
+    return url_decode_span(src, strlen(src), dst, dst_size, r#true != 0);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn http_request_init(mut req: *mut http_request_t) {
@@ -879,8 +901,15 @@ pub unsafe extern "C" fn http_request_get_header(
     if req.is_null() || name.is_null() {
         return ::core::ptr::null::<::core::ffi::c_char>();
     }
+    let mut header_count: ::core::ffi::c_int = (*req).num_headers;
+    if header_count < 0 as ::core::ffi::c_int {
+        return ::core::ptr::null::<::core::ffi::c_char>();
+    }
+    if header_count > MAX_HEADERS {
+        header_count = MAX_HEADERS;
+    }
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while i < (*req).num_headers {
+    while i < header_count {
         if strcasecmp(
             &raw const (*(&raw const (*req).headers as *const http_header_t).offset(i as isize))
                 .name as *const ::core::ffi::c_char,
@@ -926,1054 +955,10 @@ pub unsafe extern "C" fn http_request_get_query_param(
             } else {
                 strlen(val_start)
             };
-            if val_len >= value_len {
-                val_len = value_len.wrapping_sub(1 as size_t);
-            }
-            let mut encoded: [::core::ffi::c_char; 1024] = [
-                0 as ::core::ffi::c_char,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-            ];
-            if val_len < ::core::mem::size_of::<[::core::ffi::c_char; 1024]>() {
-                memcpy(
-                    &raw mut encoded as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void,
-                    val_start as *const ::core::ffi::c_void,
-                    val_len,
-                );
-                encoded[val_len] = '\0' as ::core::ffi::c_char;
-                url_decode(
-                    &raw mut encoded as *mut ::core::ffi::c_char,
-                    value,
-                    value_len,
-                );
-            } else {
-                memcpy(
-                    value as *mut ::core::ffi::c_void,
-                    val_start as *const ::core::ffi::c_void,
-                    val_len,
-                );
-                *value.offset(val_len as isize) = '\0' as ::core::ffi::c_char;
+            if url_decode_span(val_start, val_len, value, value_len, r#true != 0)
+                != 0 as ::core::ffi::c_int
+            {
+                return -1 as ::core::ffi::c_int;
             }
             return strlen(value) as ::core::ffi::c_int;
         }
@@ -2037,11 +1022,10 @@ pub unsafe extern "C" fn http_request_extract_path_param(
     {
         param_len = param_len.wrapping_sub(1);
     }
-    if param_len == 0 as size_t || param_len >= buf_size {
+    if param_len == 0 as size_t {
         return -1 as ::core::ffi::c_int;
     }
-    url_decode(param, param_buf, param_len.wrapping_add(1 as size_t));
-    return 0 as ::core::ffi::c_int;
+    return url_decode_span(param, param_len, param_buf, buf_size, r#false != 0);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn http_response_add_header(
@@ -2052,7 +1036,7 @@ pub unsafe extern "C" fn http_response_add_header(
     if res.is_null() || name.is_null() || value.is_null() {
         return -1 as ::core::ffi::c_int;
     }
-    if (*res).num_headers >= MAX_HEADERS {
+    if (*res).num_headers < 0 as ::core::ffi::c_int || (*res).num_headers >= MAX_HEADERS {
         return -1 as ::core::ffi::c_int;
     }
     safe_strcpy(
@@ -2082,22 +1066,77 @@ pub unsafe extern "C" fn http_response_set_body(
     if res.is_null() || body.is_null() {
         return -1 as ::core::ffi::c_int;
     }
-    if (*res).body_allocated as ::core::ffi::c_int != 0 && !(*res).body.is_null() {
-        free((*res).body);
-    }
     let mut len: size_t = strlen(body);
-    (*res).body = malloc(len.wrapping_add(1 as size_t));
-    if (*res).body.is_null() {
+    let mut new_body: *mut ::core::ffi::c_char =
+        malloc(len.wrapping_add(1 as size_t)) as *mut ::core::ffi::c_char;
+    if new_body.is_null() {
         return -1 as ::core::ffi::c_int;
     }
     memcpy(
-        (*res).body,
+        new_body as *mut ::core::ffi::c_void,
         body as *const ::core::ffi::c_void,
         len.wrapping_add(1 as size_t),
     );
+    if (*res).body_allocated as ::core::ffi::c_int != 0 && !(*res).body.is_null() {
+        free((*res).body);
+    }
+    (*res).body = new_body as *mut ::core::ffi::c_void;
     (*res).body_length = len;
     (*res).body_allocated = r#true != 0;
     return 0 as ::core::ffi::c_int;
+}
+unsafe extern "C" fn is_standard_json_header_name(mut name: *const ::core::ffi::c_char) -> bool {
+    if name.is_null() {
+        return r#false != 0;
+    }
+    return strcasecmp(
+        name,
+        b"Access-Control-Allow-Origin\0".as_ptr() as *const ::core::ffi::c_char,
+    ) == 0 as ::core::ffi::c_int
+        || strcasecmp(
+            name,
+            b"Access-Control-Allow-Methods\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        || strcasecmp(
+            name,
+            b"Access-Control-Allow-Headers\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        || strcasecmp(
+            name,
+            b"Access-Control-Expose-Headers\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        || strcasecmp(
+            name,
+            b"Access-Control-Max-Age\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        || strcasecmp(
+            name,
+            b"Cache-Control\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        || strcasecmp(name, b"Pragma\0".as_ptr() as *const ::core::ffi::c_char)
+            == 0 as ::core::ffi::c_int
+        || strcasecmp(name, b"Expires\0".as_ptr() as *const ::core::ffi::c_char)
+            == 0 as ::core::ffi::c_int;
+}
+unsafe extern "C" fn http_response_remove_standard_json_headers(mut res: *mut http_response_t) {
+    if res.is_null() || (*res).num_headers <= 0 as ::core::ffi::c_int {
+        return;
+    }
+    let mut write_idx: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut read_idx: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while read_idx < (*res).num_headers {
+        if !is_standard_json_header_name(
+            &raw mut (*(&raw mut (*res).headers as *mut http_header_t).offset(read_idx as isize))
+                .name as *mut ::core::ffi::c_char,
+        ) {
+            if write_idx != read_idx {
+                (*res).headers[write_idx as usize] = (*res).headers[read_idx as usize];
+            }
+            write_idx += 1;
+        }
+        read_idx += 1;
+    }
+    (*res).num_headers = write_idx;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn http_response_add_cors_headers(mut res: *mut http_response_t) {
@@ -2128,11 +1167,6 @@ pub unsafe extern "C" fn http_response_add_cors_headers(mut res: *mut http_respo
     );
     http_response_add_header(
         res,
-        b"Access-Control-Allow-Credentials\0".as_ptr() as *const ::core::ffi::c_char,
-        b"true\0".as_ptr() as *const ::core::ffi::c_char,
-    );
-    http_response_add_header(
-        res,
         b"Access-Control-Max-Age\0".as_ptr() as *const ::core::ffi::c_char,
         b"86400\0".as_ptr() as *const ::core::ffi::c_char,
     );
@@ -2146,6 +1180,26 @@ pub unsafe extern "C" fn http_response_set_json(
     if res.is_null() || json_str.is_null() {
         return -1 as ::core::ffi::c_int;
     }
+    if (*res).num_headers < 0 as ::core::ffi::c_int || (*res).num_headers > MAX_HEADERS {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut retained_headers: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < (*res).num_headers {
+        if !is_standard_json_header_name(
+            &raw mut (*(&raw mut (*res).headers as *mut http_header_t).offset(i as isize)).name
+                as *mut ::core::ffi::c_char,
+        ) {
+            retained_headers += 1;
+        }
+        i += 1;
+    }
+    if retained_headers > MAX_HEADERS - 8 as ::core::ffi::c_int {
+        return -1 as ::core::ffi::c_int;
+    }
+    if http_response_set_body(res, json_str) != 0 as ::core::ffi::c_int {
+        return -1 as ::core::ffi::c_int;
+    }
     (*res).status_code = status_code;
     safe_strcpy(
         &raw mut (*res).content_type as *mut ::core::ffi::c_char,
@@ -2153,11 +1207,12 @@ pub unsafe extern "C" fn http_response_set_json(
         ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
         0 as size_t,
     );
+    http_response_remove_standard_json_headers(res);
     http_response_add_cors_headers(res);
     http_response_add_header(
         res,
         b"Cache-Control\0".as_ptr() as *const ::core::ffi::c_char,
-        b"no-cache, no-store, must-revalidate\0".as_ptr() as *const ::core::ffi::c_char,
+        b"private, no-cache, no-store, must-revalidate\0".as_ptr() as *const ::core::ffi::c_char,
     );
     http_response_add_header(
         res,
@@ -2169,7 +1224,7 @@ pub unsafe extern "C" fn http_response_set_json(
         b"Expires\0".as_ptr() as *const ::core::ffi::c_char,
         b"0\0".as_ptr() as *const ::core::ffi::c_char,
     );
-    return http_response_set_body(res, json_str);
+    return 0 as ::core::ffi::c_int;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn http_response_set_json_error(

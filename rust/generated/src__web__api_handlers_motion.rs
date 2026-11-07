@@ -1,6 +1,12 @@
 unsafe extern "C" {
+    pub type sqlite3_stmt;
+    pub type sqlite3;
     pub type stream_handle_s;
     unsafe fn time(__timer: *mut time_t) -> time_t;
+    unsafe fn nanosleep(
+        __requested_time: *const timespec,
+        __remaining: *mut timespec,
+    ) -> ::core::ffi::c_int;
     unsafe fn pthread_create(
         __newthread: *mut pthread_t,
         __attr: *const pthread_attr_t,
@@ -17,7 +23,7 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_lock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_unlock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
-    unsafe fn usleep(__useconds: __useconds_t) -> ::core::ffi::c_int;
+    unsafe fn __errno_location() -> *mut ::core::ffi::c_int;
     unsafe fn cJSON_PrintUnformatted(item: *const cJSON) -> *mut ::core::ffi::c_char;
     unsafe fn cJSON_Delete(item: *mut cJSON);
     unsafe fn cJSON_GetObjectItemCaseSensitive(
@@ -71,6 +77,19 @@ unsafe extern "C" {
         status_code: ::core::ffi::c_int,
         error_message: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
+    unsafe fn sqlite3_prepare_v2(
+        db: *mut sqlite3,
+        zSql: *const ::core::ffi::c_char,
+        nByte: ::core::ffi::c_int,
+        ppStmt: *mut *mut sqlite3_stmt,
+        pzTail: *mut *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+    unsafe fn sqlite3_step(_: *mut sqlite3_stmt) -> ::core::ffi::c_int;
+    unsafe fn sqlite3_column_text(
+        _: *mut sqlite3_stmt,
+        iCol: ::core::ffi::c_int,
+    ) -> *const ::core::ffi::c_uchar;
+    unsafe fn sqlite3_finalize(pStmt: *mut sqlite3_stmt) -> ::core::ffi::c_int;
     unsafe fn httpd_parse_json_body(req: *const http_request_t) -> *mut cJSON;
     unsafe fn httpd_authorize_stream_action(
         req: *const http_request_t,
@@ -86,6 +105,8 @@ unsafe extern "C" {
         error: *mut ::core::ffi::c_char,
         error_size: size_t,
     ) -> ::core::ffi::c_int;
+    unsafe fn db_open_readonly_connection(connection: *mut *mut sqlite3) -> ::core::ffi::c_int;
+    unsafe fn db_close_readonly_connection(connection: *mut sqlite3);
     unsafe fn store_external_motion_detections(
         stream_name: *const ::core::ffi::c_char,
         result: *const detection_result_t,
@@ -129,14 +150,21 @@ unsafe extern "C" {
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
+    unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
+    unsafe fn strerror(__errnum: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
     unsafe fn calloc(__nmemb: size_t, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
 }
 pub type size_t = usize;
 pub type __time_t = ::core::ffi::c_long;
-pub type __useconds_t = ::core::ffi::c_uint;
+pub type __syscall_slong_t = ::core::ffi::c_long;
 pub type time_t = __time_t;
-pub type useconds_t = __useconds_t;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct timespec {
+    pub tv_sec: __time_t,
+    pub tv_nsec: __syscall_slong_t,
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct __pthread_internal_list {
@@ -402,6 +430,7 @@ impl authorization_action_t {
     pub const AUTHZ_LPR_DELETE: Self = Self(18);
     pub const AUTHZ_ACTION_COUNT: Self = Self(19);
 }
+pub const UINT64_MAX: ::core::ffi::c_ulong = 18446744073709551615 as ::core::ffi::c_ulong;
 pub const LOG_COMPONENT: [::core::ffi::c_char; 10] =
     unsafe { ::core::mem::transmute::<[u8; 10], [::core::ffi::c_char; 10]>(*b"MotionAPI\0") };
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
@@ -410,7 +439,11 @@ pub const MAX_TAG_LENGTH: ::core::ffi::c_int = 128 as ::core::ffi::c_int;
 pub const MAX_DETECTIONS: ::core::ffi::c_int = 20 as ::core::ffi::c_int;
 pub const MAX_LABEL_LENGTH: ::core::ffi::c_int = 32 as ::core::ffi::c_int;
 pub const MOTION_MAX_TAGS: ::core::ffi::c_int = 16 as ::core::ffi::c_int;
+pub const SQLITE_OK: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const SQLITE_ROW: ::core::ffi::c_int = 100 as ::core::ffi::c_int;
+pub const SQLITE_DONE: ::core::ffi::c_int = 101 as ::core::ffi::c_int;
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
+pub const EINTR: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const MOTION_PULSE_DEFAULT_MS: ::core::ffi::c_int = 2000 as ::core::ffi::c_int;
@@ -421,6 +454,7 @@ static mut g_pulse_gen: [pulse_gen_entry_t; 1024] = [pulse_gen_entry_t {
     generation: 0,
 }; 1024];
 static mut g_pulse_gen_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+static mut g_pulse_gen_sequence: uint64_t = 0 as uint64_t;
 static mut g_pulse_gen_mutex: pthread_mutex_t = pthread_mutex_t {
     __data: __pthread_mutex_s {
         __lock: 0 as ::core::ffi::c_int,
@@ -436,6 +470,1089 @@ static mut g_pulse_gen_mutex: pthread_mutex_t = pthread_mutex_t {
         },
     },
 };
+unsafe extern "C" fn pulse_gen_prune_stale_locked() {
+    let mut db: *mut sqlite3 = ::core::ptr::null_mut::<sqlite3>();
+    if db_open_readonly_connection(&raw mut db) != 0 as ::core::ffi::c_int {
+        return;
+    }
+    let mut stmt: *mut sqlite3_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+    let mut rc: ::core::ffi::c_int = sqlite3_prepare_v2(
+        db,
+        b"SELECT name FROM streams;\0".as_ptr() as *const ::core::ffi::c_char,
+        -1 as ::core::ffi::c_int,
+        &raw mut stmt,
+        ::core::ptr::null_mut::<*const ::core::ffi::c_char>(),
+    );
+    let mut present: [bool; 1024] = [
+        r#false != 0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+    ];
+    if rc == SQLITE_OK {
+        loop {
+            rc = sqlite3_step(stmt);
+            if rc != SQLITE_ROW {
+                break;
+            }
+            let mut name: *const ::core::ffi::c_char =
+                sqlite3_column_text(stmt, 0 as ::core::ffi::c_int) as *const ::core::ffi::c_char;
+            if name.is_null() {
+                continue;
+            }
+            let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+            while i < g_pulse_gen_count {
+                if strcmp(
+                    &raw mut (*(&raw mut g_pulse_gen as *mut pulse_gen_entry_t).offset(i as isize))
+                        .name as *mut ::core::ffi::c_char,
+                    name,
+                ) == 0 as ::core::ffi::c_int
+                {
+                    present[i as usize] = r#true != 0;
+                    break;
+                } else {
+                    i += 1;
+                }
+            }
+        }
+    }
+    sqlite3_finalize(stmt);
+    db_close_readonly_connection(db);
+    if rc != SQLITE_DONE {
+        return;
+    }
+    let mut count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_0 < g_pulse_gen_count {
+        if present[i_0 as usize] {
+            let c2rust_fresh1 = count;
+            count += 1;
+            g_pulse_gen[c2rust_fresh1 as usize] = g_pulse_gen[i_0 as usize];
+        }
+        i_0 += 1;
+    }
+    g_pulse_gen_count = count;
+}
 unsafe extern "C" fn pulse_gen_get(mut stream_name: *const ::core::ffi::c_char) -> uint64_t {
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < g_pulse_gen_count {
@@ -452,6 +1569,12 @@ unsafe extern "C" fn pulse_gen_get(mut stream_name: *const ::core::ffi::c_char) 
     return 0 as uint64_t;
 }
 unsafe extern "C" fn pulse_gen_increment(mut stream_name: *const ::core::ffi::c_char) -> uint64_t {
+    if g_pulse_gen_sequence == UINT64_MAX as uint64_t {
+        return 0 as uint64_t;
+    }
+    if g_pulse_gen_count == MAX_STREAMS && pulse_gen_get(stream_name) == 0 as uint64_t {
+        pulse_gen_prune_stale_locked();
+    }
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < g_pulse_gen_count {
         if strcmp(
@@ -460,7 +1583,8 @@ unsafe extern "C" fn pulse_gen_increment(mut stream_name: *const ::core::ffi::c_
             stream_name,
         ) == 0 as ::core::ffi::c_int
         {
-            g_pulse_gen[i as usize].generation = g_pulse_gen[i as usize].generation.wrapping_add(1);
+            g_pulse_gen_sequence = g_pulse_gen_sequence.wrapping_add(1);
+            g_pulse_gen[i as usize].generation = g_pulse_gen_sequence;
             return g_pulse_gen[i as usize].generation;
         }
         i += 1;
@@ -476,14 +1600,15 @@ unsafe extern "C" fn pulse_gen_increment(mut stream_name: *const ::core::ffi::c_
             ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
             0 as size_t,
         );
-        g_pulse_gen[i_0 as usize].generation = 1 as uint64_t;
-        return 1 as uint64_t;
+        g_pulse_gen_sequence = g_pulse_gen_sequence.wrapping_add(1);
+        g_pulse_gen[i_0 as usize].generation = g_pulse_gen_sequence;
+        return g_pulse_gen[i_0 as usize].generation;
     }
     _log_message_ctx(
         log_level_t::LOG_LEVEL_WARN,
         LOG_COMPONENT.as_ptr(),
         _log_stream_name,
-        b"pulse_gen table full; pulse stop for '%s' will fire unconditionally\0".as_ptr()
+        b"pulse_gen table full; cannot track motion action for '%s'\0".as_ptr()
             as *const ::core::ffi::c_char,
         stream_name,
     );
@@ -496,26 +1621,47 @@ unsafe extern "C" fn motion_pulse_worker(
     if task.is_null() {
         return NULL;
     }
-    let mut usec: useconds_t = ((*task).duration_ms as useconds_t).wrapping_mul(1000 as useconds_t);
-    while usec > 0 as useconds_t {
-        let mut chunk: useconds_t = if usec > 500000 as ::core::ffi::c_uint {
-            500000 as useconds_t
+    let mut remaining_ms: ::core::ffi::c_int = (*task).duration_ms;
+    while remaining_ms > 0 as ::core::ffi::c_int {
+        let mut chunk_ms: ::core::ffi::c_int = if remaining_ms > 500 as ::core::ffi::c_int {
+            500 as ::core::ffi::c_int
         } else {
-            usec
+            remaining_ms
         };
-        usleep(chunk);
-        usec = usec.wrapping_sub(chunk);
+        let mut req: timespec = timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        req.tv_sec = (chunk_ms / 1000 as ::core::ffi::c_int) as __time_t;
+        req.tv_nsec = ((chunk_ms % 1000 as ::core::ffi::c_int) as ::core::ffi::c_long
+            * 1000000 as ::core::ffi::c_long) as __syscall_slong_t;
+        let mut rc: ::core::ffi::c_int = 0;
+        loop {
+            rc = nanosleep(&raw mut req, &raw mut req);
+            if !(rc == -1 as ::core::ffi::c_int && *__errno_location() == EINTR) {
+                break;
+            }
+        }
+        if rc == -1 as ::core::ffi::c_int {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT.as_ptr(),
+                _log_stream_name,
+                b"Pulse sleep failed for '%s': %s; ending pulse\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                &raw mut (*task).stream_name as *mut ::core::ffi::c_char,
+                strerror(*__errno_location()),
+            );
+            break;
+        } else {
+            remaining_ms -= chunk_ms;
+        }
     }
     let mut still_current: bool = false;
-    if (*task).generation == 0 as uint64_t {
-        still_current = r#true != 0;
-    } else {
-        pthread_mutex_lock(&raw mut g_pulse_gen_mutex);
-        let mut current_gen: uint64_t =
-            pulse_gen_get(&raw mut (*task).stream_name as *mut ::core::ffi::c_char);
-        still_current = current_gen == (*task).generation;
-        pthread_mutex_unlock(&raw mut g_pulse_gen_mutex);
-    }
+    pthread_mutex_lock(&raw mut g_pulse_gen_mutex);
+    let mut current_gen: uint64_t =
+        pulse_gen_get(&raw mut (*task).stream_name as *mut ::core::ffi::c_char);
+    still_current = (*task).generation != 0 as uint64_t && current_gen == (*task).generation;
     if still_current {
         let mut now: time_t = time(::core::ptr::null_mut::<time_t>());
         close_external_motion_detections(
@@ -535,6 +1681,9 @@ unsafe extern "C" fn motion_pulse_worker(
             now,
             r#false != 0,
         );
+    }
+    pthread_mutex_unlock(&raw mut g_pulse_gen_mutex);
+    if still_current {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
             LOG_COMPONENT.as_ptr(),
@@ -1116,6 +2265,15 @@ pub unsafe extern "C" fn handle_post_motion_trigger(
         return;
     }
     let mut stream_name: [::core::ffi::c_char; 256] = [0; 256];
+    if strlen((*j_stream).valuestring) >= ::core::mem::size_of::<[::core::ffi::c_char; 256]>() {
+        cJSON_Delete(body);
+        http_response_set_json_error(
+            res,
+            400 as ::core::ffi::c_int,
+            b"Invalid stream name\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
     safe_strcpy(
         &raw mut stream_name as *mut ::core::ffi::c_char,
         (*j_stream).valuestring,
@@ -1237,12 +2395,20 @@ pub unsafe extern "C" fn handle_post_motion_trigger(
             &raw mut stream_name as *mut ::core::ffi::c_char,
         );
     }
-    let mut now: time_t = time(::core::ptr::null_mut::<time_t>());
     let mut active: bool = action.0 != motion_action_t::MOTION_ACTION_STOP.0;
     pthread_mutex_lock(&raw mut g_pulse_gen_mutex);
     let mut new_gen: uint64_t =
         pulse_gen_increment(&raw mut stream_name as *mut ::core::ffi::c_char);
-    pthread_mutex_unlock(&raw mut g_pulse_gen_mutex);
+    if new_gen == 0 as uint64_t {
+        pthread_mutex_unlock(&raw mut g_pulse_gen_mutex);
+        http_response_set_json_error(
+            res,
+            500 as ::core::ffi::c_int,
+            b"Motion trigger tracking capacity exhausted\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    let mut now: time_t = time(::core::ptr::null_mut::<time_t>());
     let mut stored_detections: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     let mut current_recording_id: uint64_t =
         get_current_recording_id_for_stream(&raw mut stream_name as *mut ::core::ffi::c_char);
@@ -1652,6 +2818,7 @@ pub unsafe extern "C" fn handle_post_motion_trigger(
                 now,
                 r#false != 0,
             );
+            pthread_mutex_unlock(&raw mut g_pulse_gen_mutex);
             http_response_set_json_error(
                 res,
                 500 as ::core::ffi::c_int,
@@ -1676,21 +2843,28 @@ pub unsafe extern "C" fn handle_post_motion_trigger(
         (*task).trigger_recording = can_trigger_recording;
         let mut tid: pthread_t = 0;
         let mut attr: pthread_attr_t = pthread_attr_t { __size: [0; 56] };
-        pthread_attr_init(&raw mut attr);
-        pthread_attr_setdetachstate(
-            &raw mut attr,
-            C2Rust_Unnamed::PTHREAD_CREATE_DETACHED.0 as ::core::ffi::c_int,
-        );
-        let mut rc: ::core::ffi::c_int = pthread_create(
-            &raw mut tid,
-            &raw mut attr,
-            Some(
-                motion_pulse_worker
-                    as unsafe extern "C" fn(*mut ::core::ffi::c_void) -> *mut ::core::ffi::c_void,
-            ),
-            task as *mut ::core::ffi::c_void,
-        );
-        pthread_attr_destroy(&raw mut attr);
+        let mut rc: ::core::ffi::c_int = pthread_attr_init(&raw mut attr);
+        if rc == 0 as ::core::ffi::c_int {
+            rc = pthread_attr_setdetachstate(
+                &raw mut attr,
+                C2Rust_Unnamed::PTHREAD_CREATE_DETACHED.0 as ::core::ffi::c_int,
+            );
+            if rc == 0 as ::core::ffi::c_int {
+                rc = pthread_create(
+                    &raw mut tid,
+                    &raw mut attr,
+                    Some(
+                        motion_pulse_worker
+                            as unsafe extern "C" fn(
+                                *mut ::core::ffi::c_void,
+                            )
+                                -> *mut ::core::ffi::c_void,
+                    ),
+                    task as *mut ::core::ffi::c_void,
+                );
+            }
+            pthread_attr_destroy(&raw mut attr);
+        }
         if rc != 0 as ::core::ffi::c_int {
             if can_trigger_recording {
                 unified_detection_notify_motion(
@@ -1710,6 +2884,7 @@ pub unsafe extern "C" fn handle_post_motion_trigger(
                 r#false != 0,
             );
             free(task as *mut ::core::ffi::c_void);
+            pthread_mutex_unlock(&raw mut g_pulse_gen_mutex);
             http_response_set_json_error(
                 res,
                 500 as ::core::ffi::c_int,
@@ -1735,6 +2910,7 @@ pub unsafe extern "C" fn handle_post_motion_trigger(
             &raw mut stream_name as *mut ::core::ffi::c_char,
         );
     }
+    pthread_mutex_unlock(&raw mut g_pulse_gen_mutex);
     let mut resp: *mut cJSON = cJSON_CreateObject();
     if resp.is_null() {
         http_response_set_json_error(

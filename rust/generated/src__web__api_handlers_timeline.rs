@@ -18,6 +18,7 @@ unsafe extern "C" {
         __format: *const ::core::ffi::c_char,
         ...
     ) -> ::core::ffi::c_int;
+    unsafe fn __ctype_b_loc() -> *mut *const ::core::ffi::c_ushort;
     unsafe fn close(__fd: ::core::ffi::c_int) -> ::core::ffi::c_int;
     unsafe fn open(
         __file: *const ::core::ffi::c_char,
@@ -37,10 +38,12 @@ unsafe extern "C" {
         __fmt: *const ::core::ffi::c_char,
         __tp: *mut tm,
     ) -> *mut ::core::ffi::c_char;
+    unsafe fn gmtime_r(__timer: *const time_t, __tp: *mut tm) -> *mut tm;
     unsafe fn localtime_r(__timer: *const time_t, __tp: *mut tm) -> *mut tm;
     unsafe fn timegm(__tp: *mut tm) -> time_t;
     unsafe fn pthread_mutex_lock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_unlock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
+    unsafe fn __errno_location() -> *mut ::core::ffi::c_int;
     unsafe fn cJSON_PrintUnformatted(item: *const cJSON) -> *mut ::core::ffi::c_char;
     unsafe fn cJSON_Delete(item: *mut cJSON);
     unsafe fn cJSON_CreateArray() -> *mut cJSON;
@@ -69,6 +72,11 @@ unsafe extern "C" {
         object: *mut cJSON,
         name: *const ::core::ffi::c_char,
         string: *const ::core::ffi::c_char,
+    ) -> *mut cJSON;
+    unsafe fn cJSON_AddRawToObject(
+        object: *mut cJSON,
+        name: *const ::core::ffi::c_char,
+        raw: *const ::core::ffi::c_char,
     ) -> *mut cJSON;
     static mut g_config: config_t;
     unsafe fn http_request_get_query_param(
@@ -160,7 +168,6 @@ unsafe extern "C" {
         count: ::core::ffi::c_int,
         summaries: *mut recording_detection_summary_t,
     ) -> ::core::ffi::c_int;
-    unsafe fn __errno_location() -> *mut ::core::ffi::c_int;
     unsafe fn httpd_check_action_access(
         req: *const http_request_t,
         user: *mut user_t,
@@ -326,6 +333,23 @@ pub struct tm {
 #[repr(transparent)]
 pub struct C2Rust_Unnamed(pub ::core::ffi::c_uint);
 impl C2Rust_Unnamed {
+    pub const _ISupper: Self = Self(256);
+    pub const _ISlower: Self = Self(512);
+    pub const _ISalpha: Self = Self(1024);
+    pub const _ISdigit: Self = Self(2048);
+    pub const _ISxdigit: Self = Self(4096);
+    pub const _ISspace: Self = Self(8192);
+    pub const _ISprint: Self = Self(16384);
+    pub const _ISgraph: Self = Self(32768);
+    pub const _ISblank: Self = Self(1);
+    pub const _IScntrl: Self = Self(2);
+    pub const _ISpunct: Self = Self(4);
+    pub const _ISalnum: Self = Self(8);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct C2Rust_Unnamed_0(pub ::core::ffi::c_uint);
+impl C2Rust_Unnamed_0 {
     pub const PTHREAD_MUTEX_TIMED_NP: Self = Self(0);
     pub const PTHREAD_MUTEX_RECURSIVE_NP: Self = Self(1);
     pub const PTHREAD_MUTEX_ERRORCHECK_NP: Self = Self(2);
@@ -884,6 +908,28 @@ unsafe extern "C" fn recording_capture_method(
 pub const LOG_COMPONENT: [::core::ffi::c_char; 14] =
     unsafe { ::core::mem::transmute::<[u8; 14], [::core::ffi::c_char; 14]>(*b"RecordingsAPI\0") };
 pub const MAX_TIMELINE_SEGMENTS: ::core::ffi::c_int = 8640 as ::core::ffi::c_int;
+unsafe extern "C" fn add_timeline_recording_id(mut segment: *mut cJSON, mut id: uint64_t) {
+    let mut decimal: [::core::ffi::c_char; 21] = [0; 21];
+    snprintf(
+        &raw mut decimal as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 21]>(),
+        b"%llu\0".as_ptr() as *const ::core::ffi::c_char,
+        id as ::core::ffi::c_ulonglong,
+    );
+    if id <= 9007199254740991 as uint64_t {
+        cJSON_AddRawToObject(
+            segment,
+            b"id\0".as_ptr() as *const ::core::ffi::c_char,
+            &raw mut decimal as *mut ::core::ffi::c_char,
+        );
+    } else {
+        cJSON_AddStringToObject(
+            segment,
+            b"id\0".as_ptr() as *const ::core::ffi::c_char,
+            &raw mut decimal as *mut ::core::ffi::c_char,
+        );
+    };
+}
 pub const MAX_MANIFEST_SEGMENTS: ::core::ffi::c_int = 100 as ::core::ffi::c_int;
 static mut manifest_mutex: pthread_mutex_t = pthread_mutex_t {
     __data: __pthread_mutex_s {
@@ -891,7 +937,7 @@ static mut manifest_mutex: pthread_mutex_t = pthread_mutex_t {
         __count: 0 as ::core::ffi::c_uint,
         __owner: 0 as ::core::ffi::c_int,
         __nusers: 0 as ::core::ffi::c_uint,
-        __kind: C2Rust_Unnamed::PTHREAD_MUTEX_TIMED_NP.0 as ::core::ffi::c_int,
+        __kind: C2Rust_Unnamed_0::PTHREAD_MUTEX_TIMED_NP.0 as ::core::ffi::c_int,
         __spins: 0 as ::core::ffi::c_short,
         __glibc_reserved: 0 as ::core::ffi::c_short,
         __list: __pthread_internal_list {
@@ -1192,7 +1238,7 @@ pub unsafe extern "C" fn get_timeline_coverage_by_camera_uuid(
         free(buckets as *mut ::core::ffi::c_void);
         return -1 as ::core::ffi::c_int;
     }
-    let mut sql: *const ::core::ffi::c_char = b"SELECT r.id, r.start_time, r.end_time, r.size_bytes, r.trigger_type = 'detection' OR EXISTS (  SELECT 1 FROM detections d WHERE d.recording_id = r.id), r.protected, r.is_complete FROM recordings r LEFT JOIN streams s ON s.name = r.stream_name WHERE ((r.is_complete = 1 AND r.end_time IS NOT NULL)   OR (r.is_complete = 0 AND COALESCE(r.end_time, 0) = 0       AND r.start_time >= CAST(strftime('%s','now') AS INTEGER)          - (2 * COALESCE(NULLIF(s.segment_duration, 0), 900))))  AND ((r.camera_uuid != '' AND r.camera_uuid = ?1) OR ((r.camera_uuid IS NULL OR r.camera_uuid = '') AND r.stream_name IN (SELECT name FROM streams WHERE camera_uuid = ?1))) AND r.start_time < ?   AND COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) > ? ORDER BY r.start_time ASC;\0"
+    let mut sql: *const ::core::ffi::c_char = b"SELECT r.id, r.start_time, r.end_time, r.size_bytes, CASE WHEN r.trigger_type = 'detection' THEN 1      WHEN EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND ((d.camera_uuid != '' AND d.camera_uuid = COALESCE(NULLIF(r.camera_uuid,''),(SELECT camera_uuid FROM streams WHERE name=r.stream_name))) OR ((d.camera_uuid IS NULL OR d.camera_uuid = '') AND d.stream_name IN (SELECT name FROM streams WHERE camera_uuid = COALESCE(NULLIF(r.camera_uuid,''),(SELECT camera_uuid FROM streams WHERE name=r.stream_name)))))) THEN 1      WHEN EXISTS (SELECT 1 FROM detections d                   WHERE ((d.camera_uuid != '' AND d.camera_uuid = ?1) OR ((d.camera_uuid IS NULL OR d.camera_uuid = '') AND d.stream_name IN (SELECT name FROM streams WHERE camera_uuid = ?1)))                     AND d.source != 'external_motion'                     AND d.timestamp >= r.start_time                     AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER))) THEN 1      WHEN EXISTS (SELECT 1 FROM detections d                   WHERE ((d.camera_uuid != '' AND d.camera_uuid = ?1) OR ((d.camera_uuid IS NULL OR d.camera_uuid = '') AND d.stream_name IN (SELECT name FROM streams WHERE camera_uuid = ?1)))                     AND d.source = 'external_motion'                     AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER))                     AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1      ELSE 0 END AS has_detection, r.protected, r.is_complete FROM recordings r LEFT JOIN streams s ON s.name = r.stream_name WHERE ((r.is_complete = 1 AND r.end_time IS NOT NULL)   OR (r.is_complete = 0 AND COALESCE(r.end_time, 0) = 0       AND r.start_time >= CAST(strftime('%s','now') AS INTEGER)          - (2 * COALESCE(NULLIF(s.segment_duration, 0), 900))))  AND ((r.camera_uuid != '' AND r.camera_uuid = ?1) OR ((r.camera_uuid IS NULL OR r.camera_uuid = '') AND r.stream_name IN (SELECT name FROM streams WHERE camera_uuid = ?1))) AND r.start_time < ?   AND COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) > ? ORDER BY r.start_time ASC;\0"
         .as_ptr() as *const ::core::ffi::c_char;
     let mut stmt: *mut sqlite3_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
     let mut rc: ::core::ffi::c_int = sqlite3_prepare_v2(
@@ -1255,12 +1301,15 @@ pub unsafe extern "C" fn get_timeline_coverage_by_camera_uuid(
         } else {
             segment_end
         };
+        if clipped_end <= clipped_start {
+            continue;
+        }
         let mut first: ::core::ffi::c_int = ((clipped_start as int64_t - start_time as int64_t)
             / resolution as int64_t)
             as ::core::ffi::c_int;
-        let mut last: ::core::ffi::c_int = ((clipped_end as int64_t - start_time as int64_t)
-            / resolution as int64_t)
-            as ::core::ffi::c_int;
+        let mut last: ::core::ffi::c_int =
+            ((clipped_end as int64_t - 1 as int64_t - start_time as int64_t)
+                / resolution as int64_t) as ::core::ffi::c_int;
         if first < 0 as ::core::ffi::c_int {
             first = 0 as ::core::ffi::c_int;
         }
@@ -1399,6 +1448,10 @@ unsafe extern "C" fn parse_iso8601_time(mut time_str: *const ::core::ffi::c_char
         return 0 as time_t;
     }
     let mut decoded_time: [::core::ffi::c_char; 64] = [0; 64];
+    if strlen(time_str) >= ::core::mem::size_of::<[::core::ffi::c_char; 64]>().wrapping_sub(1usize)
+    {
+        return 0 as time_t;
+    }
     safe_strcpy(
         &raw mut decoded_time as *mut ::core::ffi::c_char,
         time_str,
@@ -1425,84 +1478,103 @@ unsafe extern "C" fn parse_iso8601_time(mut time_str: *const ::core::ffi::c_char
         b"Parsing time string (decoded): %s\0".as_ptr() as *const ::core::ffi::c_char,
         &raw mut decoded_time as *mut ::core::ffi::c_char,
     );
-    let mut tm: tm = tm {
-        tm_sec: 0 as ::core::ffi::c_int,
-        tm_min: 0,
-        tm_hour: 0,
-        tm_mday: 0,
-        tm_mon: 0,
-        tm_year: 0,
-        tm_wday: 0,
-        tm_yday: 0,
-        tm_isdst: 0,
-        tm_gmtoff: 0,
-        tm_zone: ::core::ptr::null::<::core::ffi::c_char>(),
-    };
-    if !strptime(
-        &raw mut decoded_time as *mut ::core::ffi::c_char,
+    let mut formats: [*const ::core::ffi::c_char; 2] = [
         b"%Y-%m-%dT%H:%M:%S\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw mut tm,
-    )
-    .is_null()
-        || !strptime(
-            &raw mut decoded_time as *mut ::core::ffi::c_char,
-            b"%Y-%m-%dT%H:%M:%S.000Z\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw mut tm,
-        )
-        .is_null()
-        || !strptime(
-            &raw mut decoded_time as *mut ::core::ffi::c_char,
-            b"%Y-%m-%dT%H:%M:%S.000\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw mut tm,
-        )
-        .is_null()
-        || !strptime(
-            &raw mut decoded_time as *mut ::core::ffi::c_char,
-            b"%Y-%m-%dT%H:%M:%SZ\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw mut tm,
-        )
-        .is_null()
-    {
-        tm.tm_isdst = 0 as ::core::ffi::c_int;
-        let mut result: time_t = timegm(&raw mut tm);
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT.as_ptr(),
-            _log_stream_name,
-            b"Parsed time: %ld\0".as_ptr() as *const ::core::ffi::c_char,
-            result,
-        );
-        return result;
-    } else if !strptime(
-        &raw mut decoded_time as *mut ::core::ffi::c_char,
         b"%Y-%m-%d\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw mut tm,
-    )
-    .is_null()
+    ];
+    let mut i: size_t = 0 as size_t;
+    while i < ::core::mem::size_of::<[*const ::core::ffi::c_char; 2]>()
+        .wrapping_div(::core::mem::size_of::<*const ::core::ffi::c_char>())
     {
-        tm.tm_hour = 0 as ::core::ffi::c_int;
-        tm.tm_min = 0 as ::core::ffi::c_int;
-        tm.tm_sec = 0 as ::core::ffi::c_int;
-        tm.tm_isdst = 0 as ::core::ffi::c_int;
-        let mut result_0: time_t = timegm(&raw mut tm);
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT.as_ptr(),
-            _log_stream_name,
-            b"Parsed date-only time: %ld\0".as_ptr() as *const ::core::ffi::c_char,
-            result_0,
-        );
-        return result_0;
-    } else {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT.as_ptr(),
-            _log_stream_name,
-            b"Failed to parse time string: %s\0".as_ptr() as *const ::core::ffi::c_char,
+        let mut tm: tm = tm {
+            tm_sec: 0 as ::core::ffi::c_int,
+            tm_min: 0,
+            tm_hour: 0,
+            tm_mday: 0,
+            tm_mon: 0,
+            tm_year: 0,
+            tm_wday: 0,
+            tm_yday: 0,
+            tm_isdst: 0,
+            tm_gmtoff: 0,
+            tm_zone: ::core::ptr::null::<::core::ffi::c_char>(),
+        };
+        let mut end: *mut ::core::ffi::c_char = strptime(
             &raw mut decoded_time as *mut ::core::ffi::c_char,
+            formats[i],
+            &raw mut tm,
         );
-        return 0 as time_t;
-    };
+        's_49: {
+            if !end.is_null() {
+                if i == 0 as size_t {
+                    if *end as ::core::ffi::c_int == '.' as ::core::ffi::c_int {
+                        end = end.offset(1);
+                        if (*end as ::core::ffi::c_int) < '0' as ::core::ffi::c_int
+                            || *end as ::core::ffi::c_int > '9' as ::core::ffi::c_int
+                        {
+                            break 's_49;
+                        } else {
+                            while *end as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+                                && *end as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+                            {
+                                end = end.offset(1);
+                            }
+                        }
+                    }
+                    if *end as ::core::ffi::c_int == 'Z' as ::core::ffi::c_int {
+                        end = end.offset(1);
+                    }
+                }
+                if *end as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
+                    tm.tm_isdst = 0 as ::core::ffi::c_int;
+                    let mut parsed_tm: tm = tm;
+                    let mut result: time_t = timegm(&raw mut tm);
+                    if result != -1 as ::core::ffi::c_int as time_t {
+                        let mut normalized_tm: tm = tm {
+                            tm_sec: 0 as ::core::ffi::c_int,
+                            tm_min: 0,
+                            tm_hour: 0,
+                            tm_mday: 0,
+                            tm_mon: 0,
+                            tm_year: 0,
+                            tm_wday: 0,
+                            tm_yday: 0,
+                            tm_isdst: 0,
+                            tm_gmtoff: 0,
+                            tm_zone: ::core::ptr::null::<::core::ffi::c_char>(),
+                        };
+                        if !gmtime_r(&raw mut result, &raw mut normalized_tm).is_null() {
+                            if !(normalized_tm.tm_year != parsed_tm.tm_year
+                                || normalized_tm.tm_mon != parsed_tm.tm_mon
+                                || normalized_tm.tm_mday != parsed_tm.tm_mday
+                                || normalized_tm.tm_hour != parsed_tm.tm_hour
+                                || normalized_tm.tm_min != parsed_tm.tm_min
+                                || normalized_tm.tm_sec != parsed_tm.tm_sec)
+                            {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_INFO,
+                                    LOG_COMPONENT.as_ptr(),
+                                    _log_stream_name,
+                                    b"Parsed time: %ld\0".as_ptr() as *const ::core::ffi::c_char,
+                                    result,
+                                );
+                                return result;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i = i.wrapping_add(1);
+    }
+    _log_message_ctx(
+        log_level_t::LOG_LEVEL_ERROR,
+        LOG_COMPONENT.as_ptr(),
+        _log_stream_name,
+        b"Failed to parse time string: %s\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut decoded_time as *mut ::core::ffi::c_char,
+    );
+    return 0 as time_t;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn handle_get_timeline_segments(
@@ -2701,11 +2773,7 @@ pub unsafe extern "C" fn handle_get_timeline_segments(
                         / (1024.0f64 * 1024.0f64 * 1024.0f64),
                 );
             }
-            cJSON_AddNumberToObject(
-                segment,
-                b"id\0".as_ptr() as *const ::core::ffi::c_char,
-                (*segments.offset(i_0 as isize)).id as ::core::ffi::c_double,
-            );
+            add_timeline_recording_id(segment, (*segments.offset(i_0 as isize)).id);
             cJSON_AddStringToObject(
                 segment,
                 b"stream\0".as_ptr() as *const ::core::ffi::c_char,
@@ -3347,6 +3415,12 @@ pub unsafe extern "C" fn handle_timeline_manifest(
                 b"Failed to parse start time: %s\0".as_ptr() as *const ::core::ffi::c_char,
                 &raw mut start_time_str as *mut ::core::ffi::c_char,
             );
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Invalid start time format\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            return;
         }
     } else {
         start_time = time(::core::ptr::null_mut::<time_t>())
@@ -3362,6 +3436,12 @@ pub unsafe extern "C" fn handle_timeline_manifest(
                 b"Failed to parse end time: %s\0".as_ptr() as *const ::core::ffi::c_char,
                 &raw mut end_time_str as *mut ::core::ffi::c_char,
             );
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Invalid end time format\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            return;
         }
         if strlen(&raw mut end_time_str as *mut ::core::ffi::c_char) == 10 as size_t {
             end_time += (23 as ::core::ffi::c_int * 3600 as ::core::ffi::c_int
@@ -12441,20 +12521,68 @@ pub unsafe extern "C" fn handle_get_timeline_segments_by_ids(
         b",\0".as_ptr() as *const ::core::ffi::c_char,
         &raw mut saveptr,
     );
-    while !token.is_null() && id_count < MAX_TIMELINE_SEGMENTS {
-        while *token as ::core::ffi::c_int == ' ' as ::core::ffi::c_int {
+    while !token.is_null() {
+        while *(*__ctype_b_loc())
+            .offset(*token as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+            as ::core::ffi::c_int
+            & C2Rust_Unnamed::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                as ::core::ffi::c_int
+            != 0
+        {
             token = token.offset(1);
         }
-        let mut id: uint64_t = strtoull(
-            token,
-            ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
-            10 as ::core::ffi::c_int,
-        ) as uint64_t;
-        if id > 0 as uint64_t {
-            let c2rust_fresh1 = id_count;
-            id_count += 1;
-            ids[c2rust_fresh1 as usize] = id;
+        if *token as ::core::ffi::c_int == '\0' as ::core::ffi::c_int
+            || *token as ::core::ffi::c_int == '+' as ::core::ffi::c_int
+            || *token as ::core::ffi::c_int == '-' as ::core::ffi::c_int
+        {
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Invalid recording ID in ids parameter\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            return;
         }
+        *__errno_location() = 0 as ::core::ffi::c_int;
+        let mut endptr: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+        let mut id: uint64_t =
+            strtoull(token, &raw mut endptr, 10 as ::core::ffi::c_int) as uint64_t;
+        if *__errno_location() == ERANGE || endptr == token {
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Invalid recording ID in ids parameter\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            return;
+        }
+        while *endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+            && *(*__ctype_b_loc())
+                .offset(*endptr as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                as ::core::ffi::c_int
+                & C2Rust_Unnamed::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                    as ::core::ffi::c_int
+                != 0
+        {
+            endptr = endptr.offset(1);
+        }
+        if *endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int || id == 0 as uint64_t {
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Invalid recording ID in ids parameter\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            return;
+        }
+        if id_count == MAX_TIMELINE_SEGMENTS {
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Too many recording IDs provided\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            return;
+        }
+        let c2rust_fresh1 = id_count;
+        id_count += 1;
+        ids[c2rust_fresh1 as usize] = id;
         token = strtok_r(
             ::core::ptr::null_mut::<::core::ffi::c_char>(),
             b",\0".as_ptr() as *const ::core::ffi::c_char,
@@ -12496,10 +12624,32 @@ pub unsafe extern "C" fn handle_get_timeline_segments_by_ids(
     let mut overall_start: time_t = 0 as time_t;
     let mut overall_end: time_t = 0 as time_t;
     let mut seg_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut records: *mut recording_metadata_t = calloc(
+        id_count as size_t,
+        ::core::mem::size_of::<recording_metadata_t>(),
+    ) as *mut recording_metadata_t;
+    let mut summaries: *mut recording_detection_summary_t = calloc(
+        id_count as size_t,
+        ::core::mem::size_of::<recording_detection_summary_t>(),
+    )
+        as *mut recording_detection_summary_t;
+    if records.is_null() || summaries.is_null() {
+        free(records as *mut ::core::ffi::c_void);
+        free(summaries as *mut ::core::ffi::c_void);
+        cJSON_Delete(response);
+        http_response_set_json_error(
+            res,
+            500 as ::core::ffi::c_int,
+            b"Failed to allocate recording metadata\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    let mut record_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let now: time_t = time(::core::ptr::null_mut::<time_t>());
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < id_count {
         let mut rec: recording_metadata_t = recording_metadata_t {
-            id: 0,
+            id: 0 as uint64_t,
             stream_name: [0; 64],
             camera_uuid: [0; 37],
             file_path: [0; 512],
@@ -12523,11 +12673,6 @@ pub unsafe extern "C" fn handle_get_timeline_segments_by_ids(
             disk_pressure_eligible: false,
             schedule_restricted: 0,
         };
-        memset(
-            &raw mut rec as *mut ::core::ffi::c_void,
-            0 as ::core::ffi::c_int,
-            ::core::mem::size_of::<recording_metadata_t>(),
-        );
         if get_recording_metadata_by_id(ids[i as usize], &raw mut rec) != 0 as ::core::ffi::c_int {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_WARN,
@@ -12556,6 +12701,8 @@ pub unsafe extern "C" fn handle_get_timeline_segments_by_ids(
             );
             if evaluation_result <= 0 as ::core::ffi::c_int {
                 if evaluation_result < 0 as ::core::ffi::c_int {
+                    free(summaries as *mut ::core::ffi::c_void);
+                    free(records as *mut ::core::ffi::c_void);
                     cJSON_Delete(response);
                     http_response_set_json_error(
                         res,
@@ -12567,325 +12714,323 @@ pub unsafe extern "C" fn handle_get_timeline_segments_by_ids(
                 }
                 if replay_evaluation.decision.0 == authorization_decision_t::AUTHZ_DECISION_ALLOW.0
                 {
-                    let in_progress: bool = !rec.is_complete;
-                    let effective_end: time_t =
-                        if in_progress as ::core::ffi::c_int != 0 && rec.end_time <= 0 as time_t {
-                            time(::core::ptr::null_mut::<time_t>())
-                        } else {
-                            rec.end_time
-                        };
-                    let mut observed: recording_metadata_t = rec;
-                    observed.end_time = effective_end;
-                    let mut summary: recording_detection_summary_t =
-                        recording_detection_summary_t {
-                            has_detection: false,
-                            label_count: 0,
-                            labels: [detection_label_summary_t {
-                                label: [0; 32],
-                                count: 0,
-                            }; 10],
-                        };
-                    if get_recording_detection_summaries_for_cameras(
-                        &raw mut observed,
-                        1 as ::core::ffi::c_int,
-                        &raw mut summary,
-                    ) != 0 as ::core::ffi::c_int
-                    {
-                        cJSON_Delete(response);
-                        http_response_set_json_error(
-                            res,
-                            500 as ::core::ffi::c_int,
-                            b"Failed to get recording detections\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                        );
-                        return;
+                    if !rec.is_complete && rec.end_time <= 0 as time_t {
+                        rec.end_time = now;
                     }
-                    let mut has_det: bool = strcmp(
-                        &raw mut rec.trigger_type as *mut ::core::ffi::c_char,
-                        b"detection\0".as_ptr() as *const ::core::ffi::c_char,
-                    ) == 0 as ::core::ffi::c_int
-                        || summary.has_detection as ::core::ffi::c_int != 0;
-                    if overall_start == 0 as time_t || rec.start_time < overall_start {
-                        overall_start = rec.start_time;
-                    }
-                    if effective_end > overall_end {
-                        overall_end = effective_end;
-                    }
-                    let mut segment: *mut cJSON = cJSON_CreateObject();
-                    if !segment.is_null() {
-                        let mut tm_buf: tm = tm {
-                            tm_sec: 0,
-                            tm_min: 0,
-                            tm_hour: 0,
-                            tm_mday: 0,
-                            tm_mon: 0,
-                            tm_year: 0,
-                            tm_wday: 0,
-                            tm_yday: 0,
-                            tm_isdst: 0,
-                            tm_gmtoff: 0,
-                            tm_zone: ::core::ptr::null::<::core::ffi::c_char>(),
-                        };
-                        let mut tm_info: *const tm = ::core::ptr::null::<tm>();
-                        let mut seg_start: [::core::ffi::c_char; 32] = [
-                            0 as ::core::ffi::c_char,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                        ];
-                        let mut seg_end: [::core::ffi::c_char; 32] = [
-                            0 as ::core::ffi::c_char,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                        ];
-                        tm_info = localtime_r(&raw mut rec.start_time, &raw mut tm_buf);
-                        if !tm_info.is_null() {
-                            strftime(
-                                &raw mut seg_start as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
-                                b"%Y-%m-%d %H:%M:%S\0".as_ptr() as *const ::core::ffi::c_char,
-                                tm_info,
-                            );
-                        }
-                        tm_info = localtime_r(&raw const effective_end, &raw mut tm_buf);
-                        if !tm_info.is_null() {
-                            strftime(
-                                &raw mut seg_end as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
-                                b"%Y-%m-%d %H:%M:%S\0".as_ptr() as *const ::core::ffi::c_char,
-                                tm_info,
-                            );
-                        }
-                        let mut duration: ::core::ffi::c_int =
-                            difftime(effective_end, rec.start_time) as ::core::ffi::c_int;
-                        let mut size_str: [::core::ffi::c_char; 32] = [
-                            0 as ::core::ffi::c_char,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                        ];
-                        if rec.size_bytes < 1024 as uint64_t {
-                            snprintf(
-                                &raw mut size_str as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
-                                b"%lu B\0".as_ptr() as *const ::core::ffi::c_char,
-                                rec.size_bytes as ::core::ffi::c_ulong,
-                            );
-                        } else if rec.size_bytes
-                            < (1024 as ::core::ffi::c_int as uint64_t)
-                                .wrapping_mul(1024 as uint64_t)
-                        {
-                            snprintf(
-                                &raw mut size_str as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
-                                b"%.1f KB\0".as_ptr() as *const ::core::ffi::c_char,
-                                rec.size_bytes as ::core::ffi::c_double / 1024.0f64,
-                            );
-                        } else if rec.size_bytes
-                            < (1024 as ::core::ffi::c_int as uint64_t)
-                                .wrapping_mul(1024 as uint64_t)
-                                .wrapping_mul(1024 as uint64_t)
-                        {
-                            snprintf(
-                                &raw mut size_str as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
-                                b"%.1f MB\0".as_ptr() as *const ::core::ffi::c_char,
-                                rec.size_bytes as ::core::ffi::c_double / (1024.0f64 * 1024.0f64),
-                            );
-                        } else {
-                            snprintf(
-                                &raw mut size_str as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
-                                b"%.1f GB\0".as_ptr() as *const ::core::ffi::c_char,
-                                rec.size_bytes as ::core::ffi::c_double
-                                    / (1024.0f64 * 1024.0f64 * 1024.0f64),
-                            );
-                        }
-                        cJSON_AddNumberToObject(
-                            segment,
-                            b"id\0".as_ptr() as *const ::core::ffi::c_char,
-                            rec.id as ::core::ffi::c_double,
-                        );
-                        cJSON_AddStringToObject(
-                            segment,
-                            b"stream\0".as_ptr() as *const ::core::ffi::c_char,
-                            &raw mut rec.stream_name as *mut ::core::ffi::c_char,
-                        );
-                        if rec.camera_uuid[0usize] as ::core::ffi::c_int
-                            != '\0' as ::core::ffi::c_int
-                        {
-                            cJSON_AddStringToObject(
-                                segment,
-                                b"camera_uuid\0".as_ptr() as *const ::core::ffi::c_char,
-                                &raw mut rec.camera_uuid as *mut ::core::ffi::c_char,
-                            );
-                        } else {
-                            cJSON_AddNullToObject(
-                                segment,
-                                b"camera_uuid\0".as_ptr() as *const ::core::ffi::c_char,
-                            );
-                        }
-                        cJSON_AddStringToObject(
-                            segment,
-                            b"start_time\0".as_ptr() as *const ::core::ffi::c_char,
-                            &raw mut seg_start as *mut ::core::ffi::c_char,
-                        );
-                        cJSON_AddStringToObject(
-                            segment,
-                            b"end_time\0".as_ptr() as *const ::core::ffi::c_char,
-                            &raw mut seg_end as *mut ::core::ffi::c_char,
-                        );
-                        cJSON_AddNumberToObject(
-                            segment,
-                            b"duration\0".as_ptr() as *const ::core::ffi::c_char,
-                            duration as ::core::ffi::c_double,
-                        );
-                        cJSON_AddStringToObject(
-                            segment,
-                            b"size\0".as_ptr() as *const ::core::ffi::c_char,
-                            &raw mut size_str as *mut ::core::ffi::c_char,
-                        );
-                        cJSON_AddStringToObject(
-                            segment,
-                            b"capture_method\0".as_ptr() as *const ::core::ffi::c_char,
-                            recording_capture_method(&raw mut rec),
-                        );
-                        cJSON_AddBoolToObject(
-                            segment,
-                            b"has_detection\0".as_ptr() as *const ::core::ffi::c_char,
-                            has_det as cJSON_bool,
-                        );
-                        cJSON_AddBoolToObject(
-                            segment,
-                            b"in_progress\0".as_ptr() as *const ::core::ffi::c_char,
-                            in_progress as cJSON_bool,
-                        );
-                        if rec.schedule_restricted < 0 as ::core::ffi::c_int {
-                            cJSON_AddNullToObject(
-                                segment,
-                                b"schedule_restricted\0".as_ptr() as *const ::core::ffi::c_char,
-                            );
-                        } else {
-                            cJSON_AddBoolToObject(
-                                segment,
-                                b"schedule_restricted\0".as_ptr() as *const ::core::ffi::c_char,
-                                (rec.schedule_restricted != 0 as ::core::ffi::c_int)
-                                    as ::core::ffi::c_int,
-                            );
-                        }
-                        cJSON_AddNumberToObject(
-                            segment,
-                            b"start_timestamp\0".as_ptr() as *const ::core::ffi::c_char,
-                            rec.start_time as ::core::ffi::c_double,
-                        );
-                        cJSON_AddNumberToObject(
-                            segment,
-                            b"end_timestamp\0".as_ptr() as *const ::core::ffi::c_char,
-                            effective_end as ::core::ffi::c_double,
-                        );
-                        cJSON_AddNumberToObject(
-                            segment,
-                            b"local_start_timestamp\0".as_ptr() as *const ::core::ffi::c_char,
-                            rec.start_time as ::core::ffi::c_double,
-                        );
-                        cJSON_AddNumberToObject(
-                            segment,
-                            b"local_end_timestamp\0".as_ptr() as *const ::core::ffi::c_char,
-                            effective_end as ::core::ffi::c_double,
-                        );
-                        cJSON_AddItemToArray(segments_array, segment);
-                        seg_count += 1;
-                    }
+                    let c2rust_fresh2 = record_count;
+                    record_count += 1;
+                    *records.offset(c2rust_fresh2 as isize) = rec;
                 }
             }
         }
         i += 1;
     }
+    if record_count > 0 as ::core::ffi::c_int
+        && get_recording_detection_summaries_for_cameras(records, record_count, summaries)
+            != 0 as ::core::ffi::c_int
+    {
+        free(summaries as *mut ::core::ffi::c_void);
+        free(records as *mut ::core::ffi::c_void);
+        cJSON_Delete(response);
+        http_response_set_json_error(
+            res,
+            500 as ::core::ffi::c_int,
+            b"Failed to get recording detections\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_0 < record_count {
+        let rec_0: recording_metadata_t = *records.offset(i_0 as isize);
+        let in_progress: bool = !rec_0.is_complete;
+        let effective_end: time_t = rec_0.end_time;
+        let mut summary_index: ::core::ffi::c_int = i_0;
+        let mut j: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while j < i_0 {
+            if (*records.offset(j as isize)).id == rec_0.id {
+                summary_index = j;
+                break;
+            } else {
+                j += 1;
+            }
+        }
+        let summary: recording_detection_summary_t = *summaries.offset(summary_index as isize);
+        let mut has_det: bool = strcmp(
+            &raw const rec_0.trigger_type as *const ::core::ffi::c_char,
+            b"detection\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+            || summary.has_detection as ::core::ffi::c_int != 0;
+        if overall_start == 0 as time_t || rec_0.start_time < overall_start {
+            overall_start = rec_0.start_time;
+        }
+        if effective_end > overall_end {
+            overall_end = effective_end;
+        }
+        let mut segment: *mut cJSON = cJSON_CreateObject();
+        if !segment.is_null() {
+            let mut tm_buf: tm = tm {
+                tm_sec: 0,
+                tm_min: 0,
+                tm_hour: 0,
+                tm_mday: 0,
+                tm_mon: 0,
+                tm_year: 0,
+                tm_wday: 0,
+                tm_yday: 0,
+                tm_isdst: 0,
+                tm_gmtoff: 0,
+                tm_zone: ::core::ptr::null::<::core::ffi::c_char>(),
+            };
+            let mut tm_info: *const tm = ::core::ptr::null::<tm>();
+            let mut seg_start: [::core::ffi::c_char; 32] = [
+                0 as ::core::ffi::c_char,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ];
+            let mut seg_end: [::core::ffi::c_char; 32] = [
+                0 as ::core::ffi::c_char,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ];
+            tm_info = localtime_r(&raw const rec_0.start_time, &raw mut tm_buf);
+            if !tm_info.is_null() {
+                strftime(
+                    &raw mut seg_start as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+                    b"%Y-%m-%d %H:%M:%S\0".as_ptr() as *const ::core::ffi::c_char,
+                    tm_info,
+                );
+            }
+            tm_info = localtime_r(&raw const effective_end, &raw mut tm_buf);
+            if !tm_info.is_null() {
+                strftime(
+                    &raw mut seg_end as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+                    b"%Y-%m-%d %H:%M:%S\0".as_ptr() as *const ::core::ffi::c_char,
+                    tm_info,
+                );
+            }
+            let mut duration: ::core::ffi::c_int =
+                difftime(effective_end, rec_0.start_time) as ::core::ffi::c_int;
+            let mut size_str: [::core::ffi::c_char; 32] = [
+                0 as ::core::ffi::c_char,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ];
+            if rec_0.size_bytes < 1024 as uint64_t {
+                snprintf(
+                    &raw mut size_str as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+                    b"%lu B\0".as_ptr() as *const ::core::ffi::c_char,
+                    rec_0.size_bytes as ::core::ffi::c_ulong,
+                );
+            } else if rec_0.size_bytes
+                < (1024 as ::core::ffi::c_int as uint64_t).wrapping_mul(1024 as uint64_t)
+            {
+                snprintf(
+                    &raw mut size_str as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+                    b"%.1f KB\0".as_ptr() as *const ::core::ffi::c_char,
+                    rec_0.size_bytes as ::core::ffi::c_double / 1024.0f64,
+                );
+            } else if rec_0.size_bytes
+                < (1024 as ::core::ffi::c_int as uint64_t)
+                    .wrapping_mul(1024 as uint64_t)
+                    .wrapping_mul(1024 as uint64_t)
+            {
+                snprintf(
+                    &raw mut size_str as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+                    b"%.1f MB\0".as_ptr() as *const ::core::ffi::c_char,
+                    rec_0.size_bytes as ::core::ffi::c_double / (1024.0f64 * 1024.0f64),
+                );
+            } else {
+                snprintf(
+                    &raw mut size_str as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+                    b"%.1f GB\0".as_ptr() as *const ::core::ffi::c_char,
+                    rec_0.size_bytes as ::core::ffi::c_double / (1024.0f64 * 1024.0f64 * 1024.0f64),
+                );
+            }
+            add_timeline_recording_id(segment, rec_0.id);
+            cJSON_AddStringToObject(
+                segment,
+                b"stream\0".as_ptr() as *const ::core::ffi::c_char,
+                &raw const rec_0.stream_name as *const ::core::ffi::c_char,
+            );
+            if rec_0.camera_uuid[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+                cJSON_AddStringToObject(
+                    segment,
+                    b"camera_uuid\0".as_ptr() as *const ::core::ffi::c_char,
+                    &raw const rec_0.camera_uuid as *const ::core::ffi::c_char,
+                );
+            } else {
+                cJSON_AddNullToObject(
+                    segment,
+                    b"camera_uuid\0".as_ptr() as *const ::core::ffi::c_char,
+                );
+            }
+            cJSON_AddStringToObject(
+                segment,
+                b"start_time\0".as_ptr() as *const ::core::ffi::c_char,
+                &raw mut seg_start as *mut ::core::ffi::c_char,
+            );
+            cJSON_AddStringToObject(
+                segment,
+                b"end_time\0".as_ptr() as *const ::core::ffi::c_char,
+                &raw mut seg_end as *mut ::core::ffi::c_char,
+            );
+            cJSON_AddNumberToObject(
+                segment,
+                b"duration\0".as_ptr() as *const ::core::ffi::c_char,
+                duration as ::core::ffi::c_double,
+            );
+            cJSON_AddStringToObject(
+                segment,
+                b"size\0".as_ptr() as *const ::core::ffi::c_char,
+                &raw mut size_str as *mut ::core::ffi::c_char,
+            );
+            cJSON_AddStringToObject(
+                segment,
+                b"capture_method\0".as_ptr() as *const ::core::ffi::c_char,
+                recording_capture_method(&raw const rec_0),
+            );
+            cJSON_AddBoolToObject(
+                segment,
+                b"has_detection\0".as_ptr() as *const ::core::ffi::c_char,
+                has_det as cJSON_bool,
+            );
+            cJSON_AddBoolToObject(
+                segment,
+                b"in_progress\0".as_ptr() as *const ::core::ffi::c_char,
+                in_progress as cJSON_bool,
+            );
+            if rec_0.schedule_restricted < 0 as ::core::ffi::c_int {
+                cJSON_AddNullToObject(
+                    segment,
+                    b"schedule_restricted\0".as_ptr() as *const ::core::ffi::c_char,
+                );
+            } else {
+                cJSON_AddBoolToObject(
+                    segment,
+                    b"schedule_restricted\0".as_ptr() as *const ::core::ffi::c_char,
+                    (rec_0.schedule_restricted != 0 as ::core::ffi::c_int) as ::core::ffi::c_int,
+                );
+            }
+            cJSON_AddNumberToObject(
+                segment,
+                b"start_timestamp\0".as_ptr() as *const ::core::ffi::c_char,
+                rec_0.start_time as ::core::ffi::c_double,
+            );
+            cJSON_AddNumberToObject(
+                segment,
+                b"end_timestamp\0".as_ptr() as *const ::core::ffi::c_char,
+                effective_end as ::core::ffi::c_double,
+            );
+            cJSON_AddNumberToObject(
+                segment,
+                b"local_start_timestamp\0".as_ptr() as *const ::core::ffi::c_char,
+                rec_0.start_time as ::core::ffi::c_double,
+            );
+            cJSON_AddNumberToObject(
+                segment,
+                b"local_end_timestamp\0".as_ptr() as *const ::core::ffi::c_char,
+                effective_end as ::core::ffi::c_double,
+            );
+            cJSON_AddItemToArray(segments_array, segment);
+            seg_count += 1;
+        }
+        i_0 += 1;
+    }
+    free(summaries as *mut ::core::ffi::c_void);
+    free(records as *mut ::core::ffi::c_void);
     cJSON_AddStringToObject(
         response,
         b"stream\0".as_ptr() as *const ::core::ffi::c_char,
@@ -13038,5 +13183,6 @@ pub unsafe extern "C" fn handle_get_timeline_segments_by_ids(
 }
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
+pub const ERANGE: ::core::ffi::c_int = 34 as ::core::ffi::c_int;
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;

@@ -550,6 +550,8 @@ pub mod src__web__libuv_tls;
 pub mod src__web__openapi_projection;
 #[path = "generated/src__web__recording_archive.rs"]
 pub mod src__web__recording_archive;
+#[path = "generated/src__web__recording_id.rs"]
+pub mod src__web__recording_id;
 #[path = "generated/src__web__recording_source.rs"]
 pub mod src__web__recording_source;
 #[path = "generated/src__web__recordings_playback_state.rs"]
