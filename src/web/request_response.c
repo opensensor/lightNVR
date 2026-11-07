@@ -66,39 +66,39 @@ static int hex_digit_value(unsigned char c) {
 }
 
 // Decode only this input span; output size must not define input boundaries.
-static int url_decode_span(const char *src, size_t src_len, char *dst, size_t dst_size) {
-    if (!src || !dst || dst_size == 0) {
-        return -1;
-    }
+static int url_decode_span(const char *src, size_t src_len, char *dst,
+                           size_t dst_size, bool allow_truncation) {
+    if (!src || !dst || dst_size == 0) return -1;
 
-    size_t i, j = 0;
-
-    for (i = 0; i < src_len && j < dst_size - 1; i++) {
+    size_t j = 0;
+    for (size_t i = 0; i < src_len; i++) {
+        unsigned char decoded = (unsigned char)src[i];
         if (src[i] == '%' && i + 2 < src_len) {
             int high = hex_digit_value((unsigned char)src[i + 1]);
             int low = hex_digit_value((unsigned char)src[i + 2]);
-            // scanf accepts partial/signed values (e.g. %0G or %-0), which can
-            // manufacture a NUL and hide the rest of a path identity.
+            // Only complete hex escapes are decoded; malformed escapes stay literal.
             if (high >= 0 && low >= 0) {
-                dst[j++] = (char)((high << 4) | low);
+                decoded = (unsigned char)((high << 4) | low);
                 i += 2;
-            } else {
-                dst[j++] = src[i];
             }
         } else if (src[i] == '+') {
-            dst[j++] = ' ';
-        } else {
-            dst[j++] = src[i];
+            decoded = ' ';
         }
+        // These APIs return C strings: embedded NUL must never hide a suffix.
+        // Validate even the part of a query value beyond the output capacity.
+        if (decoded == 0 || (j == dst_size - 1 && !allow_truncation)) {
+            dst[0] = '\0';
+            return -1;
+        }
+        if (j < dst_size - 1) dst[j++] = (char)decoded;
     }
-
     dst[j] = '\0';
     return 0;
 }
 
 int url_decode(const char *src, char *dst, size_t dst_size) {
     if (!src) return -1;
-    return url_decode_span(src, strlen(src), dst, dst_size);
+    return url_decode_span(src, strlen(src), dst, dst_size, true);
 }
 
 void http_request_init(http_request_t *req) {
@@ -166,7 +166,7 @@ int http_request_get_query_param(const http_request_t *req, const char *name,
             const char *val_end = strchr(val_start, '&');
             size_t val_len = val_end ? (size_t)(val_end - val_start) : strlen(val_start);
 
-            url_decode_span(val_start, val_len, value, value_len);
+            if (url_decode_span(val_start, val_len, value, value_len, true) != 0) return -1;
 
             return (int)strlen(value);
         }
@@ -211,10 +211,9 @@ int http_request_extract_path_param(const http_request_t *req, const char *prefi
     // Strip trailing slashes
     while (param_len > 0 && param[param_len - 1] == '/') param_len--;
 
-    if (param_len == 0 || param_len >= buf_size) return -1;
+    if (param_len == 0) return -1;
 
-    url_decode_span(param, param_len, param_buf, buf_size);
-    return 0;
+    return url_decode_span(param, param_len, param_buf, buf_size, false);
 }
 
 int http_response_add_header(http_response_t *res, const char *name, const char *value) {
@@ -265,16 +264,22 @@ void http_response_add_cors_headers(http_response_t *res) {
 int http_response_set_json(http_response_t *res, int status_code, const char *json_str) {
     if (!res || !json_str) return -1;
 
+    // Five CORS headers and three cache-control headers must all fit.
+    if (res->num_headers < 0 || res->num_headers > MAX_HEADERS - 8) return -1;
+    // Copy first: failure must preserve the complete previous response, and
+    // json_str may alias the existing body.
+    if (http_response_set_body(res, json_str) != 0) return -1;
+
     res->status_code = status_code;
     safe_strcpy(res->content_type, "application/json", sizeof(res->content_type), 0);
 
-    // Add standard headers
+    // Header insertions are now guaranteed to fit due to capacity check above.
     http_response_add_cors_headers(res);
     http_response_add_header(res, "Cache-Control", "no-cache, no-store, must-revalidate");
     http_response_add_header(res, "Pragma", "no-cache");
     http_response_add_header(res, "Expires", "0");
 
-    return http_response_set_body(res, json_str);
+    return 0;
 }
 
 int http_response_set_json_error(http_response_t *res, int status_code, const char *error_message) {
