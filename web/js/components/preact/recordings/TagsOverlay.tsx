@@ -122,6 +122,7 @@ export function TagsOverlay<Id extends number | string>({ recording, onClose, on
   }, [tags, recording.id, onTagsChanged]);
 
   const removeTag = useCallback(async (tag: string) => {
+    const previousTags = tags;
     const newTags = tags.filter(t => t !== tag);
     setTags(newTags);
     setSaving(true);
@@ -129,7 +130,10 @@ export function TagsOverlay<Id extends number | string>({ recording, onClose, on
       await recordingsAPI.setRecordingTags(recording.id, newTags);
       if (onTagsChanged) onTagsChanged(recording.id, newTags);
       showStatusMessage(t('recordings.tagRemoved', { tag }));
-    } catch { /* error shown by API */ }
+    } catch {
+      /* error shown by API */
+      setTags(previousTags);
+    }
     setSaving(false);
   }, [tags, recording.id, onTagsChanged]);
 
