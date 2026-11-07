@@ -56,3 +56,13 @@ test('invalid edits preserve durable settings; queued updates preserve zero and 
   expect((await ok(server,'/api/streams/B/full')).stream.admin_url).toBe('http://127.0.0.1:9/admin-b');
   lintProjections(info);
 });
+
+
+test('stream paths reject encoded NUL instead of reading a prefix resource',async({server})=>{
+  for(const name of ['A%00junk','%41%00','%00A']) {
+    const result=await wire(server,`/api/streams/${name}`,admin);
+    expect(result.response.status).toBe(400);valid('ApiError',result.body);
+  }
+  expect((await wire(server,'/api/streams/%41',admin)).response.status).toBe(200);
+  expect((await wire(server,'/api/streams/A?note=%00',admin)).response.status).toBe(200);
+});
