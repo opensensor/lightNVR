@@ -2499,8 +2499,12 @@ static bool go2rtc_process_start_locked(int api_port) {
         sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 
         // Redirect stdout and stderr to the go2rtc log file
-        int log_fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        int log_fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0600);
         if (log_fd == -1) {
+            _exit(EXIT_FAILURE);
+        }
+        if (fchmod(log_fd, 0600) == -1) {
+            close(log_fd);
             _exit(EXIT_FAILURE);
         }
         dup2(log_fd, STDOUT_FILENO);
