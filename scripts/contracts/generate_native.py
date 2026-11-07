@@ -152,7 +152,7 @@ def main():
     parser.add_argument('--validate-only', action='store_true')
     parser.add_argument('--projected', action='store_true')
     args = parser.parse_args()
-    doc = validate(json.loads(pathlib.Path(args.source).read_text()), args.projected)
+    doc = validate(json.loads(pathlib.Path(args.source).read_text(encoding='utf-8')), args.projected)
     if not args.validate_only:
         target = pathlib.Path(args.output)
         target.parent.mkdir(parents=True, exist_ok=True)
