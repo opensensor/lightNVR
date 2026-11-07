@@ -472,7 +472,7 @@ export function LiveOperatorNavigator({
               const tabValues = ['cameras', 'plans', 'views', ...(investigationVisible ? ['events'] : [])];
               const currentIndex = tabValues.indexOf(tab);
               if (currentIndex < 0) return;
-              let nextIndex = currentIndex;
+              let nextIndex: number;
               const side = inlineSideOfArrow(event.key);
               if (side === 'end') nextIndex = (currentIndex + 1) % tabValues.length;
               else if (side === 'start') nextIndex = (currentIndex - 1 + tabValues.length) % tabValues.length;
