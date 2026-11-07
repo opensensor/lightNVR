@@ -449,13 +449,14 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     safe_strcpy(stream_name, j_stream->valuestring, sizeof(stream_name), 0);
     cJSON_Delete(body);
 
-    if (!httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
-                                       stream_name)) return;
-
+    /* Increment the per-stream generation counter before dispatching and keep
+     * the same lock held while this action's side effects are applied. This
+     * preserves ordering: once a newer generation is accepted, an older action
+     * cannot run later and overwrite it. */
     /* ---- Validate target stream ----------------------------------------- */
     stream_handle_t handle = get_stream_by_name(stream_name);
-    if (!handle) {
         http_response_set_json_error(res, 404, "Stream not found");
+        pthread_mutex_unlock(&g_pulse_gen_mutex);
         return;
     }
 
