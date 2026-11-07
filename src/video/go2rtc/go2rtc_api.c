@@ -1110,9 +1110,16 @@ bool go2rtc_api_get_application_info(int *rtsp_port,
                         cJSON *listen = cJSON_GetObjectItem(rtsp, "listen");
                         if (listen && cJSON_IsString(listen)) {
                             const char *listen_str = cJSON_GetStringValue(listen);
-                            if (listen_str && listen_str[0] == ':') {
-                                // Parse port number from ":8554"
-                                *rtsp_port = (int)strtol(listen_str + 1, NULL, 10);
+                            // go2rtc uses net.Listen addresses: :port,
+                            // 127.0.0.1:port, or [::1]:port. Only the port
+                            // is consumed here; recorder connections stay local.
+                            const char *separator = listen_str ? strrchr(listen_str, ':') : NULL;
+                            const char *port_text = separator ? separator + 1 : "";
+                            size_t digits = strspn(port_text, "0123456789");
+                            long port = digits > 0 && digits <= 5 && port_text[digits] == '\0'
+                                ? strtol(port_text, NULL, 10) : 0;
+                            if (port > 0 && port <= 65535) {
+                                *rtsp_port = (int)port;
                                 log_info("Extracted RTSP port: %d", *rtsp_port);
                             } else {
                                 log_warn("Invalid RTSP listen format: %s", listen_str ? listen_str : "NULL");

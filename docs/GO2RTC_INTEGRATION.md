@@ -149,6 +149,12 @@ No additional configuration is required for basic functionality.
 
 Browser signaling uses the dashboard origin through the authenticated routes documented in [Reverse Proxy & HTTPS](REVERSE_PROXY.md). WebRTC SDP is posted to `/go2rtc/api/webrtc?src=<stream-id>`; MSE connects to `/go2rtc/api/ws?src=<stream-id>`. Keep port 1984 on loopback.
 
+Managed go2rtc also binds RTSP to `127.0.0.1` (default port 8554). External direct
+RTSP clients must move to LightNVR playback; the local recorder still uses RTSP.
+A final managed configuration pins both listeners after user overrides and
+disables extra HTTPS/Unix API listeners. It leaves WebRTC ICE media connectivity
+available. See [override behavior and external-service limits](GO2RTC_CONFIG_OVERRIDE.md).
+
 ## Configuration
 
 ### go2rtc Configuration

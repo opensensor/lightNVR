@@ -99,6 +99,11 @@ int go2rtc_process_generate_override_file(const char *override_path);
  */
 const char *go2rtc_process_get_override_path(void);
 
+/** Copy the final listener policy used by the managed child. Returns false
+ * when no managed launch is recorded (including external services), or the
+ * output buffer is too small. The policy contains no credentials. */
+bool go2rtc_process_get_listener_policy(char *policy, size_t capacity);
+
 /**
  * @brief Return the path to the lightNVR-generated base config, or NULL when
  *        the process manager is not initialized.
