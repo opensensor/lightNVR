@@ -19,6 +19,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
+#include <errno.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -28,12 +29,29 @@
 /* File-scope config used by most tests — setUp zeros it, tearDown frees
    the dynamically allocated streams array to keep ASan leak-free. */
 static config_t cfg;
+static bool deny_config_chmod;
+static bool deny_config_rename;
+int __real_fchmod(int, mode_t);
+int __wrap_fchmod(int fd, mode_t mode) {
+    if (deny_config_chmod) {
+        deny_config_chmod = false;
+        errno = EPERM;
+        return -1;
+    }
+    return __real_fchmod(fd, mode);
+}
+int __real_renameat(int, const char *, int, const char *);
+int __wrap_renameat(int from_fd, const char *from, int to_fd, const char *to) {
+    if (deny_config_rename) { errno = EACCES; return -1; }
+    return __real_renameat(from_fd, from, to_fd, to);
+}
 
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
 }
 void tearDown(void) {
+    deny_config_chmod = deny_config_rename = false;
     if (cfg.streams) {
         free(cfg.streams);
         cfg.streams = NULL;
@@ -885,12 +903,57 @@ void test_save_config_rejects_hardlinks_without_truncation_or_mode_change(void) 
     unlink(path); unlink(original); rmdir(directory);
 }
 
+static void check_group_writable_config_replacement(bool fail_publish) {
+    char directory[] = "/tmp/lightnvr_group_config_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *old = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(old);
+    fputs("preserve-old-content", old); fclose(old);
+    TEST_ASSERT_EQUAL_INT(0, chmod(path, 0660));
+    struct stat before, after;
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
+    load_default_config(&cfg);
+    snprintf(cfg.mqtt_password, sizeof(cfg.mqtt_password), "synthetic-replacement-secret");
+    /* Reproduce chmod EPERM for an otherwise writable legacy root-owned file
+     * without requiring the unit suite to run with root privileges. */
+    deny_config_chmod = true;
+    deny_config_rename = fail_publish;
+    mode_t prior_umask = umask(0777);
+    int result = save_config(&cfg, path);
+    umask(prior_umask);
+    deny_config_rename = false;
+    TEST_ASSERT_EQUAL_INT(fail_publish ? -1 : 0, result);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
+    TEST_ASSERT_EQUAL_UINT(fail_publish ? 0660 : 0600, after.st_mode & 0777);
+    if (fail_publish) TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
+    else TEST_ASSERT_NOT_EQUAL(before.st_ino, after.st_ino);
+    FILE *saved = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    char content[32768] = {0};
+    fread(content, 1, sizeof(content)-1, saved); fclose(saved);
+    if (fail_publish) TEST_ASSERT_EQUAL_STRING("preserve-old-content", content);
+    else TEST_ASSERT_NOT_NULL(strstr(content, "synthetic-replacement-secret"));
+    unlink(path);
+    /* Also verifies no private staging file is left behind on either path. */
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+}
+static void test_save_config_replaces_group_writable_legacy_file_privately(void) {
+    check_group_writable_config_replacement(false);
+}
+static void test_save_config_preserves_legacy_file_when_replacement_fails(void) {
+    check_group_writable_config_replacement(true);
+}
+
 int main(void) {
     init_logger();
 
     UNITY_BEGIN();
     RUN_TEST(test_save_config_tightens_existing_permissions_before_writing_secrets);
     RUN_TEST(test_save_config_rejects_hardlinks_without_truncation_or_mode_change);
+    RUN_TEST(test_save_config_replaces_group_writable_legacy_file_privately);
+    RUN_TEST(test_save_config_preserves_legacy_file_when_replacement_fails);
 
     RUN_TEST(test_stream_config_t_size_under_16k);
     RUN_TEST(test_max_stream_ceiling_is_valid);

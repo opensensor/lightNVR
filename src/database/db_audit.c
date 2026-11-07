@@ -359,12 +359,22 @@ int db_audit_query(const audit_query_t *query, audit_page_t *page) {
     memset(page, 0, sizeof(*page));
     page->page = query->page;
     page->page_size = query->page_size;
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *mutex = get_db_mutex();
-    if (!db || !mutex) return -1;
-    pthread_mutex_lock(mutex);
+    /* Archive-sized audit reads must not hold the writer mutex: authorization,
+     * recording and settings requests all need that same writer connection. */
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) return -1;
+    if (sqlite3_exec(db, "BEGIN;", NULL, NULL, NULL) != SQLITE_OK) {
+        db_close_readonly_connection(db);
+        return -1;
+    }
 
-    char count_sql[1024] = "SELECT count(*) FROM audit_events WHERE 1=1";
+    char count_sql[1024] = "SELECT count(*) FROM audit_events";
+    /* Even WHERE 1=1 disables SQLite's fast, unfiltered COUNT optimization. */
+    if (query->since > 0 || query->until > 0 || query->principal_user_id > 0 ||
+        query->action[0] || query->outcome[0] || query->target_uuid[0] ||
+        query->request_id[0] || query->event_type[0]) {
+        safe_strcat(count_sql, " WHERE 1=1", sizeof(count_sql));
+    }
     add_query_filters(count_sql, sizeof(count_sql), query);
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(db, count_sql, -1, &stmt, NULL);
@@ -373,7 +383,7 @@ int db_audit_query(const audit_query_t *query, audit_page_t *page) {
     if (rc == SQLITE_ROW) page->total = sqlite3_column_int64(stmt, 0);
     if (stmt) sqlite3_finalize(stmt);
     if (rc != SQLITE_ROW) {
-        pthread_mutex_unlock(mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -412,7 +422,7 @@ int db_audit_query(const audit_query_t *query, audit_page_t *page) {
         if (rc == SQLITE_ROW) rc = SQLITE_DONE;
     }
     if (stmt) sqlite3_finalize(stmt);
-    pthread_mutex_unlock(mutex);
+    db_close_readonly_connection(db);
     if (rc != SQLITE_DONE) {
         free(events);
         return -1;

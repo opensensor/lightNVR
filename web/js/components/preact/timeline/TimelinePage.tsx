@@ -15,6 +15,7 @@ import { BatchDownloadModal } from '../BatchDownloadModal.tsx';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { LoadingIndicator } from '../LoadingIndicator.tsx';
 import { useQuery } from '../../../query-client.ts';
+import { fetchJSON } from '../../../fetch-utils.ts';
 import { useI18n } from '../../../i18n.ts';
 import { isReduceMotionActive } from '../../../utils/reduceMotion.ts';
 import { fetchAllStreamSummaries } from '../../../utils/stream-summaries.ts';
@@ -1251,18 +1252,16 @@ export function TimelinePage() {
     data: timelineData,
     isLoading: isLoadingTimeline,
     error: timelineError,
-  } = useQuery<TimelineSegmentsResponse>(
-    ['timeline-segments', selectedStream, selectedCameraUuid, selectedDate],
-    timelineUrl as string,
-    {
-      timeout: 30000, // 30 second timeout
-      retries: 2,     // Retry twice
-      retryDelay: 1000 // 1 second between retries
-    },
-    {
-      enabled: !!timelineUrl && !idsMode
-    }
-  );
+    refetch: refetchTimeline,
+  } = useQuery<TimelineSegmentsResponse>({
+    queryKey: ['timeline-segments', selectedStream, selectedCameraUuid, selectedDate],
+    queryFn: ({ signal }) => fetchJSON<TimelineSegmentsResponse>(timelineUrl!, {
+      signal, timeout: 30000, retries: 0,
+    }),
+    // Retrying timed-out work can queue more expensive queries on the server.
+    retry: false,
+    enabled: !!timelineUrl && !idsMode,
+  });
 
   // Process timeline data when it arrives
   useEffect(() => {
@@ -1289,19 +1288,23 @@ export function TimelinePage() {
     loadSegmentsIntoTimeline(timelineSegments, selectedDate);
   }, [timelineData, timelineError, selectedDate, loadSegmentsIntoTimeline]);
 
-  // Transparent polling: silently fetch for new recordings every 30 s (normal mode only)
+  // Wait for the initial load, then leave 10 seconds between completed polls.
+  // A fixed interval can pile up queries when a busy server responds slowly.
   useEffect(() => {
-    if (idsMode || !timelineUrl) return;
+    if (idsMode || !timelineUrl || isLoadingTimeline || timelineError || !timelineData) return;
 
     const POLL_INTERVAL_MS = 10000;
     let fadeTimeoutId: TimeoutId | null = null;
     let cancelled = false;
+    let pollTimeoutId: TimeoutId;
+    const controller = new AbortController();
 
     const pollForNewRecordings = async () => {
       try {
-        const response = await fetch(timelineUrl);
-        if (!response.ok) return;
-        const data: TimelineSegmentsResponse = await response.json();
+        const data = await fetchJSON<TimelineSegmentsResponse>(timelineUrl, {
+          signal: controller.signal, timeout: 30000, retries: 0,
+        });
+        if (cancelled) return;
         const polledSegments = data.segments || [];
         setDetectionIntervals(data.detection_intervals || []);
 
@@ -1352,16 +1355,19 @@ export function TimelinePage() {
         }
       } catch (err) {
         console.debug('Timeline poll error (suppressed):', err);
+      } finally {
+        if (!cancelled) pollTimeoutId = setTimeout(pollForNewRecordings, POLL_INTERVAL_MS);
       }
     };
 
-    const intervalId = setInterval(pollForNewRecordings, POLL_INTERVAL_MS);
+    pollTimeoutId = setTimeout(pollForNewRecordings, POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      clearInterval(intervalId);
+      controller.abort();
+      clearTimeout(pollTimeoutId);
       clearTimeout(fadeTimeoutId as TimeoutId);
     };
-  }, [idsMode, selectedStream, timelineUrl]);
+  }, [idsMode, timelineUrl, isLoadingTimeline, timelineError, timelineData]);
 
   useEffect(() => {
     if (!idsMode || idsAvailableDates.length === 0) return undefined;
@@ -1451,6 +1457,15 @@ export function TimelinePage() {
 
     if (isContentLoading) {
       return <LoadingIndicator message={idsMode ? "Loading selected recordings..." : "Loading timeline data..."} />;
+    }
+
+    if (!idsMode && timelineError) {
+      return <div role="alert" className="py-12 text-center">
+        <p>{t('timeline.errorLoadingData', { message: timelineError.message })}</p>
+        <button type="button" className="btn-secondary mt-3" onClick={() => void refetchTimeline()}>
+          {t('common.retry')}
+        </button>
+      </div>;
     }
 
     if (segments.length === 0) {
