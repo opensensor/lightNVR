@@ -471,7 +471,12 @@ static void *batch_delete_worker_thread(void *arg) {
         cJSON *capture_method_item = cJSON_GetObjectItem(filter, "capture_method");
         cJSON *protected_item = cJSON_GetObjectItem(filter, "protected");
 
-        if (start && cJSON_IsString(start)) {
+        if (start) {
+            if (!cJSON_IsString(start)) {
+                cJSON_Delete(json);
+                http_send_error(req, 400, "start must be a string");
+                return;
+            }
             struct tm tm = {0};
             if (strptime(start->valuestring, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
                 strptime(start->valuestring, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
@@ -479,10 +484,19 @@ static void *batch_delete_worker_thread(void *arg) {
                 strptime(start->valuestring, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
                 tm.tm_isdst = 0;
                 start_time = timegm(&tm);
+            } else {
+                cJSON_Delete(json);
+                http_send_error(req, 400, "Invalid start date format");
+                return;
             }
         }
 
-        if (end && cJSON_IsString(end)) {
+        if (end) {
+            if (!cJSON_IsString(end)) {
+                cJSON_Delete(json);
+                http_send_error(req, 400, "end must be a string");
+                return;
+            }
             struct tm tm = {0};
             if (strptime(end->valuestring, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
                 strptime(end->valuestring, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
@@ -490,6 +504,10 @@ static void *batch_delete_worker_thread(void *arg) {
                 strptime(end->valuestring, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
                 tm.tm_isdst = 0;
                 end_time = timegm(&tm);
+            } else {
+                cJSON_Delete(json);
+                http_send_error(req, 400, "Invalid end date format");
+                return;
             }
         }
 
