@@ -388,25 +388,35 @@ void test_pipelined_request_buffered_in_tls_session_is_served(void) {
         web_port);
 
     // The header length depends on the digits of Content-Length; settle it.
-    // Keep POST body + full GET within first_size to make buffering deterministic.
     for (int i = 0; i < 3; i++) {
         head_length = snprintf(head, sizeof(head),
             "POST /api/tls/echo HTTP/1.1\r\nHost: localhost:%d\r\nContent-Length: %zu\r\n\r\n",
             web_port, body_size);
         TEST_ASSERT_GREATER_OR_EQUAL_INT(0, head_length);
-        TEST_ASSERT_LESS_OR_EQUAL_size_t(first_size, (size_t)head_length + (size_t)second_length);
-        body_size = first_size - (size_t)head_length - (size_t)second_length;
+        TEST_ASSERT_LESS_THAN_size_t(sizeof(head), (size_t)head_length);
+        TEST_ASSERT_LESS_OR_EQUAL_size_t(first_size, (size_t)head_length);
+        body_size = first_size - (size_t)head_length;
     }
 
-    size_t total = first_size;
+    TEST_ASSERT_GREATER_THAN_INT(0, second_length);
+    TEST_ASSERT_LESS_THAN_size_t(sizeof(second), (size_t)second_length);
+    TEST_ASSERT_EQUAL_size_t(body_size, strtoul(strstr(head, "Content-Length: ") + 16, NULL, 10));
+
+    // The POST fills the application buffer; the GET must remain inside TLS.
+    // Both requests still fit in a single TLS record, with no later client write.
+    size_t total = first_size + (size_t)second_length;
+    int record_capacity = mbedtls_ssl_get_max_out_record_payload(&client.ssl);
+    TEST_ASSERT_GREATER_THAN_INT(0, record_capacity);
+    TEST_ASSERT_LESS_OR_EQUAL_size_t((size_t)record_capacity, total);
     char *pipelined = malloc(total);
     TEST_ASSERT_NOT_NULL(pipelined);
     memcpy(pipelined, head, (size_t)head_length);
     memset(pipelined + head_length, 'x', body_size);
-    memcpy(pipelined + head_length + body_size, second, (size_t)second_length);
-    TEST_ASSERT_EQUAL_size_t(first_size, (size_t)head_length + body_size + (size_t)second_length);
-    TEST_ASSERT_TRUE(tls_send_all(&client, pipelined, total));
+    memcpy(pipelined + first_size, second, (size_t)second_length);
+    TEST_ASSERT_EQUAL_size_t(first_size, (size_t)head_length + body_size);
+    int sent = mbedtls_ssl_write(&client.ssl, (const unsigned char *)pipelined, total);
     free(pipelined);
+    TEST_ASSERT_EQUAL_INT((int)total, sent);  // Exactly one TLS write/record.
 
     char headers[2048];
     char body[256];
