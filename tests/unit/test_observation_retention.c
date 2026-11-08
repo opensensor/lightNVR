@@ -33,6 +33,16 @@ static char storage[256];
 static char cam_a[OBS_UUID_SIZE];
 static char cam_b[OBS_UUID_SIZE];
 static int64_t now_ms;
+static const char *failed_unlink_path;
+
+int __real_unlink(const char *path);
+int __wrap_unlink(const char *path) {
+    if (failed_unlink_path && strcmp(path, failed_unlink_path) == 0) {
+        errno = EIO;
+        return -1;
+    }
+    return __real_unlink(path);
+}
 
 /* ---- helpers ---------------------------------------------------------- */
 
@@ -191,6 +201,7 @@ static void startup(observation_reconcile_result_t *result) {
 }
 
 void setUp(void) {
+    failed_unlink_path = NULL;
     exec_sql("DELETE FROM object_observations; DELETE FROM observation_assets; "
              "DELETE FROM observation_changes; DELETE FROM recordings;");
     char dir[512];
@@ -201,7 +212,7 @@ void setUp(void) {
     TEST_ASSERT_EQUAL_INT(0, db_set_system_setting("observation_history_retention_days", "30"));
     observation_retention_reset_for_testing();
 }
-void tearDown(void) {}
+void tearDown(void) { failed_unlink_path = NULL; }
 
 /* ---- startup reconciliation ------------------------------------------- */
 
@@ -482,6 +493,43 @@ static void test_history_prune_advances_oldest_seq_and_reclaims_assets(void) {
 
 /* ---- isolation from recordings ----------------------------------------- */
 
+static void test_failed_expiry_unlink_is_retried_without_restart(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t old = make_ready(cam_a, now_ms - 8 * DAY_MS, 500, 1);
+    failed_unlink_path = old.abs;
+    observation_retention_result_t result;
+    (void)observation_retention_run(storage, now_ms, &result);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_EXPIRED, asset_of(old.insert.asset_uuid).state);
+    TEST_ASSERT_TRUE(exists(old.abs));
+
+    failed_unlink_path = NULL;
+    result = run_retention(now_ms);
+    TEST_ASSERT_FALSE(exists(old.abs));
+    TEST_ASSERT_EQUAL_INT(1, result.files_deleted);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_EXPIRED, asset_of(old.insert.asset_uuid).state);
+}
+
+static void test_prune_preserves_failed_unlink_for_retry(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t old = make_ready(cam_a, now_ms - 8 * DAY_MS, 500, 1);
+    failed_unlink_path = old.abs;
+    observation_retention_result_t result;
+    (void)observation_retention_run(storage, now_ms, &result);
+    exec_sql("UPDATE observation_changes SET created_at_ms = 1;");
+    (void)observation_retention_run(storage, now_ms, &result);
+    TEST_ASSERT_TRUE(exists(old.abs));
+    observation_asset_record_t asset;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_asset_get(old.insert.asset_uuid, &asset));
+
+    failed_unlink_path = NULL;
+    (void)run_retention(now_ms);
+    TEST_ASSERT_FALSE(exists(old.abs));
+    TEST_ASSERT_EQUAL_INT(DB_OBS_NOT_FOUND,
+                          db_observation_asset_get(old.insert.asset_uuid, &asset));
+}
+
 static void test_recording_deletion_leaves_assets_intact(void) {
     observation_reconcile_result_t rec;
     startup(&rec);
@@ -603,6 +651,8 @@ int main(void) {
     RUN_TEST(test_shared_asset_survives_until_last_reference_expires);
     RUN_TEST(test_byte_budget_evicts_oldest_and_protected_assets_flip_the_flag);
     RUN_TEST(test_history_prune_advances_oldest_seq_and_reclaims_assets);
+    RUN_TEST(test_failed_expiry_unlink_is_retried_without_restart);
+    RUN_TEST(test_prune_preserves_failed_unlink_for_retry);
     RUN_TEST(test_recording_deletion_leaves_assets_intact);
     RUN_TEST(test_cursor_head_sidecar_detects_rewind);
     int result = UNITY_END();

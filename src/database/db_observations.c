@@ -1395,7 +1395,9 @@ int db_observations_prune(int64_t before_ms, int batch, observation_prune_result
                 observations, observation_count, &result->observations_deleted);
         if (rc == DB_OBS_OK)
             rc = delete_each(tx.db,
-                "DELETE FROM observation_assets WHERE uuid = ?1 AND state IN "
+                /* L4 must unlink any remaining file before dropping its path. */
+                "DELETE FROM observation_assets WHERE uuid = ?1 AND protected = 0 "
+                "AND (path IS NULL OR path = '') AND state IN "
                 "('unavailable', 'expired') AND NOT EXISTS "
                 "(SELECT 1 FROM object_observations WHERE asset_uuid = ?1);",
                 assets, asset_count, &result->assets_deleted);

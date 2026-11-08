@@ -120,14 +120,16 @@ static int remove_file(const char *path, int *deleted) {
     return -1;
 }
 
-static void remove_asset_file(const char *root, const char *stored, int *deleted) {
+static int remove_asset_file(const char *root, const char *stored, int *deleted) {
+    if (!stored || !*stored) return 0;
     char path[OBS_PATH_SIZE];
     if (resolve_asset_path(root, stored, path, sizeof(path)) != 0) {
         if (stored && *stored)
             log_warn("Observation asset path is outside the evidence tree; not deleting");
-        return;
+        /* A corrupt path is never a file this subsystem may remove. */
+        return 0;
     }
-    (void)remove_file(path, deleted);
+    return remove_file(path, deleted);
 }
 
 static int fsync_dir(const char *dir) {
@@ -498,11 +500,42 @@ static int delete_asset_row(const char *uuid) {
         sqlite3_stmt *stmt = NULL;
         if (sqlite3_prepare_v2(db,
                 "DELETE FROM observation_assets WHERE uuid = ?1 AND protected = 0 AND "
+                "(path IS NULL OR path = '') AND "
                 "state IN ('unavailable', 'expired') AND NOT EXISTS "
                 "(SELECT 1 FROM object_observations WHERE asset_uuid = ?1);",
                 -1, &stmt, NULL) == SQLITE_OK) {
             sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
             if (sqlite3_step(stmt) == SQLITE_DONE) rc = sqlite3_changes(db);
+        }
+        sqlite3_finalize(stmt);
+        sqlite3_mutex_leave(connection);
+    }
+    pthread_mutex_unlock(mutex);
+    return rc;
+}
+
+/* Keep the path as a durable cleanup obligation until unlink succeeds. The
+ * public media metadata stays intact; path is internal and is never served
+ * for a terminal asset. Retrying after a crash is safe (ENOENT is success). */
+static int cleanup_asset_file(const char *root, const asset_row_t *row, int *deleted) {
+    if (!row->path[0]) return 0;
+    if (remove_asset_file(root, row->path, deleted) != 0) return -1;
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!mutex) return -1;
+    pthread_mutex_lock(mutex);
+    sqlite3 *db = get_db_handle();
+    int rc = -1;
+    if (db) {
+        sqlite3_mutex *connection = sqlite3_db_mutex(db);
+        sqlite3_mutex_enter(connection);
+        sqlite3_stmt *stmt = NULL;
+        if (sqlite3_prepare_v2(db,
+                "UPDATE observation_assets SET path = NULL WHERE uuid = ?1 "
+                "AND path = ?2 AND state IN ('unavailable', 'expired');",
+                -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, row->uuid, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, row->path, -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(stmt) == SQLITE_DONE) rc = 0;
         }
         sqlite3_finalize(stmt);
         sqlite3_mutex_leave(connection);
@@ -520,7 +553,7 @@ static int expire_asset(const char *root, const asset_row_t *row,
     if (rc == DB_OBS_CAS_LOST || rc == DB_OBS_NOT_FOUND) return 0;
     if (rc != DB_OBS_OK) return -1;
     ++result->assets_expired;
-    remove_asset_file(root, row->path, &result->files_deleted);
+    if (cleanup_asset_file(root, row, &result->files_deleted) != 0) return -1;
     return 1;
 }
 
@@ -553,6 +586,23 @@ static int query_rows(const char *sql, const char *camera, int64_t bound, int ma
     return count;
 }
 
+static int retry_terminal_files(const char *root, int *budget,
+                                observation_retention_result_t *result, asset_row_t *rows) {
+    int want = *budget < OBS_PAGE ? *budget : OBS_PAGE;
+    if (want <= 0) return 0;
+    int n = query_rows(
+        "SELECT uuid, path, COALESCE(bytes, 0), 0, state FROM observation_assets "
+        "WHERE state IN ('expired', 'unavailable') AND path IS NOT NULL AND path <> '' "
+        "AND ?1 > 0 ORDER BY uuid LIMIT ?2;", NULL, 1, want, rows);
+    if (n < 0) return -1;
+    for (int i = 0; i < n; ++i) {
+        --*budget;
+        if (cleanup_asset_file(root, &rows[i], &result->files_deleted) != 0) return -1;
+    }
+    if (n == want) result->more_work = true;
+    return 0;
+}
+
 static int reclaim_unreferenced(const char *root, int *budget,
                                 observation_retention_result_t *result, asset_row_t *rows) {
     if (*budget <= 0) return 0;
@@ -568,7 +618,7 @@ static int reclaim_unreferenced(const char *root, int *budget,
         if (strcmp(rows[i].state, "ready") == 0) {
             if (expire_asset(root, &rows[i], result) < 0) return -1;
         } else {
-            remove_asset_file(root, rows[i].path, &result->files_deleted);
+            if (cleanup_asset_file(root, &rows[i], &result->files_deleted) != 0) return -1;
         }
         int deleted = delete_asset_row(rows[i].uuid);
         if (deleted < 0) return -1;
@@ -754,6 +804,7 @@ int observation_retention_run(const char *storage_path, int64_t now_ms,
     pthread_mutex_lock(&g_run_mutex);
     int budget = OBS_RETENTION_MAX_EVICTIONS;
     int rc = prune_history(now_ms, result);
+    if (rc == 0) rc = retry_terminal_files(root, &budget, result, rows);
     if (rc == 0) rc = reclaim_unreferenced(root, &budget, result, rows);
 
     observation_retention_camera_status_t *cameras = NULL;

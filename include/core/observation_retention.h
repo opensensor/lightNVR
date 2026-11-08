@@ -75,15 +75,18 @@ typedef struct {
 /* One bounded periodic pass at now_ms:
  *  1. prune history older than observation_history_retention_days (advances
  *     observation_meta.oldest_seq);
- *  2. reclaim assets with no remaining observation (file, then row);
+ *  2. retry terminal assets' pending file deletions, then reclaim assets with
+ *     no remaining observation (file, then row);
  *  3. per camera: expire unprotected ready media older than the age budget,
  *     where an asset's age is its newest reference (a shared asset survives
  *     until its last reference expires), then evict oldest unprotected ready
  *     media until within the byte budget; set the camera's budget-exhausted
  *     flag when still over budget with only protected media left.
  * Expiry is ready -> expired(retention_expired) first (CAS), then the file is
- * unlinked, so a crash in between leaves a stale file the next startup sweep
- * removes. Returns 0, 1 when skipped because startup reconciliation has not
+ * unlinked. The stored path is cleared only after cleanup, so failed unlinks
+ * are retried by a later pass even if history has been pruned. A crash in
+ * between also leaves a stale file the startup sweep removes.
+ * Returns 0, 1 when skipped because startup reconciliation has not
  * completed, or -1 on a DB error. */
 int observation_retention_run(const char *storage_path, int64_t now_ms,
                               observation_retention_result_t *result);
