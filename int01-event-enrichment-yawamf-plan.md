@@ -1043,9 +1043,131 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   - Keep `FrigateClient` as is. No plugin framework.
 - **validation**: W0 is green. Pure tests cover the capability declarations.
   `pytest` and the pure lane pass.
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commit `ed8b400f` on `feature/lightnvr-provider`, not pushed)
 - **log**:
+  - RED: the three new pure test modules failed at collection with
+    `ModuleNotFoundError: app.services.sources`. The startup test failed with
+    `assert isinstance(provider, FrigateProvider)` while `main.py` was
+    stashed. GREEN: 60 pure tests plus 1 startup test pass, and the 4 later
+    identity cases bring it to 64.
+  - Gates: W0 + `test_dead_modules` + the startup test give 53 passed. The
+    pure lane (excluding W2's in-flight `test_source_identity.py`) gives 2004
+    passed. Full suite: 7523 passed and 6 failed. The 6 failures were
+    `inspect.getsource` tests on `detection_repository.py`/`database.py`,
+    which W2 was editing during the run. All 24 tests in those files pass when
+    rerun. Ruff check and format are clean on every W1 file.
+  - Interface (W3/W4/W5 use these exact names), in `app/services/sources/base.py`:
+    - `NvrSourceProvider` (runtime-checkable Protocol):
+      - `identity() -> SourceIdentity(kind, instance)`
+      - `capabilities() -> Capabilities`
+      - `live_topics() -> list[str]`
+      - `parse_live_message(topic, payload: bytes) -> list[SourceObservation]`
+      - `async list_cameras() -> list[SourceCamera(camera_id, display_name)]`
+      - `async history(cursor, filters: HistoryFilters) -> HistoryPage | RecoveryRequired`
+      - `async fetch_snapshot(external_id, *, crop=True, quality=95, timeout=30.0) -> SnapshotResult`
+      - optional, check capabilities first:
+        - `fetch_clip(external_id, dest_path, *, timeout=20.0) -> (bool, reason)` (event_clip)
+        - `fetch_range_clip(camera, after, before, *, timeout=20.0) -> (bytes|None, reason)` (range_clip)
+        - `fetch_recording_frame(camera, frame_time, *, timeout=5.0) -> (bytes|None, reason)` (recorded_frame)
+        - `write_classification(external_id, label, *, score=None) -> bool` (annotate)
+    - `Capabilities` is a frozen dataclass. Every field defaults to False:
+      `history`, `snapshots`, `annotate`, `track_lifecycle`, `recorded_frame`,
+      `event_clip`, `range_clip`, plus `reasons`. Methods:
+      - `supports(name)` raises `KeyError` on an unknown name.
+      - `unsupported_reason(name)`.
+      - `require(name)` raises `UnsupportedCapabilityError(capability, reason)`.
+      - `Capabilities.from_contract_operations(doc["operations"])` treats an
+        operation as usable only when `supported is True and authorized is True`.
+        A missing or malformed entry gives the reason `not_declared`.
+    - `CONTRACT_OPERATION_KEYS` maps each field to its contract operation key:
+      `history→observations.history`, `snapshots→observations.snapshot`,
+      `annotate→observations.annotate`. The other four map to themselves.
+    - `SourceObservation` (frozen):
+      - Always set: `source_kind`, `source_instance`, `external_id`,
+        `event_key` (the `detections.frigate_event` value), `camera_name`,
+        `source_camera_id`, `label`, `observed_at` (unix float or None).
+      - `lifecycle` (`new|update|end` or None) and `is_false_positive`.
+      - lightNVR-only, None for Frigate: `revision`, `message_id`,
+        `change_cause`, `evidence_state`, `evidence_reason`, `asset_id`.
+      - `raw`: the decoded source payload.
+    - Other types:
+      - `HistoryFilters(after, before, cameras: tuple, labels: tuple, has_snapshot=True, limit=100)`
+      - `HistoryPage(observations, next_cursor, has_more)`
+      - `RecoveryRequired(oldest_cursor, reason="cursor_expired")`
+      - `SnapshotOutcome` (`READY`, `PENDING`, `UNAVAILABLE`, `EXPIRED`,
+        `MISSING`, `TEMPORARILY_UNREACHABLE`)
+      - `SnapshotResult(outcome, image, reason, cropped, retry_after_seconds)`
+      - `SourceUnavailableError`
+  - Registry, in `app/services/sources/registry.py`:
+    - `build_source_provider(kind="frigate", *, app_settings=None)`; an
+      unknown kind raises `ValueError`.
+    - `install_source_provider(p)`.
+    - `active_source_provider()` lazily falls back to Frigate, so callers that
+      run before startup, or in tests without the lifespan, still get a
+      provider.
+    - `main.py` lifespan calls
+      `install_source_provider(build_source_provider(app_settings=settings))`
+      right after `_log_startup_diagnostics`, in test mode too.
+    - W5 adds the `kind` selection from settings.
+  - In `frigate_provider.py`:
+    - `FrigateProvider(client, app_settings)` exposes `.client` (the
+      `FrigateClient`) for Frigate-only work during W3.
+    - `FRIGATE_CAPABILITIES` declares all seven capabilities.
+    - `SOURCE_KIND_FRIGATE = "frigate"`, `frigate_source_instance(url)`.
+  - Gotchas for W2–W5:
+    - **Instance derivation is duplicated.** W2's uncommitted
+      `app/utils/source_identity.frigate_source_instance` returns `host:port`
+      or None, and its callers substitute `"unbound"`. W1's copy returns
+      `"unbound"` directly. The two produce identical results on 16 probe
+      inputs, including default ports made explicit, bare hosts, IPv6,
+      credentials, a trailing dot and bad ports. W1 cannot import W2's
+      uncommitted file, so once both land W3 should make the provider call
+      W2's function and delete the copy.
+    - Frigate `parse_live_message`:
+      - reads only `{main_topic}/events`;
+      - treats a missing `type` as `new`, matching `EventData`;
+      - returns `[]` for an unrecognised type unless the message is a false
+        positive, which gets `lifecycle=None`;
+      - leaves label, camera and ingest gating to the pipeline;
+      - never adds `__received_at_ts`. W4 keeps adding it before
+        `_process_event_payload(obs.raw)`.
+    - Frigate `history` is time-windowed, so the cursor must be None, and it
+      takes at most one camera and one label (`ValueError` otherwise).
+      Backfill keeps its own `before`-cursor paging. `has_more` is
+      `len(events) >= limit`. `FrigateEventsFetchError` propagates.
+      History items have `lifecycle=None`.
+    - Frigate `fetch_snapshot` keeps the original `FrigateClient` reason
+      string. Outcome mapping:
+      - `snapshot_not_found` → `MISSING`;
+      - timeout, request error or HTTP 5xx → `TEMPORARILY_UNREACHABLE`;
+      - anything else → `UNAVAILABLE`.
+
+      `cropped` equals the `crop` argument. lightNVR returns the full image
+      with `cropped=False`, and the caller crops by box.
+    - Frigate-only calls have no protocol method yet: thumbnail, clean and
+      alignment snapshot, `get_event`, config/version and motion recording.
+      W3 either adds capability-gated methods or keeps them behind
+      `FrigateProvider.client`.
+    - Clip and recording user settings (`clips_enabled`,
+      `recording_clip_enabled`) are not capabilities. Check both.
+    - YA-WAMF `test_dead_modules` requires every new module to be reachable.
+      The `main.py` import covers `sources/*`, and W5's `lightnvr_provider.py`
+      must be imported from the registry.
+    - The full suite has `inspect.getsource` tests that fail while another
+      agent is editing repository files in the same worktree. Rerun them
+      before treating a failure as real.
+    - No changelog fragment was added: W1 changes no user-visible behaviour,
+      setting, endpoint or label (`changelog.d/README.md`).
 - **files edited/created**:
+  - YA-WAMF `backend/app/services/sources/__init__.py` (new)
+  - YA-WAMF `backend/app/services/sources/base.py` (new)
+  - YA-WAMF `backend/app/services/sources/frigate_provider.py` (new)
+  - YA-WAMF `backend/app/services/sources/registry.py` (new)
+  - YA-WAMF `backend/app/main.py` (installs the provider at startup)
+  - YA-WAMF `backend/tests/pure/test_source_capabilities.py` (new)
+  - YA-WAMF `backend/tests/pure/test_frigate_source_provider.py` (new)
+  - YA-WAMF `backend/tests/pure/test_source_registry.py` (new)
+  - YA-WAMF `backend/tests/test_source_provider_startup.py` (new)
 
 #### W2: Alembic migration — source identity, recovery cursor, notification intent
 - **depends_on**: [W0]
