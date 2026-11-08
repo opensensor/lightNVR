@@ -12,9 +12,12 @@ The wire behaviour is normative in the
 [observations contract](OBSERVATIONS_CONTRACT.md). This page links to it and
 does not restate it.
 
-> **Status.** Both sides are on unreleased branches. Before a release, X1 runs
-> this recipe end to end and A14 runs it as a pilot on a real camera; neither
-> has happened yet. See the [supported-version matrix](#supported-version-matrix).
+> **Status.** Both sides are on unreleased branches. X1 has run this recipe end
+> to end against real processes, with synthetic fixtures, a pinned detector
+> and a pinned classifier
+> ([`tests/integration/yawamf_e2e`](../../tests/integration/yawamf_e2e/README.md)).
+> The A14 pilot on a real camera has not happened yet. See the
+> [supported-version matrix](#supported-version-matrix).
 
 ## Contents
 
@@ -94,6 +97,9 @@ cars produces nothing to identify.
   `record: true` as well if you want continuous recording plus detection
   annotations). See [SOD integration](../SOD_INTEGRATION.md) and
   [Configuration](../CONFIGURATION.md#api-detection-settings).
+- In the stream API, `detection_threshold` is a percentage from 0 to 100
+  (`50` means 50%). A fraction such as `0.5` is read as 0.5% and lets almost
+  every low-confidence box through, and each one becomes an observation.
 - With several engines on one stream, each local object engine submits its own
   observations. Extra HTTP `api` engines are isolated in multi-engine mode and
   produce no evidence ([Detection engines](../DETECTION_ENGINES.md#observation-evidence-int_01)).
@@ -110,7 +116,7 @@ integrations**. Or use the stream API, which needs `camera.configure` on that
 camera:
 
 ```http
-PUT /api/streams/Feeder%20East
+PUT /api/streams/feeder-east
 Content-Type: application/json
 
 {
@@ -128,7 +134,10 @@ Content-Type: application/json
 | `observation_max_age_days` | `7` | 1–90 |
 | `observation_max_bytes` | `2147483648` (2 GiB) | 67108864 (64 MiB) to 1099511627776 (1 TiB) |
 
-Out-of-range values return `400`. Changes apply without a restart. Set
+Out-of-range values return `400`. A valid request answers `202 Accepted` and
+the change applies asynchronously, without a restart; confirm it with
+`GET /api/streams/{name}/full`. Stream names may contain only letters, digits,
+`.`, `-` and `_`. Set
 `observation_labels` to the labels YA-WAMF acts on, so other objects use no
 evidence budget.
 
@@ -202,7 +211,18 @@ YA-WAMF authenticates with one scoped API token. Give it a dedicated user.
    `system`, `owner` and `local` are reserved and give no namespace
    ([contract §10.2](OBSERVATIONS_CONTRACT.md#102-writer-namespace-and-identity)).
 2. **Create a role** with the actions YA-WAMF needs
-   (`POST /api/authorization/roles`, [roles](../API.md#manage-authorization-roles)):
+   (`POST /api/authorization/roles`, [roles](../API.md#manage-authorization-roles)).
+   Read `policy_version` from `GET /api/authorization/roles` first and send it
+   as `expected_policy_version`; without it the request fails with `400`:
+
+   ```json
+   {
+     "expected_policy_version": 12,
+     "name": "YA-WAMF",
+     "description": "YA-WAMF feeder integration",
+     "actions": ["live.view", "snapshot.create", "observations.annotate"]
+   }
+   ```
 
    | Action | Needed for |
    | --- | --- |
@@ -216,7 +236,10 @@ YA-WAMF authenticates with one scoped API token. Give it a dedicated user.
    (`PUT /api/authorization/users/{user_id}`,
    [user policy](../API.md#manage-a-users-authorization-policy)), with a
    `camera_uuid` selector, a tag selector or a shared collection as the scope.
-   This replaces the Viewer grant, so the user sees nothing else.
+   This replaces the Viewer grant, so the user sees nothing else. As with the
+   role, send the `policy_version` from `GET /api/authorization/users/{user_id}`
+   as `expected_policy_version`, with `"mode": "policy"` and the complete
+   `grants` list.
 4. **Issue a scoped token** for that user from **Users → Manage API access**,
    or with `POST /api/authorization/users/{user_id}/tokens`
    ([scoped tokens](../API.md#manage-scoped-api-tokens)):
@@ -264,6 +287,8 @@ source card), which writes the same settings. They are documented in YA-WAMF's
   (`FRIGATE__MQTT_SERVER`, `FRIGATE__MQTT_PORT`, `FRIGATE__MQTT_AUTH`,
   `FRIGATE__MQTT_USERNAME`, `FRIGATE__MQTT_PASSWORD`). Point them at the same
   broker lightNVR publishes to.
+- `LIGHTNVR__CAMERA_UUIDS` needs YA-WAMF `b89846d0` or later. Older builds of
+  the branch do not start when the variable holds a UUID.
 - **Restart YA-WAMF** after changing the source or any lightNVR setting. The
   running provider is not rebuilt in place, and the settings page says when a
   restart is pending. A failed test or save never switches providers.
@@ -429,8 +454,9 @@ Neither branch is released or pushed.
 
 | Component | Version | Contract |
 | --- | --- | --- |
-| lightNVR | branch `feat/int01-event-evidence` at `b6d46456` (version string 0.47.3; the last behaviour change is `ddea7404`, later commits are docs, plan updates and the `ObservationPipelineDiagnostics` OpenAPI schema) | `observations` 1, `classifications` 1, event `io.lightnvr.detection.observation_changed.v1` |
-| YA-WAMF | branch `feature/lightnvr-provider` at `3d89116a`, on v2.23.1 (`53540f48`) | `observations` 1, `classifications` 1 |
+| lightNVR | branch `feat/int01-event-evidence`; X1 ran a binary built from `e294f956` (version string 0.47.3; the last behaviour change is `ddea7404`, later commits are docs, tests and plan updates) | `observations` 1, `classifications` 1, event `io.lightnvr.detection.observation_changed.v1` |
+| YA-WAMF | branch `feature/lightnvr-provider` at `1cbbae74`, on v2.23.1 (`53540f48`). It needs `b89846d0` or later to start with `LIGHTNVR__CAMERA_UUIDS` set | `observations` 1, `classifications` 1 |
+| MQTT broker | Mosquitto 2.0.22 (X1) | n/a |
 | Frigate (YA-WAMF source) | as supported by YA-WAMF v2.23.1 | n/a, unchanged |
 
 What has been tested, and how:
@@ -444,9 +470,11 @@ What has been tested, and how:
 | Annotation PUT and display (A12, A7-annotate, L15) | tested (Playwright contract and UI) | `tests/contracts/observations.api.spec.ts`, `tests/integration/specs/detection-classification.ui.spec.ts` |
 | YA-WAMF ingestion, recovery, notification intent, setup, write-back (A1, A3, A4, A9, A10) | tested (pytest against a fake lightNVR and fake broker driven by the shared fixtures; Playwright UI) | `backend/tests/test_lightnvr_acceptance.py` and the W5–W10 test modules in YA-WAMF |
 | Frigate regression after the YA-WAMF migration | tested | `backend/tests/test_frigate_regression_baseline.py` in YA-WAMF |
-| Both applications together through a real broker (X1, this recipe verbatim) | **pending** | X1 |
-| MQTT broker | **pending**; Mosquitto 2.x planned for X1 | X1 |
-| Bird-capable detector and model | **pending**; X1 pins one. Tests used synthetic detectors that return fixed `bird` boxes | X1 |
+| Both applications together through a real broker, this recipe run step by step (X1: A1, A2, A3, A4, A5, A6, A8) | tested, in host-process mode: real Mosquitto, the lightNVR binary and the YA-WAMF backend as host processes. The container mode in the same directory is documented but has not been run | `tests/integration/yawamf_e2e/run_e2e.py`; results in `tests/integration/yawamf_e2e/results/x1-host-20261108.json` |
+| MQTT broker | tested: Mosquitto 2.0.22 (local-only mode, QoS 1, no persistence), including a broker outage | X1 |
+| HTTP bird detector | tested with a pinned stand-in: the loopback `x1-colour-detector 1.0` in the light-object-detect wire format, which finds synthetic red and blue birds by colour. A real HTTP bird model (light-object-detect or DOODS2) is **pending** | X1 |
+| Local bird detector | tested once: SOD VOC `tiny20.sod` (classes include `bird`) on a real bird photo crossing the frame (X1 `A2-local`; optional, because the photo is not committed). LiteRT/TFLite end to end is **pending** | X1 |
+| YA-WAMF classifier | tested with a pinned stand-in: `x1-colour-rule-v1`, which replaces `classify_async_live` only and names a crop by its saturated red or blue pixels. YA-WAMF's real bird model is **pending** | X1 |
 | P2 end to end (A12, A13) | **pending** | X3 |
 | Saturation and performance gate (A11), final budget defaults | **pending** | X2 |
-| Real-camera operator pilot (A14) | **pending** | A14 |
+| Real-camera operator pilot (A14) | **pending**; checklist ready | [`A14_PILOT_CHECKLIST.md`](../../tests/integration/yawamf_e2e/A14_PILOT_CHECKLIST.md) |

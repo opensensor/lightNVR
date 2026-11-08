@@ -1052,8 +1052,8 @@ below stay the release targets.
 | lightNVR (P2) | first release containing L13–L15 (TBD) | classifications 1 | not yet released |
 | YA-WAMF | fork branch `feature/lightnvr-provider` on v2.23.1 (`53540f48`) | observations 1 | prototype; upstream acceptance or a named maintainer required (PRD §7) |
 | Frigate (YA-WAMF source) | as supported by YA-WAMF v2.23.1 | n/a | unchanged |
-| MQTT broker | Mosquitto 2.x (E2E harness) | | TBD by X1 |
-| Bird-capable detector / model | TBD by X1 (pinned model fixture) | | TBD |
+| MQTT broker | Mosquitto 2.x | | X1: tested with 2.0.22 |
+| Bird-capable detector / model | X1 pinned a loopback HTTP colour detector, plus SOD VOC `tiny20.sod` on a real photo | | real HTTP and LiteRT bird models pending (A14) |
 
 ## 19. Performance
 

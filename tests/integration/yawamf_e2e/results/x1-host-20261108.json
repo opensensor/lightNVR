@@ -1,0 +1,1032 @@
+{
+  "suite": "INT_01 X1 lightNVR <-> YA-WAMF E2E",
+  "mode": "host-process",
+  "started_at": 1794161315.3228471,
+  "finished_at": 1794161600.9277005,
+  "seconds": 285.6,
+  "versions": {
+    "lightnvr": {
+      "commit": "e294f956",
+      "branch": "feat/int01-event-evidence",
+      "dirty_tracked": true,
+      "binary": "/home/matteius/opensensor/lightNVR/build-int01-X1/bin/lightnvr"
+    },
+    "yawamf": {
+      "commit": "1cbbae74",
+      "branch": "feature/lightnvr-provider"
+    },
+    "mosquitto": "mosquitto version 2.0.22",
+    "ffmpeg": "ffmpeg version 8.0.1-3ubuntu2 Copyright (c) 2000-2025 the FFmpeg developers",
+    "detector": "loopback HTTP x1-colour-detector 1.0 (light-object-detect wire format; finds the red/blue fixture birds by colour)",
+    "classifier": "pinned x1-colour-rule-v1 (harness/yawamf_launcher.py replaces ClassifierService.classify_async_live)",
+    "python": "3.12.12"
+  },
+  "recipe": [
+    {
+      "step": "prereq: MQTT broker",
+      "outcome": "ok",
+      "detail": {
+        "broker": "mosquitto version 2.0.22",
+        "port": 46469
+      }
+    },
+    {
+      "step": "prereq: lightNVR with [mqtt] block (step 3.1)",
+      "outcome": "ok",
+      "detail": {
+        "version": "0.47.3"
+      }
+    },
+    {
+      "step": "step 1-2: detector + evidence per camera",
+      "outcome": "ok",
+      "detail": {
+        "cameras": {
+          "feeder-bulk": "a292d981-f8b6-4fd5-b194-fb827336840d",
+          "feeder-east": "1ec86da7-9373-4b52-8d09-b0c598f37918",
+          "feeder-kill": "8db6637e-dc86-44fd-b0ff-cf95ef48ea52",
+          "feeder-local": "08d1344b-a324-4bd3-b567-38ecab646135",
+          "feeder-moving": "e427dfe3-b009-4f3d-955d-ced6062da73b",
+          "feeder-outcomes": "1bee0e9d-06d4-4bcc-b958-7fb3d44bc3aa",
+          "feeder-pair": "5cc522ad-22f6-4bb8-9200-a93220acbfab"
+        },
+        "observation_evidence_enabled": true,
+        "observation_labels": "bird"
+      }
+    },
+    {
+      "step": "step 3.2: event route",
+      "outcome": "ok",
+      "detail": {
+        "route": "ead81d93-77c3-49ad-ae34-31cecb064bec"
+      }
+    },
+    {
+      "step": "step 4.2: create role (recipe body)",
+      "outcome": "failed",
+      "detail": {
+        "status": 400,
+        "body": "{\"error\":\"expected_policy_version must be a positive integer\"}"
+      }
+    },
+    {
+      "step": "step 4.2: create role with expected_policy_version",
+      "outcome": "ok"
+    },
+    {
+      "step": "step 4.3: grant policy (no expected_policy_version)",
+      "outcome": "failed",
+      "detail": {
+        "status": 400,
+        "body": "{\"error\":\"expected_policy_version must be a positive integer\"}"
+      }
+    },
+    {
+      "step": "step 4.3: grant policy with expected_policy_version",
+      "outcome": "ok"
+    },
+    {
+      "step": "step 4.4: scoped token",
+      "outcome": "ok",
+      "detail": {
+        "principal": {
+          "writer_namespace": "yawamf"
+        },
+        "delivery": {
+          "mqtt_enabled": true,
+          "topic": "lightnvr/v1/events/io.lightnvr.detection.observation_changed.v1/{camera_uuid}"
+        },
+        "cameras_evidence_enabled": {
+          "08d1344b-a324-4bd3-b567-38ecab646135": false,
+          "1bee0e9d-06d4-4bcc-b958-7fb3d44bc3aa": true,
+          "1ec86da7-9373-4b52-8d09-b0c598f37918": true,
+          "5cc522ad-22f6-4bb8-9200-a93220acbfab": true,
+          "8db6637e-dc86-44fd-b0ff-cf95ef48ea52": true,
+          "a292d981-f8b6-4fd5-b194-fb827336840d": true,
+          "e427dfe3-b009-4f3d-955d-ced6062da73b": true
+        }
+      }
+    },
+    {
+      "step": "step 5: YA-WAMF started (MQTT subscribed)",
+      "outcome": "ok",
+      "detail": {
+        "health_version": "2.23.1-feature/lightnvr-provider+1cbbae74"
+      }
+    },
+    {
+      "step": "step 6.1: Test lightNVR connection",
+      "outcome": "ok",
+      "detail": {
+        "ok": true,
+        "results": [
+          {
+            "id": "api_access",
+            "status": "ok",
+            "code": "connected",
+            "message": "Connected to lightNVR 0.47.3.",
+            "values": {
+              "product_version": "0.47.3",
+              "camera_count": 7
+            }
+          },
+          {
+            "id": "event_connectivity",
+            "status": "ok",
+            "code": "connected",
+            "message": "The MQTT broker answered and the lightNVR topic matches.",
+            "values": {
+              "topic": "lightnvr"
+            }
+          },
+          {
+            "id": "evidence_access",
+            "status": "warning",
+            "code": "cameras_without_photos",
+            "message": "Some chosen cameras do not keep detection photos for this token. Turn on observation photos for them in lightNVR, or allow snapshots.",
+            "values": {
+              "cameras": "08d1344b-a324-4bd3-b567-38ecab646135"
+            }
+          },
+          {
+            "id": "features",
+            "status": "ok",
+            "code": "listed",
+            "message": "Available: history, snapshots, annotate. Not available with this source: track_lifecycle, recorded_frame, event_clip, range_clip.",
+            "values": {
+              "supported": "history,snapshots,annotate",
+              "unsupported": "track_lifecycle,recorded_frame,event_clip,range_clip"
+            }
+          }
+        ],
+        "features": [
+          {
+            "name": "history",
+            "supported": true,
+            "reason": null
+          },
+          {
+            "name": "snapshots",
+            "supported": true,
+            "reason": null
+          },
+          {
+            "name": "annotate",
+            "supported": true,
+            "reason": null
+          },
+          {
+            "name": "track_lifecycle",
+            "supported": false,
+            "reason": "not_implemented"
+          },
+          {
+            "name": "recorded_frame",
+            "supported": false,
+            "reason": "not_implemented"
+          },
+          {
+            "name": "event_clip",
+            "supported": false,
+            "reason": "not_implemented"
+          },
+          {
+            "name": "range_clip",
+            "supported": false,
+            "reason": "not_implemented"
+          }
+        ],
+        "latest_observation": {
+          "state": "none_yet",
+          "code": null,
+          "observation_id": null,
+          "camera_uuid": null,
+          "camera_name": null,
+          "label": null,
+          "observed_at": null,
+          "photo_state": null,
+          "photo_reason": null,
+          "searched_labels": [
+            "bird"
+          ]
+        }
+      }
+    },
+    {
+      "step": "step 6.2: setup probe",
+      "outcome": "ok",
+      "detail": {
+        "status": 200,
+        "body": {
+          "items": [],
+          "next_cursor": "eyJ2IjoxLCJzZXEiOjAsImVwb2NoIjoiZDViZmYyNDUtYzUzMS00ZmM4LThhY2EtMGE3Zjk1NDE1YWE0In0",
+          "has_more": false
+        }
+      }
+    },
+    {
+      "step": "step 6.2: setup probe, camera outside the token scope",
+      "outcome": "ok",
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "step": "diagnostics: token cannot read /api/system/info",
+      "outcome": "ok",
+      "detail": {
+        "status": 403
+      }
+    }
+  ],
+  "deploy_error": null,
+  "scenarios": [
+    {
+      "id": "A1",
+      "title": "identity and labels",
+      "started_at": 1794161321.5314584,
+      "evidence": {
+        "observation": {
+          "id": "d07d075d-55d7-495d-a69e-be06fb5a1346",
+          "camera_uuid": "1ec86da7-9373-4b52-8d09-b0c598f37918",
+          "stream_name_at_capture": "feeder-east",
+          "label": "bird",
+          "confidence": 0.899999976158142,
+          "box": {
+            "format": "xywh_normalized",
+            "x": 0.3125,
+            "y": 0.416667,
+            "width": 0.1,
+            "height": 0.177778
+          },
+          "revision": 2
+        },
+        "evidence": {
+          "asset_id": "bed89e80-7b93-4e5a-8dcb-babfbfc8d709",
+          "state": "ready",
+          "reason": null,
+          "origin": "submitted_image",
+          "media_type": "image/jpeg",
+          "width": 640,
+          "height": 360,
+          "bytes": 2125,
+          "captured_at": "2026-11-08T18:08:41.640Z",
+          "expires_at": null,
+          "transform": {
+            "mode": "none",
+            "source_width": 640,
+            "source_height": 360,
+            "inference_width": 640,
+            "inference_height": 360,
+            "scale_x": 1,
+            "scale_y": 1,
+            "pad_x": 0,
+            "pad_y": 0
+          },
+          "snapshot_url": "/api/observations/d07d075d-55d7-495d-a69e-be06fb5a1346/snapshot"
+        },
+        "yawamf_row": {
+          "event": "lnvr:12e0cfcb-359e-460f-af91-093a2c93724f:d07d075d-55d7-495d-a69e-be06fb5a1346",
+          "observation_id": "d07d075d-55d7-495d-a69e-be06fb5a1346",
+          "source_kind": "lightnvr",
+          "source_instance": "12e0cfcb-359e-460f-af91-093a2c93724f",
+          "camera_uuid": "1ec86da7-9373-4b52-8d09-b0c598f37918",
+          "camera_name": "feeder-east",
+          "scientific_name": "Prunella modularis",
+          "display_name": "Dunnock",
+          "score": 0.93,
+          "intent": "dispatch",
+          "outcome": "skipped"
+        },
+        "topic": "lightnvr/v1/events/io.lightnvr.detection.observation_changed.v1/1ec86da7-9373-4b52-8d09-b0c598f37918",
+        "mqtt_revisions": {
+          "1": {
+            "id": "4fa98daa-716e-597f-860e-59b6567bd9b2",
+            "cause": "created",
+            "evidence_state": "pending"
+          },
+          "2": {
+            "id": "188f7cc4-0a23-566f-9186-a25a90efee26",
+            "cause": "evidence",
+            "evidence_state": "ready"
+          }
+        },
+        "classifier_calls": [
+          {
+            "t": 1794161321.7186322,
+            "camera": "feeder-east",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.9,
+              38.3,
+              25.7
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          }
+        ]
+      },
+      "result": "pass",
+      "seconds": 2.0
+    },
+    {
+      "id": "A2",
+      "title": "moving-bird alignment (HTTP detector)",
+      "started_at": 1794161323.552895,
+      "evidence": {
+        "detector": "http (loopback x1-colour-detector)",
+        "observations": [
+          {
+            "id": "cb7110c5-4692-4c8e-a83e-cc4c2707a7e9",
+            "sha256": "d84a6d7aac33817ba45b29fe227186378f221f840f33e34f22feee08e1b466c8",
+            "box": {
+              "format": "xywh_normalized",
+              "x": 0.475,
+              "y": 0.416667,
+              "width": 0.1,
+              "height": 0.177778
+            },
+            "bird_px": [
+              304,
+              150,
+              368,
+              214
+            ],
+            "transform": {
+              "mode": "none",
+              "source_width": 640,
+              "source_height": 360,
+              "inference_width": 640,
+              "inference_height": 360,
+              "scale_x": 1,
+              "scale_y": 1,
+              "pad_x": 0,
+              "pad_y": 0
+            }
+          },
+          {
+            "id": "101b69a9-337a-4ba2-91f0-36b378ec6d1d",
+            "sha256": "4338a66ac1a2a64a105d98b41aca3b165df6c10bb84c0c66bf68ca5eafbf7baf",
+            "box": {
+              "format": "xywh_normalized",
+              "x": 0.85,
+              "y": 0.416667,
+              "width": 0.1,
+              "height": 0.177778
+            },
+            "bird_px": [
+              544,
+              150,
+              608,
+              214
+            ],
+            "transform": {
+              "mode": "none",
+              "source_width": 640,
+              "source_height": 360,
+              "inference_width": 640,
+              "inference_height": 360,
+              "scale_x": 1,
+              "scale_y": 1,
+              "pad_x": 0,
+              "pad_y": 0
+            }
+          },
+          {
+            "id": "17e8ecd6-0231-4221-8e67-1e21fc934cac",
+            "sha256": "731fadb3aaa07602b894dc532fad34c6522c71347e287107835a190c669c18e9",
+            "box": {
+              "format": "xywh_normalized",
+              "x": 0.75,
+              "y": 0.416667,
+              "width": 0.1,
+              "height": 0.177778
+            },
+            "bird_px": [
+              480,
+              150,
+              544,
+              214
+            ],
+            "transform": {
+              "mode": "none",
+              "source_width": 640,
+              "source_height": 360,
+              "inference_width": 640,
+              "inference_height": 360,
+              "scale_x": 1,
+              "scale_y": 1,
+              "pad_x": 0,
+              "pad_y": 0
+            }
+          }
+        ],
+        "bird_x_px_per_frame": [
+          304,
+          544,
+          480
+        ],
+        "cross_frame_crop_colours": [
+          "background",
+          "background",
+          "background",
+          "background",
+          "background",
+          "background"
+        ],
+        "yawamf_species": [
+          "Prunella modularis",
+          "Prunella modularis",
+          "Prunella modularis"
+        ],
+        "classifier_calls": [
+          {
+            "t": 1794161324.298721,
+            "camera": "feeder-moving",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.7,
+              38.5,
+              25.4
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          },
+          {
+            "t": 1794161325.5808592,
+            "camera": "feeder-moving",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.7,
+              38.5,
+              25.4
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          },
+          {
+            "t": 1794161326.8577363,
+            "camera": "feeder-moving",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.7,
+              38.5,
+              25.4
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          }
+        ],
+        "local_detector": "pending: no bird-capable local model drawn on this fixture (see README)"
+      },
+      "result": "pass",
+      "seconds": 4.1
+    },
+    {
+      "id": "A2-local",
+      "title": "moving-bird alignment (local SOD detector, real bird photo)",
+      "started_at": 1794161327.626307,
+      "evidence": {
+        "detector": "local SOD tiny20.sod (sha256 2f2f0af3c8915093)",
+        "bird_image_sha256": "85bf66b1c51ad1aeb08d3d90f1a39a59f6cb6161d91f7e7b51d4d187847f3cdf",
+        "observations": [
+          {
+            "id": "4beb8152-ba61-44ad-bb4c-a27dce9895c2",
+            "label": "bird",
+            "confidence": 0.8647809624671936,
+            "box": {
+              "format": "xywh_normalized",
+              "x": 0.13125,
+              "y": 0.302778,
+              "width": 0.1625,
+              "height": 0.427778
+            },
+            "bird_in_stored_image": [
+              0.1484,
+              0.3278,
+              0.2625,
+              0.6528
+            ],
+            "iou": 0.533,
+            "origin": "inference_input",
+            "transform": {
+              "mode": "resize",
+              "source_width": 640,
+              "source_height": 360,
+              "inference_width": 416,
+              "inference_height": 416,
+              "scale_x": 0.65,
+              "scale_y": 1.15556,
+              "pad_x": 0,
+              "pad_y": 0
+            },
+            "detector": {
+              "engine_key": "legacy-primary",
+              "engine_type": "object",
+              "model": "tiny20.sod",
+              "model_version": null
+            }
+          },
+          {
+            "id": "9a28105c-1941-4d9b-a98c-ee51dcb228e4",
+            "label": "bird",
+            "confidence": 0.936571717262268,
+            "box": {
+              "format": "xywh_normalized",
+              "x": 0.69375,
+              "y": 0.322222,
+              "width": 0.16875,
+              "height": 0.369444
+            },
+            "bird_in_stored_image": [
+              0.7109,
+              0.3278,
+              0.825,
+              0.6889
+            ],
+            "iou": 0.661,
+            "origin": "inference_input",
+            "transform": {
+              "mode": "resize",
+              "source_width": 640,
+              "source_height": 360,
+              "inference_width": 416,
+              "inference_height": 416,
+              "scale_x": 0.65,
+              "scale_y": 1.15556,
+              "pad_x": 0,
+              "pad_y": 0
+            },
+            "detector": {
+              "engine_key": "legacy-primary",
+              "engine_type": "object",
+              "model": "tiny20.sod",
+              "model_version": null
+            }
+          },
+          {
+            "id": "22dd9e4f-9422-4857-88ff-5818c10b1836",
+            "label": "bird",
+            "confidence": 0.9514039754867554,
+            "box": {
+              "format": "xywh_normalized",
+              "x": 0.084375,
+              "y": 0.311111,
+              "width": 0.18125,
+              "height": 0.402778
+            },
+            "bird_in_stored_image": [
+              0.1172,
+              0.3278,
+              0.2312,
+              0.6944
+            ],
+            "iou": 0.573,
+            "origin": "inference_input",
+            "transform": {
+              "mode": "resize",
+              "source_width": 640,
+              "source_height": 360,
+              "inference_width": 416,
+              "inference_height": 416,
+              "scale_x": 0.65,
+              "scale_y": 1.15556,
+              "pad_x": 0,
+              "pad_y": 0
+            },
+            "detector": {
+              "engine_key": "legacy-primary",
+              "engine_type": "object",
+              "model": "tiny20.sod",
+              "model_version": null
+            }
+          }
+        ],
+        "yawamf_rows": [
+          {
+            "observation_id": "22dd9e4f-9422-4857-88ff-5818c10b1836",
+            "scientific_name": "Prunella modularis",
+            "score": 0.93
+          },
+          {
+            "observation_id": "4beb8152-ba61-44ad-bb4c-a27dce9895c2",
+            "scientific_name": "Prunella modularis",
+            "score": 0.93
+          },
+          {
+            "observation_id": "9a28105c-1941-4d9b-a98c-ee51dcb228e4",
+            "scientific_name": "Prunella modularis",
+            "score": 0.93
+          }
+        ],
+        "classifier_calls": [
+          {
+            "t": 1794161329.1054893,
+            "camera": "feeder-local",
+            "size": [
+              171,
+              171
+            ],
+            "mean_rgb": [
+              151.2,
+              135.7,
+              133.3
+            ],
+            "red_fraction": 0.127,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          },
+          {
+            "t": 1794161331.598742,
+            "camera": "feeder-local",
+            "size": [
+              148,
+              148
+            ],
+            "mean_rgb": [
+              155.0,
+              131.9,
+              128.3
+            ],
+            "red_fraction": 0.171,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          },
+          {
+            "t": 1794161333.1178896,
+            "camera": "feeder-local",
+            "size": [
+              162,
+              162
+            ],
+            "mean_rgb": [
+              153.0,
+              134.6,
+              131.8
+            ],
+            "red_fraction": 0.143,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          }
+        ]
+      },
+      "result": "pass",
+      "seconds": 6.2
+    },
+    {
+      "id": "A3",
+      "title": "two birds in one frame",
+      "started_at": 1794161333.781131,
+      "evidence": {
+        "asset_id": "91027bf9-8fce-4618-baf2-4c27d5e8ac08",
+        "batch_id": "5fe7413d-438d-4872-98d1-9bd796de8d8e",
+        "box_colours": {
+          "0818984d-9f18-4816-a629-8a0dcd5310f6": "red",
+          "746f7429-8c09-4924-809a-52f8969cda2d": "blue"
+        },
+        "yawamf_species": {
+          "0818984d-9f18-4816-a629-8a0dcd5310f6": "Prunella modularis",
+          "746f7429-8c09-4924-809a-52f8969cda2d": "Erithacus rubecula"
+        },
+        "classifier_calls": [
+          {
+            "t": 1794161334.5868456,
+            "camera": "feeder-pair",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              28.2,
+              38.0,
+              185.0
+            ],
+            "red_fraction": 0.0,
+            "blue_fraction": 0.789,
+            "result": "Erithacus rubecula"
+          },
+          {
+            "t": 1794161334.5878732,
+            "camera": "feeder-pair",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.7,
+              38.5,
+              25.8
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          }
+        ],
+        "yawamf_detection_rows": 2
+      },
+      "result": "pass",
+      "seconds": 2.0
+    },
+    {
+      "id": "A4",
+      "title": "replay x10 with overlapping API recovery",
+      "started_at": 1794161335.8095086,
+      "evidence": {
+        "messages_replayed": 60,
+        "distinct_messages": 6,
+        "observations": 3,
+        "rows_after": 3,
+        "extra_classifier_calls": 0,
+        "intents": {
+          "0818984d-9f18-4816-a629-8a0dcd5310f6": [
+            "dispatch",
+            "skipped"
+          ],
+          "746f7429-8c09-4924-809a-52f8969cda2d": [
+            "dispatch",
+            "skipped"
+          ],
+          "d07d075d-55d7-495d-a69e-be06fb5a1346": [
+            "dispatch",
+            "skipped"
+          ]
+        },
+        "overlapping_backfill": {
+          "status": "completed",
+          "processed": 9,
+          "new_detections": 0,
+          "updated": 0,
+          "skipped": 9,
+          "errors": 0,
+          "skipped_reasons": {
+            "already_exists": 9
+          },
+          "error_reasons": {},
+          "message": "No new detections found, 9 already existed"
+        }
+      },
+      "result": "pass",
+      "seconds": 15.2
+    },
+    {
+      "id": "A5",
+      "title": "broker down for 100 observations, both apps restarted",
+      "started_at": 1794161350.9806743,
+      "evidence": {
+        "observations_created_while_broker_down": 100,
+        "outbox_states_while_broker_down": {
+          "delivered": 18,
+          "pending": 200
+        },
+        "outbox_states_after": {
+          "delivered": 218
+        },
+        "yawamf_rows_while_down": 0,
+        "yawamf_rows_after_restart": 100,
+        "converged_seconds_after_restart": 6.6,
+        "classifier_calls_for_camera": 100,
+        "outbox": "all 200 revisions delivered after the broker returned",
+        "intents": {
+          "suppressed_recovery": 100
+        },
+        "recovery_status": {
+          "state": "caught_up",
+          "source_kind": "lightnvr",
+          "source_instance": "12e0cfcb-359e-460f-af91-093a2c93724f",
+          "recovery_required": false,
+          "gap_reason": null,
+          "cursor_saved": true,
+          "last_error": null,
+          "updated_at": "2026-11-08 18:10:25",
+          "last_run": {
+            "trigger": "start",
+            "started_at": 1794161421.9046676,
+            "finished_at": 1794161425.174027,
+            "result": "caught_up",
+            "detail": null,
+            "start": "resume",
+            "pages": 2,
+            "items": 110,
+            "outcomes": {
+              "already_exists": 10,
+              "admitted": 100
+            }
+          }
+        }
+      },
+      "result": "pass",
+      "seconds": 75.2
+    },
+    {
+      "id": "A6",
+      "title": "kill points end to end",
+      "started_at": 1794161426.1383388,
+      "evidence": {
+        "phase1_lightnvr_sigkill": {
+          "frames_reported_before_kill": 4,
+          "observations": 24,
+          "integrity": {
+            "asset_states": {
+              "ready": 12
+            },
+            "final_files": 12,
+            "tmp_files": 0
+          },
+          "startup_log": [
+            "[2026-11-08 13:10:31.029] [INFO] Observation evidence initialized (worker starts on first submission; queue 64 items / 33554432 bytes, 8 per camera)",
+            "[2026-11-08 13:10:31.044] [INFO] Observation publication relay started"
+          ],
+          "converged_seconds_after_restart": 12.0,
+          "ready": 24,
+          "not_ready": {},
+          "yawamf_rows": 24
+        },
+        "phase2_yawamf_sigkill": {
+          "observations_total": 44,
+          "ready": 44,
+          "yawamf_rows": 44,
+          "classifier_calls_in_phase": 20,
+          "converged_seconds_after_restart": 4.1,
+          "integrity": {
+            "asset_states": {
+              "ready": 22
+            },
+            "final_files": 22,
+            "tmp_files": 0
+          }
+        }
+      },
+      "result": "pass",
+      "seconds": 33.4
+    },
+    {
+      "id": "A8",
+      "title": "expired, unavailable, temporary and expired-cursor outcomes",
+      "started_at": 1794161459.5679119,
+      "evidence": {
+        "temporary_lightnvr_unreachable": {
+          "rows_while_unreachable": 0,
+          "recovery_status_while_unreachable": {
+            "state": "unreachable",
+            "source_kind": null,
+            "source_instance": null,
+            "recovery_required": false,
+            "gap_reason": null,
+            "cursor_saved": false,
+            "last_error": null,
+            "updated_at": null,
+            "last_run": {
+              "trigger": "start",
+              "started_at": 1794161469.2491968,
+              "finished_at": 1794161474.2509947,
+              "result": "unreachable",
+              "detail": "lightNVR request to /api/integrations/capabilities timed out",
+              "start": null,
+              "pages": 0,
+              "items": 0,
+              "outcomes": {}
+            }
+          },
+          "rows_after_resume": 2,
+          "converged_seconds_after_resume": 16.0
+        },
+        "expired_and_unavailable": {
+          "lightnvr": {
+            "8a4cd465-38d6-4270-a2ed-9674a245dfb4": {
+              "case": "expired",
+              "state": "expired",
+              "reason": "retention_expired",
+              "snapshot_status": 410,
+              "snapshot_code": "evidence_expired"
+            },
+            "addd231b-f70d-4239-a4d5-8d5eb25035f9": {
+              "case": "expired",
+              "state": "expired",
+              "reason": "retention_expired",
+              "snapshot_status": 410,
+              "snapshot_code": "evidence_expired"
+            },
+            "8895eee4-b0f0-41c7-8bd5-876bdca8cd53": {
+              "case": "unavailable",
+              "state": "unavailable",
+              "reason": "write_failed",
+              "snapshot_status": 404,
+              "snapshot_code": "evidence_unavailable"
+            },
+            "7e928156-af15-4b87-b3f3-86ecde0e93c4": {
+              "case": "unavailable",
+              "state": "unavailable",
+              "reason": "write_failed",
+              "snapshot_status": 404,
+              "snapshot_code": "evidence_unavailable"
+            }
+          },
+          "recovery_run": {
+            "trigger": "start",
+            "started_at": 1794161577.4695296,
+            "finished_at": 1794161577.4808931,
+            "result": "caught_up",
+            "detail": null,
+            "start": "resume",
+            "pages": 1,
+            "items": 4,
+            "outcomes": {
+              "evidence_expired": 2,
+              "evidence_unavailable": 2
+            }
+          },
+          "yawamf_rows": 0,
+          "backfill": {
+            "status": "completed",
+            "processed": 160,
+            "new_detections": 0,
+            "updated": 0,
+            "skipped": 160,
+            "errors": 0,
+            "skipped_reasons": {
+              "already_exists": 156,
+              "evidence_expired": 2,
+              "evidence_unavailable": 2
+            },
+            "error_reasons": {},
+            "message": "No new detections found, 156 already existed, 2 with evidence expired, 2 without an evidence image"
+          }
+        },
+        "expired_cursor_after_restore": {
+          "old_cursor_response": {
+            "status": 410,
+            "body": {
+              "error": "Cursor is older than retained observation history",
+              "code": "cursor_expired",
+              "oldest_cursor": "eyJ2IjoxLCJzZXEiOjAsImVwb2NoIjoiYTQ5OWM1ZDEtYWI0My00YjJkLTk5ZjctNGE2YzA2NWM2N2Y0In0",
+              "oldest_observed_at": "2026-10-31T18:11:46.162Z"
+            }
+          },
+          "recovery_after_restore": {
+            "state": "caught_up",
+            "source_kind": "lightnvr",
+            "source_instance": "12e0cfcb-359e-460f-af91-093a2c93724f",
+            "recovery_required": true,
+            "gap_reason": "cursor_expired",
+            "cursor_saved": true,
+            "last_error": null,
+            "updated_at": "2026-11-08 18:13:19",
+            "last_run": {
+              "trigger": "start",
+              "started_at": 1794161599.7979414,
+              "finished_at": 1794161599.9763477,
+              "result": "caught_up",
+              "detail": null,
+              "start": "resume",
+              "pages": 2,
+              "items": 160,
+              "outcomes": {
+                "already_exists": 156,
+                "evidence_expired": 2,
+                "evidence_unavailable": 2
+              }
+            }
+          },
+          "diagnostics_entries": [
+            {
+              "source": "source_recovery",
+              "component": "lightnvr",
+              "severity": "warning",
+              "reason_code": "cursor_expired",
+              "message": "Source history expired before it was recovered; sightings in the gap cannot be recovered"
+            }
+          ],
+          "after_acknowledge": {
+            "state": "caught_up",
+            "recovery_required": false,
+            "gap_reason": null
+          },
+          "observations_lost_by_restore_still_in_yawamf": 2
+        }
+      },
+      "result": "pass",
+      "seconds": 141.4
+    }
+  ],
+  "workdir": "/tmp/claude-1000/-home-matteius-opensensor-lightNVR/b308eba0-16af-4c23-91be-f0b323521d94/scratchpad/final4",
+  "counts": {
+    "detector_requests": 1077,
+    "mqtt_messages_captured": 386
+  }
+}
