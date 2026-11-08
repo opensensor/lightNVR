@@ -105,7 +105,9 @@ class Mosquitto:
 
     def start(self) -> None:
         assert self.proc is None or self.proc.poll() is not None
-        self.proc = subprocess.Popen([self.binary, "-p", str(self.port), "-v"], stdout=open(self.log, "ab"), stderr=subprocess.STDOUT)
+        # The child keeps its own copy of the descriptor; ours closes right away.
+        with open(self.log, "ab") as log:
+            self.proc = subprocess.Popen([self.binary, "-p", str(self.port), "-v"], stdout=log, stderr=subprocess.STDOUT)
         wait_for(self._accepts, 10, 0.1, "mosquitto to listen")
 
     def _accepts(self) -> bool:
@@ -383,8 +385,9 @@ class LightNvr:
         assert self.proc is None or self.proc.poll() is not None
         offset = self._log_offset()
         env = {k: v for k, v in os.environ.items() if not k.startswith("LIGHTNVR_")}
-        self.proc = subprocess.Popen([str(self.binary), "-c", str(self.dir / "lightnvr.ini")], cwd=str(self.dir), env=env,
-                                     stdout=open(self.dir / "process.log", "ab"), stderr=subprocess.STDOUT)
+        with open(self.dir / "process.log", "ab") as log:
+            self.proc = subprocess.Popen([str(self.binary), "-c", str(self.dir / "lightnvr.ini")], cwd=str(self.dir), env=env,
+                                         stdout=log, stderr=subprocess.STDOUT)
         self.generation += 1
 
         def ready() -> bool:
@@ -469,8 +472,9 @@ class YaWamf:
     def start(self, wait_mqtt: bool = True) -> None:
         assert self.proc is None or self.proc.poll() is not None
         offset = self.log_path.stat().st_size if self.log_path.exists() else 0
-        self.proc = subprocess.Popen([str(self.python), str(self.launcher), "--backend", str(self.backend), "--port", str(self.port)],
-                                     cwd=str(self.dir), env=self.env, stdout=open(self.log_path, "ab"), stderr=subprocess.STDOUT)
+        with open(self.log_path, "ab") as log:
+            self.proc = subprocess.Popen([str(self.python), str(self.launcher), "--backend", str(self.backend), "--port", str(self.port)],
+                                         cwd=str(self.dir), env=self.env, stdout=log, stderr=subprocess.STDOUT)
 
         def ready() -> bool:
             if self.proc.poll() is not None:

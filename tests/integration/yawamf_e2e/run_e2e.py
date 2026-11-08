@@ -311,7 +311,6 @@ class Suite(P2Scenarios):
         # What the Settings page sends for the saved values: the address, and no token (keeps the saved one).
         test = self.ya.api("POST", "/api/setup/lightnvr/test", {"api_url": self.lnvr.base, "camera_uuids": list(self.cameras.values())})
         self.connection_test = test
-        checks = {k: v for k, v in test.items() if isinstance(v, dict) and "status" in v} if isinstance(test, dict) else {}
         self.note("step 6.1: Test lightNVR connection", "ok" if test.get("ok") else "failed", test)
         expect(bool(test.get("ok")), f"YA-WAMF connection test not ok: {json.dumps(test)[:800]}")
         # Step 6.2: the setup probe by hand with the token.
@@ -607,7 +606,6 @@ class Suite(P2Scenarios):
         temp_ids = {o["id"] for o in temp}
         self.lnvr.proc.send_signal(19)  # SIGSTOP: the API hangs, a network-level temporary error
         try:
-            started = time.time()
             self.ya.start(wait_mqtt=True)
             time.sleep(20)
             during = self.recovery_status()
