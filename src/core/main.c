@@ -41,6 +41,7 @@
 #include "core/mqtt_event_adapter.h"
 #include "core/mqtt_client.h"
 #include "core/mqtt_delivery_worker.h"
+#include "core/observation_evidence.h"
 #include "core/observation_relay.h"
 #include "core/observation_retention.h"
 #include "core/path_utils.h"
@@ -874,6 +875,25 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    /* INT_01 L3: evidence queue/worker. Only records configuration here; the
+     * worker thread and queue memory start lazily on the first submission, so
+     * nothing is allocated while every camera has evidence disabled. */
+    {
+        observation_evidence_config_t evidence_config = {0};
+        char queue_bytes[32] = {0};
+        evidence_config.storage_path = config.storage_path;
+        if (db_get_system_setting("observation_global_queue_bytes", queue_bytes,
+                                  sizeof(queue_bytes)) == 0 && queue_bytes[0]) {
+            long long value = strtoll(queue_bytes, NULL, 10);
+            if (value > 0) evidence_config.global_max_bytes = value;
+        }
+        if (observation_evidence_init(&evidence_config) != 0) {
+            log_error("Failed to initialize observation evidence; evidence admission disabled");
+        } else {
+            observation_evidence_set_enabled_probe(observation_evidence_stream_enabled_probe, NULL);
+        }
+    }
+
     /* INT_01 L5: publication relay. Runs the D9 cursor-head check, drains
      * publications staged by a previous process (bounded), then starts the
      * steady-state thread. It only persists to the durable outbox, so it may
@@ -1691,6 +1711,11 @@ cleanup:
          * event bus and identity it uses; unrelayed rows stay pending. */
         observation_relay_stop();
 
+        /* INT_01 L3: then the evidence worker (detection producers are gone).
+         * It encodes for a bounded drain window and records the rest as
+         * unavailable(interrupted); it needs the DB and event identity. */
+        observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);
+
         // Drain accepted events while MQTT is still alive, then detach the
         // compatibility subscriber before tearing down broker state.
         log_info("Draining asynchronous event pipeline...");
@@ -1844,6 +1869,7 @@ cleanup:
 
         /* INT_01 shutdown (reverse of startup): relay (L5) first. */
         observation_relay_stop();
+        observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);  /* then L3 */
 
         event_bus_shutdown(true);
         mqtt_event_adapter_unregister();
