@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "Log in met een account dat de API-referentie mag bekijken.",
   "apiDocs.unavailable": "De API-referentie kan niet worden geladen. Probeer het opnieuw.",
   "apiDocs.partial": "Deze referentie omvat geselecteerde API’s. Ontbrekende bewerkingen betekenen niet dat toegang is geweigerd.",
-  "apiDocs.empty": "Voor de huidige sessie zijn in deze referentie geen API-bewerkingen beschikbaar."
+  "apiDocs.empty": "Voor de huidige sessie zijn in deze referentie geen API-bewerkingen beschikbaar.",
+  "system.observations.title": "Observatiepijplijn",
+  "system.observations.inactive": "Niet in gebruik: geen camera heeft in deze run observatiebewijs gemaakt.",
+  "system.observations.accepted": "Geaccepteerde observaties",
+  "system.observations.dropped": "Verworpen (wachtrij vol / budget / uitgeschakeld / niet gevolgd)",
+  "system.observations.backlog": "Bewijsachterstand",
+  "system.observations.highWater": "Hoogste achterstand",
+  "system.observations.failures": "Bewijsfouten",
+  "system.observations.retained": "Bewaard bewijs",
+  "system.observations.budgetExhausted": "Camera's boven het bewijsbudget",
+  "system.observations.oldestRecoverable": "Oudste herstelbare cursor",
+  "system.observations.publications": "Publicaties in behandeling / mislukt / verlopen",
+  "system.observations.relayLag": "Relayvertraging (seconden)"
 }

@@ -288,6 +288,23 @@ int db_observation_meta_get(observation_meta_t *out);
 /* Regenerate the DB-generation epoch (D9: restore/import/rewind detection). */
 int db_observation_meta_regenerate_epoch(void);
 
+/* ---- Diagnostics (L10) ------------------------------------------------- */
+
+typedef struct {
+    observation_meta_t meta;               /* oldest recoverable cursor = oldest_seq - 1 */
+    bool has_oldest_observed_at;
+    int64_t oldest_observed_at_ms;         /* MIN(observed_at_ms) of retained observations */
+    int64_t observations;                  /* retained observation rows */
+    int64_t publications_pending;
+    int64_t publications_failed;
+    int64_t publications_expired;
+    int64_t oldest_pending_created_at_ms;  /* change created_at of the oldest pending row; 0 = none */
+} observation_db_diagnostics_t;
+
+/* One read-only snapshot (single WAL read transaction). DB_OBS_OK or
+ * DB_OBS_ERROR. */
+int db_observation_diagnostics_get(observation_db_diagnostics_t *out);
+
 /* ---- Publications (L5 relay) ------------------------------------------ */
 
 typedef struct {

@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "API リファレンスを閲覧できるアカウントでログインしてください。",
   "apiDocs.unavailable": "API リファレンスを読み込めません。もう一度お試しください。",
   "apiDocs.partial": "このリファレンスは一部の API を対象としています。記載されていない操作がアクセス拒否を意味するわけではありません。",
-  "apiDocs.empty": "現在のセッションで利用可能な API 操作はこのリファレンスにありません。"
+  "apiDocs.empty": "現在のセッションで利用可能な API 操作はこのリファレンスにありません。",
+  "system.observations.title": "観測パイプライン",
+  "system.observations.inactive": "未使用: この実行ではどのカメラも観測エビデンスを生成していません。",
+  "system.observations.accepted": "受理された観測",
+  "system.observations.dropped": "破棄 (キュー満杯 / 予算 / 無効 / 未追跡)",
+  "system.observations.backlog": "エビデンスの待ち",
+  "system.observations.highWater": "待ちの最大値",
+  "system.observations.failures": "エビデンスの失敗",
+  "system.observations.retained": "保持中のエビデンス",
+  "system.observations.budgetExhausted": "エビデンス予算超過のカメラ",
+  "system.observations.oldestRecoverable": "復元可能な最古のカーソル",
+  "system.observations.publications": "公開 保留 / 失敗 / 期限切れ",
+  "system.observations.relayLag": "リレーの遅延 (秒)"
 }

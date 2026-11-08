@@ -36,7 +36,9 @@
 #define OBSERVATION_RELAY_MAX_BATCH 256
 #define OBSERVATION_RELAY_DEFAULT_POLL_MS 1000
 #define OBSERVATION_RELAY_MAX_BACKOFF_MS 30000
-/* D9 sidecar, relative to the storage path. */
+/* D9 sidecar, relative to the storage path. The file, its format and the
+ * rewind check are L4's (observation_cursor_head_* in observation_retention.h);
+ * the relay only schedules writes. */
 #define OBSERVATION_CURSOR_HEAD_FILE "observations/.cursor_head.json"
 
 typedef struct {
@@ -91,13 +93,14 @@ int observation_relay_build_envelope(const observation_publication_t *publicatio
 int observation_relay_run_once(const observation_relay_options_t *options,
                                observation_relay_pass_t *pass);
 
-/* D9: compare the sidecar with the DB meta. Regenerates the epoch when the
- * sidecar epoch equals the DB epoch but its head_seq is ahead of the DB head
- * (the DB was restored). Rewrites the sidecar. Returns 1 when the epoch was
- * regenerated, 0 otherwise, -1 on error. storage_path NULL = g_config. */
+/* D9: observation_cursor_head_reconcile() plus relay stats. Regenerates the
+ * epoch when the sidecar epoch equals the DB epoch but its head_seq is ahead
+ * of the DB head (the DB was restored). Rewrites the sidecar. Returns 1 when
+ * the epoch was regenerated, 0 otherwise, -1 on error. storage_path NULL =
+ * g_config. */
 int observation_relay_check_cursor_head(const char *storage_path);
 
-/* Write the sidecar now (tmp + fsync + rename). */
+/* Write the sidecar now via observation_cursor_head_write(). */
 int observation_relay_write_cursor_head(const char *storage_path);
 
 /* Run the D9 check, drain pending publications (bounded), then start the

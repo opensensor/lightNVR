@@ -22,16 +22,13 @@
 #define _GNU_SOURCE
 
 #include "core/observation_relay.h"
+#include "core/observation_retention.h"
 
-#include <errno.h>
-#include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
-#include <unistd.h>
 
 #include <cjson/cJSON.h>
 
@@ -201,45 +198,14 @@ int observation_relay_build_envelope(const observation_publication_t *publicatio
 
 /* ---- D9 cursor-head sidecar ------------------------------------------------ */
 
-static int sidecar_paths(const char *storage_path, char dir[MAX_PATH_LENGTH],
-                         char file[MAX_PATH_LENGTH], char tmp[MAX_PATH_LENGTH]) {
-    if (!storage_path || !storage_path[0]) return -1;
-    int a = snprintf(dir, MAX_PATH_LENGTH, "%s/observations", storage_path);
-    int b = snprintf(file, MAX_PATH_LENGTH, "%s/%s", storage_path, OBSERVATION_CURSOR_HEAD_FILE);
-    int c = snprintf(tmp, MAX_PATH_LENGTH, "%s.tmp", file);
-    if (a < 0 || a >= MAX_PATH_LENGTH || b < 0 || b >= MAX_PATH_LENGTH || c < 0 ||
-        c >= MAX_PATH_LENGTH)
-        return -1;
-    return 0;
-}
-
-static int write_sidecar_meta(const char *storage_path, const observation_meta_t *meta) {
-    char dir[MAX_PATH_LENGTH], file[MAX_PATH_LENGTH], tmp[MAX_PATH_LENGTH];
-    if (sidecar_paths(storage_path, dir, file, tmp) != 0) return -1;
-    if (mkdir(dir, 0750) != 0 && errno != EEXIST) return -1;
-    char body[160];
-    int length = snprintf(body, sizeof(body), "{\"epoch\":\"%s\",\"head_seq\":%lld}\n",
-                          meta->epoch_uuid, (long long)meta->head_seq);
-    if (length < 0 || (size_t)length >= sizeof(body)) return -1;
-    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0640);
-    if (fd < 0) return -1;
-    bool ok = write(fd, body, (size_t)length) == (ssize_t)length && fsync(fd) == 0;
-    if (close(fd) != 0) ok = false;
-    if (!ok || rename(tmp, file) != 0) {
-        unlink(tmp);
-        return -1;
-    }
-    int dir_fd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (dir_fd >= 0) {
-        (void)fsync(dir_fd);
-        close(dir_fd);
-    }
-    return 0;
-}
+/* The sidecar file, its format and the rewind check belong to L4
+ * (observation_cursor_head_write/read/reconcile in observation_retention.c);
+ * the relay only decides when to write it. */
 
 static int write_sidecar_now(const char *storage_path) {
     observation_meta_t meta;
-    if (db_observation_meta_get(&meta) != DB_OBS_OK || write_sidecar_meta(storage_path, &meta) != 0) {
+    if (db_observation_meta_get(&meta) != DB_OBS_OK ||
+        observation_cursor_head_write(storage_path, meta.epoch_uuid, meta.head_seq) != 0) {
         STAT_ADD(sidecar_errors, 1);
         return -1;
     }
@@ -253,57 +219,20 @@ int observation_relay_write_cursor_head(const char *storage_path) {
     return write_sidecar_now(path);
 }
 
-/* Returns 0 and fills epoch/head when the sidecar parses; -1 otherwise. */
-static int read_sidecar(const char *storage_path, char epoch[OBS_UUID_SIZE], int64_t *head_seq) {
-    char dir[MAX_PATH_LENGTH], file[MAX_PATH_LENGTH], tmp[MAX_PATH_LENGTH];
-    if (sidecar_paths(storage_path, dir, file, tmp) != 0) return -1;
-    FILE *handle = fopen(file, "rb");
-    if (!handle) return -1;
-    char body[512];
-    size_t length = fread(body, 1, sizeof(body) - 1, handle);
-    fclose(handle);
-    body[length] = '\0';
-    cJSON *json = cJSON_Parse(body);
-    const cJSON *epoch_item = cJSON_GetObjectItemCaseSensitive(json, "epoch");
-    const cJSON *head_item = cJSON_GetObjectItemCaseSensitive(json, "head_seq");
-    int rc = -1;
-    if (cJSON_IsString(epoch_item) && strlen(epoch_item->valuestring) == OBS_UUID_SIZE - 1 &&
-        cJSON_IsNumber(head_item) && head_item->valuedouble >= 0) {
-        safe_strcpy(epoch, epoch_item->valuestring, OBS_UUID_SIZE, 0);
-        *head_seq = (int64_t)head_item->valuedouble;
-        rc = 0;
-    }
-    cJSON_Delete(json);
-    return rc;
-}
-
 int observation_relay_check_cursor_head(const char *storage_path) {
     const char *path = storage_path ? storage_path : g_config.storage_path;
     if (!path || !path[0]) return 0;
-    observation_meta_t meta;
-    if (db_observation_meta_get(&meta) != DB_OBS_OK) return -1;
-    char epoch[OBS_UUID_SIZE];
-    int64_t sidecar_head = 0;
-    int regenerated = 0;
-    if (read_sidecar(path, epoch, &sidecar_head) == 0 && strcmp(epoch, meta.epoch_uuid) == 0 &&
-        sidecar_head > meta.head_seq) {
-        /* Same DB generation but the head went backwards: a file restore. */
-        log_warn("Observation history rewound (sidecar head %lld > DB head %lld); "
-                 "regenerating the cursor epoch",
-                 (long long)sidecar_head, (long long)meta.head_seq);
-        if (db_observation_meta_regenerate_epoch() != DB_OBS_OK ||
-            db_observation_meta_get(&meta) != DB_OBS_OK) {
-            return -1;
-        }
-        STAT_ADD(epoch_regenerations, 1);
-        regenerated = 1;
-    }
-    if (write_sidecar_meta(path, &meta) != 0) {
+    /* L4 already ran this at startup, before reconciliation could advance the
+     * head; here it is a no-op unless the sidecar changed in between. */
+    bool regenerated = false;
+    if (observation_cursor_head_reconcile(path, &regenerated) != 0) {
         STAT_ADD(sidecar_errors, 1);
         return -1;
     }
     STAT_ADD(sidecar_writes, 1);
-    return regenerated;
+    if (!regenerated) return 0;
+    STAT_ADD(epoch_regenerations, 1);
+    return 1;
 }
 
 /* Caller holds run_mutex. Writes at most once per second after head moves. */

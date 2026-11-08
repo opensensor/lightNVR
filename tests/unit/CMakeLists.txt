@@ -165,6 +165,8 @@ target_compile_definitions(test_observation_relay PRIVATE LIGHTNVR_SOURCE_DIR="$
 set_tests_properties(test_observation_relay PROPERTIES TIMEOUT 60)
 add_layer2_test(test_observation_retention CI_UNIT CI_SANITIZER)
 set_tests_properties(test_observation_retention PROPERTIES TIMEOUT 60)
+add_layer2_test_with_ffmpeg(test_observation_diagnostics CI_UNIT CI_SANITIZER)
+set_tests_properties(test_observation_diagnostics PROPERTIES TIMEOUT 60)
 add_layer2_test(test_logger CI_UNIT CI_SANITIZER)
 add_layer2_test(test_strings CI_UNIT CI_SANITIZER)
 add_layer2_test(test_interruptible_sleep)

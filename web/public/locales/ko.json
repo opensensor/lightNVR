@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "API 참조를 볼 수 있는 계정으로 로그인하세요.",
   "apiDocs.unavailable": "API 참조를 불러올 수 없습니다. 다시 시도하세요.",
   "apiDocs.partial": "이 참조는 일부 API만 다룹니다. 누락된 작업이 접근 거부를 의미하지는 않습니다.",
-  "apiDocs.empty": "현재 세션에 대해 이 참조에서 사용 가능한 API 작업이 없습니다."
+  "apiDocs.empty": "현재 세션에 대해 이 참조에서 사용 가능한 API 작업이 없습니다.",
+  "system.observations.title": "관찰 파이프라인",
+  "system.observations.inactive": "사용 안 함: 이번 실행에서 관찰 증거를 생성한 카메라가 없습니다.",
+  "system.observations.accepted": "수락된 관찰",
+  "system.observations.dropped": "삭제됨 (대기열 가득 참 / 예산 / 비활성 / 추적 안 됨)",
+  "system.observations.backlog": "증거 대기열",
+  "system.observations.highWater": "대기열 최고치",
+  "system.observations.failures": "증거 실패",
+  "system.observations.retained": "보관된 증거",
+  "system.observations.budgetExhausted": "증거 예산 초과 카메라",
+  "system.observations.oldestRecoverable": "복구 가능한 가장 오래된 커서",
+  "system.observations.publications": "게시 대기 / 실패 / 만료",
+  "system.observations.relayLag": "릴레이 지연 (초)"
 }

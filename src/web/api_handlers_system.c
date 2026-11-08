@@ -50,6 +50,7 @@
 #include "web/audit_log.h"
 #define LOG_COMPONENT "SystemAPI"
 #include "core/logger.h"
+#include "core/observation_diagnostics.h"
 #include "core/config.h"
 #include "core/path_utils.h"
 #include "core/version.h"
@@ -1082,6 +1083,15 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
     // Add stream storage usage information with caching
     add_cached_stream_storage_usage_to_json(info, 0);
+
+    // INT_01 L10: observation pipeline diagnostics (contract section 15).
+    // Read-only; never starts the evidence worker.
+    observation_diagnostics_t observation_diagnostics;
+    if (observation_diagnostics_collect(&observation_diagnostics, 0) == 0) {
+        cJSON *pipeline = observation_diagnostics_to_json(&observation_diagnostics);
+        if (pipeline) cJSON_AddItemToObject(info, "observation_pipeline", pipeline);
+        observation_diagnostics_free(&observation_diagnostics);
+    }
 
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(info);

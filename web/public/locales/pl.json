@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "Zaloguj się na konto z uprawnieniami do przeglądania dokumentacji API.",
   "apiDocs.unavailable": "Nie można załadować dokumentacji API. Spróbuj ponownie.",
   "apiDocs.partial": "Ta dokumentacja obejmuje wybrane API. Brak operacji nie oznacza odmowy dostępu.",
-  "apiDocs.empty": "W tej dokumentacji nie ma dostępnych operacji API dla bieżącej sesji."
+  "apiDocs.empty": "W tej dokumentacji nie ma dostępnych operacji API dla bieżącej sesji.",
+  "system.observations.title": "Potok obserwacji",
+  "system.observations.inactive": "Nieużywany: żadna kamera nie utworzyła dowodów obserwacji w tym uruchomieniu.",
+  "system.observations.accepted": "Zaakceptowane obserwacje",
+  "system.observations.dropped": "Odrzucone (kolejka pełna / budżet / wyłączone / nieśledzone)",
+  "system.observations.backlog": "Zaległe dowody",
+  "system.observations.highWater": "Szczyt zaległości",
+  "system.observations.failures": "Błędy dowodów",
+  "system.observations.retained": "Przechowywane dowody",
+  "system.observations.budgetExhausted": "Kamery powyżej budżetu dowodów",
+  "system.observations.oldestRecoverable": "Najstarszy odzyskiwalny kursor",
+  "system.observations.publications": "Publikacje oczekujące / nieudane / wygasłe",
+  "system.observations.relayLag": "Opóźnienie przekaźnika (sekundy)"
 }

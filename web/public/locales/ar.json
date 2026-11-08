@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "سجّل الدخول بحساب مسموح له بعرض مرجع API.",
   "apiDocs.unavailable": "تعذر تحميل مرجع API. حاول مرة أخرى.",
   "apiDocs.partial": "يغطي هذا المرجع واجهات API محددة. غياب العمليات لا يعني رفض الوصول.",
-  "apiDocs.empty": "لا توجد عمليات API متاحة في هذا المرجع للجلسة الحالية."
+  "apiDocs.empty": "لا توجد عمليات API متاحة في هذا المرجع للجلسة الحالية.",
+  "system.observations.title": "مسار الملاحظات",
+  "system.observations.inactive": "غير مستخدم: لم تُنشئ أي كاميرا أدلة ملاحظة في هذا التشغيل.",
+  "system.observations.accepted": "الملاحظات المقبولة",
+  "system.observations.dropped": "المُسقطة (الطابور ممتلئ / الميزانية / معطّل / غير متتبَّع)",
+  "system.observations.backlog": "الأدلة المتراكمة",
+  "system.observations.highWater": "أعلى تراكم",
+  "system.observations.failures": "إخفاقات الأدلة",
+  "system.observations.retained": "الأدلة المحفوظة",
+  "system.observations.budgetExhausted": "الكاميرات التي تجاوزت ميزانية الأدلة",
+  "system.observations.oldestRecoverable": "أقدم مؤشر قابل للاسترداد",
+  "system.observations.publications": "المنشورات المعلقة / الفاشلة / المنتهية",
+  "system.observations.relayLag": "تأخر الترحيل (ثوانٍ)"
 }

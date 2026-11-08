@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "Войдите с учётной записью, которой разрешён просмотр справочника API.",
   "apiDocs.unavailable": "Не удалось загрузить справочник API. Попробуйте ещё раз.",
   "apiDocs.partial": "Этот справочник охватывает выбранные API. Отсутствие операций не означает отказ в доступе.",
-  "apiDocs.empty": "В этом справочнике нет доступных операций API для текущего сеанса."
+  "apiDocs.empty": "В этом справочнике нет доступных операций API для текущего сеанса.",
+  "system.observations.title": "Конвейер наблюдений",
+  "system.observations.inactive": "Не используется: ни одна камера не создала доказательств наблюдения в этом запуске.",
+  "system.observations.accepted": "Принятые наблюдения",
+  "system.observations.dropped": "Отброшенные (очередь полна / бюджет / отключено / не отслежено)",
+  "system.observations.backlog": "Очередь доказательств",
+  "system.observations.highWater": "Пик очереди",
+  "system.observations.failures": "Ошибки доказательств",
+  "system.observations.retained": "Сохранённые доказательства",
+  "system.observations.budgetExhausted": "Камеры сверх бюджета доказательств",
+  "system.observations.oldestRecoverable": "Самый старый восстановимый курсор",
+  "system.observations.publications": "Публикации ожидают / с ошибкой / истекли",
+  "system.observations.relayLag": "Задержка ретранслятора (секунды)"
 }

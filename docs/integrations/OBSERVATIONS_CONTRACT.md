@@ -560,8 +560,10 @@ capture camera are indistinguishable: `404 observation_not_found`.
 - It never substitutes a latest or go2rtc frame, and never returns a
   different asset.
 - `If-None-Match` matching the ETag returns `304`.
-- `Retry-After` (provisional): `1` when the asset is under 5 s old, otherwise
+- `Retry-After`: `1` when the asset is under 5 s old, otherwise
   `min(30, 2 × queue items ahead)`. It is always an integer from 1 to 30.
+  lightNVR has no per-asset queue position, so it uses the whole evidence
+  backlog (frames queued for encoding) as an upper bound on the items ahead.
   Clients honour it and give up polling after 120 s total, relying on the
   `evidence` change event or the cursor instead.
 
@@ -872,6 +874,29 @@ All values are provisional until X2 measures them on the C4 fixture (§19).
 
 L10 exposes these through the existing metrics and health surfaces. Names are
 final in L10; the semantics here are fixed.
+
+`GET /api/metrics` (Prometheus, `system.admin`) families, all present with
+zero values while evidence is unused:
+
+| Item | Metric |
+| --- | --- |
+| Accepted | `lightnvr_observation_accepted_total` |
+| Dropped by reason | `lightnvr_observation_dropped_total{reason="queue_full"\|"budget_exhausted"\|"disabled"\|"untracked"}` |
+| Backlog | `lightnvr_observation_evidence_backlog_items`, `_backlog_bytes`, `_drop_ring_depth` |
+| High-water marks | `lightnvr_observation_evidence_high_water_items`, `_high_water_bytes` |
+| Queue exists | `lightnvr_observation_evidence_queue_allocated`, `_worker_running` (0 when unused) |
+| Outcomes | `lightnvr_observation_evidence_ready_total`, `_unavailable_total`, `_bytes_written_total` |
+| Failures by reason | `lightnvr_observation_evidence_failures_total{reason="encode_failed"\|"write_failed"\|"db_error"\|"disabled"\|"interrupted"}` |
+| Retained bytes | `lightnvr_observation_evidence_retained_bytes{camera_uuid}`, `_budget_bytes{camera_uuid}` |
+| Budget exhausted | `lightnvr_observation_evidence_budget_exhausted{camera_uuid}`, `_budget_exhausted_cameras` |
+| Oldest cursor | `lightnvr_observation_history_oldest_seq` (cursor = seq − 1), `_head_seq`, `_oldest_observed_timestamp_seconds`, `_observations` |
+| Publications | `lightnvr_observation_publications{state="pending"\|"failed"\|"expired"}` |
+| Relay | `lightnvr_observation_relay_lag_seconds`, `_relay_running`, `_relay_events_total{outcome}`, `lightnvr_observation_history_epoch_regenerations_total` |
+
+Per-camera rows cover cameras holding `ready` media as of the last L4
+retention pass (at most 5 minutes old). The same snapshot is returned as
+`observation_pipeline` in `GET /api/system/info` and shown on the System page;
+`active: false` there means the feature is unused.
 
 - Accepted observations total.
 - Dropped observations by reason (`queue_full`, `budget_exhausted`,

@@ -931,6 +931,68 @@ int db_observation_meta_get(observation_meta_t *out) {
     return rc;
 }
 
+/* L10: one bounded statement per figure. The pending figures use the partial
+ * pending index; failed/expired scan the publication table, which is bounded
+ * by history retention. */
+static int diag_scalar(sqlite3 *db, const char *sql, int64_t *value, bool *is_null) {
+    sqlite3_stmt *stmt = NULL;
+    int rc = DB_OBS_ERROR;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        int step = sqlite3_step(stmt);
+        if (step == SQLITE_ROW) {
+            if (is_null) *is_null = sqlite3_column_type(stmt, 0) == SQLITE_NULL;
+            *value = sqlite3_column_int64(stmt, 0);
+            rc = DB_OBS_OK;
+        } else if (step == SQLITE_DONE) {
+            if (is_null) *is_null = true;
+            *value = 0;
+            rc = DB_OBS_OK;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return rc;
+}
+
+int db_observation_diagnostics_get(observation_db_diagnostics_t *out) {
+    if (!out) return DB_OBS_INVALID;
+    memset(out, 0, sizeof(*out));
+    sqlite3 *db = NULL;
+    if (ro_begin(&db) != DB_OBS_OK) return DB_OBS_ERROR;
+    bool oldest_null = true;
+    int rc = read_meta_on(db, &out->meta);
+    if (rc == DB_OBS_OK)
+        rc = diag_scalar(db, "SELECT MIN(observed_at_ms) FROM object_observations;",
+                         &out->oldest_observed_at_ms, &oldest_null);
+    if (rc == DB_OBS_OK)
+        rc = diag_scalar(db, "SELECT COUNT(*) FROM object_observations;",
+                         &out->observations, NULL);
+    if (rc == DB_OBS_OK)
+        rc = diag_scalar(db, "SELECT COUNT(*) FROM observation_publications "
+                             "WHERE state = 'pending';",
+                         &out->publications_pending, NULL);
+    if (rc == DB_OBS_OK)
+        rc = diag_scalar(db, "SELECT COUNT(*) FROM observation_publications "
+                             "WHERE state = 'failed';",
+                         &out->publications_failed, NULL);
+    if (rc == DB_OBS_OK)
+        rc = diag_scalar(db, "SELECT COUNT(*) FROM observation_publications "
+                             "WHERE state = 'expired';",
+                         &out->publications_expired, NULL);
+    if (rc == DB_OBS_OK)
+        rc = diag_scalar(db, "SELECT c.created_at_ms FROM observation_publications p "
+                             "JOIN observation_changes c ON c.seq = p.change_seq "
+                             "WHERE p.state = 'pending' ORDER BY p.change_seq LIMIT 1;",
+                         &out->oldest_pending_created_at_ms, NULL);
+    ro_end(db);
+    if (rc != DB_OBS_OK) {
+        memset(out, 0, sizeof(*out));
+        return DB_OBS_ERROR;
+    }
+    out->has_oldest_observed_at = !oldest_null;
+    if (oldest_null) out->oldest_observed_at_ms = 0;
+    return DB_OBS_OK;
+}
+
 int db_observation_meta_regenerate_epoch(void) {
     char epoch[OBS_UUID_SIZE];
     if (lightnvr_uuid_generate_v4(epoch) != 0) return DB_OBS_ERROR;

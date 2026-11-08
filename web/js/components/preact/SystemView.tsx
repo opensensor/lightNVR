@@ -18,6 +18,7 @@ import { SystemControls } from './system/SystemControls.tsx';
 import { SystemInfo } from './system/SystemInfo.tsx';
 import { MemoryStorage } from './system/MemoryStorage.tsx';
 import { StreamStorage } from './system/StreamStorage.tsx';
+import { ObservationPipeline } from './system/ObservationPipeline.tsx';
 import { StorageHealth } from './system/StorageHealth.tsx';
 import { NetworkInfo } from './system/NetworkInfo.tsx';
 import { SystemHealth } from './system/SystemHealth.tsx';
@@ -338,6 +339,12 @@ export function SystemView() {
             <div className="mb-4">
               <StreamStorage systemInfo={systemInfo} formatBytes={formatBytes} />
             </div>
+
+            {systemInfo.observation_pipeline && (
+              <div className="mb-4">
+                <ObservationPipeline systemInfo={systemInfo} formatBytes={formatBytes} />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <NetworkInfo systemInfo={systemInfo} />

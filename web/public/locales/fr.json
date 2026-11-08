@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "Connectez-vous avec un compte autorisé à consulter la référence de l’API.",
   "apiDocs.unavailable": "Impossible de charger la référence de l’API. Réessayez.",
   "apiDocs.partial": "Cette référence couvre certaines API. Les opérations absentes ne signifient pas un accès refusé.",
-  "apiDocs.empty": "Aucune opération d’API n’est disponible dans cette référence pour la session actuelle."
+  "apiDocs.empty": "Aucune opération d’API n’est disponible dans cette référence pour la session actuelle.",
+  "system.observations.title": "Pipeline d'observations",
+  "system.observations.inactive": "Inutilisé : aucune caméra n'a produit de preuve d'observation pendant cette exécution.",
+  "system.observations.accepted": "Observations acceptées",
+  "system.observations.dropped": "Rejetées (file pleine / budget / désactivé / non suivi)",
+  "system.observations.backlog": "Preuves en attente",
+  "system.observations.highWater": "Pic d'attente",
+  "system.observations.failures": "Échecs de preuves",
+  "system.observations.retained": "Preuves conservées",
+  "system.observations.budgetExhausted": "Caméras au-delà du budget de preuves",
+  "system.observations.oldestRecoverable": "Plus ancien curseur récupérable",
+  "system.observations.publications": "Publications en attente / échouées / expirées",
+  "system.observations.relayLag": "Retard du relais (secondes)"
 }

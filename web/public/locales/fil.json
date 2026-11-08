@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "Mag-sign in gamit ang account na pinapayagang tingnan ang sanggunian ng API.",
   "apiDocs.unavailable": "Hindi ma-load ang sanggunian ng API. Subukang muli.",
   "apiDocs.partial": "Piling API ang saklaw ng sangguniang ito. Ang mga nawawalang operasyon ay hindi nangangahulugang tinanggihan ang access.",
-  "apiDocs.empty": "Walang available na operasyon ng API sa sangguniang ito para sa kasalukuyang session."
+  "apiDocs.empty": "Walang available na operasyon ng API sa sangguniang ito para sa kasalukuyang session.",
+  "system.observations.title": "Pipeline ng obserbasyon",
+  "system.observations.inactive": "Hindi ginagamit: walang camera na gumawa ng ebidensya ng obserbasyon sa run na ito.",
+  "system.observations.accepted": "Mga tinanggap na obserbasyon",
+  "system.observations.dropped": "Itinapon (puno ang pila / badyet / naka-disable / hindi nasubaybayan)",
+  "system.observations.backlog": "Nakabinbing ebidensya",
+  "system.observations.highWater": "Pinakamataas na nakabinbin",
+  "system.observations.failures": "Mga pagkabigo ng ebidensya",
+  "system.observations.retained": "Naitabing ebidensya",
+  "system.observations.budgetExhausted": "Mga camera na lampas sa badyet ng ebidensya",
+  "system.observations.oldestRecoverable": "Pinakalumang mababawing cursor",
+  "system.observations.publications": "Mga publikasyong nakabinbin / nabigo / nag-expire",
+  "system.observations.relayLag": "Antala ng relay (segundo)"
 }

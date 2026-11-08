@@ -23,6 +23,7 @@
 #include "core/event_router.h"
 #include "core/mqtt_delivery_worker.h"
 #include "core/observation_relay.h"
+#include "core/observation_retention.h"
 #include "database/db_core.h"
 #include "database/db_event_outbox.h"
 #include "database/db_event_routes.h"
@@ -497,6 +498,35 @@ void test_cursor_head_sidecar_and_rewind_detection(void) {
     TEST_ASSERT_EQUAL_INT(0, observation_relay_check_cursor_head(storage_dir));
 }
 
+void test_relay_sidecar_is_the_shared_l4_cursor_head(void) {
+    /* L10 consolidation: the relay writes the D9 sidecar through L4's
+     * observation_cursor_head_write(), so both modules share one path, one
+     * format and one writer (which creates missing directories). */
+    insert_pending(1);
+    char nested[512];
+    snprintf(nested, sizeof(nested), "%s/fresh-volume/storage", storage_dir);
+    TEST_ASSERT_EQUAL_INT(0, observation_relay_write_cursor_head(nested));
+    observation_meta_t meta;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_meta_get(&meta));
+    char epoch[OBS_UUID_SIZE];
+    int64_t head = -1;
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_read(nested, epoch, &head));
+    TEST_ASSERT_EQUAL_STRING(meta.epoch_uuid, epoch);
+    TEST_ASSERT_EQUAL_INT64(meta.head_seq, head);
+
+    /* The relay's startup check is L4's reconcile: a rewind written by L4's
+     * writer is detected and the sidecar rewritten with the new epoch. */
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_write(nested, meta.epoch_uuid,
+                                                           meta.head_seq + 5));
+    TEST_ASSERT_EQUAL_INT(1, observation_relay_check_cursor_head(nested));
+    observation_meta_t after;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_meta_get(&after));
+    TEST_ASSERT_NOT_EQUAL(0, strcmp(meta.epoch_uuid, after.epoch_uuid));
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_read(nested, epoch, &head));
+    TEST_ASSERT_EQUAL_STRING(after.epoch_uuid, epoch);
+    TEST_ASSERT_EQUAL_INT(0, observation_relay_check_cursor_head(nested));
+}
+
 void test_envelopes_match_c3_fixtures(void) {
     DIR *dir = opendir(FIXTURE_DIR);
     TEST_ASSERT_NOT_NULL_MESSAGE(dir, FIXTURE_DIR);
@@ -648,6 +678,7 @@ int main(void) {
     RUN_TEST(test_publication_past_delivery_expiry_is_expired);
     RUN_TEST(test_commit_notify_wakes_the_relay_thread);
     RUN_TEST(test_cursor_head_sidecar_and_rewind_detection);
+    RUN_TEST(test_relay_sidecar_is_the_shared_l4_cursor_head);
     RUN_TEST(test_envelopes_match_c3_fixtures);
     RUN_TEST(test_build_envelope_rejects_inconsistent_publications);
     RUN_TEST(test_invalid_staged_row_is_marked_failed_without_blocking);

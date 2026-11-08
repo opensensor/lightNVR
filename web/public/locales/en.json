@@ -2992,5 +2992,17 @@
   "apiDocs.empty": "No API operations are available in this reference for the current session.",
   "recordings.reverseSort": "Reverse sort order",
   "recordings.ascending": "Ascending ↑",
-  "recordings.descending": "Descending ↓"
+  "recordings.descending": "Descending ↓",
+  "system.observations.title": "Observation pipeline",
+  "system.observations.inactive": "Not in use: no camera has produced observation evidence in this run.",
+  "system.observations.accepted": "Accepted observations",
+  "system.observations.dropped": "Dropped (queue full / budget / disabled / untracked)",
+  "system.observations.backlog": "Evidence backlog",
+  "system.observations.highWater": "Backlog high-water mark",
+  "system.observations.failures": "Evidence failures",
+  "system.observations.retained": "Retained evidence",
+  "system.observations.budgetExhausted": "Cameras over evidence budget",
+  "system.observations.oldestRecoverable": "Oldest recoverable cursor",
+  "system.observations.publications": "Publications pending / failed / expired",
+  "system.observations.relayLag": "Relay lag (seconds)"
 }

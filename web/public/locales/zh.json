@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "请使用有权查看 API 参考的账户登录。",
   "apiDocs.unavailable": "无法加载 API 参考。请重试。",
   "apiDocs.partial": "此参考仅涵盖部分 API。缺少某项操作并不表示访问被拒绝。",
-  "apiDocs.empty": "当前会话在此参考中没有可用的 API 操作。"
+  "apiDocs.empty": "当前会话在此参考中没有可用的 API 操作。",
+  "system.observations.title": "观测管道",
+  "system.observations.inactive": "未使用：本次运行中没有摄像头生成观测证据。",
+  "system.observations.accepted": "已接受的观测",
+  "system.observations.dropped": "已丢弃（队列已满 / 预算 / 已禁用 / 未跟踪）",
+  "system.observations.backlog": "证据积压",
+  "system.observations.highWater": "积压峰值",
+  "system.observations.failures": "证据失败",
+  "system.observations.retained": "保留的证据",
+  "system.observations.budgetExhausted": "超出证据预算的摄像头",
+  "system.observations.oldestRecoverable": "最早可恢复游标",
+  "system.observations.publications": "发布 待处理 / 失败 / 已过期",
+  "system.observations.relayLag": "中继延迟（秒）"
 }

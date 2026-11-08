@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "API başvurusunu görüntüleme izni olan bir hesapla giriş yapın.",
   "apiDocs.unavailable": "API başvurusu yüklenemedi. Tekrar deneyin.",
   "apiDocs.partial": "Bu başvuru seçili API’leri kapsar. Eksik işlemler erişimin reddedildiği anlamına gelmez.",
-  "apiDocs.empty": "Mevcut oturum için bu başvuruda kullanılabilir API işlemi yok."
+  "apiDocs.empty": "Mevcut oturum için bu başvuruda kullanılabilir API işlemi yok.",
+  "system.observations.title": "Gözlem hattı",
+  "system.observations.inactive": "Kullanılmıyor: bu çalıştırmada hiçbir kamera gözlem kanıtı üretmedi.",
+  "system.observations.accepted": "Kabul edilen gözlemler",
+  "system.observations.dropped": "Atılan (kuyruk dolu / bütçe / devre dışı / izlenmeyen)",
+  "system.observations.backlog": "Kanıt birikimi",
+  "system.observations.highWater": "En yüksek birikim",
+  "system.observations.failures": "Kanıt hataları",
+  "system.observations.retained": "Saklanan kanıtlar",
+  "system.observations.budgetExhausted": "Kanıt bütçesini aşan kameralar",
+  "system.observations.oldestRecoverable": "Kurtarılabilir en eski imleç",
+  "system.observations.publications": "Yayınlar bekleyen / başarısız / süresi dolmuş",
+  "system.observations.relayLag": "Aktarma gecikmesi (saniye)"
 }

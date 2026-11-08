@@ -2725,5 +2725,17 @@
   "apiDocs.denied": "Inicia sesión con una cuenta autorizada para ver la referencia de la API.",
   "apiDocs.unavailable": "No se pudo cargar la referencia de la API. Inténtalo de nuevo.",
   "apiDocs.partial": "Esta referencia cubre algunas API. Las operaciones ausentes no indican acceso denegado.",
-  "apiDocs.empty": "No hay operaciones de la API disponibles en esta referencia para la sesión actual."
+  "apiDocs.empty": "No hay operaciones de la API disponibles en esta referencia para la sesión actual.",
+  "system.observations.title": "Canal de observaciones",
+  "system.observations.inactive": "Sin uso: ninguna cámara ha generado evidencias de observación en esta ejecución.",
+  "system.observations.accepted": "Observaciones aceptadas",
+  "system.observations.dropped": "Descartadas (cola llena / presupuesto / desactivado / sin seguimiento)",
+  "system.observations.backlog": "Evidencias pendientes",
+  "system.observations.highWater": "Máximo de pendientes",
+  "system.observations.failures": "Fallos de evidencias",
+  "system.observations.retained": "Evidencias conservadas",
+  "system.observations.budgetExhausted": "Cámaras sobre el presupuesto de evidencias",
+  "system.observations.oldestRecoverable": "Cursor recuperable más antiguo",
+  "system.observations.publications": "Publicaciones pendientes / fallidas / caducadas",
+  "system.observations.relayLag": "Retraso del relé (segundos)"
 }
