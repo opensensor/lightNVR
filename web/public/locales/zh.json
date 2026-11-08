@@ -1103,7 +1103,7 @@
   "settings.stunServerHelp": "STUNNAT遍历的服务器地址",
   "settings.externalIp": "外部IP",
   "settings.autoDetect": "自动检测",
-  "settings.externalIpHelp": "可选：NAT 的外部IP（留空以供自动检测）",
+  "settings.externalIpHelp": "可选：客户端通过 WebRTC 访问此服务器所用的地址，以逗号分隔（例如 100.101.102.103, 192.168.1.20，* 表示自动检测）。每种连接方式各添加一个：局域网、Tailscale/VPN 或公网。留空则自动检测。",
   "settings.iceServers": "ICE 服务器",
   "settings.iceServersPlaceholder": "可选的逗号分隔ICE 服务器",
   "settings.iceServersHelp": "可选：自定义 ICE 服务器（以逗号分隔）",

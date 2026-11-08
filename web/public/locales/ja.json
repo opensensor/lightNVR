@@ -1103,7 +1103,7 @@
   "settings.stunServerHelp": "NAT トラバーサル用の STUN サーバー アドレス",
   "settings.externalIp": "外部 IP",
   "settings.autoDetect": "自動検出",
-  "settings.externalIpHelp": "オプション: NAT の外部 IP (自動検出の場合は空のままにします)",
+  "settings.externalIpHelp": "オプション: クライアントが WebRTC でこのサーバーに接続するためのアドレス (カンマ区切り。例: 100.101.102.103, 192.168.1.20, 自動検出は *)。接続経路 (LAN、Tailscale/VPN、パブリック) ごとに 1 つずつ追加します。自動検出の場合は空のままにします。",
   "settings.iceServers": "ICE サーバー",
   "settings.iceServersPlaceholder": "オプションのカンマ区切り ICE サーバー",
   "settings.iceServersHelp": "オプション: カスタム ICE サーバー (カンマ区切り)",

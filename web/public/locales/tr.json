@@ -1103,7 +1103,7 @@
   "settings.stunServerHelp": "NAT geçişi için STUN sunucu adresi",
   "settings.externalIp": "Harici IP",
   "settings.autoDetect": "Otomatik algılama",
-  "settings.externalIpHelp": "İsteğe bağlı: NAT için harici IP (auto-detect için boş bırakın)",
+  "settings.externalIpHelp": "İsteğe bağlı: istemcilerin bu sunucuya WebRTC ile ulaşmak için kullandığı adresler, virgülle ayrılmış (örneğin 100.101.102.103, 192.168.1.20, otomatik algılama için *). Her bağlantı yolu için bir tane ekleyin: LAN, Tailscale/VPN veya genel. Otomatik algılama için boş bırakın.",
   "settings.iceServers": "ICE Sunucular",
   "settings.iceServersPlaceholder": "İsteğe bağlı virgülle ayrılmış ICE sunucular",
   "settings.iceServersHelp": "İsteğe bağlı: Özel ICE sunucuları (virgülle ayrılmış)",

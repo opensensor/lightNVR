@@ -2387,7 +2387,7 @@
   "settings.stunServerHelp": "Address ng STUN server para sa NAT traversal",
   "settings.externalIp": "External IP",
   "settings.autoDetect": "Awtomatikong pagtukoy",
-  "settings.externalIpHelp": "Opsyonal: External IP para sa NAT (iwanang blangko para sa awtomatikong pagtukoy)",
+  "settings.externalIpHelp": "Opsyonal: ang mga address na ginagamit ng mga client para maabot ang server na ito sa WebRTC, pinaghihiwalay ng kuwit (halimbawa 100.101.102.103, 192.168.1.20, * para sa awtomatikong pagtukoy). Magdagdag ng isa para sa bawat paraan ng pagkonekta: LAN, Tailscale/VPN, o pampubliko. Iwanang blangko para sa awtomatikong pagtukoy.",
   "settings.iceServers": "ICE Servers",
   "settings.iceServersPlaceholder": "Opsyonal na ICE servers na pinaghihiwalay ng kuwit",
   "settings.iceServersHelp": "Opsyonal: Custom ICE servers (pinaghihiwalay ng kuwit)",

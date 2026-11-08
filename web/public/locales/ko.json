@@ -1105,7 +1105,7 @@
   "settings.stunServerHelp": "NAT 통과를 위한 STUN 서버 주소",
   "settings.externalIp": "외부 IP",
   "settings.autoDetect": "자동 감지",
-  "settings.externalIpHelp": "선택사항: NAT용 외부 IP (자동 감지하려면 비워 두세요)",
+  "settings.externalIpHelp": "선택사항: 클라이언트가 WebRTC로 이 서버에 접속할 때 사용하는 주소를 쉼표로 구분해 입력합니다 (예: 100.101.102.103, 192.168.1.20, 자동 감지는 *). 연결 경로(LAN, Tailscale/VPN, 공용)마다 하나씩 추가하세요. 자동 감지하려면 비워 두세요.",
   "settings.iceServers": "ICE 서버",
   "settings.iceServersPlaceholder": "선택사항: 쉼표로 구분된 ICE 서버",
   "settings.iceServersHelp": "선택사항: 사용자 지정 ICE 서버 (쉼표로 구분)",

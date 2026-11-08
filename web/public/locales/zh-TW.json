@@ -1103,7 +1103,7 @@
   "settings.stunServerHelp": "STUNNAT遍歷的伺服器位址",
   "settings.externalIp": "外部IP",
   "settings.autoDetect": "自動偵測",
-  "settings.externalIpHelp": "可選：NAT 的外部IP（留空以供自動檢測）",
+  "settings.externalIpHelp": "可選：用戶端透過 WebRTC 連線到此伺服器所用的位址，以逗號分隔（例如 100.101.102.103, 192.168.1.20，* 表示自動偵測）。每種連線方式各新增一個：區域網路、Tailscale/VPN 或公用網路。留空則自動偵測。",
   "settings.iceServers": "ICE 伺服器",
   "settings.iceServersPlaceholder": "可選的逗號分隔ICE 伺服器",
   "settings.iceServersHelp": "可選：自訂 ICE 伺服器（以逗號分隔）",

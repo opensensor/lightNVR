@@ -1103,7 +1103,7 @@
   "settings.stunServerHelp": "عنوان خادم STUN لاجتياز NAT",
   "settings.externalIp": "IP الخارجي",
   "settings.autoDetect": "اكتشاف تلقائي",
-  "settings.externalIpHelp": "اختياري: IP خارجي لـ NAT (اتركه فارغًا للاكتشاف التلقائي)",
+  "settings.externalIpHelp": "اختياري: العناوين التي يستخدمها العملاء للوصول إلى هذا الخادم عبر WebRTC، مفصولة بفواصل (مثل 100.101.102.103, 192.168.1.20, و* للاكتشاف التلقائي). أضف عنوانًا لكل طريقة اتصال: الشبكة المحلية أو Tailscale/VPN أو العامة. اتركه فارغًا للاكتشاف التلقائي.",
   "settings.iceServers": "خوادم ICE",
   "settings.iceServersPlaceholder": "خوادم ICE اختيارية مفصولة بفواصل",
   "settings.iceServersHelp": "اختياري: خوادم ICE مخصصة (مفصولة بفواصل)",

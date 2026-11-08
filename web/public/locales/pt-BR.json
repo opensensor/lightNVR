@@ -1255,7 +1255,7 @@
   "settings.stunServerHelp": "Endereço do servidor STUN para travessia de NAT",
   "settings.externalIp": "IP externo",
   "settings.autoDetect": "Detectar automaticamente",
-  "settings.externalIpHelp": "Opcional: IP externo para NAT (deixe em branco para detectar automaticamente)",
+  "settings.externalIpHelp": "Opcional: os endereços que os clientes usam para acessar este servidor por WebRTC, separados por vírgulas (por exemplo 100.101.102.103, 192.168.1.20, * para detecção automática). Adicione um para cada forma de conexão: LAN, Tailscale/VPN ou pública. Deixe em branco para detectar automaticamente.",
   "settings.iceServers": "Servidores ICE",
   "settings.iceServersPlaceholder": "Servidores ICE opcionais separados por vírgula",
   "settings.iceServersHelp": "Opcional: servidores ICE personalizados (separados por vírgula)",
