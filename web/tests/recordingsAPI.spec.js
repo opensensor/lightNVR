@@ -110,16 +110,22 @@ describe('recordingsAPI', () => {
     ).resolves.toBe(false);
   });
 
-  test('checkRecordingHasDetections returns false when timestamps are invalid', async () => {
+  test.each([
+    ['start', 'invalid-timestamp', '2026-02-18T05:01:00Z'],
+    ['end', '2026-02-18T05:00:00Z', 'invalid-timestamp'],
+    ['both', 'invalid-timestamp', 'invalid-timestamp']
+  ])('checkRecordingHasDetections returns false without requesting detections when %s timestamps are invalid', async (_invalid, start_time, end_time) => {
     const recording = {
       id: 44,
       stream: 'front-yard',
-      start_time: 'invalid-timestamp',
-      end_time: 'invalid-timestamp'
+      start_time,
+      end_time
     };
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(recordingsAPI.checkRecordingHasDetections(recording)).resolves.toBe(false);
     expect(enhancedFetch).not.toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalledWith('Failed to parse recording timestamps');
   });
 
   test('checkRecordingHasDetections returns false when enhancedFetch throws an error', async () => {
@@ -169,18 +175,24 @@ describe('recordingsAPI', () => {
     expect(enhancedFetch).not.toHaveBeenCalled();
   });
 
-  test('getRecordingDetections returns empty array when timestamp parsing fails', async () => {
+  test.each([
+    ['start', 'invalid-timestamp', '2026-02-18T05:01:00Z'],
+    ['end', '2026-02-18T05:00:00Z', 'invalid-timestamp'],
+    ['both', 'invalid-timestamp', 'invalid-timestamp']
+  ])('getRecordingDetections returns empty array without requesting detections when %s timestamps are invalid', async (_invalid, start_time, end_time) => {
     const recording = {
       id: 89,
       stream: 'backyard',
-      start_time: 'not-a-timestamp',
-      end_time: '2026-02-18T05:30:00Z'
+      start_time,
+      end_time
     };
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await recordingsAPI.getRecordingDetections(recording);
 
     expect(result).toEqual([]);
     expect(enhancedFetch).not.toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalledWith('Failed to parse recording timestamps');
   });
 
   test('getRecordingDetections returns empty array when enhancedFetch rejects', async () => {
