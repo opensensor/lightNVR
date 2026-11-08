@@ -1,6 +1,6 @@
 # PRD — Event Evidence and YA-WAMF Integration
 
-**Status**: Draft
+**Status**: Draft — P0 contract frozen in [OBSERVATIONS_CONTRACT.md](../integrations/OBSERVATIONS_CONTRACT.md) (C1); implementation not started
 **Created**: 2026-11-08
 **Owner**: TBD — lightNVR integration owner; YA-WAMF counterpart to be identified
 **Scope**: Extend lightNVR with reusable observation, evidence, and classification

@@ -62,6 +62,17 @@ Expiry is internal delivery metadata and is intentionally not part of the JSON
 payload. MQTT 5 delivery may carry it as a message-expiry property; the durable
 outbox uses the same value.
 
+### Reserved: observation change events (INT_01)
+
+`io.lightnvr.detection.observation_changed.v1` (info, operational, 1 hour,
+high rate, reference allowed, subject `camera/<uuid>`) is reserved by the
+[observations contract](integrations/OBSERVATIONS_CONTRACT.md#6-change-event-iolightnvrdetectionobservation_changedv1).
+It is registered in `src/core/event_envelope.c` by INT_01 task L5, and this
+table gains its row at that point. Unlike the facts above, each message carries
+a deterministic UUIDv5 `id` per observation revision, and the
+[observation history API](integrations/OBSERVATIONS_CONTRACT.md#7-history-and-cursor-get-apiobservations)
+is its durable recovery path. Existing detection topics are unchanged.
+
 ## Data schemas
 
 Additional fields are allowed unless they violate the privacy rules above.
