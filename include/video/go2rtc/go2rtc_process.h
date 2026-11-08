@@ -16,24 +16,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define GO2RTC_MAX_EXTERNAL_CANDIDATES 8
-#define GO2RTC_CANDIDATE_SIZE 128
-
-/**
- * Parse the go2rtc "External IP" setting into WebRTC candidates.
- *
- * Entries are separated by commas, semicolons or whitespace. Each entry is:
- *   "*" or "auto"            -> "*:<port>" (auto-detect)
- *   IPv4 or hostname[:port]  -> "<host>:<port>"
- *   IPv6 or [IPv6][:port]    -> "[<ipv6>]:<port>"
- *   stun:host[:port]         -> passed through
- * Duplicates collapse. Output strings are safe inside a double-quoted YAML scalar.
- *
- * @return number of candidates written (0 when the list is empty or NULL),
- *         or -1 when any entry is invalid or there are more than max entries.
- */
-int go2rtc_parse_external_candidates(const char *list, int port,
-                                     char out[][GO2RTC_CANDIDATE_SIZE], int max);
+/* go2rtc_parse_external_candidates() lives in utils so builds without
+ * go2rtc (ENABLE_GO2RTC=OFF) can still validate the setting. */
+#include "utils/webrtc_candidates.h"
 
 /**
  * @brief Initialize the go2rtc process manager
