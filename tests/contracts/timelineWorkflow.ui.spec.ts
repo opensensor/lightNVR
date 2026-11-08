@@ -79,6 +79,9 @@ for(const width of [390,1440]) {
    await page.locator('#play-button').click();
    await expect.poll(()=>video.evaluate(v=>(v as HTMLVideoElement).currentSrc)).toContain('/1001?');
    await expect.poll(()=>video.evaluate(v=>(v as HTMLVideoElement).paused)).toBe(false);
+   // paused flips as soon as play() is requested; the player seeks to the cursor once the
+   // new segment's metadata loads, so only jump near its end after playback is under way.
+   await expect.poll(()=>video.evaluate(v=>{const e=v as HTMLVideoElement;return e.readyState>=2&&e.currentTime>0;})).toBe(true);
    await video.evaluate(v=>{(v as HTMLVideoElement).currentTime=29.8;});
    await expect.poll(()=>video.evaluate(v=>(v as HTMLVideoElement).currentSrc)).toContain('/1002?');
    await expect.poll(()=>video.evaluate(v=>(v as HTMLVideoElement).paused)).toBe(false);
