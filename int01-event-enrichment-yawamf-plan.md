@@ -419,9 +419,66 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
 - **validation**: `pytest backend/tests/test_frigate_regression_baseline.py`
   is green on unmodified `53540f48`. This suite is the A10 gate and must stay
   green through every W* task.
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commit `c5e7fecd` on `feature/lightnvr-provider`, not pushed)
 - **log**:
+  - Characterization tests: they pin shipped behaviour, so there is no RED
+    phase. 46 tests pass on unmodified `53540f48`. To show they bite, six
+    mutations were applied to a scratch copy of `backend/app`, and five failed
+    the suite on the first run:
+    - live snapshot fetched with `crop=False`: 7 failures;
+    - `mark_notified` dropped after dispatch: 5;
+    - snapshot cache key renamed: 4;
+    - false positive overriding an owner tag: 1;
+    - full-visit trigger `source` changed: 1.
+    - `final` mode firing on `update` survived at first, because a thumbnail
+      fallback rescued the `new`. A recovery test was added, and it now
+      fails 1.
+  - Running it: `cd backend && python3.12 -m venv .venv && .venv/bin/pip install -r requirements-base.txt -r requirements-provider-cpu.txt -r requirements-dev.txt`,
+    then `.venv/bin/pytest tests/test_frigate_regression_baseline.py`. The
+    `-full` provider file pulls CUDA wheels; the CPU one is enough.
+  - Full suite: 7455 passed. Twelve migration tests fail only when the venv is
+    not on `PATH`, because they shell out to a bare `alembic`. With
+    `PATH=.venv/bin:$PATH` they pass.
+  - Harness, which W1–W4 should reuse rather than copy:
+    - DB: `monkeypatch.setenv("DB_PATH", migrated_history_db)` and then the
+      real `init_db()`/`close_db()`, so every module's `get_db` hits a private
+      migrated copy without per-module patching.
+    - Frigate: `FakeFrigate` (an `httpx.MockTransport`) is installed on
+      `frigate_client._client`. The full-visit service builds its own
+      `httpx.AsyncClient`, so its module-level `httpx` is swapped for a
+      namespace whose `AsyncClient` uses the same transport. Assertions are
+      on `METHOD path?sorted-query` strings.
+    - Media cache: `SNAPSHOTS_DIR`, `CLIPS_DIR`, etc. are patched to
+      `tmp_path`, and `_available` is set to True.
+    - Notifications: the outbound boundary is
+      `notification_service.notify_detection`, driven by a real
+      `NotificationDispatcher`.
+    - HQ and full-visit in-memory schedulers are stubbed, but the durable
+      `processing_job_state` row is asserted.
+  - Gotchas for W1–W4:
+    - Live `new`/`update` requests `snapshot.jpg?crop=1&quality=95`, while a
+      recovered `end` and backfill request `crop=0`.
+    - The live miss chain is: cropped snapshot twice, then uncropped, then
+      `thumbnail.jpg`, then the recording window
+      `/api/{cam}/start/{t-2}/end/{t+8}/clip.mp4`.
+    - A notification without a cached photo fetches
+      `snapshot.jpg?crop=1&quality=85`.
+    - The cached snapshot's `source` is `frigate_snapshot_cropped`. The HQ job
+      pipeline name is `high_quality_snapshot`.
+    - `detection_event_bounds` stores datetime strings.
+    - In `standard` mode a recovered `end` does **not** notify; only `final`
+      does. This matters for the W7 policy for sources without lifecycle.
+    - Corrections and favourites make zero Frigate calls.
+    - Full visit uses the timestamp in the event ID for its window and makes 2
+      bounded attempts.
+    - `taxonomy_service` is a shared singleton, so patch it
+      input-conditionally.
+    - YA-WAMF `CLAUDE.md` §10 forbids AI attribution trailers in commits, so
+      the YA-WAMF commit has none. Later W* commits should follow that rule.
 - **files edited/created**:
+  - YA-WAMF `backend/tests/test_frigate_regression_baseline.py` (new)
+  - YA-WAMF `backend/tests/fixtures/frigate_regression/mqtt_events.json` (new)
+  - YA-WAMF `backend/tests/fixtures/frigate_regression/frigate_api.json` (new)
 
 ### P1 — lightNVR
 
