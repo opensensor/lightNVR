@@ -1717,6 +1717,17 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
 
     cJSON *go2rtc_external_ip = cJSON_GetObjectItem(settings, "go2rtc_external_ip");
     if (go2rtc_external_ip && cJSON_IsString(go2rtc_external_ip)) {
+        char candidates[GO2RTC_MAX_EXTERNAL_CANDIDATES][GO2RTC_CANDIDATE_SIZE];
+        if (strlen(go2rtc_external_ip->valuestring) >= sizeof(g_config.go2rtc_external_ip) ||
+            go2rtc_parse_external_candidates(go2rtc_external_ip->valuestring, 8555, candidates,
+                                             GO2RTC_MAX_EXTERNAL_CANDIDATES) < 0) {
+            log_warn("Rejected invalid go2rtc_external_ip setting");
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400,
+                "Invalid go2rtc_external_ip: expected up to 8 comma-separated IPs or hostnames "
+                "(optionally :port), '*' for auto-detect, or stun:host[:port]");
+            return;
+        }
         safe_strcpy(g_config.go2rtc_external_ip, go2rtc_external_ip->valuestring, sizeof(g_config.go2rtc_external_ip), 0);
         settings_changed = true;
         log_info("Updated go2rtc_external_ip: %s", g_config.go2rtc_external_ip);

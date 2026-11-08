@@ -2317,7 +2317,7 @@
   "settings.stunServerHelp": "STUN server address for NAT traversal",
   "settings.externalIp": "External IP",
   "settings.autoDetect": "Auto-detect",
-  "settings.externalIpHelp": "Optional: External IP for NAT (leave empty for auto-detect)",
+  "settings.externalIpHelp": "Optional: the addresses clients use to reach this server for WebRTC, comma-separated (for example 100.101.102.103, 192.168.1.20, * for auto-detect). Add one for each way you connect: LAN, Tailscale/VPN, or public. Leave empty to auto-detect.",
   "settings.iceServers": "ICE Servers",
   "settings.iceServersPlaceholder": "Optional comma-separated ICE servers",
   "settings.iceServersHelp": "Optional: Custom ICE servers (comma-separated)",

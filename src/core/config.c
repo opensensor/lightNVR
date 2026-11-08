@@ -164,7 +164,7 @@ static const env_config_mapping_t env_config_mappings[] = {
     {"GO2RTC_WEBRTC_ENABLED",  CONFIG_TYPE_BOOL,   CONFIG_OFFSET(go2rtc_webrtc_enabled),    0,   NULL, 0, true},
     {"GO2RTC_STUN_ENABLED",    CONFIG_TYPE_BOOL,   CONFIG_OFFSET(go2rtc_stun_enabled),      0,   NULL, 0, true},
     {"GO2RTC_STUN_SERVER",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_stun_server),       256, "stun.l.google.com:19302", 0, false},
-    {"GO2RTC_EXTERNAL_IP",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_external_ip),       64,  "",   0, false},
+    {"GO2RTC_EXTERNAL_IP",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_external_ip),       256,  "",   0, false},
     {"GO2RTC_ICE_SERVERS",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_ice_servers),       512, "",   0, false},
     {"GO2RTC_WEBRTC_LISTEN_PORT", CONFIG_TYPE_INT, CONFIG_OFFSET(go2rtc_webrtc_listen_port), 0,  NULL, 8555, false},
     {"WEBRTC_CONNECTION_TIMEOUT_MS", CONFIG_TYPE_INT, CONFIG_OFFSET(webrtc_connection_timeout_ms),   0, NULL, 30000, false},
