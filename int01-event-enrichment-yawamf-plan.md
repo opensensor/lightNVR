@@ -3857,9 +3857,150 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
     batch commit rate) and rerun.
 - **validation**: A committed results JSON meets the thresholds, and the C1
   defaults are updated from "provisional" to final.
-- **status**: Not Completed
+- **status**: Completed. The gate passes under C4's rule (DB probe advisory).
+  The DB-probe tail rise is an open finding. Commits: `9ed02bb4` (product fix
+  plus harness) and `66270dd6` (results plus docs). Nothing is pushed.
 - **log**:
-- **files edited/created**:
+  - **Setup.**
+    - Build: `build-int01-X2`, Release, from HEAD (LiteRT on, MQTT and SOD,
+      `BUILD_TESTS=ON`, `PKG_CONFIG_LIBDIR` set to the apt pkgconfig dirs).
+      `CMAKE_C_FLAGS=-I<scratchpad>/ffinc` points at the apt FFmpeg header
+      symlink dir.
+    - Clip: `make-bird-clip.sh`. The pinned cardinal (sha `85bf66b1…`, the
+      same as X1) bounces across a textured 1280×720 background at 15 fps
+      with a GOP of 15. The clip is deterministic (sha `5bf26bbc…`). The
+      photo is CC BY-SA and is not committed.
+    - Every SOD inference detected `bird`: 2,404–2,408 detections per 600 s
+      window, written to the DB.
+  - **Product bug found by the gate, RED then GREEN, fixed in `9ed02bb4`.**
+    - In a saturated smoke run, 10 of 120 submits took 1–4.4 ms. Temporary
+      phase timing (not committed) showed the time was in `free()` of the
+      rejected 2.7 MB RGB frame on the detection thread (an munmap, 1.5–2.6
+      ms). That breaks L3's "never blocks, under 1 ms" contract.
+    - Fix: a tracked drop hands the frame to the worker through the drop
+      record. The worker frees it. Pending deferred frames are bounded by
+      max(global queue bytes, 32 MiB); past that bound, or when the ring is
+      full, the frame is freed inline.
+    - RED:
+      - `test_rejected_frames_are_released_by_the_worker` and
+        `test_drop_ring_overflow_counts_untracked` failed on the
+        deferred-frame counters (expected 12 and 256 deferred, got 0).
+      - The new stats fields first failed to compile in
+        `test_observation_evidence` and `test_observation_diagnostics`.
+    - GREEN:
+      - In `build-int01-X2`: `test_observation_evidence` 16/16 (3 runs),
+        diagnostics 5/5, `test_api_handlers_system` 32/32,
+        `test_detection_observation_evidence` 5/5,
+        `test_api_detection_observation_evidence` 7/7 and
+        `test_observation_crash_boundaries` 6/6.
+      - In the new `build-int01-X2-asan` (Debug, ASan/UBSan, LiteRT off):
+        evidence, diagnostics, crash boundaries and detection evidence are
+        clean.
+    - Afterwards, the smoke run's window submits were all ≤ 50 µs.
+  - **New observability (contract §15):**
+    - `lightnvr_observation_submit_latency_seconds` histogram (1 µs … 10 ms
+      buckets) and `_max_seconds`;
+    - `lightnvr_observation_evidence_limit_items{scope}` and
+      `_limit_bytes{scope=global|camera|discard}`;
+    - `_camera_high_water_items`;
+    - `_discards_total{mode=deferred|inline}` and `_discard_pending_bytes`.
+  - **Harness additions:**
+    - `run-workload.mjs --system-setting K=V`: writes the row, then restarts
+      lightNVR once (the queue bytes are read only at startup).
+    - `results.feature_metrics` and a post-shutdown `results.feature_db`
+      (read with `node:sqlite`).
+    - `metrics.mjs`: `evidenceGate`, `observationFeatureSummary`,
+      `assetReasonSummary`, the histogram helpers and `pooledComparison`.
+      RED was missing exports; the tooling tests are now 67/67.
+    - `compare.mjs gate`: requires the same binary and runs the evidence
+      checks. Also `--advisory KEY`, `--require-saturation`,
+      `--max-submit-seconds`, and a `pool` command.
+    - Showing the gate can fail: `gate … --max-pct -1` and
+      `--max-submit-seconds 0.00001 --require-saturation` both exit 1. The
+      exit codes are recorded in `results/2026-11-08-x2-gate.json`.
+  - **Runs.** Seven runs of 600 s, each with 30 s warm-up, all on binary
+    `9ed02bb4` and the same clip.
+    - Order: disabled-run1, enabled-defaults, enabled-saturated (4 MiB
+      queue), disabled-run2, disabled-run3, enabled-defaults2,
+      enabled-saturated2.
+    - Load average: 2.8–7.8. Present on the host: the user's lightNVR,
+      uvicorn, Mosquitto, a `llama-server` using one core, Chrome and other
+      desktop work. disabled-run1 (end), both first enabled runs, and
+      enabled-defaults2 (start) ran at load about 7; the rest at about 3.
+  - **Results (disabled → defaults / saturated):**
+    - Recording gaps: 0 everywhere.
+    - `segment_interval_ms` p95: 10008.9–10016.1 → 10008.5–10013.5 /
+      10009.3–10012.9.
+    - Accepted, dropped, ready:
+      - defaults: 2,407–2,408 accepted, 0 dropped, all ready;
+      - saturated: 1,063–1,073 accepted, 1,331–1,341 `queue_full`, 0
+        untracked; the DB holds 1,395–1,408 `unavailable:queue_full` rows.
+    - High-water marks:
+      - items/bytes: 4 / 11.1 MB of 64 / 32 MiB (defaults); 1 / 2.77 MB of
+        64 / 4 MiB (saturated);
+      - per camera: 1 of 8;
+      - drop ring: 2 of 256;
+      - deferred discards pending: 5.5 MB.
+    - Submit latency: mean about 4.3 µs, p99 bucket ≤ 50 µs, run maximum
+      341–405 µs.
+    - CPU: 149–156% → 154–158% / 151–155% of one core.
+    - RSS high-water: 873–888 → 891–892 / 882–929 MB.
+    - Disk writes: 2.06 → 3.3 / 2.9 MB/s.
+    - Relay lag: ≤ 2 ms.
+    - No encode, write or DB failures.
+  - **Gate verdict.**
+    - With `--advisory latency.db_probe_ms.p95`, all four pairs pass:
+      run1 against defaults and saturated, and run3 against defaults2 and
+      saturated2.
+    - The DB probe fails its own repeatability (disabled pairs 2.61%, 5.03%
+      and 2.42% against the 2% criterion). Following C4's handoff rule it is
+      advisory, and §13 and §19 record that decision.
+    - Strict per pair: +13.4% and +8.8% (the first pair, under load) and
+      +4.4% and +2.2% (the second pair).
+    - **Pooled DB-probe p95: +9.9% (defaults) and +6.5% (saturated)**, with
+      the median unchanged. This is an open finding, not attributed to noise.
+      The likely cause is WAL autocheckpoints inside commits that hold the
+      global DB mutex, driven by the worker's extra writes.
+    - Reducing admission, as the plan suggests, cannot fix it: drops still
+      insert `unavailable` rows, and a 56% cut in admission only moved
+      +9.9% to +6.5%. So the admission defaults were kept.
+  - **Final defaults (contract §13, with an X2 basis column):**
+    - Global queue: 32 MiB / 64 frames.
+    - Per camera: 8 frames.
+    - Drop ring: 256 records.
+    - Encoder worker concurrency: 1.
+    - Media: 7 days and 2 GiB per camera (64 MiB..1 TiB).
+    - History retention: 30 days.
+    - Relay batch: 64. Outbox share: 2,000. Scan cap: 5,000.
+    - New derived bound: deferred-release bytes = max(queue bytes, 32 MiB).
+- **gotchas / follow-ups**:
+  - **Follow-up for the DB-probe tail.** Two candidate fixes: checkpoint WAL
+    outside the global mutex (passive checkpoints on a background
+    connection, or a raised `wal_autocheckpoint`), or batch the worker's
+    insert, transition and drop commits per drain. Re-gate with `compare.mjs
+    pool` over at least 3 runs per mode on a quiet host.
+  - **Not exercised by X2:** media eviction (about 100 KB JPEGs left at most
+    45 MB per camera, under the 64 MiB budget), `budget_exhausted` (needs
+    protected assets), the relay outbox cap (no broker in the fixture) and
+    the history scan cap. L4, L11 and X1 cover these.
+  - **Detection timing:** detection threads sample at the wall-clock second
+    boundary, so all cameras submit within about 50 ms. That burst is why a
+    single-frame queue drops more than half of the submissions.
+  - **Fixture and tooling notes:**
+    - The fixture's lightNVR has no broker, so publications resolve without
+      routing and none stay pending.
+    - The Monitor tool cannot start in this sandbox (seccomp/userns). Use a
+      background `until grep` wait instead.
+    - Migration 0095's "Provisional budget bounds" comment was left as it is,
+      because migration files are treated as immutable.
+- **files edited/created**: `include/core/observation_evidence.h`,
+  `src/core/observation_evidence.c`, `src/web/api_handlers_metrics.c`,
+  `tests/unit/test_observation_evidence.c`, `tests/unit/test_observation_diagnostics.c`,
+  `tests/performance/observations/{run-workload.mjs,metrics.mjs,compare.mjs,README.md,make-bird-clip.sh}` (new script),
+  `tests/performance/observations/results/2026-11-08-x2-{disabled-run1,disabled-run2,disabled-run3,enabled-defaults,enabled-defaults2,enabled-saturated,enabled-saturated2,gate}.json`,
+  `tests/contracts/tooling/observation-perf-metrics.test.mjs`,
+  `docs/integrations/{OBSERVATIONS_CONTRACT.md,YA_WAMF.md}`, `docs/DETECTION_ENGINES.md`,
+  `include/database/db_observations.h` (comment)
 
 ### P2 — Classification feedback
 
