@@ -3050,9 +3050,162 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   owner overwrite `409`, evidence mismatch `422`) and A7-annotate (another
   camera's observation gives `404`/`403` and no row is written). The MQTT sink
   sees a `classification` change whose message ID is stable.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Commit `9e0e8ecd`. Built in `build-int01-L14` (mirrors `build-int01-L13`)
+    and `build-int01-L14-asan` (Debug ASan/UBSan, `-DENABLE_LITERT=OFF`).
+    `libuv_api_handlers.c` did not change, so `coverage.json` did not move
+    (`coverage.mjs --check` OK).
+  - **Rule order in the handler** (contract §10.4):
+    1. Authenticate, parse the raw path (a malformed ID is `400 field:id`, not
+       audited), then load the observation.
+    2. Evaluate `observations.annotate` on the capture camera with
+       `httpd_evaluate_camera_identity_action`. On a deny it re-checks
+       `live.view`: held → `403 forbidden`, otherwise `404
+       observation_not_found`, byte-identical to an unknown ID. This runs
+       before the namespace and body checks, so a hidden observation with a
+       bad namespace and a broken body is still that same `404`. Holding
+       annotate without `live.view` is enough to write.
+    3. Namespace: `observation_writer_namespace(username)` must succeed and
+       equal the path namespace. A body `writer_namespace` or `writer`
+       naming anyone else is `403 namespace_forbidden`; naming the caller is
+       accepted and ignored. A non-string writer field is `400`.
+    4. Body: at most `OBS_PUT_BODY_MAX` (4096) bytes, a JSON object, closed.
+       Text must be valid UTF-8 without control characters. Optional
+       `model_version` and `taxonomy_id` may be absent or null, and `""` is
+       stored as null. `input_asset_id` is lowercased; integers must be
+       integral and ≤ `INT_MAX`; `expected_revision: null` is `400`. Every
+       400 carries `field` (an unknown key names itself; an invalid name
+       segment gives `field: "name"`).
+    5. `db_observation_classification_put`, with the L13 mapping exactly.
+       `WRITER_MISMATCH` withholds the stored values.
+  - **Audit**: `audit_log_operation(..., "observations.annotate",
+    "observation", id, "annotate", outcome, context)`. The context holds
+    `camera_uuid`, `key`, `kind`, `result`, `annotation_revision_before` and
+    `annotation_revision_after` (null when unknown). `audit_events.outcome`
+    only allows `allowed|denied|success|failure|error`, so the contract
+    result lives in `context.result` and maps to an outcome:
+    - `success`: created, updated, noop;
+    - `denied`: forbidden, namespace_forbidden, and the hidden 404;
+    - `error`: internal_error;
+    - `failure`: everything else.
+
+    The result set is the §12.2 list plus `forbidden`,
+    `observation_not_found`, `invalid_request`, `annotation_limit` and
+    `internal_error`. Contract §9, §11 and §12.2 are updated to match.
+  - **Reads**: `observation_record_to_json(record, source, set)` gained a
+    third argument (NULL means empty lists). The new
+    `observation_classification_to_json()` never emits `writer_user_id`.
+    GET uses `db_observation_classifications_list`. History pages use the
+    new `db_observation_classifications_list_many(ids, n, visit, ctx)`, which
+    uses one read-only connection and one prepared statement per page rather
+    than one connection per item.
+  - **Capabilities**: `observations.annotate` is `supported: true`.
+    `authorized` requires both a writer namespace and the action on at least
+    one camera. Otherwise `reason` is `reserved_writer_namespace` or
+    `invalid_writer_namespace` (these win) or `not_authorized`. `cameras`
+    now includes cameras where only annotate is held, and `actions` appends
+    `observations.annotate`.
+  - **Authz**: the catalog entry is now `{..., true, false, true}`
+    (enforced). `test_authorization` asserts this.
+    `web/tests/apiTokenPolicy.spec.js` and
+    `tests/integration/specs/api-tokens.ui.spec.ts` now list it as enforced
+    (the checkbox count went from 16 to 17).
+  - **OpenAPI**: the PUT is camera `observations.annotate` (raw). The `501`
+    and the P2 note are gone, and the 403/404/409/422 descriptions are
+    tightened. The `not_implemented` code and the
+    `not_available_in_this_version` reason stay in the enums (the P1
+    capability fixture uses them). `observations-contract.test.mjs` now
+    expects no `501` on any operation and checks
+    `validateObservationClassificationWrite`.
+  - **RED→GREEN**:
+    - RED: with the extended tests and only the signature change,
+      `test_api_handlers_observations` failed 11/25. The failures were the
+      serializer against the annotated fixtures, both capabilities tests,
+      and every PUT test (`501`).
+    - GREEN: 25/25 in both builds, ASan and UBSan clean.
+    - Also green in both builds: `test_authorization` 52,
+      `test_db_observation_classifications` 12, `test_api_handlers_openapi`
+      8, `test_openapi_projection` 21, `test_db_observations` 15,
+      `test_event_envelope` 13, `test_observation_relay` 13, `test_audit_log`
+      42 and `test_db_auth` 36. `test_authorization_snapshot` 10 passes in
+      `build-int01-L14`.
+  - **Unit coverage**:
+    - C3 fixtures 01–05 run as one chain. Fixture IDs are mapped to the seeded
+      ones; server `created_at`/`updated_at` are checked, then aligned, so
+      the rest is exact `cJSON_Compare` equality.
+    - Fixtures 06–08: no rows, no revision bump and no publication.
+    - The serializer is exact against all 10 observation fixtures, including
+      the classified and owner-confirmed ones.
+    - A7 denial matrix: 404 identical to an unknown ID, 403, annotate-only
+      allowed, and an evaluation failure is 500.
+    - Namespace cases: reserved, invalid, body writer fields, and D3 reuse by
+      user id 43.
+    - 34 body-field cases plus whole-document, oversize and name cases.
+    - The absent-key CAS (`409` without `current`), a 200 update and the
+      9th-key `annotation_limit`.
+    - GET and list return the annotations.
+    - The staged publication has cause `classification` and message ID
+      `observation_message_id(source, id, 3)`. Envelopes built twice match,
+      and a no-op retry stages nothing.
+    - Audit context fields are checked, and the body never appears in them.
+  - **Playwright** (runnable locally): new
+    `tests/contracts/observations.api.spec.ts`, 3/3 with
+    `LIGHTNVR_CONTRACT_BIN=build-int01-L14/bin/lightnvr
+    LIGHTNVR_CONTRACT_MQTT=1 npx playwright test -c
+    tests/contracts/playwright.config.ts --project=api
+    tests/contracts/observations.api.spec.ts`. Against the old
+    `build-int01-L8` binary it fails 3/3.
+    - It seeds ready observations by direct SQL into the isolated fixture DB.
+    - It covers A12, and A7-annotate with a policy user `yawamf`, the fixture
+      viewer, and scoped tokens with and without the action.
+    - It covers the MQTT case: a real sink receives exactly one
+      `classification` envelope whose `id` equals the §5.4 UUIDv5, and a
+      no-op retry adds nothing.
+
+    `discovery.api.spec.ts`, `baseline.spec.ts` and
+    `eventsDelivery.api.spec.ts` still pass (18/18). `permissionCases.ts`
+    needed no change.
+  - **Other validation**: `generate.mjs` and `--check` pass; `lint.mjs` is
+    valid with the same 5 warnings; `node --test
+    tests/contracts/tooling/*.test.mjs` 59/59; `tsc -p
+    tests/contracts/tsconfig.json` is clean; jest `apiTokenPolicy.spec.js`
+    16/16.
+  - **Gotchas for later tasks**:
+    - **L15**: read annotations from `GET /api/observations/{id}` (or a
+      history page), never from the PUT. Each list is already ordered by
+      `updated_at` desc. Show `owner_confirmed[0]` over `automated[0]`, and
+      keep the top-level `label`/`confidence` (the detector's) visible.
+      `observation_classification_to_json()` is the C serializer if a
+      detection API join needs it.
+    - **W10**: read `principal.writer_namespace` and
+      `operations["observations.annotate"].authorized` from capabilities.
+      The recipe user needs a role with `observations.annotate`. Built-in
+      Administrator has it; nothing else does by default, and legacy
+      user/viewer roles never do. A scoped token must list the action
+      explicitly. A `403 namespace_forbidden` on an existing key means
+      another user id created it, which is permanent. A `409 revision_conflict`
+      without `current` means `expected_revision` was non-zero on an absent
+      key. A retry after a lost response is a `200 changed:false` whatever
+      `expected_revision` says.
+    - **L11 / X3**: `observations.api.spec.ts` seeds rows by SQL, bypassing
+      L3, and its MQTT case is skipped unless `LIGHTNVR_CONTRACT_MQTT=1`.
+      L11 may fold it into the broader suite. Observation events need a
+      route listing `io.lightnvr.detection.observation_changed.v1` with no
+      label predicate (L5 gotcha). Classification events carry the
+      detector `label`, not the species.
+    - **Audit consumers**: filter on `action = observations.annotate` and read
+      `details.context.result`. The `outcome` column is the coarse 5-value
+      enum.
 - **files edited/created**:
+  - `src/web/api_handlers_observations.c`, `include/web/api_handlers_observations.h`
+  - `src/database/db_observation_classifications.c`, `include/database/db_observation_classifications.h` (`_list_many`)
+  - `src/core/authorization.c`, `tests/unit/test_authorization.c`
+  - `docs/api/openapi.json`; generated `include/web/openapi_document_generated.h`, `web/generated/api/schema.d.ts`
+  - `docs/integrations/OBSERVATIONS_CONTRACT.md` (§9, §11 and §12.2 only)
+  - `tests/unit/test_api_handlers_observations.c`, `tests/unit/CMakeLists.txt` (`--wrap=audit_log_operation`)
+  - `tests/contracts/observations.api.spec.ts` (new), `tests/contracts/tooling/observations-contract.test.mjs`
+  - `web/tests/apiTokenPolicy.spec.js`, `tests/integration/specs/api-tokens.ui.spec.ts`
 
 #### L15: Minimal classification display in lightNVR
 - **depends_on**: [L14]
