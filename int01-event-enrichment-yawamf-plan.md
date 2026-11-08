@@ -3534,9 +3534,141 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   - every Frigate regression case passes post-migration.
 - **validation**: The full `pytest`, `npm run check` and `npm test` pass on
   the branch.
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commits `1cbc05c0` acceptance suite and
+  `3d89116a` Health recovery status and Scan History wording, on
+  `feature/lightnvr-provider` after W10's `de28e1e4`; not pushed)
 - **log**:
-- **files edited/created**:
+  - **Harness**: a `FakeBroker` replaces `aiomqtt.Client` in the real
+    `MQTTService`. It replays the vendored C3 envelopes byte for byte, one
+    list per connection, so a dropped session reconnects, with hooks between
+    deliveries. The rest is reused by module attribute:
+    `test_lightnvr_ingestion.pipeline` (A1, A3, A9),
+    `test_source_recovery.recovery` (A4), the W0 baseline's `FakeFrigate`
+    and pipeline (A10), and `test_lightnvr_setup_api.nvr/broker` (A9 setup).
+  - **A-ID → test** (`backend/tests/test_lightnvr_acceptance.py`):
+    - A1 `test_a1_one_bird_published_over_mqtt_…`:
+      - pending → ready → classification;
+      - a reconnect redelivery plus a stream rename keep the camera-UUID
+        identity;
+      - the crop is a 1.1× square centred on the box;
+      - one notify; zero Frigate calls; only `live_topics()` is subscribed.
+    - A3 `test_a3_two_birds_in_one_frame_…`:
+      - 3× sibling replay gives 2 detections;
+      - each crop contains its own box and misses the sibling's;
+      - classifier input and cached photo centre colours match each bird;
+      - both share one `frame_sha256`, with at most 2 snapshot reads;
+      - one visit with `capture_count` 2 and no `bird_observations` rows.
+        This confirms W4's deviation, which is kept: no index-0 rows.
+    - A4:
+      - `test_a4_ten_mqtt_replays_overlapping_api_recovery_…`: 12 sightings
+        × 10 deliveries over 2 connections, with a real `run_once` started on
+        each connect, give 12 detections, 12 classifier calls and 12 intents.
+        Each is `dispatch/sent` or `suppressed_recovery/None`, and the
+        notified keys equal the dispatched keys.
+      - `test_a4_a_live_sighting_replayed_ten_times_…`: exactly one
+        `dispatch/sent` and one notify.
+    - A9 backend:
+      - `test_a9_a_lightnvr_source_classifies_from_its_photo_…`:
+        - classification comes from the photo; there are no
+          `processing_job_state` rows, and the HQ, full-visit and video
+          schedulers are never called;
+        - lightNVR requests are exactly capabilities, the observation and
+          the snapshot, with no `/api/events/`;
+        - direct HQ, full-visit and video calls refuse before any request;
+        - `source_status` reports `history` and `snapshots` only;
+        - `/health` status is unchanged by the recorded skips.
+      - `test_a9_setup_completes_for_a_snapshot_only_lightnvr_…`: all 4
+        checks are ok and the video features are named unsupported.
+    - A9 browser:
+      - W8's clip and full-visit cases;
+      - new `source-selection.spec.ts` "a snapshot-only source disables auto
+        video analysis…": Auto Video Analysis is `aria-disabled` and
+        unchecked, the note is info-toned, and a forced click writes nothing.
+    - A10 `TestFrigateHistoryFromThePreviousRelease` (3 tests): Alembic
+      upgrades a DB to `c1d734b9e201`, inserts with the v2.23.1 statement
+      plus a favourite, then upgrades to head. Startup binds the row to
+      `frigate.test:5000`. `update`/`end` refine that one row without
+      reclassifying; a false positive hides it with zero Frigate calls; a new
+      event gets the same identity. The full A10 gate stays
+      `test_frigate_regression_baseline.py`.
+  - **Mutation evidence** (scratch worktree at HEAD, each reverted):
+    - A1/A3:
+      - `source_camera_id=camera_name` fails A1 and A3;
+      - `CROP_CONTEXT` 1.1 → 2.5 fails A1 and A3;
+      - classifying the whole frame fails A1 and A3;
+      - caching the whole frame instead of the crop fails A1, A3, both A4
+        tests and A9.
+    - A9: `source_allows` always True fails the A9 backend test. Browser:
+      DetectionSettings `disabled={false}` fails the new auto-video case.
+    - A10: skipping the configured-instance bind fails 2 of the 3 A10 tests.
+      The false-positive test does not assert identity.
+    - A4: single-layer removals survive, by design. These were removing the
+      ledger screen, the DB already-admitted check, the `was_inserted` guard,
+      or the orchestrator outcome re-check; replays never get past the first
+      two. With the ledger and the pre-check both removed, both A4 tests fail
+      (plus A1/A3). With all four removed, the exactly-once test fails on
+      "Expected mock to have been awaited once. Awaited 10 times."
+    - Flake check: A4 passed 15/15 consecutive runs.
+  - **UI follow-ups** (RED first):
+    - `source-features.test.ts` (5 new cases) failed on the missing
+      `recoveryNotice`. In `source-recovery.spec.ts` the gap, waiting and
+      lightNVR Scan History cases failed before the change, and Scan History
+      failed again against HEAD's DataSettings.
+    - **Health card**: `SourceHealthCard` fetches
+      `GET /api/backfill/source-recovery` itself instead of adding a field to
+      `/api/diagnostics/source`, so no OpenAPI regeneration was needed and
+      W10's diagnostics hunks were not touched. It shows
+      `data-source-recovery=gap|waiting|stopped|caught_up`:
+      - `gap` (`recovery_required`) is an amber notice with an Acknowledge
+        button (`POST …/acknowledge`, and the returned status replaces it);
+      - `last_error` `retry:`/`source_unreachable:` show as waiting, and
+        `source_refused:`/`failed:` as stopped, with "Reason: <detail>";
+      - none of these is a `role=alert`, and an unreadable status hides only
+        this block.
+    - **Scan History**: `backfill_desc` and `backfill_scanning` take
+      `{source}` (`DataSettings` gets `sourceKind` from Settings) in all
+      9 locales. The new `settings.source.health.recovery_*` keys are in all
+      9 locales too; French uses U+202F before `:` and `;`.
+  - **Bugs found**: none in shipped code. One W6 limitation is noted for X1:
+    `get_status()` reads only the cached `source_cursors` row, which is loaded
+    once a run resolves the provider identity. After a restart with lightNVR
+    unreachable, a sticky `recovery_required` is therefore not shown (in
+    `/health`, the API or the card) until lightNVR answers.
+  - **Gates**:
+    - Full backend suite on the exact commit content: 7987 passed,
+      60 skipped, 0 failed, on W10's HEAD plus the acceptance file. A run on
+      the pre-W10 HEAD also passed, with 0 failures in 7976.
+    - `ruff check` and `ruff format --check` on the new file.
+    - `npm run check`: 0 errors, 0 warnings.
+    - `npm test`: 2358 passed.
+    - `npm run lint:dead` clean; `docs_consistency_check` and
+      `assemble_changelog` (9 fragments) clean.
+    - Playwright chromium full suite: 648 passed, 2 skipped.
+  - **Gotchas for X1**:
+    - The Scan History card is inside the collapsed "Backup & maintenance
+      tools" `AdvancedSection` on the Data tab; expand it first.
+    - The `openSettings` catch-all answers `{}` for unmocked paths. The card
+      treats a body without `state` as no recovery data.
+    - A fake broker must let in-flight dispatch tasks settle
+      (`service._in_flight_tasks`) and join the dispatcher queue before
+      asserting. The W0 `asyncio.sleep` patch shortens reconnect backoff.
+    - A4 end to end: on a first start, recovery begins at `head` (W6).
+      Seed a cursor or use Scan History so recovery overlaps live replays.
+    - The A10 previous-release fixture shells out to `alembic`, so it needs
+      `PATH=.venv/bin:$PATH`, as the W0 migration tests do.
+    - Commits: W10 committed mid-task. W9 commits were built with
+      `hash-object` + `commit-tree` + compare-and-swap `update-ref HEAD
+      <new> <old>`, so a concurrent commit cannot be overwritten.
+- **files edited/created** (YA-WAMF):
+  - `backend/tests/test_lightnvr_acceptance.py` (new),
+    `apps/ui/browser-tests/source-selection.spec.ts`
+  - `apps/ui/browser-tests/source-recovery.spec.ts` (new),
+    `apps/ui/src/lib/api/source.ts`,
+    `apps/ui/src/lib/utils/source-features.ts` and `source-features.test.ts`,
+    `apps/ui/src/lib/components/settings/SourceHealthCard.svelte`,
+    `DataSettings.svelte`, `apps/ui/src/lib/pages/Settings.svelte`
+  - `apps/ui/src/lib/i18n/locales/{de,en,es,fr,it,ja,pt,ru,zh}/settings.json`
+  - `changelog.d/lightnvr-recovery-health.md` (new)
 
 ### P1 — Cross-repo gates
 
