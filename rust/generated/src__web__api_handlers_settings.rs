@@ -188,6 +188,12 @@ unsafe extern "C" {
     unsafe fn stream_start_hls(stream_name: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn stream_stop_hls(stream_name: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn mp4_directory_format_is_valid(value: *const ::core::ffi::c_char) -> bool;
+    unsafe fn go2rtc_parse_external_candidates(
+        list: *const ::core::ffi::c_char,
+        port: ::core::ffi::c_int,
+        out: *mut [::core::ffi::c_char; 128],
+        max: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
     unsafe fn go2rtc_process_stop() -> bool;
     unsafe fn go2rtc_process_is_running() -> bool;
     unsafe fn go2rtc_process_clear_override_quarantine();
@@ -577,7 +583,7 @@ pub struct config_t {
     pub go2rtc_webrtc_listen_port: ::core::ffi::c_int,
     pub go2rtc_stun_enabled: bool,
     pub go2rtc_stun_server: [::core::ffi::c_char; 256],
-    pub go2rtc_external_ip: [::core::ffi::c_char; 64],
+    pub go2rtc_external_ip: [::core::ffi::c_char; 256],
     pub go2rtc_ice_servers: [::core::ffi::c_char; 512],
     pub webrtc_connection_timeout_ms: ::core::ffi::c_int,
     pub webrtc_ice_recovery_timeout_ms: ::core::ffi::c_int,
@@ -790,6 +796,7 @@ pub const LOG_COMPONENT: [::core::ffi::c_char; 12] =
     unsafe { ::core::mem::transmute::<[u8; 12], [::core::ffi::c_char; 12]>(*b"SettingsAPI\0") };
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const MAX_STREAM_NAME: ::core::ffi::c_int = 256 as ::core::ffi::c_int;
+pub const GO2RTC_MAX_EXTERNAL_CANDIDATES: ::core::ffi::c_int = 8 as ::core::ffi::c_int;
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -4384,10 +4391,36 @@ pub unsafe extern "C" fn handle_post_settings(
         b"go2rtc_external_ip\0".as_ptr() as *const ::core::ffi::c_char,
     );
     if !go2rtc_external_ip.is_null() && cJSON_IsString(go2rtc_external_ip) != 0 {
+        let mut candidates: [[::core::ffi::c_char; 128]; 8] = [[0; 128]; 8];
+        if strlen((*go2rtc_external_ip).valuestring)
+            >= ::core::mem::size_of::<[::core::ffi::c_char; 256]>()
+            || go2rtc_parse_external_candidates(
+                (*go2rtc_external_ip).valuestring,
+                8555 as ::core::ffi::c_int,
+                &raw mut candidates as *mut [::core::ffi::c_char; 128],
+                GO2RTC_MAX_EXTERNAL_CANDIDATES,
+            ) < 0 as ::core::ffi::c_int
+        {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT.as_ptr(),
+                _log_stream_name,
+                b"Rejected invalid go2rtc_external_ip setting\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+            );
+            cJSON_Delete(settings);
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Invalid go2rtc_external_ip: expected up to 8 comma-separated IPs or hostnames (optionally :port), '*' for auto-detect, or stun:host[:port]\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
+            );
+            return;
+        }
         safe_strcpy(
             &raw mut g_config.go2rtc_external_ip as *mut ::core::ffi::c_char,
             (*go2rtc_external_ip).valuestring,
-            ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+            ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
             0 as size_t,
         );
         settings_changed = r#true != 0;

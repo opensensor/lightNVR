@@ -737,7 +737,7 @@ pub struct config_t {
     pub go2rtc_webrtc_listen_port: ::core::ffi::c_int,
     pub go2rtc_stun_enabled: bool,
     pub go2rtc_stun_server: [::core::ffi::c_char; 256],
-    pub go2rtc_external_ip: [::core::ffi::c_char; 64],
+    pub go2rtc_external_ip: [::core::ffi::c_char; 256],
     pub go2rtc_ice_servers: [::core::ffi::c_char; 512],
     pub webrtc_connection_timeout_ms: ::core::ffi::c_int,
     pub webrtc_ice_recovery_timeout_ms: ::core::ffi::c_int,
@@ -947,7 +947,7 @@ pub static mut g_config: config_t = config_t {
     go2rtc_webrtc_listen_port: 0,
     go2rtc_stun_enabled: false,
     go2rtc_stun_server: [0; 256],
-    go2rtc_external_ip: [0; 64],
+    go2rtc_external_ip: [0; 256],
     go2rtc_ice_servers: [0; 512],
     webrtc_connection_timeout_ms: 0,
     webrtc_ice_recovery_timeout_ms: 0,
@@ -1121,7 +1121,7 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
     env_config_mapping_t {
         env_name: b"TURN_ENABLED\0".as_ptr() as *const ::core::ffi::c_char,
         r#type: config_field_type_t::CONFIG_TYPE_BOOL,
-        offset: 10240 as size_t,
+        offset: 10432 as size_t,
         size: 0 as size_t,
         default_str_value: ::core::ptr::null::<::core::ffi::c_char>(),
         default_int_value: 0 as ::core::ffi::c_int,
@@ -1130,7 +1130,7 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
     env_config_mapping_t {
         env_name: b"TURN_SERVER_URL\0".as_ptr() as *const ::core::ffi::c_char,
         r#type: config_field_type_t::CONFIG_TYPE_STRING,
-        offset: 10241 as size_t,
+        offset: 10433 as size_t,
         size: 256 as size_t,
         default_str_value: b"\0".as_ptr() as *const ::core::ffi::c_char,
         default_int_value: 0 as ::core::ffi::c_int,
@@ -1139,7 +1139,7 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
     env_config_mapping_t {
         env_name: b"TURN_USERNAME\0".as_ptr() as *const ::core::ffi::c_char,
         r#type: config_field_type_t::CONFIG_TYPE_STRING,
-        offset: 10497 as size_t,
+        offset: 10689 as size_t,
         size: 64 as size_t,
         default_str_value: b"\0".as_ptr() as *const ::core::ffi::c_char,
         default_int_value: 0 as ::core::ffi::c_int,
@@ -1148,7 +1148,7 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
     env_config_mapping_t {
         env_name: b"TURN_PASSWORD\0".as_ptr() as *const ::core::ffi::c_char,
         r#type: config_field_type_t::CONFIG_TYPE_STRING,
-        offset: 10561 as size_t,
+        offset: 10753 as size_t,
         size: 64 as size_t,
         default_str_value: b"\0".as_ptr() as *const ::core::ffi::c_char,
         default_int_value: 0 as ::core::ffi::c_int,
@@ -1194,7 +1194,7 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
         env_name: b"GO2RTC_EXTERNAL_IP\0".as_ptr() as *const ::core::ffi::c_char,
         r#type: config_field_type_t::CONFIG_TYPE_STRING,
         offset: 9653 as size_t,
-        size: 64 as size_t,
+        size: 256 as size_t,
         default_str_value: b"\0".as_ptr() as *const ::core::ffi::c_char,
         default_int_value: 0 as ::core::ffi::c_int,
         default_bool_value: r#false != 0,
@@ -1202,7 +1202,7 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
     env_config_mapping_t {
         env_name: b"GO2RTC_ICE_SERVERS\0".as_ptr() as *const ::core::ffi::c_char,
         r#type: config_field_type_t::CONFIG_TYPE_STRING,
-        offset: 9717 as size_t,
+        offset: 9909 as size_t,
         size: 512 as size_t,
         default_str_value: b"\0".as_ptr() as *const ::core::ffi::c_char,
         default_int_value: 0 as ::core::ffi::c_int,
@@ -1220,7 +1220,7 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
     env_config_mapping_t {
         env_name: b"WEBRTC_CONNECTION_TIMEOUT_MS\0".as_ptr() as *const ::core::ffi::c_char,
         r#type: config_field_type_t::CONFIG_TYPE_INT,
-        offset: 10232 as size_t,
+        offset: 10424 as size_t,
         size: 0 as size_t,
         default_str_value: ::core::ptr::null::<::core::ffi::c_char>(),
         default_int_value: 30000 as ::core::ffi::c_int,
@@ -1229,7 +1229,7 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
     env_config_mapping_t {
         env_name: b"WEBRTC_ICE_RECOVERY_TIMEOUT_MS\0".as_ptr() as *const ::core::ffi::c_char,
         r#type: config_field_type_t::CONFIG_TYPE_INT,
-        offset: 10236 as size_t,
+        offset: 10428 as size_t,
         size: 0 as size_t,
         default_str_value: ::core::ptr::null::<::core::ffi::c_char>(),
         default_int_value: 5000 as ::core::ffi::c_int,
@@ -3657,7 +3657,7 @@ unsafe extern "C" fn config_ini_handler(
             safe_strcpy(
                 &raw mut (*config).go2rtc_external_ip as *mut ::core::ffi::c_char,
                 value,
-                ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+                ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
                 0 as size_t,
             );
         } else if strcmp(

@@ -51,23 +51,6 @@ unsafe extern "C" {
         status_code: ::core::ffi::c_int,
         error_message: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
-    unsafe fn httpd_authorize_global_action(
-        req: *const http_request_t,
-        res: *mut http_response_t,
-        action: authorization_action_t,
-    ) -> ::core::ffi::c_int;
-    unsafe fn _log_message_ctx(
-        level: log_level_t,
-        component: *const ::core::ffi::c_char,
-        stream: *const ::core::ffi::c_char,
-        format: *const ::core::ffi::c_char,
-        ...
-    );
-    unsafe fn url_strip_credentials(
-        url: *const ::core::ffi::c_char,
-        out_url: *mut ::core::ffi::c_char,
-        out_size: size_t,
-    ) -> ::core::ffi::c_int;
     unsafe fn get_discovered_onvif_devices(
         devices: *mut onvif_device_info_t,
         max_devices: ::core::ffi::c_int,
@@ -91,10 +74,29 @@ unsafe extern "C" {
         devices: *mut onvif_device_info_t,
         max_devices: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
-    unsafe fn test_onvif_connection(
+    unsafe fn test_onvif_connection_detail(
         url: *const ::core::ffi::c_char,
         username: *const ::core::ffi::c_char,
         password: *const ::core::ffi::c_char,
+        detail: *mut ::core::ffi::c_char,
+        detail_size: size_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn httpd_authorize_global_action(
+        req: *const http_request_t,
+        res: *mut http_response_t,
+        action: authorization_action_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn _log_message_ctx(
+        level: log_level_t,
+        component: *const ::core::ffi::c_char,
+        stream: *const ::core::ffi::c_char,
+        format: *const ::core::ffi::c_char,
+        ...
+    );
+    unsafe fn url_strip_credentials(
+        url: *const ::core::ffi::c_char,
+        out_url: *mut ::core::ffi::c_char,
+        out_size: size_t,
     ) -> ::core::ffi::c_int;
     unsafe fn db_onvif_inventory_list_addresses(
         inventory_uuid: *const ::core::ffi::c_char,
@@ -338,7 +340,7 @@ pub struct config_t {
     pub go2rtc_webrtc_listen_port: ::core::ffi::c_int,
     pub go2rtc_stun_enabled: bool,
     pub go2rtc_stun_server: [::core::ffi::c_char; 256],
-    pub go2rtc_external_ip: [::core::ffi::c_char; 64],
+    pub go2rtc_external_ip: [::core::ffi::c_char; 256],
     pub go2rtc_ice_servers: [::core::ffi::c_char; 512],
     pub webrtc_connection_timeout_ms: ::core::ffi::c_int,
     pub webrtc_ice_recovery_timeout_ms: ::core::ffi::c_int,
@@ -413,42 +415,6 @@ pub struct http_response_t {
     pub num_headers: ::core::ffi::c_int,
     pub user_data: *mut ::core::ffi::c_void,
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct log_level_t(pub ::core::ffi::c_uint);
-impl log_level_t {
-    pub const LOG_LEVEL_ERROR: Self = Self(0);
-    pub const LOG_LEVEL_WARN: Self = Self(1);
-    pub const LOG_LEVEL_INFO: Self = Self(2);
-    pub const LOG_LEVEL_DEBUG: Self = Self(3);
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct authorization_action_t(pub ::core::ffi::c_int);
-impl authorization_action_t {
-    pub const AUTHZ_ACTION_INVALID: Self = Self(-1);
-    pub const AUTHZ_LIVE_VIEW: Self = Self(0);
-    pub const AUTHZ_AUDIO_LISTEN: Self = Self(1);
-    pub const AUTHZ_AUDIO_TALK: Self = Self(2);
-    pub const AUTHZ_RECORDINGS_REPLAY: Self = Self(3);
-    pub const AUTHZ_RECORDINGS_EXPORT: Self = Self(4);
-    pub const AUTHZ_SNAPSHOT_CREATE: Self = Self(5);
-    pub const AUTHZ_PTZ_CONTROL: Self = Self(6);
-    pub const AUTHZ_EVIDENCE_PROTECT: Self = Self(7);
-    pub const AUTHZ_RECORDING_DELETE: Self = Self(8);
-    pub const AUTHZ_CAMERA_CONFIGURE: Self = Self(9);
-    pub const AUTHZ_FLEET_EXECUTE_JOB: Self = Self(10);
-    pub const AUTHZ_STORAGE_CONFIGURE: Self = Self(11);
-    pub const AUTHZ_EVENTS_CONFIGURE: Self = Self(12);
-    pub const AUTHZ_USERS_MANAGE: Self = Self(13);
-    pub const AUTHZ_SYSTEM_ADMIN: Self = Self(14);
-    pub const AUTHZ_LPR_READ: Self = Self(15);
-    pub const AUTHZ_LPR_SEARCH: Self = Self(16);
-    pub const AUTHZ_LPR_EXPORT: Self = Self(17);
-    pub const AUTHZ_LPR_DELETE: Self = Self(18);
-    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
-    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
-}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct onvif_device_info_t {
@@ -488,6 +454,52 @@ pub struct onvif_profile_t {
     pub encoding: [::core::ffi::c_char; 16],
     pub fps: ::core::ffi::c_int,
     pub bitrate: ::core::ffi::c_int,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct C2Rust_Unnamed(pub ::core::ffi::c_int);
+impl C2Rust_Unnamed {
+    pub const ONVIF_TEST_OK: Self = Self(0);
+    pub const ONVIF_TEST_DEVICE_ERROR: Self = Self(-1);
+    pub const ONVIF_TEST_UNREACHABLE: Self = Self(-2);
+    pub const ONVIF_TEST_AUTH_FAILED: Self = Self(-3);
+    pub const ONVIF_TEST_STREAM_FAILED: Self = Self(-4);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct log_level_t(pub ::core::ffi::c_uint);
+impl log_level_t {
+    pub const LOG_LEVEL_ERROR: Self = Self(0);
+    pub const LOG_LEVEL_WARN: Self = Self(1);
+    pub const LOG_LEVEL_INFO: Self = Self(2);
+    pub const LOG_LEVEL_DEBUG: Self = Self(3);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct authorization_action_t(pub ::core::ffi::c_int);
+impl authorization_action_t {
+    pub const AUTHZ_ACTION_INVALID: Self = Self(-1);
+    pub const AUTHZ_LIVE_VIEW: Self = Self(0);
+    pub const AUTHZ_AUDIO_LISTEN: Self = Self(1);
+    pub const AUTHZ_AUDIO_TALK: Self = Self(2);
+    pub const AUTHZ_RECORDINGS_REPLAY: Self = Self(3);
+    pub const AUTHZ_RECORDINGS_EXPORT: Self = Self(4);
+    pub const AUTHZ_SNAPSHOT_CREATE: Self = Self(5);
+    pub const AUTHZ_PTZ_CONTROL: Self = Self(6);
+    pub const AUTHZ_EVIDENCE_PROTECT: Self = Self(7);
+    pub const AUTHZ_RECORDING_DELETE: Self = Self(8);
+    pub const AUTHZ_CAMERA_CONFIGURE: Self = Self(9);
+    pub const AUTHZ_FLEET_EXECUTE_JOB: Self = Self(10);
+    pub const AUTHZ_STORAGE_CONFIGURE: Self = Self(11);
+    pub const AUTHZ_EVENTS_CONFIGURE: Self = Self(12);
+    pub const AUTHZ_USERS_MANAGE: Self = Self(13);
+    pub const AUTHZ_SYSTEM_ADMIN: Self = Self(14);
+    pub const AUTHZ_LPR_READ: Self = Self(15);
+    pub const AUTHZ_LPR_SEARCH: Self = Self(16);
+    pub const AUTHZ_LPR_EXPORT: Self = Self(17);
+    pub const AUTHZ_LPR_DELETE: Self = Self(18);
+    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
+    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -2159,19 +2171,33 @@ pub unsafe extern "C" fn handle_post_test_onvif_connection(
         );
         return;
     }
-    let mut result: ::core::ffi::c_int = test_onvif_connection(url, username, password);
+    let mut detail: [::core::ffi::c_char; 1024] = [0; 1024];
+    let mut result: ::core::ffi::c_int = test_onvif_connection_detail(
+        url,
+        username,
+        password,
+        &raw mut detail as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
+    );
     cJSON_Delete(root);
-    if result != 0 as ::core::ffi::c_int {
+    if result != C2Rust_Unnamed::ONVIF_TEST_OK.0 {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT.as_ptr(),
             _log_stream_name,
-            b"Failed to connect to ONVIF device\0".as_ptr() as *const ::core::ffi::c_char,
+            b"[ONVIFAPI] ONVIF connection test failed (%d): %s\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            result,
+            &raw mut detail as *mut ::core::ffi::c_char,
         );
         http_response_set_json_error(
             res,
-            500 as ::core::ffi::c_int,
-            b"Failed to connect to ONVIF device\0".as_ptr() as *const ::core::ffi::c_char,
+            502 as ::core::ffi::c_int,
+            if detail[0usize] as ::core::ffi::c_int != 0 {
+                &raw mut detail as *mut ::core::ffi::c_char
+            } else {
+                b"Failed to connect to ONVIF device\0".as_ptr() as *const ::core::ffi::c_char
+            },
         );
         return;
     }
@@ -2198,7 +2224,11 @@ pub unsafe extern "C" fn handle_post_test_onvif_connection(
     cJSON_AddStringToObject(
         response_json,
         b"message\0".as_ptr() as *const ::core::ffi::c_char,
-        b"Successfully connected to ONVIF device\0".as_ptr() as *const ::core::ffi::c_char,
+        if detail[0usize] as ::core::ffi::c_int != 0 {
+            &raw mut detail as *mut ::core::ffi::c_char
+        } else {
+            b"Successfully connected to ONVIF device\0".as_ptr() as *const ::core::ffi::c_char
+        },
     );
     let mut json_str: *mut ::core::ffi::c_char = cJSON_PrintUnformatted(response_json);
     cJSON_Delete(response_json);
