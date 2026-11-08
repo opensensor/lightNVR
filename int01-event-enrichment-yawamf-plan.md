@@ -1800,9 +1800,119 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
 - **validation**: Unit tests on metric serialization. The metrics endpoint
   shows the counters move under an L3 saturation test. When the feature is
   disabled, the values are zeros and no queue exists.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - RED: `test_observation_diagnostics` failed to link (every
+    `observation_diagnostics_*`, `api_metrics_render_observations` and
+    `observation_snapshot_retry_after_seconds` undefined). The new relay test
+    `test_relay_sidecar_is_the_shared_l4_cursor_head` failed (`Expected 0 Was
+    -1`: the relay's own writer could not create a missing directory).
+    `test_handle_get_system_info_includes_inactive_observation_pipeline`
+    failed with no `observation_pipeline` member. GREEN in `build-int01-L10`
+    and `build-int01-L10-asan` (ASan/UBSan clean): diagnostics 5/5, relay
+    13/13, retention 8/8, evidence 14/14, observations 25/25, metrics 2/2,
+    system 32/32. Web: `npm run typecheck`, eslint, and jest
+    `observationPipeline`/`locale-coverage`/`i18nLiteralRule`/`systemHealth`
+    (53 passed).
+  - Builds ran from a detached worktree of HEAD plus only L10's files, because
+    parallel agents' uncommitted `src/video` and test files are globbed into
+    `lightnvr_lib` and broke the shared tree's build.
+  - **Module** `core/observation_diagnostics.{h,c}`:
+    - `observation_diagnostics_collect(&d, now_ms)` reads L3/L5 stats, L4's
+      per-camera status and flag count, and the new read-only
+      `db_observation_diagnostics_get()`. It never starts the evidence worker.
+    - `observation_diagnostics_to_json()` builds the system-info JSON.
+    - `observation_diagnostics_relay_lag_seconds()` returns the lag.
+    - `observation_diagnostics_free()` releases the snapshot.
+  - **DB** `db_observation_diagnostics_get()` (`db_observations.c`) runs one
+    WAL read transaction and returns:
+    - the meta (oldest/head seq, epoch);
+    - `MIN(observed_at_ms)` and the observation count;
+    - publication counts for `pending`, `failed` and `expired`;
+    - the oldest pending change's `created_at_ms`, via the partial pending
+      index.
+
+    Lag is computed from that DB value, not from the relay's last-pass stat.
+  - **`/api/metrics`** (`api_metrics_render_observations()`, pure, in
+    `api_handlers_metrics.c`). Every family is present with zero values while
+    evidence is unused.
+    - Admission: `lightnvr_observation_accepted_total` and
+      `lightnvr_observation_dropped_total{reason=queue_full|budget_exhausted|disabled|untracked}`.
+    - Evidence, all under `lightnvr_observation_evidence_`:
+      - `unavailable_total`, `ready_total`, `bytes_written_total`;
+      - `failures_total{reason=encode_failed|write_failed|db_error|disabled|interrupted}`;
+      - `backlog_items`, `backlog_bytes`, `drop_ring_depth`;
+      - `high_water_items`, `high_water_bytes`;
+      - `queue_allocated`, `worker_running`;
+      - per camera: `retained_bytes{camera_uuid}`, `budget_bytes{camera_uuid}`
+        and `budget_exhausted{camera_uuid}`, plus the total
+        `budget_exhausted_cameras`.
+    - History, all under `lightnvr_observation_history_`: `observations`,
+      `oldest_seq` (cursor = seq − 1), `head_seq`,
+      `oldest_observed_timestamp_seconds` (no sample when empty) and
+      `epoch_regenerations_total`.
+    - Publications and relay: `lightnvr_observation_publications{state=pending|failed|expired}`,
+      `lightnvr_observation_relay_lag_seconds`,
+      `lightnvr_observation_relay_running` and
+      `lightnvr_observation_relay_events_total{outcome=relayed|duplicate|no_route|expired|failed|outbox_full|enqueue_error|mark_error|read_error|cap_pause|backoff|sidecar_error}`.
+    - The history and publication families are omitted when the DB read
+      fails.
+  - **`/api/system/info`** carries `observation_pipeline`:
+    - Top level: `active`, `accepted`, `dropped{…}`,
+      `budget_exhausted_cameras` and `cameras[]` (`camera_uuid`,
+      `retained_bytes`, `max_bytes`, `max_age_days`, `budget_exhausted`).
+    - `evidence`: `queue_allocated`, `worker_running`, backlog, high-water,
+      `failures{…}` and more.
+    - `history`: `oldest_seq`, `head_seq`, `oldest_observed_at` (ISO or
+      null) and `epoch_regenerations`.
+    - `publications`: `pending`, `failed`, `expired`, `relay_lag_seconds`
+      and `relay_running`.
+
+    `active: false` means the feature is unused. The System page shows the
+    new `system/ObservationPipeline.tsx` card, with keys
+    `system.observations.*` in all 18 locales.
+  - **Retry-After**: `observation_snapshot_retry_after_seconds(age_ms,
+    items_ahead)` returns 1 under 5 s, otherwise `min(30, 2 × ahead)`, always
+    1..30. L3 has no per-asset position, so the handler passes
+    `backlog_items` as the upper bound. The contract §8.2 is updated and no
+    longer provisional.
+    - The handler hunk in `api_handlers_observations.c` was swept into L14's
+      commit `9e0e8ecd`, because L14 staged the whole file. HEAD did not
+      build between `9e0e8ecd` and this commit.
+  - **Sidecar consolidation**: the relay's own path, writer and reader
+    (about 80 lines) are deleted.
+    - `observation_relay_write_cursor_head()` now calls
+      `observation_cursor_head_write()`.
+    - `observation_relay_check_cursor_head()` now calls
+      `observation_cursor_head_reconcile()` and updates the relay stats. The
+      relay keeps its once-per-second dirty-write cadence.
+    - The public names and `OBSERVATION_CURSOR_HEAD_FILE` are unchanged.
+  - Contract §15 now lists the metric names.
+  - **OpenAPI follow-up (not done)**: `SystemInformation` has
+    `additionalProperties: true`, so validation passes and the UI uses a
+    hand-written `ObservationPipelineDiagnostics` type in `types/system.ts`.
+    L14 had uncommitted `openapi.json` edits at the time, so the schema was
+    left alone. A follow-up should add an optional
+    `observation_pipeline: ObservationPipelineDiagnostics` component that
+    mirrors `observation_diagnostics_to_json()`, then regenerate.
+  - **Gotchas**:
+    - **X2**: per-camera rows come from L4's last pass, so they can be up to
+      5 minutes old and cover only cameras that hold `ready` media. For live
+      numbers during saturation, scrape `backlog_*`, `high_water_*` and
+      `dropped_total`. High-water marks are per process run. Count failed and
+      expired publications from the DB gauges; the relay counters reset on
+      restart.
+    - **The in-flight item counts toward `per_camera_max_items`**. With depth
+      1, a second submit while the worker holds the first one is
+      `DROPPED_QUEUE_FULL`.
+    - **W8**: the setup probe stays `GET /api/observations?camera_uuid=X&limit=1`.
+      An empty `items` means no detections yet, and a 403 or network error
+      means a transport failure. `/api/metrics` and `/api/system/info` need
+      `system.admin`, so YA-WAMF's scoped token cannot read them.
+    - **L11**: the `failed`/`expired` publication counts scan
+      `observation_publications`. That is cheap at the retention bound, but
+      a scrape costs four small queries.
+- **files edited/created**: `include/core/observation_diagnostics.h` (new), `src/core/observation_diagnostics.c` (new), `include/database/db_observations.h`, `src/database/db_observations.c`, `include/web/api_handlers_metrics.h`, `src/web/api_handlers_metrics.c`, `src/web/api_handlers_system.c`, `src/web/api_handlers_observations.c` (landed in `9e0e8ecd`), `include/core/observation_relay.h`, `src/core/observation_relay.c`, `tests/unit/test_observation_diagnostics.c` (new), `tests/unit/test_observation_relay.c`, `tests/unit/test_api_handlers_system.c`, `tests/unit/CMakeLists.txt`, `web/js/components/preact/system/ObservationPipeline.tsx` (new), `web/js/components/preact/SystemView.tsx`, `web/js/types/system.ts`, `web/tests/observationPipeline.spec.js` (new), `web/public/locales/*.json`, `docs/integrations/OBSERVATIONS_CONTRACT.md` (commit `9f6012a6`)
 
 #### L11: lightNVR contract and reliability tests (A1–A3, A5–A8 lightNVR side)
 - **depends_on**: [L5, L6, L7, L8, L9, L10, C3]
