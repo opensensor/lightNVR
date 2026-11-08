@@ -3078,9 +3078,182 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
 - **validation**: Backend API tests for the connection test outcomes. UI:
   `npm run check`, `npm test`, and a browser test that a snapshot-only source
   shows disabled clip controls with an explanation (A9 UI half).
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commit `3cda8dfe` on `feature/lightnvr-provider`, not pushed)
 - **log**:
+  - **RED→GREEN**:
+    - `tests/test_lightnvr_setup_api.py` (26 tests) failed at collection with
+      `ImportError: source_setup_service`. Three new `test_setup_state.py`
+      cases failed on the Frigate-only connection rules. After the change,
+      both files pass (26 and 25).
+    - `browser-tests/source-selection.spec.ts` failed 3/3 before the UI
+      existed: the clip switch was not `aria-disabled`, and there was no
+      source radio or lightNVR field. It now passes 5/5, with two Health
+      cases added. `utils/source-features.test.ts` passes 8.
+  - **Gates**, run on the exact commit content in an isolated worktree, because
+    W6 and W7 had unstaged edits in the shared tree:
+    - Full backend suite: 7816 passed, 60 skipped, 0 failed. This includes W0
+      (`test_frigate_regression_baseline.py`), `test_dead_modules`, the pure
+      lane (2165 passed in the shared tree) and the startup test.
+    - Clean: `export_openapi.py --check`, `export_openapi_types.py --check`,
+      `docs_consistency_check.py`, `assemble_changelog.py`, and repo-wide
+      `ruff check` and `ruff format --check`.
+    - Frontend: `npm run check` 0/0, `npm test` 2353 passed,
+      `npm run lint:dead` clean.
+    - Playwright chromium, full suite in the shared tree: 638 passed, 2
+      skipped. `explorer-search:258` and `family-tree:595` failed under load
+      and pass when rerun alone. `setup-wizard.spec.ts` passes 28/28.
+    - `npm ci` was run in `apps/ui`, and `playwright install
+      chromium-headless-shell` added build 1248, which `@playwright/test`
+      1.64.1 needs.
+  - **Endpoints**: all owner-only, all in `docs/api.md`.
+    - `GET /api/setup/source` returns `SourceStatus`: `active_kind`,
+      `configured_kind`, `restart_required`, `capabilities_loaded`,
+      `capabilities_error` and `features[{name,supported,reason}]`.
+      - `restart_required` is true when the saved kind differs from the
+        running one, or when the running lightNVR client's URL differs from
+        the saved `api_url`.
+      - A lightNVR provider whose capabilities never loaded is refreshed once
+        here.
+    - `POST /api/setup/lightnvr/test` takes `{api_url, token, mqtt_topic_prefix,
+      camera_uuids, mqtt_server/port/auth/username/password}` and returns
+      `LightNvrConnectionTest{ok, results[], features[], latest_observation}`.
+      - Each result is `{id, status: ok|warning|error|skipped, code, message,
+        values}`, with ids `api_access`, `event_connectivity`,
+        `evidence_access` and `features`, in that order.
+      - Nothing is stored. A blank or `***REDACTED***` token means the saved
+        token, and only when the on-screen URL normalises to the saved URL.
+    - `POST /api/setup/lightnvr/cameras` takes `{api_url, token}` and returns
+      `{cameras:[{camera_uuid,name}]}` from `provider.list_cameras()`. It
+      answers `502` with a plain message when the list cannot be read.
+    - `GET /api/diagnostics/source` returns `SourceDiagnostic{status,
+      latest_observation, skipped_workflows[]}`. The skipped workflows come
+      from `capability_gate.recorded_capability_skips()`.
+  - **Check codes** (`app/services/source_setup_service.py`):
+    - `api_access`:
+      - from the capabilities GET: `unreachable`, `not_configured`,
+        `unauthorized` (401), `forbidden` (403), `not_supported` (404),
+        `http_error`, `invalid_document` (rejected by
+        `apply_capabilities`);
+      - `history_not_authorized`;
+      - `camera_forbidden` (cameras in `values.cameras`): the contract setup
+        probe `GET /api/observations?camera_uuid=X&limit=1`, run per selected
+        camera (up to 10, or once unfiltered), answered 403. It is an error,
+        never an empty page.
+    - `event_connectivity`:
+      - `broker_not_configured`;
+      - `broker_unreachable`, from `mqtt_service.test_connection` with the
+        shared `frigate.mqtt_*` broker;
+      - `topic_unchecked` (warning; the API failed);
+      - `lightnvr_mqtt_disabled`;
+      - `topic_unknown` (warning);
+      - `topic_prefix_mismatch` (values `configured` and `advertised`). The
+        advertised prefix is `delivery.topic` before
+        `/v1/events/<type>/`.
+    - `evidence_access`:
+      - `snapshot_not_supported` or `snapshot_not_authorized`, read from the
+        raw `operations["observations.snapshot"]`;
+      - `cameras_without_photos` (warning): a selected camera that is absent
+        from `cameras[]`, has `evidence_enabled` false, or lacks
+        `snapshot.create`.
+    - `features` is always `ok` (`listed`). Unsupported features never fail
+      the test.
+    - `ok` means `api_access` is ok and no result is an error.
+  - **Latest eligible observation**:
+    - lightNVR has no newest-first order, so the search widens `since`
+      windows (1 h, 24 h, 7 d, 30 d). It reads up to 3 pages each at
+      `history_page_max` through `provider.history()` and takes the newest
+      `observed_at` in the first non-empty window.
+    - The labels are `frigate.ingest_labels`, at most 8, without commas.
+    - The search covers only cameras whose probe passed.
+    - `state` values:
+      - `found`, with `photo_state`: ready, pending, missing (lightNVR
+        `unavailable`, with `photo_reason`) or expired;
+      - `none_yet`;
+      - `error`: `unreachable`, `forbidden`, `refused` or `invalid_filter`;
+      - `not_checked`.
+  - **UI**:
+    - New `components/settings/SourceSettings.svelte`, the top card on the
+      Connection tab:
+      - a Frigate/lightNVR radio that binds `lightnvr_enabled`;
+      - address, token (`SecretInput`) and topic prefix fields;
+      - the bird-capable detector note (`data-source-bird-detector`);
+      - a test button that opens `DiagnosticDialog` with the 4 checks plus a
+        latest-detection stage (`none_yet` counts as passed);
+      - a camera picker (`data-lightnvr-cameras`) that keeps chosen-but-
+        unlisted UUIDs visible;
+      - a restart note (`data-source-restart`) for an unsaved change or a
+        saved-but-not-running source.
+    - `Settings.svelte` loads and saves `lightnvr_*`, sends the token only
+      when typed, includes it in the dirty checks, and fetches
+      `/api/setup/source` with each settings load.
+    - `ConnectionSettings` (Fetch Video Clips, full-visit) and
+      `DetectionSettings` (auto video) take an optional `sourceStatus` prop.
+      An unsupported control is `aria-disabled`, shown unchecked without
+      changing the saved value, and gets a neutral
+      `SourceUnsupportedNote` (`data-source-unsupported=event_clip|range_clip|
+      video_analysis`). An unread status disables nothing.
+    - New `components/settings/SourceHealthCard.svelte` on the Health page
+      (`Errors.svelte`). It renders only when lightNVR is active or
+      configured, so Frigate installs look unchanged. It shows the latest
+      detection and photo state, says "no bird detections yet" as its own
+      sentence, and lists unsupported features with their skip counts and
+      "do not affect health".
+    - Wizard:
+      - `ConnectionStep` has the source radio and the lightNVR fields, saves
+        and then runs the lightNVR test inline. It writes `lightnvr_enabled`
+        only when lightNVR is chosen or was saved, so the Frigate payload is
+        unchanged.
+      - `CamerasStep` uses lightNVR discovery and saves
+        `lightnvr_camera_uuids`.
+      - `ReviewStep` knows `connection_lightnvr_ready`, `lightnvr_url` and
+        `lightnvr_token`.
+    - `setup_state_service`: with lightNVR enabled, the connection section
+      needs `api_url`, the token and the MQTT broker (no Frigate URL), and the
+      cameras section counts `camera_uuids`.
+    - The `settings.source.*` i18n block is in all 9 locales; French uses
+      U+202F before `:`.
+    - The test-only `browser-tests/settings-page-mock.ts` `openSettings` now
+      takes a third `handlers` map. Playwright gives the last-registered route
+      priority, so extra `page.route`s registered before `openSettings` are
+      shadowed by its catch-all.
+  - **Restart, not rebuild**: changing the source or the lightNVR settings
+    still needs a restart (W5's design). The UI says so, and no hot provider
+    rebuild was added.
+  - **Gotchas for W9/X1**:
+    - The connection test builds its own `LightNvrProvider` per call
+      (`source_setup_service.make_lightnvr_client` is the patch point for a
+      mocked transport). `probe_mqtt_broker` is the broker patch point. The
+      active provider is never touched, except `/api/setup/source`, which
+      lazily runs `refresh_capabilities()` once.
+    - `/health` does not read capability skips. W8 adds a test that recorded
+      skips leave `build_health_payload()["status"]` unchanged. Keep it that
+      way.
+    - A9 UI half: the browser fixture serves a snapshot-only `SourceStatus`
+      through the `handlers` map. W9's lightNVR-kind acceptance can reuse
+      `SNAPSHOT_ONLY` from `source-selection.spec.ts`.
+    - The latest-observation search is bounded (at most 12 history requests)
+      and approximate when a window has more than 3 pages. That is fine for
+      a diagnostic; do not reuse it for recovery.
+    - Live MQTT delivery is not observed end to end: event connectivity means
+      the broker accepts a session and the prefixes agree. X1 should prove an
+      actual `observation_changed.v1` arrives.
+    - Shared worktree: W6 and W7 had unstaged hunks in the same
+      `locales/*/settings.json` and `docs/api.md`. W8's index blobs were built
+      as HEAD plus the W8 block (`hash-object` + `update-index --cacheinfo`),
+      and their hunks were left unstaged in the tree.
 - **files edited/created**:
+  - YA-WAMF `backend/app/services/source_setup_service.py` (new)
+  - YA-WAMF `backend/app/routers/setup.py`, `backend/app/routers/diagnostics.py`, `backend/app/services/setup_state_service.py`
+  - YA-WAMF `backend/openapi.json`, `apps/ui/src/lib/api/generated/openapi.ts` (regenerated)
+  - YA-WAMF `backend/tests/test_lightnvr_setup_api.py` (new), `backend/tests/test_setup_state.py`
+  - YA-WAMF `apps/ui/src/lib/api/source.ts` (new), `apps/ui/src/lib/api/settings.ts`
+  - YA-WAMF `apps/ui/src/lib/utils/source-features.ts` and `source-features.test.ts` (new)
+  - YA-WAMF `apps/ui/src/lib/components/settings/SourceSettings.svelte`, `SourceHealthCard.svelte`, `SourceUnsupportedNote.svelte` (new); `ConnectionSettings.svelte`, `DetectionSettings.svelte`
+  - YA-WAMF `apps/ui/src/lib/components/setup/ConnectionStep.svelte`, `CamerasStep.svelte`, `ReviewStep.svelte`
+  - YA-WAMF `apps/ui/src/lib/pages/Settings.svelte`, `apps/ui/src/lib/pages/Errors.svelte`
+  - YA-WAMF `apps/ui/src/lib/i18n/locales/{de,en,es,fr,it,ja,pt,ru,zh}/settings.json`
+  - YA-WAMF `apps/ui/browser-tests/source-selection.spec.ts` (new), `apps/ui/browser-tests/settings-page-mock.ts`
+  - YA-WAMF `docs/api.md`, `changelog.d/lightnvr-setup.md`
 
 #### W9: YA-WAMF acceptance suite (A4, A9, A10, A1/A3 consumer side)
 - **depends_on**: [W3, W6, W7, W8]
