@@ -1944,9 +1944,129 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
 - **validation**: The new specs pass in CI next to the existing contract
   suite, and the existing `evidence.*.spec.ts` lists of operation IDs are
   untouched.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - Commit `ddea7404`. Built in `build-int01-L11` (mirrors `build-int01-L14`:
+    MQTT+SOD, LiteRT off, apt FFmpeg header dir via `CMAKE_C_FLAGS`) and
+    `build-int01-L11-asan` (Debug ASan/UBSan). Both were configured from a
+    scratch worktree that has since been removed, so re-run cmake from the repo
+    before reusing them.
+  - **Results** (against a freshly built `build-int01-L11/bin/lightnvr`):
+    - `test_observation_crash_boundaries` 6/6, `test_observation_relay` 13/13
+      and `test_observation_evidence` 14/14, in both builds, ASan clean.
+    - Playwright (`LIGHTNVR_CONTRACT_MQTT=1`), the new specs together with
+      `observations`, `evidence`, `eventsDelivery`, `recordingsRead` and
+      `streams`: 44 passed, 0 skipped, in 4.9 min.
+    - `node --test tests/contracts/fixture-server.test.mjs` 4/4,
+      `tsc -p tests/contracts/tsconfig.json` clean, tracked tooling tests
+      58/58.
+    - The `evidence.*.spec.ts` operation-ID lists are untouched.
+  - **Mutation checks.** Every new test passed on first run, so each was run
+    against a deliberately broken build, then the change was reverted:
+    - Startup sweep keeps stale final files: `after_rename_before_commit`
+      fails ("every final file has a ready row").
+    - Relay sends a random message ID instead of the deterministic one: all 6
+      crash boundaries fail, as do the A6 drain, redelivery and broker-down
+      specs.
+    - Restore epoch check disabled (`observation_cursor_head_reconcile`): the
+      D9 spec fails (no "epoch regenerated").
+    - `authorized_cameras` filter skipped: both A7 specs fail.
+    - Expired evidence served as unavailable: A8 fails (404, expected 410).
+  - **A-ID → test map**:
+
+    | A-ID | Test |
+    | --- | --- |
+    | A1 | `observationsPipeline`: one frame becomes two siblings with one asset |
+    | A2 | `observationsPipeline`: the HTTP variant (the snapshot is byte-equal to one detector input) |
+    | A5 | `observationsHistory` "A5" (cursor walk, filter, dedup, `limit`, pending→ready recovery); `observationsReliability` "broker down, 100 observations"; `observationsPipeline` (message ID per revision) |
+    | A6 | `test_observation_crash_boundaries` (6 boundaries); `observationsReliability` "after SIGKILL…" (startup order and drain) and "relayed but unacknowledged…" (same IDs on redelivery) |
+    | A7 | `observationsHistory` "isolated per camera" and "rename, delete and name reuse"; annotate stays in `observations.api.spec.ts` (L14) |
+    | A8 | `observationsHistory` "A8" |
+    | D9 | `observationsReliability` "after a DB restore…" (old cursors return 410 by epoch, and a beyond-head cursor also returns 410) |
+
+  - **Crash-hook gating.** The task asked for an env-gated hook. It is
+    stricter than that:
+    - The kill points are stage hooks: `observation_evidence_set_stage_hook`
+      (new `AFTER_INSERT` and `BEFORE_COMMIT` beside the existing
+      `BEFORE_RENAME`) and the new `observation_relay_set_stage_hook`
+      (`BEFORE_ENQUEUE`, `AFTER_ENQUEUE`, `AFTER_MARK`).
+    - Only code linked into the process can install them. No configuration,
+      environment variable or API reaches them, and nothing in `src/` calls
+      the setters. A production binary therefore has no way to trigger them.
+    - The only production cost is a mutex-guarded NULL check per stage.
+    - The header comments and `tests/reliability/README.md` document this.
+  - **How the boundaries are hit**:
+    - The C test forks a "generation 1" that runs the real worker, relay,
+      router and outbox on a migrated DB, then SIGKILLs it from a hook. The
+      test checks the on-disk and DB state at the crash.
+    - It then forks a "generation 2" running the `main.c` order (reconcile →
+      evidence init → relay start), and a third start to prove idempotence.
+    - It asserts no pending asset, no `.jpg.tmp`, final files = ready rows,
+      the ready file byte-equal to the submission, revision 2 everywhere, and
+      every change in the outbox exactly once and still pending (there is no
+      broker).
+    - Six boundaries are covered: the five in the plan, plus "after outbox
+      accept, before mark". "After relay, before delivery" is `AFTER_MARK`.
+    - At binary level, the Playwright suite kills the real process at the
+      boundaries an outside process can hit deterministically: committed but
+      not relayed (rows staged while it is down), relayed but not delivered
+      (the sink withholds PUBACK).
+  - **Real end-to-end was feasible**:
+    - `observationsPipeline` streams an ffmpeg-generated HTTP MPEG-TS source
+      into a detection stream.
+    - Its HTTP API detector is an owned loopback server.
+    - There is no RTSP and no go2rtc; ffmpeg must have libx264, which the CI
+      `ffmpeg` package does.
+    - The history and reliability specs SQL-seed rows shaped exactly as L2
+      writes them (`fixtures/observations/seed.ts`). The live relay and API
+      then process them.
+  - **Startup order** is asserted from the restart's own server log, in this
+    order: `Observation reconciliation:`, `Observation evidence initialized`,
+    `Observation relay drained`, `Observation publication relay started`.
+  - **Harness changes**:
+    - `fixture-server.mjs` adds `kill(signal)` and `relaunch()` (same
+      directory, config and port). Readiness is judged only on the new
+      generation's log bytes, and an expected kill signal is not reported as
+      a native failure.
+    - `mqtt-sink.ts` takes an optional port, so a broker that is "down" can
+      come back on its reserved address.
+    - `permissionCases.ts` and `eventsDelivery.api.spec.ts` were not changed.
+      The MQTT redelivery cases live in `observationsReliability`.
+  - Run:
+    - `make -C build-int01-L11 test_observation_crash_boundaries && build-int01-L11/bin/test_observation_crash_boundaries`
+    - `LIGHTNVR_CONTRACT_BIN=build-int01-L11/bin/lightnvr LIGHTNVR_CONTRACT_MQTT=1 npx playwright test -c tests/contracts/playwright.config.ts --project=api tests/contracts/observations*.api.spec.ts`
+  - **Bugs found**: none in production code. One mutation attempt was a
+    no-op: keeping pending assets' files in the sweep had no effect, because
+    a pending row has no `path` yet.
+  - **Gotchas for L12/X1**:
+    - Observation routes must list
+      `io.lightnvr.detection.observation_changed.v1` with no label predicate.
+      The specs use a `camera_uuid` selector scope.
+    - lightNVR has no stream rename API. The rename case edits
+      `streams.name` while the server is stopped (SIGTERM), then relaunches.
+    - A permanent DELETE leaves observation rows in place but makes them
+      unreachable for everyone (`404 observation_not_found`). They never
+      attach to a recreated camera with the same name.
+    - Restore detection relies on the sidecar
+      `recordings/observations/.cursor_head.json`. Wait until the relay has
+      written it (it writes at most once per second) before taking or
+      restoring a backup in X1. A restore newer than the last sidecar write
+      stays the same-epoch case: such cursors are beyond the head and also
+      return 410.
+    - Redelivery after SIGKILL takes about 30–40 s (MQTT worker reconnect
+      backoff), and broker-down recovery of 200 messages about 30 s. Keep
+      the timeouts generous.
+    - The `lightnvr-rs` job runs the api project with 4 workers and without
+      MQTT. The MQTT-gated specs skip there; `observationsHistory` runs.
+- **files edited/created**: `include/core/observation_evidence.h`,
+  `include/core/observation_relay.h`, `src/core/observation_evidence.c`,
+  `src/core/observation_relay.c`, `tests/unit/test_observation_crash_boundaries.c`
+  (new), `tests/unit/CMakeLists.txt`, `tests/contracts/fixtures/observations/seed.ts`
+  (new), `tests/contracts/observationsHistory.api.spec.ts` (new),
+  `tests/contracts/observationsReliability.api.spec.ts` (new),
+  `tests/contracts/observationsPipeline.api.spec.ts` (new),
+  `tests/contracts/fixture-server.mjs`, `tests/contracts/fixture-server.d.mts`,
+  `tests/contracts/mqtt-sink.ts`, `tests/reliability/README.md`
 
 #### L12: lightNVR documentation and deployment recipe
 - **depends_on**: [L11]
