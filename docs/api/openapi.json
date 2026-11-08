@@ -29130,16 +29130,6 @@
               }
             }
           },
-          "501": {
-            "description": "Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ObservationError"
-                }
-              }
-            }
-          },
           "503": {
             "description": "Temporarily unavailable (code service_unavailable).",
             "content": {
@@ -29247,16 +29237,6 @@
           },
           "500": {
             "description": "Internal failure (code internal_error).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ObservationError"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this.",
             "content": {
               "application/json": {
                 "schema": {
@@ -29435,16 +29415,6 @@
               }
             }
           },
-          "501": {
-            "description": "Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ObservationError"
-                }
-              }
-            }
-          },
           "503": {
             "description": "Temporarily unavailable (code service_unavailable).",
             "content": {
@@ -29611,16 +29581,6 @@
           },
           "500": {
             "description": "Internal failure (code internal_error).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ObservationError"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this.",
             "content": {
               "application/json": {
                 "schema": {

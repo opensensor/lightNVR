@@ -14748,15 +14748,6 @@ export interface operations {
                     "application/json": components["schemas"]["ObservationError"];
                 };
             };
-            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObservationError"];
-                };
-            };
             /** @description Temporarily unavailable (code service_unavailable). */
             503: {
                 headers: {
@@ -17670,15 +17661,6 @@ export interface operations {
                     "application/json": components["schemas"]["ObservationError"];
                 };
             };
-            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObservationError"];
-                };
-            };
             /** @description Temporarily unavailable (code service_unavailable). */
             503: {
                 headers: {
@@ -17742,15 +17724,6 @@ export interface operations {
             };
             /** @description Internal failure (code internal_error). */
             500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObservationError"];
-                };
-            };
-            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -17986,15 +17959,6 @@ export interface operations {
             };
             /** @description Internal failure (code internal_error). */
             500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObservationError"];
-                };
-            };
-            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };

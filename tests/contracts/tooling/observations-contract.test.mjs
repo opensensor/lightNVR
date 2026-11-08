@@ -38,13 +38,18 @@ test('observation operations carry the frozen authorization mapping', async () =
     assert.equal(operation.operationId, op.id);
     assert.doesNotMatch(operation.operationId, /Evidence/);
     assert.deepEqual(operation['x-lightnvr-authorization'], op.auth, `authorization: ${op.id}`);
-    assert.ok(operation.responses['501'], `${op.id} documents the 501 stub response`);
+    // L8 implemented the GET operations; only the P2 PUT stub still answers 501.
+    if (op.id === 'putObservationClassification') {
+      assert.ok(operation.responses['501'], `${op.id} documents the 501 stub response`);
+    } else {
+      assert.equal(operation.responses['501'], undefined, `${op.id} no longer returns 501`);
+    }
     assert.ok(doc['x-lightnvr-coverage'].covered_operations.includes(op.id), `coverage: ${op.id}`);
   }
   for (const name of schemas) assert.ok(doc.components.schemas[name], `missing schema ${name}`);
 });
 
-test('observation operations map to registered native stub routes', async () => {
+test('observation operations map to registered native routes', async () => {
   const [coverageText, source, stubs] = await Promise.all([read('docs/api/contracts/coverage.json'),
     read('src/web/libuv_api_handlers.c'), read('src/web/api_handlers_observations.c')]);
   const coverage = JSON.parse(coverageText);

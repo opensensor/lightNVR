@@ -253,7 +253,14 @@ add_layer2_test(test_db_camera_favorites CI_UNIT)
 add_layer2_test(test_api_handlers_camera_favorites CI_UNIT)
 add_layer2_test(test_api_handlers_observations CI_UNIT CI_SANITIZER)
 target_link_options(test_api_handlers_observations PRIVATE
-    "-Wl,--wrap=httpd_check_action_access")
+    "-Wl,--wrap=httpd_check_action_access"
+    "-Wl,--wrap=httpd_evaluate_camera_identity_action"
+    "-Wl,--wrap=authorization_filter_cameras"
+    "-Wl,--wrap=http_serve_file"
+    "-Wl,--wrap=audit_log_append")
+target_compile_definitions(test_api_handlers_observations PRIVATE
+    OBS_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/integrations/observations")
+set_tests_properties(test_api_handlers_observations PROPERTIES TIMEOUT 60)
 add_layer2_test(test_db_operator_floor_plans)
 add_layer2_test(test_api_handlers_operator_floor_plans)
 add_layer2_test(test_floor_plan_background_publication CI_UNIT CI_SANITIZER)
