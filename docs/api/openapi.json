@@ -629,7 +629,8 @@
     "ObservationClassificationWrite",
     "ObservationClassificationResult",
     "IntegrationCapabilities",
-    "ObservationError"
+    "ObservationError",
+    "ObservationPipelineDiagnostics"
   ],
   "paths": {
     "/api/streams": {
@@ -38549,6 +38550,9 @@
           },
           "uptimeCapability": {
             "type": "string"
+          },
+          "observation_pipeline": {
+            "$ref": "#/components/schemas/ObservationPipelineDiagnostics"
           }
         },
         "additionalProperties": true,
@@ -38569,6 +38573,276 @@
           "recordings",
           "streamStorage"
         ]
+      },
+      "ObservationPipelineDiagnostics": {
+        "type": "object",
+        "description": "INT_01 observation pipeline diagnostics (observation_diagnostics_to_json(), contract section 15). Counters are per process run unless noted; per-camera rows come from the last retention pass and may be up to 5 minutes old.",
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "False when evidence is unused: no queue exists, counters are zero and no observations are retained."
+          },
+          "accepted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dropped": {
+            "type": "object",
+            "description": "Observations dropped at admission, by reason.",
+            "properties": {
+              "queue_full": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "budget_exhausted": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "disabled": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "untracked": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "queue_full",
+              "budget_exhausted",
+              "disabled",
+              "untracked"
+            ],
+            "additionalProperties": true
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "queue_allocated": {
+                "type": "boolean"
+              },
+              "worker_running": {
+                "type": "boolean"
+              },
+              "backlog_items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "backlog_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "high_water_items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "high_water_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "drop_ring_depth": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ready": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unavailable_submitted": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "bytes_written": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failures": {
+                "type": "object",
+                "properties": {
+                  "encode_failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "write_failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "db_error": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "disabled": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "interrupted": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "encode_failed",
+                  "write_failed",
+                  "db_error",
+                  "disabled",
+                  "interrupted"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "queue_allocated",
+              "worker_running",
+              "backlog_items",
+              "backlog_bytes",
+              "high_water_items",
+              "high_water_bytes",
+              "drop_ring_depth",
+              "ready",
+              "unavailable_submitted",
+              "bytes_written",
+              "failures"
+            ],
+            "additionalProperties": true
+          },
+          "history": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "type": "boolean",
+                "description": "False when the observation tables could not be read; the DB-derived values are then zero."
+              },
+              "observations": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "oldest_seq": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "head_seq": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "oldest_observed_at": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ObservationTime"
+                  }
+                ]
+              },
+              "epoch_regenerations": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "available",
+              "observations",
+              "oldest_seq",
+              "head_seq",
+              "oldest_observed_at",
+              "epoch_regenerations"
+            ],
+            "additionalProperties": true
+          },
+          "publications": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expired": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "relay_lag_seconds": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Age of the oldest pending publication; 0 when none is pending."
+              },
+              "relay_running": {
+                "type": "boolean"
+              },
+              "relayed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "relayed_no_route": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "pending",
+              "failed",
+              "expired",
+              "relay_lag_seconds",
+              "relay_running",
+              "relayed",
+              "relayed_no_route"
+            ],
+            "additionalProperties": true
+          },
+          "budget_exhausted_cameras": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cameras": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "camera_uuid": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "retained_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max_age_days": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "budget_exhausted": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "camera_uuid",
+                "retained_bytes",
+                "max_bytes",
+                "max_age_days",
+                "budget_exhausted"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "active",
+          "accepted",
+          "dropped",
+          "evidence",
+          "history",
+          "publications",
+          "budget_exhausted_cameras",
+          "cameras"
+        ],
+        "additionalProperties": true
       },
       "SystemLogs": {
         "type": "object",

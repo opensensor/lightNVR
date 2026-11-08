@@ -182,6 +182,7 @@ export declare const validateObservationClassificationWrite: ContractValidator<c
 export declare const validateObservationError: ContractValidator<components["schemas"]["ObservationError"]>;
 export declare const validateObservationEvidence: ContractValidator<components["schemas"]["ObservationEvidence"]>;
 export declare const validateObservationPage: ContractValidator<components["schemas"]["ObservationPage"]>;
+export declare const validateObservationPipelineDiagnostics: ContractValidator<components["schemas"]["ObservationPipelineDiagnostics"]>;
 export declare const validateObservationTransform: ContractValidator<components["schemas"]["ObservationTransform"]>;
 export declare const validateOnvifAddRequest: ContractValidator<components["schemas"]["OnvifAddRequest"]>;
 export declare const validateOnvifAddResult: ContractValidator<components["schemas"]["OnvifAddResult"]>;

@@ -107,7 +107,8 @@ export interface ObservationPipelineDiagnostics {
     ready?: number;
     unavailable_submitted?: number;
     bytes_written?: number;
-    failures?: Record<string, number>;
+    /** Counts by reason; OpenAPI allows additional members, so values are unknown. */
+    failures?: Record<string, unknown>;
   };
   history?: {
     available?: boolean;

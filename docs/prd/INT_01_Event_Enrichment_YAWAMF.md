@@ -1,6 +1,6 @@
 # PRD — Event Evidence and YA-WAMF Integration
 
-**Status**: Draft — P0 contract frozen in [OBSERVATIONS_CONTRACT.md](../integrations/OBSERVATIONS_CONTRACT.md) (C1); implementation not started
+**Status**: In progress — P0 contract frozen in [OBSERVATIONS_CONTRACT.md](../integrations/OBSERVATIONS_CONTRACT.md) (C1). P1 and P2 are implemented and unit/contract tested on unreleased branches (lightNVR `feat/int01-event-evidence`, YA-WAMF `feature/lightnvr-provider`), with the [deployment recipe and supported-version matrix](../integrations/YA_WAMF.md) published (L12). Cross-repo end-to-end (X1, X3), the saturation gate (X2) and the real-camera pilot (A14) remain
 **Created**: 2026-11-08
 **Owner**: TBD — lightNVR integration owner; YA-WAMF counterpart to be identified
 **Scope**: Extend lightNVR with reusable observation, evidence, and classification

@@ -895,7 +895,8 @@ zero values while evidence is unused:
 
 Per-camera rows cover cameras holding `ready` media as of the last L4
 retention pass (at most 5 minutes old). The same snapshot is returned as
-`observation_pipeline` in `GET /api/system/info` and shown on the System page;
+`observation_pipeline` in `GET /api/system/info` (OpenAPI schema
+`ObservationPipelineDiagnostics`) and shown on the System page;
 `active: false` there means the feature is unused.
 
 - Accepted observations total.
@@ -1040,7 +1041,10 @@ Recovery never replaces evidence with a current frame.
 
 ## 18. Supported-version matrix (stub)
 
-X1 and X3 fill this in with the tested versions; L12 publishes it.
+X1 and X3 fill this in with the tested versions; L12 publishes it. The
+published matrix, with what each component was tested by, is in the
+[YA-WAMF deployment recipe](YA_WAMF.md#supported-version-matrix); the rows
+below stay the release targets.
 
 | Component | Version | Contract | Status |
 | --- | --- | --- | --- |

@@ -85,6 +85,9 @@ is byte-identical.
   the
   [observation history API](integrations/OBSERVATIONS_CONTRACT.md#7-history-and-cursor-get-apiobservations)
   is the durable recovery path.
+- Observations are recorded only for cameras with observation evidence turned
+  on (off by default). Setup for a consumer is described in the
+  [YA-WAMF deployment recipe](integrations/YA_WAMF.md).
 
 Existing detection topics are unchanged.
 
@@ -121,6 +124,38 @@ be omitted when a camera or external detector reports a class without spatial
 metadata; when present, all four coordinates are required, normalized to
 `0.0–1.0`, and width and height must be greater than zero. `track_id`, `zone_id`,
 and an authorization-aware `snapshot_url` are optional.
+
+### `io.lightnvr.detection.observation_changed.v1`
+
+```json
+{
+  "observation_id": "55555555-5555-4555-8555-555555555555",
+  "revision": 2,
+  "camera_uuid": "22222222-2222-4222-8222-222222222222",
+  "label": "bird",
+  "observed_at": "2026-11-08T14:03:12.481Z",
+  "change_cause": "evidence",
+  "evidence_state": "ready",
+  "evidence_reason": null,
+  "asset_id": "88888888-8888-4888-8888-888888888888",
+  "snapshot_url": "/api/observations/55555555-5555-4555-8555-555555555555/snapshot"
+}
+```
+
+One message per observation revision. `change_cause` is `created`,
+`evidence` or `classification`. `evidence_state` and `evidence_reason` are the
+values at that revision, and `snapshot_url` is present only when the state is
+`ready`. `camera_uuid` must equal the subject's UUID. Objects detected in the
+same frame are separate observations that share `asset_id`. The payload is a
+trigger: the box, transform and classifications come from
+`GET /api/observations/{id}`. The full field rules are in
+[contract §6.3](integrations/OBSERVATIONS_CONTRACT.md#63-data-payload), and
+the OpenAPI schema is `ObservationChangeEvent`.
+
+Event routes match this type by type and camera scope only. A route
+`predicate` (`labels_any`, `zone_ids_any`, `min_confidence`) applies only to
+`io.lightnvr.detection.object.v1`, so a route with a predicate never matches
+observation events.
 
 ### `io.lightnvr.recognition.license_plate.v1`
 

@@ -132,3 +132,59 @@ test('detection results accept the additive observation summary', async () => {
     observation: {id, classification: null}}), false);
   assert.equal(validators.validateEvidenceDetection({...detection, observation: null}), false);
 });
+
+// L10 follow-up (L12): /api/system/info documents the optional observation_pipeline
+// member, mirroring observation_diagnostics_to_json() (src/core/observation_diagnostics.c).
+test('system information documents the optional observation pipeline diagnostics', async () => {
+  const [docText, source] = await Promise.all([read('docs/api/openapi.json'),
+    read('src/core/observation_diagnostics.c')]);
+  const schemas = JSON.parse(docText).components.schemas;
+  const info = schemas.SystemInformation;
+  assert.deepEqual(info.properties.observation_pipeline,
+    {$ref: '#/components/schemas/ObservationPipelineDiagnostics'});
+  assert.ok(!info.required.includes('observation_pipeline'), 'optional: older payloads omit it');
+  const pipeline = schemas.ObservationPipelineDiagnostics;
+  assert.ok(pipeline, 'missing schema ObservationPipelineDiagnostics');
+
+  // Every key the C serializer emits is documented, and the schema names no other key.
+  const body = source.slice(source.indexOf('cJSON *observation_diagnostics_to_json('));
+  const emitted = new Set([...body.matchAll(/(?:cJSON_Add\w+ToObject|add_u64)\(\s*\w+,\s*"([a-z_]+)"/g)].map(m => m[1]));
+  const documented = new Set();
+  const walk = node => {
+    if (!node || typeof node !== 'object') return;
+    for (const [key, value] of Object.entries(node.properties ?? {})) { documented.add(key); walk(value); }
+    walk(node.items);
+  };
+  walk(pipeline);
+  assert.ok(emitted.size > 30, `parsed ${emitted.size} serializer keys`);
+  assert.deepEqual([...documented].sort(), [...emitted].sort());
+
+  const validators = await import(new URL('web/generated/api/validators.js', root));
+  const inactive = {
+    active: false, accepted: 0,
+    dropped: {queue_full: 0, budget_exhausted: 0, disabled: 0, untracked: 0},
+    evidence: {queue_allocated: false, worker_running: false, backlog_items: 0, backlog_bytes: 0,
+      high_water_items: 0, high_water_bytes: 0, drop_ring_depth: 0, ready: 0,
+      unavailable_submitted: 0, bytes_written: 0,
+      failures: {encode_failed: 0, write_failed: 0, db_error: 0, disabled: 0, interrupted: 0}},
+    history: {available: true, observations: 0, oldest_seq: 1, head_seq: 0, oldest_observed_at: null,
+      epoch_regenerations: 0},
+    publications: {pending: 0, failed: 0, expired: 0, relay_lag_seconds: 0, relay_running: false,
+      relayed: 0, relayed_no_route: 0},
+    budget_exhausted_cameras: 0, cameras: [],
+  };
+  const active = {...inactive, active: true, accepted: 12,
+    history: {...inactive.history, observations: 12, head_seq: 24, oldest_observed_at: '2026-11-08T14:03:12.481Z'},
+    publications: {...inactive.publications, relay_lag_seconds: 1.25, relay_running: true, relayed: 24},
+    cameras: [{camera_uuid: '22222222-2222-4222-8222-222222222222', retained_bytes: 48211,
+      max_bytes: 2147483648, max_age_days: 7, budget_exhausted: false}]};
+  assert.equal(validators.validateObservationPipelineDiagnostics(inactive), true);
+  assert.equal(validators.validateObservationPipelineDiagnostics(active), true);
+  assert.equal(validators.validateObservationPipelineDiagnostics({...inactive, active: 'no'}), false);
+  assert.equal(validators.validateObservationPipelineDiagnostics({...inactive, accepted: -1}), false);
+  const {evidence, ...withoutEvidence} = inactive;
+  assert.ok(evidence);
+  assert.equal(validators.validateObservationPipelineDiagnostics(withoutEvidence), false);
+  assert.equal(validators.validateObservationPipelineDiagnostics({...active,
+    cameras: [{...active.cameras[0], camera_uuid: 'not-a-uuid'}]}), false);
+});

@@ -6312,6 +6312,79 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** @description INT_01 observation pipeline diagnostics (observation_diagnostics_to_json(), contract section 15). Counters are per process run unless noted; per-camera rows come from the last retention pass and may be up to 5 minutes old. */
+        ObservationPipelineDiagnostics: {
+            accepted: number;
+            /** @description False when evidence is unused: no queue exists, counters are zero and no observations are retained. */
+            active: boolean;
+            budget_exhausted_cameras: number;
+            cameras: ({
+                budget_exhausted: boolean;
+                camera_uuid: string;
+                max_age_days: number;
+                max_bytes: number;
+                retained_bytes: number;
+            } & {
+                [key: string]: unknown;
+            })[];
+            /** @description Observations dropped at admission, by reason. */
+            dropped: {
+                budget_exhausted: number;
+                disabled: number;
+                queue_full: number;
+                untracked: number;
+            } & {
+                [key: string]: unknown;
+            };
+            evidence: {
+                backlog_bytes: number;
+                backlog_items: number;
+                bytes_written: number;
+                drop_ring_depth: number;
+                failures: {
+                    db_error: number;
+                    disabled: number;
+                    encode_failed: number;
+                    interrupted: number;
+                    write_failed: number;
+                } & {
+                    [key: string]: unknown;
+                };
+                high_water_bytes: number;
+                high_water_items: number;
+                queue_allocated: boolean;
+                ready: number;
+                unavailable_submitted: number;
+                worker_running: boolean;
+            } & {
+                [key: string]: unknown;
+            };
+            history: {
+                /** @description False when the observation tables could not be read; the DB-derived values are then zero. */
+                available: boolean;
+                epoch_regenerations: number;
+                head_seq: number;
+                observations: number;
+                oldest_observed_at: null | components["schemas"]["ObservationTime"];
+                oldest_seq: number;
+            } & {
+                [key: string]: unknown;
+            };
+            publications: {
+                expired: number;
+                failed: number;
+                pending: number;
+                /** @description Age of the oldest pending publication; 0 when none is pending. */
+                relay_lag_seconds: number;
+                relay_running: boolean;
+                relayed: number;
+                relayed_no_route: number;
+            } & {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
         ObservationRecordingReference: {
             recording_id: number;
         } & {
@@ -8127,6 +8200,7 @@ export interface components {
             } & {
                 [key: string]: unknown;
             };
+            observation_pipeline?: components["schemas"]["ObservationPipelineDiagnostics"];
             recordings: {
                 count: number;
                 size: number;

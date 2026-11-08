@@ -90,3 +90,44 @@ stream's legacy detection model empty); see the runtime boundaries below.
 - Engine lifecycle still follows the stream's existing
   `detection_based_recording`/schedule lifecycle. This release does not create
   a separate always-on analytics-only coordinator or UI editor.
+
+## Observation evidence (INT_01)
+
+A camera can keep durable observations for integrations such as YA-WAMF: one
+row per detected object, with its label, confidence and box, plus the image
+the detector ran on. It is **off by default**. Turn it on per camera with
+`observation_evidence_enabled`, and bound it with `observation_labels`,
+`observation_max_age_days` and `observation_max_bytes` on the stream API
+(`camera.configure`), or in the camera's **Observation evidence for
+integrations** settings. Changes apply without a restart. Defaults and bounds
+are in the
+[observations contract](integrations/OBSERVATIONS_CONTRACT.md#13-budgets-and-configuration-provisional).
+
+What each engine contributes:
+
+| Engine | Observations | Evidence image |
+| --- | --- | --- |
+| `object` (SOD) | one per eligible object | the decoded detection frame; transform `resize` to the network size |
+| `object` (TFLite on LiteRT) | one per eligible object | the decoded detection frame; transform `letterbox` |
+| `api` (single HTTP detector) | one per eligible object that passes zones, object filters and the threshold | the exact JPEG submitted to the detector; transform `none`, or a server-declared letterbox |
+| `onvif` | one per classified camera event (not plain `motion`) | none: `unavailable(no_matching_media)`, no box |
+| `motion` | none | none |
+| Additional `api` engines in a multi-engine set | none (they are isolated and do not run) | none |
+
+- The image is the low-resolution inference input, not a recording frame.
+  Boxes are normalized to it, and the `transform` records how it maps to the
+  source and inference sizes
+  ([contract §4.4](integrations/OBSERVATIONS_CONTRACT.md#44-transform)).
+- In a multi-engine set, each local object engine submits its own batch, so
+  each observation carries a single engine's provenance. Objects from one
+  frame share one image.
+- Detection threads never block on evidence. A frame is copied into a bounded
+  queue and encoded by one worker thread; when the queue or a budget is full
+  the observation is recorded as `unavailable` with a reason (`queue_full`,
+  `budget_exhausted`) instead. If even the drop-record ring is full, the drop
+  is only counted (`untracked` in the diagnostics).
+- Detection rows and their MQTT events are unchanged. The recording timeline
+  links a detection to the observation from the same camera, label and second
+  (±1 s) to show its classification.
+
+The deployment recipe is [YA-WAMF with lightNVR](integrations/YA_WAMF.md).
