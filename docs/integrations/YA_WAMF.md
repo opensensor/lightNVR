@@ -109,7 +109,7 @@ cars produces nothing to identify.
 Evidence is **off by default** on every camera. Turn it on only for feeder
 cameras. While no camera has it on, lightNVR allocates no queue, starts no
 worker and writes no images
-([contract §13](OBSERVATIONS_CONTRACT.md#13-budgets-and-configuration-provisional)).
+([contract §13](OBSERVATIONS_CONTRACT.md#13-budgets-and-configuration)).
 
 In the UI, open the camera's settings and expand **Observation evidence for
 integrations**. Or use the stream API, which needs `camera.configure` on that
@@ -387,8 +387,10 @@ the owner corrects or confirms it.
   it.
 - When a camera's byte budget is used up and only protected images remain, new
   evidence is rejected as `budget_exhausted` and flagged in diagnostics.
-- The budget defaults are provisional until the X2 saturation gate measures
-  them.
+- The budget defaults are final. The X2 saturation gate measured them with
+  evidence on four 720p cameras at the maximum detector cadence: no recording
+  gaps and no recording-path slowdown
+  ([contract §19](OBSERVATIONS_CONTRACT.md#19-performance)).
 
 ## Diagnostics
 

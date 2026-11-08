@@ -4,7 +4,7 @@ import {
   percentile, summarize, parsePrometheus, sumMetric, metricByLabel, segmentIntervals,
   countIntervalGaps, catalogGaps, resourceSummary, relativeDifferencePct, repeatability,
   releaseGate, workloadFingerprint, histogram, histogramDelta, histogramUpperQuantile,
-  observationFeatureSummary, assetReasonSummary, evidenceGate,
+  observationFeatureSummary, assetReasonSummary, evidenceGate, pooledComparison,
 } from '../../performance/observations/metrics.mjs';
 
 test('percentile interpolates linearly (type 7)', () => {
@@ -264,4 +264,15 @@ test('evidenceGate fails on each violated A11 property', () => {
   const active = disabledRun();
   active.feature_metrics.accepted = 3;
   assert.equal(evidenceGate(active, enabledRun()).checks.find(c => c.key === 'baseline.feature_inactive').pass, false);
+});
+
+test('pooledComparison pools raw samples per mode before taking percentiles', () => {
+  const runs = values => values.map(v => ({samples: {db_probe_ms: v}}));
+  const result = pooledComparison(runs([[1, 2, 3, 4], [5, 6, 7, 8]]), runs([[2, 3, 4, 5], [6, 7, 8, 9]]), 'db_probe_ms', 50);
+  assert.equal(result.baseline.count, 8);
+  assert.equal(result.baseline.p50, 4.5);
+  assert.equal(result.candidate.p50, 5.5);
+  assert.equal(result.increase_pct, 22.222);
+  assert.equal(result.pass, false);
+  assert.equal(pooledComparison(runs([[10, 10]]), runs([[10.4, 10.4]]), 'db_probe_ms', 95).pass, true);
 });

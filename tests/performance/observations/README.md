@@ -14,7 +14,8 @@ should link here rather than copy these values.
 | `workload.json` | Declared fixture: streams, resolution, fps, GOP, segment length, detector and cadence, window, sampling and retention. CLI flags override it, and every run records the values it actually used. |
 | `run-workload.mjs` | Harness. Writes `<output>/results.json`. |
 | `metrics.mjs` | Pure aggregation (percentiles, Prometheus parsing, gap counting, repeatability and release-gate checks). Unit tests live in `tests/contracts/tooling/observation-perf-metrics.test.mjs` (`npm run contracts:test-tools`). |
-| `compare.mjs` | `repeat A B` (C4: p95 variance < 2%) and `gate BASELINE CANDIDATE` (X2: no new gaps, p95 +≤5%). |
+| `compare.mjs` | `repeat A B` (C4: p95 variance < 2%), `gate BASELINE CANDIDATE` (X2: same binary, no new gaps, p95 +≤5%, plus the evidence checks for an enabled candidate; `--advisory KEY`, `--require-saturation`, `--max-submit-seconds S`) and `pool BASE... -- CAND...` (one raw series pooled per mode). |
+| `make-bird-clip.sh` | X2's detection-producing clip: the pinned cardinal photo (not committed, CC BY-SA) bouncing across a textured 1280×720 background. |
 | `results/` | Committed results. Raw samples are kept so the numbers can be recomputed. |
 
 ## Workload (`int01-observations-v1`)
@@ -136,13 +137,32 @@ fixture directory (server log, DB, media).
    - `--config-extra extra.ini` is appended to the generated `lightnvr.ini`,
      for example the C1 queue or byte budgets.
    - Both are recorded in `results.feature`. Use `--mode enabled`.
-3. **Collect the extra X2 evidence.** Queue and byte high-water marks, drop
-   reasons, and the enqueue-latency histogram come from L10 diagnostics.
-   Extend `run-workload.mjs` to scrape them into `results.feature_metrics`
-   once L10 lands.
-4. **Gate.** Run `compare.mjs gate disabled.json enabled.json`. It fails on
-   any additional gap, or on a p95 increase above 5% in either headline
-   series.
+   - `--system-setting KEY=VALUE` (repeatable) writes a `system_settings` row
+     and restarts lightNVR once before streams are added. The global queue
+     budget is read only at startup, so the saturation run uses
+     `--system-setting observation_global_queue_bytes=4194304`.
+3. **Extra X2 evidence (automatic).**
+   - `results.feature_metrics` holds the window's L10 counters (accepted,
+     dropped by reason, ready, failures, discards) and the run's
+     high-water marks.
+   - It also holds the configured limits, the gauge maxima over every scrape,
+     and the producer submit-latency histogram
+     (`lightnvr_observation_submit_latency_seconds`).
+   - `results.feature_db` is read from the fixture DB after shutdown:
+     observations, assets by `state:reason`, and detections.
+4. **Gate.** Run `compare.mjs gate disabled.json enabled.json`. It fails on:
+   - a different binary or workload;
+   - any additional gap;
+   - a p95 increase above 5% in a gating headline series;
+   - any `evidenceGate` check, which requires all of these:
+     - detections, evidence and DB observations really happened;
+     - high-water marks are within the configured limits;
+     - no untracked drops, and the DB holds at least the window's drops by
+       reason;
+     - no encode, write or DB failures;
+     - the producer submit maximum is under 1 ms (`--max-submit-seconds`).
+
+   `--require-saturation` also requires `queue_full` drops.
 
 ## Committed baseline (C4, 2026-11-08, feature disabled)
 
@@ -189,3 +209,93 @@ The data is in `results/2026-11-08-disabled-run{1,2}.json`, and
     Parallel tasks committed docs-only changes in between. The tree may also
     have held other agents' uncommitted, unwired edits.
   - No observation code was compiled in, so the feature is absent.
+
+## X2 result (2026-11-08, A11): pass
+
+The data is in `results/2026-11-08-x2-*.json`, and `results/2026-11-08-x2-gate.json`
+holds every gate, the pooled comparisons, disabled repeatability, and two runs
+showing the gate fails at impossible thresholds (exit 1).
+
+**Setup**
+
+- **Binary:** `build-int01-X2/bin/lightnvr` from `9ed02bb4`. It is a Release
+  build with LiteRT on, MQTT and SOD, built against the apt FFmpeg 8.0.1
+  headers through a symlink include dir.
+- **Clip:** `make-bird-clip.sh` (sha256 `5bf26bbc…`; see the results).
+- **Host:** the same as C4. The 1-minute load average was 2.8–7.8. The
+  user's own lightNVR, a uvicorn, Mosquitto, a `llama-server` using one core,
+  and other desktop work were running.
+- **Runs:** 600 s each, recorded in this order:
+  1. disabled-run1;
+  2. enabled-defaults;
+  3. enabled-saturated;
+  4. disabled-run2;
+  5. disabled-run3;
+  6. enabled-defaults2;
+  7. enabled-saturated2.
+
+```sh
+S=/path/to/scratch
+tests/performance/observations/make-bird-clip.sh cardinal.jpg $S/bird.mp4
+echo '{"observation_evidence_enabled": true, "observation_max_bytes": 67108864}' > $S/stream.json
+COMMON="--binary build-int01-X2/bin/lightnvr --model ~/tiny20.sod --source $S/bird.mp4 --seconds 600 --warmup 30"
+node tests/performance/observations/run-workload.mjs $COMMON --mode disabled --output build/perf-observations/x2-disabled
+node tests/performance/observations/run-workload.mjs $COMMON --mode enabled --stream-extra $S/stream.json --output build/perf-observations/x2-enabled
+node tests/performance/observations/run-workload.mjs $COMMON --mode enabled --stream-extra $S/stream.json \
+  --system-setting observation_global_queue_bytes=4194304 --output build/perf-observations/x2-saturated
+node tests/performance/observations/compare.mjs gate build/perf-observations/x2-disabled/results.json \
+  build/perf-observations/x2-enabled/results.json --advisory latency.db_probe_ms.p95
+node tests/performance/observations/compare.mjs gate build/perf-observations/x2-disabled/results.json \
+  build/perf-observations/x2-saturated/results.json --advisory latency.db_probe_ms.p95 --require-saturation
+```
+
+| | Disabled (3 runs) | Enabled, defaults (2) | Enabled, saturated 4 MiB (2) |
+| --- | --- | --- | --- |
+| Detections per window / observations in DB | 2,408 / 0 | 2,407–2,408 / 2,524–2,532 | 2,404 / 2,529–2,532 |
+| Accepted / `queue_full` / untracked | — | 2,407–2,408 / 0 / 0 | 1,063–1,073 / 1,331–1,341 / 0 |
+| Recording gaps (3 sources) | 0 | 0 | 0 |
+| `segment_interval_ms` p95 | 10008.9–10016.1 | 10008.5–10013.5 | 10009.3–10012.9 |
+| `db_probe_ms` p95 (advisory) | 12.74–13.40 | 13.99–14.83 | 13.70–14.23 |
+| Pooled `db_probe_ms` p95 vs disabled | 13.13 | 14.43 (+9.9%) | 13.98 (+6.5%) |
+| Submit latency: max / p99 bucket / mean | — | 341–396 µs / ≤ 50 µs / 4.1–4.4 µs | 365–405 µs / ≤ 50 µs / 4.3–4.4 µs |
+| Queue high-water: items / bytes (limit) | — | 4 / 11.1 MB (64 / 32 MiB) | 1 / 2.77 MB (64 / 4 MiB) |
+| Per-camera high-water (limit 8) / drop ring max (256) | — | 1 / 0 | 1 / 2 |
+| Rejected frames: deferred / inline / pending max | — | 0 / 0 / 0 | 1,331–1,341 / 0 / 5.5 MB |
+| lightNVR CPU (% of one core, avg) | 148.9–155.5 | 154.1–158.0 | 151.0–154.9 |
+| RSS high-water | 873–888 MB | 891–892 MB | 882–929 MB |
+| Disk write rate | 2.06 MB/s | 3.29–3.32 MB/s | 2.87 MB/s |
+| Evidence retained per camera (budget 64 MiB) | — | 44.8–45.0 MB | 16.7–24.0 MB |
+
+**Gate decision.**
+
+- `db_probe_ms` p95 fails its own 2% repeatability. Across disabled pairs it
+  varied by 2.61%, 5.03% and 2.42%. Following C4's rule it is
+  `--advisory`: reported, not gating.
+- With it advisory, all four gates pass:
+  - disabled-run1 against enabled-defaults and enabled-saturated;
+  - disabled-run3 against enabled-defaults2 and enabled-saturated2.
+- Without `--advisory`, the second pair still passes (+4.4% and +2.2%), but
+  the first fails (+13.4% and +8.8%). That pair ran during a host load spike
+  (load average about 7).
+- **The pooled +9.9% / +6.5% DB-probe tail is a recorded finding**, not
+  noise to ignore.
+  - The median is unchanged (8.1–8.4 ms).
+  - The likely cause is the evidence worker's extra WAL traffic. It causes
+    more frequent SQLite autocheckpoints, and those run inside commits that
+    hold the global DB mutex.
+  - Shrinking admission cannot remove it, because drops still insert an
+    `unavailable` row. The saturated mode accepted 56% fewer frames and only
+    moved +9.9% to +6.5%.
+  - Recording itself, measured by segment interval and gaps, is unaffected.
+  - Follow-up: run checkpoints outside the global mutex, or batch the
+    worker's commits.
+
+**Finding fixed in `9ed02bb4`.** In the first saturated smoke runs, about 8%
+of submissions (and 10 of 120 in the window) took 1–4.4 ms. The cause was
+`free()` of the rejected 2.7 MB frame on the detection thread, which is an
+munmap. Rejected frames are now released by the worker.
+
+**Not exercised.** Media eviction: the clip's JPEGs are about 100 KB, and a
+camera retained at most 45 MB against the 64 MiB minimum budget.
+`budget_exhausted` needs protected assets. Both are covered by the L4 and
+L11 tests.

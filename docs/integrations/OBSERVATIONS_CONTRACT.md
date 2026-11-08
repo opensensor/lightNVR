@@ -1,7 +1,7 @@
 # Observations, Evidence and Classification Contract (INT_01 ADR)
 
 **Status**: Frozen for P1/P2 implementation (task C1). Budgets in §13 are
-provisional until task X2 confirms them.
+final: task X2 measured them on the C4 fixture (§19).
 **Contract version**: `observations` 1, `classifications` 1, event
 `io.lightnvr.detection.observation_changed.v1`.
 **Source PRD**: [INT_01 — Event Evidence and YA-WAMF Integration](../prd/INT_01_Event_Enrichment_YAWAMF.md)
@@ -33,7 +33,7 @@ either.
 10. [Classification annotations (P2)](#10-classification-annotations-p2)
 11. [Error catalog](#11-error-catalog)
 12. [Authorization and audit](#12-authorization-and-audit)
-13. [Budgets and configuration (provisional)](#13-budgets-and-configuration-provisional)
+13. [Budgets and configuration](#13-budgets-and-configuration)
 14. [Retention and storage](#14-retention-and-storage)
 15. [Diagnostics](#15-diagnostics)
 16. [YA-WAMF consumer rules](#16-ya-wamf-consumer-rules)
@@ -464,7 +464,7 @@ selected it. Consumers dedupe by `(source, id, revision)`.
    and filters. Filters use immutable observation fields only.
 4. Add each matching change's observation if it is not already in the page.
    Stop **before** a change that would add observation number `limit + 1`.
-   Also stop after scanning 5,000 change rows (scan cap, provisional).
+   Also stop after scanning 5,000 change rows (scan cap, §13).
 5. `next_cursor` = the seq of the last change **scanned**, whether included or
    filtered out, or `S` if none were scanned. It is never derived from the last
    returned item.
@@ -819,29 +819,36 @@ distinct A8 outcomes.
 Image bytes, request bodies beyond the fields listed, tokens, cookies and
 authorization headers are never logged or audited.
 
-## 13. Budgets and configuration (provisional)
+## 13. Budgets and configuration
 
-All values are provisional until X2 measures them on the C4 fixture (§19).
+Final. X2 (A11) ran the C4 fixture with evidence on every camera at the
+maximum detector cadence, at these defaults and with the queue saturated, and
+kept every default (§19). The "X2 basis" column says what supports each value.
 
-| Setting | Scope | Default | Bounds | Storage |
-| --- | --- | --- | --- | --- |
-| Evidence enabled | camera | **off** | bool | `streams.observation_evidence_enabled` |
-| Eligible labels | camera | `''` (all object labels) | CSV, ≤ 16 labels | `streams.observation_labels` |
-| Media max age | camera | 7 days | 1..90 | `streams.observation_max_age_days` |
-| Media max bytes | camera | 2 GiB | 64 MiB..1 TiB | `streams.observation_max_bytes` |
-| History retention | global | 30 days | 1..365 | `system_settings.observation_history_retention_days` |
-| Global queue bytes | global | 32 MiB | 4..512 MiB | `system_settings.observation_global_queue_bytes` |
-| Per-camera queue depth | constant | 8 frames | | compile-time |
-| Drop-record ring | constant | 256 records | | compile-time |
-| Encoder worker concurrency | constant | 1 | | compile-time |
-| Relay batch | constant | 64 publications | | compile-time |
-| Relay outbox share cap | constant | 2,000 pending rows | | compile-time (D8) |
-| History scan cap per page | constant | 5,000 changes | | compile-time |
+| Setting | Scope | Default | Bounds | Storage | X2 basis |
+| --- | --- | --- | --- | --- | --- |
+| Evidence enabled | camera | **off** | bool | `streams.observation_evidence_enabled` | Off-by-default is a product decision (PRD R6); the disabled runs show no queue or worker |
+| Eligible labels | camera | `''` (all object labels) | CSV, ≤ 16 labels | `streams.observation_labels` | Not load-relevant |
+| Media max age | camera | 7 days | 1..90 | `streams.observation_max_age_days` | Policy value; not load-relevant |
+| Media max bytes | camera | 2 GiB | 64 MiB..1 TiB | `streams.observation_max_bytes` | At the maximum load (1 frame/s per camera, about 100 KB per 720p JPEG) 2 GiB holds about 6 hours. X2 ran at the 64 MiB minimum and stayed under it (45 MB per camera); eviction is covered by L4/L11 tests, not by X2 |
+| History retention | global | 30 days | 1..365 | `system_settings.observation_history_retention_days` | Policy value; not load-relevant |
+| Global queue bytes | global | 32 MiB | 4..512 MiB | `system_settings.observation_global_queue_bytes` | Default: high-water 11.1 MB / 4 items, no drops. 4 MiB minimum: saturated (56% `queue_full`), limits held |
+| Per-camera queue depth | constant | 8 frames | | compile-time | Per-camera high-water was 1 frame at maximum cadence |
+| Global queue depth | constant | 64 frames | | compile-time | High-water 4 |
+| Drop-record ring | constant | 256 records | | compile-time | High-water 2 while saturated; 0 untracked drops |
+| Rejected-frame release bound | derived | max(global queue bytes, 32 MiB) | | compile-time | Added by X2: rejected frames are freed by the worker. Pending high-water 5.5 MB; 0 inline frees |
+| Encoder worker concurrency | constant | 1 | | compile-time | Kept up with 4 frames/s at 720p (no backlog growth) |
+| Relay batch | constant | 64 publications | | compile-time | Relay lag ≤ 2 ms; no publications pending |
+| Relay outbox share cap | constant | 2,000 pending rows | | compile-time (D8) | Not reached (no broker in the fixture; X1 A5 exercised it) |
+| History scan cap per page | constant | 5,000 changes | | compile-time | Not on the recording path; not load-tested by X2 |
 
 - With evidence disabled on every camera, no queue is allocated, no worker
   thread starts, and no images are written.
 - Admission never blocks. It returns `ACCEPTED`, `DROPPED_QUEUE_FULL`,
-  `DROPPED_BUDGET` or `DISABLED` immediately.
+  `DROPPED_BUDGET` or `DISABLED` immediately. X2 measured the slowest
+  submission of a run at 405 µs, and p99 at 50 µs or less
+  (`lightnvr_observation_submit_latency_seconds`). A rejected frame is freed
+  by the worker, not by the producer.
 - Settings are changed with `camera.configure` (L9) and take effect without a
   restart.
 
@@ -883,7 +890,10 @@ zero values while evidence is unused:
 | Accepted | `lightnvr_observation_accepted_total` |
 | Dropped by reason | `lightnvr_observation_dropped_total{reason="queue_full"\|"budget_exhausted"\|"disabled"\|"untracked"}` |
 | Backlog | `lightnvr_observation_evidence_backlog_items`, `_backlog_bytes`, `_drop_ring_depth` |
-| High-water marks | `lightnvr_observation_evidence_high_water_items`, `_high_water_bytes` |
+| High-water marks | `lightnvr_observation_evidence_high_water_items`, `_high_water_bytes`, `_camera_high_water_items` (highest backlog of one camera) |
+| Configured limits (X2) | `lightnvr_observation_evidence_limit_items{scope="global"\|"camera"}`, `_limit_bytes{scope="global"\|"camera"\|"discard"}` |
+| Producer submit latency (X2) | `lightnvr_observation_submit_latency_seconds` histogram (`le` 1 µs … 10 ms, +Inf) and `lightnvr_observation_submit_latency_max_seconds` |
+| Rejected frames (X2) | `lightnvr_observation_evidence_discards_total{mode="deferred"\|"inline"}`, `_discard_pending_bytes` |
 | Queue exists | `lightnvr_observation_evidence_queue_allocated`, `_worker_running` (0 when unused) |
 | Outcomes | `lightnvr_observation_evidence_ready_total`, `_unavailable_total`, `_bytes_written_total` |
 | Failures by reason | `lightnvr_observation_evidence_failures_total{reason="encode_failed"\|"write_failed"\|"db_error"\|"disabled"\|"interrupted"}` |
@@ -1062,8 +1072,54 @@ resolutions, fps, detector cadence, retention budgets) and the disabled
 baseline here. X2 compares enabled and disabled runs on the same input. The
 release threshold is zero additional recording gaps and ≤ 5% higher p95
 recording-path latency. X2 also measures memory, CPU, disk and queue high-water
-marks, plus producer submit latency, which must never wait on I/O. X2 replaces
-the provisional values in §13.
+marks, plus producer submit latency, which must never wait on I/O. X2 finalized
+the values in §13.
+
+**X2 result (2026-11-08, A11): pass.**
+
+- **Setup.**
+  - Fixture: the C4 fixture (4 × 1280×720 at 15 fps, 10 s segments, SOD
+    `tiny20.sod` every 1 s on every stream), with a 600 s window.
+  - Source: a bird clip (`make-bird-clip.sh`) on which every inference
+    detected a bird, giving 2,404–2,408 detections per window.
+  - Binary: `9ed02bb4`, Release.
+  - Evidence was on for every camera.
+  - Modes:
+    - defaults;
+    - saturated: a 4 MiB queue, so 56% of submissions were `queue_full`.
+  - Each enabled run was compared with a disabled run on the same binary and
+    clip.
+- **Data and tooling.** The data is in
+  `tests/performance/observations/results/2026-11-08-x2-*.json`. The gate
+  output is `2026-11-08-x2-gate.json`. The procedure is in
+  [the harness README](../../tests/performance/observations/README.md).
+- **Gating checks, all passing in all four pairs:**
+  - Zero recording gaps from all three sources.
+  - The segment-interval p95 changed by −0.004% to +0.04%.
+  - Evidence and observations were written to the DB.
+  - Queue limits held.
+  - Every drop has a bounded reason, and none were untracked.
+  - There were no encode, write or DB failures.
+  - The producer submit maximum stayed under 1 ms.
+- **DB-mutex probe (advisory, not gating).**
+  - The DB probe fails its own repeatability check: disabled runs vary by
+    2.4–5.0% against the 2% criterion. Under C4's rule it is therefore
+    reported but does not gate.
+  - It is a recorded finding. The median is unchanged, but the p95 rises:
+    - pooled over all runs: +9.9% at defaults and +6.5% saturated (about
+      +1.3 ms and +0.9 ms);
+    - per pair: +2.2% to +13.4%.
+  - Host load varied between runs, and this is not separated from it.
+  - The likely cause is the extra WAL traffic from the evidence worker:
+    autocheckpoints then run inside commits that hold the global DB mutex.
+    Reducing admission does not remove it, because drops still insert their
+    `unavailable` rows.
+  - Follow-up: checkpoint off the global mutex, or batch the worker's
+    commits.
+- **Resources, enabled vs disabled.**
+  - CPU: 151–158% vs 149–156% of one core.
+  - RSS high-water: 882–929 MB vs 873–888 MB.
+  - Disk writes: 2.9–3.3 MB/s vs 2.06 MB/s.
 
 ## 20. PRD traceability
 

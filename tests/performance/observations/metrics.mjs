@@ -357,3 +357,20 @@ export function evidenceGate(baseline, candidate, {requireSaturation = false, ma
   if (requireSaturation) add('saturation.queue_full_drops', f.dropped?.queue_full > 0, f.dropped?.queue_full);
   return {require_saturation: requireSaturation, max_submit_seconds: maxSubmitSeconds, pass: checks.every(c => c.pass), checks};
 }
+
+/**
+ * Pool one raw sample series (results.samples[series]) across several runs per
+ * mode and compare percentile q: a steadier view than any single pair when
+ * host load drifts between runs (X2 used it for the advisory DB probe).
+ */
+export function pooledComparison(baselineRuns, candidateRuns, series = 'db_probe_ms', q = 95, maxIncreasePct = 5) {
+  const pool = runs => runs.flatMap(r => r.samples?.[series] || []).filter(Number.isFinite);
+  const b = pool(baselineRuns), c = pool(candidateRuns);
+  const pb = percentile(b, q), pc = percentile(c, q);
+  const raw = Number.isFinite(pb) && Number.isFinite(pc) && pb > 0 ? (pc - pb) / pb * 100 : null;
+  const increasePct = raw == null ? null : Math.round(raw * 1000) / 1000;
+  return {series, percentile: q, max_increase_pct: maxIncreasePct,
+    baseline: {runs: baselineRuns.length, ...summarize(b)}, candidate: {runs: candidateRuns.length, ...summarize(c)},
+    [`baseline_p${q}`]: pb, [`candidate_p${q}`]: pc, increase_pct: increasePct,
+    pass: increasePct != null && increasePct <= maxIncreasePct};
+}

@@ -48,7 +48,7 @@
 
 #define OBS_LIST_DEFAULT_LIMIT 100
 #define OBS_LIST_MAX_LIMIT 500
-#define OBS_LIST_SCAN_CAP 5000           /* provisional scan cap per page (section 7.3) */
+#define OBS_LIST_SCAN_CAP 5000           /* scan cap per page (sections 7.3, 13) */
 #define OBS_QUERY_MAX_LABELS 8
 
 /* Message-ID namespace (contract section 5.4). */

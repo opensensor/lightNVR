@@ -101,7 +101,7 @@ the detector ran on. It is **off by default**. Turn it on per camera with
 (`camera.configure`), or in the camera's **Observation evidence for
 integrations** settings. Changes apply without a restart. Defaults and bounds
 are in the
-[observations contract](integrations/OBSERVATIONS_CONTRACT.md#13-budgets-and-configuration-provisional).
+[observations contract](integrations/OBSERVATIONS_CONTRACT.md#13-budgets-and-configuration).
 
 What each engine contributes:
 
