@@ -1569,9 +1569,62 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   - `web` jest/Playwright: the toggle persists and the default is off.
   - `tests/contracts/streams.api.spec.ts` still passes, with schema additions
     accepted.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - RED: `test_put_stream_launch_failure` failed 5/24 on the new tests
+    (fields missing from GET; PUT/POST accepted out-of-range values with
+    202/201). The web spec failed on the missing util, then on the
+    StreamsView/modal wiring and the en.json keys. GREEN: the C test passes
+    24/24; `test_db_streams` 42/42; `test_delete_stream_launch_failure` 7/7;
+    `test_stream_manager` 15/15. Web: jest 85 suites / 1018 tests,
+    `npm run typecheck` and eslint on the changed files are clean.
+    `streams.api.spec.ts` passes 9/9 against `build-int01-L9/bin/lightnvr`.
+    `generate.mjs --check`, `lint.mjs`, `coverage.mjs --check` and the
+    `tests/contracts/tooling` tests (59/59) pass.
+  - Run: `cd build-int01-L9 && make test_put_stream_launch_failure && ./bin/test_put_stream_launch_failure`
+    and `cd web && npx jest tests/observationEvidenceSettings.spec.js`.
+  - API fields (stream GET list, detail and `/full`; POST and PUT bodies):
+    - `observation_evidence_enabled`: boolean, default false.
+    - `observation_labels`: a CSV string. Entries are trimmed; at most 16
+      entries of 1..31 printable ASCII bytes; empty entries are rejected. An
+      empty string means every label. Case is preserved, so matching must be
+      ASCII case-insensitive.
+    - `observation_max_age_days`: an integer, 1..90 (default 7).
+    - `observation_max_bytes`: an integer, 67108864..1099511627776 (default
+      2147483648).
+  - Server behaviour:
+    - Null, a wrong type or a fractional number returns 400 with an
+      `observation_*` message, before any task is queued.
+    - The validator is shared by POST and PUT
+      (`stream_observation_settings_apply_json`), and the GET paths use
+      `stream_observation_settings_to_json`.
+    - Writes are gated by the existing `camera.configure` check. Reads are
+      visible to `live.view`, like the other detection settings.
+  - OpenAPI: the fields are optional on `StreamDetailsBase`, because the
+    captured baseline payloads predate them. They are typed and bounded on
+    `StreamConfigurationUpdate` and `StreamCreateRequest`.
+  - UI: the "Observation evidence for integrations" accordion
+    (`expandedSections.observation`) has a toggle (off), eligible labels, max
+    age in days and a size limit in MiB. It notes that a bird-capable
+    detector is required. `web/js/utils/observation-evidence.ts` maps the
+    form to and from the wire and validates before save. Strings are in
+    `en.json` only; other locales fall back to English.
+  - Reload path:
+    - A PUT persists through `update_stream_config()` and restarts nothing.
+    - `get_stream_config*()` reads SQLite, so the L3 encoder's
+      `observation_evidence_stream_enabled_probe` sees the change at once.
+    - L6 (uncommitted at the time of L9) caches the flag and labels in the
+      detection context at thread start and exposes
+      `unified_detection_set_observation_settings(name, enabled, labels)`.
+      No caller exists yet. Add this line to `put_stream_worker_locked()`
+      after `update_stream_config()` succeeds:
+      `unified_detection_set_observation_settings(task->stream_id, task->config.observation_evidence_enabled, task->config.observation_labels);`
+      Its -1 return (no running thread) can be ignored.
+    - L9 did not add the call, because the symbol was not yet in the tree.
+  - Gotcha: when this was written, L6's in-progress `detection_evidence.c`
+    in the shared working tree broke the full `lightnvr_lib` build. Build
+    the L9 targets before L6 edits land, or after they are committed.
+- **files edited/created**: `include/web/stream_observation_settings.h`, `src/web/stream_observation_settings.c`, `src/web/api_handlers_streams_get.c`, `src/web/api_handlers_streams_modify.c`, `tests/unit/test_put_stream_launch_failure.c`, `docs/api/openapi.json`, `include/web/openapi_document_generated.h`, `web/generated/api/schema.d.ts`, `web/generated/api/validators.js`, `web/js/utils/observation-evidence.ts`, `web/js/types/streams.ts`, `web/js/components/preact/StreamsView.tsx`, `web/js/components/preact/StreamConfigModal.tsx`, `web/public/locales/en.json`, `web/tests/observationEvidenceSettings.spec.js` (commit `e365b6b3`)
 
 #### L10: Diagnostics and metrics
 - **depends_on**: [L3, L4, L5, L8]
