@@ -334,7 +334,8 @@ impl authorization_action_t {
     pub const AUTHZ_LPR_SEARCH: Self = Self(16);
     pub const AUTHZ_LPR_EXPORT: Self = Self(17);
     pub const AUTHZ_LPR_DELETE: Self = Self(18);
-    pub const AUTHZ_ACTION_COUNT: Self = Self(19);
+    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
+    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -895,7 +896,7 @@ pub unsafe extern "C" fn audit_log_append(
     free(serialized as *mut ::core::ffi::c_void);
 }
 pub const AUDIT_SUMMARY_FLUSH_BATCH: ::core::ffi::c_int = 8 as ::core::ffi::c_int;
-static mut decision_modes: [atomic_int; 19] = [0; 19];
+static mut decision_modes: [atomic_int; 20] = [0; 20];
 static mut decision_mutex: pthread_mutex_t = pthread_mutex_t {
     __data: __pthread_mutex_s {
         __lock: 0 as ::core::ffi::c_int,
@@ -946,8 +947,8 @@ pub unsafe extern "C" fn audit_log_reset_summaries_for_testing(
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn audit_log_decision_modes_init() -> ::core::ffi::c_int {
-    let mut modes: [audit_decision_mode_t; 19] =
-        [audit_decision_mode_t::AUDIT_DECISION_MODE_RECORD; 19];
+    let mut modes: [audit_decision_mode_t; 20] =
+        [audit_decision_mode_t::AUDIT_DECISION_MODE_RECORD; 20];
     let mut rc: ::core::ffi::c_int =
         db_audit_load_decision_modes(&raw mut modes as *mut audit_decision_mode_t);
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;

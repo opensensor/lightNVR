@@ -936,6 +936,42 @@ pub unsafe extern "C" fn is_sod_available() -> bool {
     return sod_available;
 }
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn sod_model_input_size(
+    mut model: detection_model_t,
+    mut width: *mut ::core::ffi::c_int,
+    mut height: *mut ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    if model.is_null() || width.is_null() || height.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut m: *mut model_t = model as *mut model_t;
+    if strcmp(
+        &raw mut (*m).r#type as *mut ::core::ffi::c_char,
+        MODEL_TYPE_SOD.as_ptr(),
+    ) != 0 as ::core::ffi::c_int
+        || (*m).c2rust_unnamed.sod.is_null()
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut net_w: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut net_h: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut net_c: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    if sod_cnn_get_network_size(
+        (*m).c2rust_unnamed.sod as *mut sod_cnn,
+        &raw mut net_w,
+        &raw mut net_h,
+        &raw mut net_c,
+    ) != 0 as ::core::ffi::c_int
+        || net_w <= 0 as ::core::ffi::c_int
+        || net_h <= 0 as ::core::ffi::c_int
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    *width = net_w;
+    *height = net_h;
+    return 0 as ::core::ffi::c_int;
+}
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn load_sod_model(
     mut model_path: *const ::core::ffi::c_char,
     mut threshold: ::core::ffi::c_float,

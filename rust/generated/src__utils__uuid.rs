@@ -3,6 +3,7 @@ unsafe extern "C" {
     pub type _IO_wide_data;
     pub type _IO_codecvt;
     pub type _IO_marker;
+    pub type mbedtls_md_info_t;
     unsafe fn __ctype_b_loc() -> *mut *const ::core::ffi::c_ushort;
     unsafe fn __errno_location() -> *mut ::core::ffi::c_int;
     unsafe fn fclose(__stream: *mut FILE) -> ::core::ffi::c_int;
@@ -21,6 +22,24 @@ unsafe extern "C" {
         __length: size_t,
         __flags: ::core::ffi::c_uint,
     ) -> ssize_t;
+    unsafe fn mbedtls_md_info_from_type(md_type: mbedtls_md_type_t) -> *const mbedtls_md_info_t;
+    unsafe fn mbedtls_md_init(ctx: *mut mbedtls_md_context_t);
+    unsafe fn mbedtls_md_free(ctx: *mut mbedtls_md_context_t);
+    unsafe fn mbedtls_md_setup(
+        ctx: *mut mbedtls_md_context_t,
+        md_info: *const mbedtls_md_info_t,
+        hmac: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
+    unsafe fn mbedtls_md_starts(ctx: *mut mbedtls_md_context_t) -> ::core::ffi::c_int;
+    unsafe fn mbedtls_md_update(
+        ctx: *mut mbedtls_md_context_t,
+        input: *const ::core::ffi::c_uchar,
+        ilen: size_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn mbedtls_md_finish(
+        ctx: *mut mbedtls_md_context_t,
+        output: *mut ::core::ffi::c_uchar,
+    ) -> ::core::ffi::c_int;
     unsafe fn strnlen(__string: *const ::core::ffi::c_char, __maxlen: size_t) -> size_t;
 }
 pub type size_t = usize;
@@ -67,6 +86,30 @@ pub struct _IO_FILE {
 }
 pub type _IO_lock_t = ();
 pub type FILE = _IO_FILE;
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct mbedtls_md_type_t(pub ::core::ffi::c_uint);
+impl mbedtls_md_type_t {
+    pub const MBEDTLS_MD_NONE: Self = Self(0);
+    pub const MBEDTLS_MD_MD5: Self = Self(3);
+    pub const MBEDTLS_MD_RIPEMD160: Self = Self(4);
+    pub const MBEDTLS_MD_SHA1: Self = Self(5);
+    pub const MBEDTLS_MD_SHA224: Self = Self(8);
+    pub const MBEDTLS_MD_SHA256: Self = Self(9);
+    pub const MBEDTLS_MD_SHA384: Self = Self(10);
+    pub const MBEDTLS_MD_SHA512: Self = Self(11);
+    pub const MBEDTLS_MD_SHA3_224: Self = Self(16);
+    pub const MBEDTLS_MD_SHA3_256: Self = Self(17);
+    pub const MBEDTLS_MD_SHA3_384: Self = Self(18);
+    pub const MBEDTLS_MD_SHA3_512: Self = Self(19);
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct mbedtls_md_context_t {
+    pub private_md_info: *const mbedtls_md_info_t,
+    pub private_md_ctx: *mut ::core::ffi::c_void,
+    pub private_hmac_ctx: *mut ::core::ffi::c_void,
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct C2Rust_Unnamed(pub ::core::ffi::c_uint);
@@ -200,6 +243,124 @@ pub unsafe extern "C" fn lightnvr_uuid_generate_v4(
         position = position.wrapping_add(1);
         *output.offset(c2rust_fresh2 as isize) = hex_digit(bytes[index]);
         index = index.wrapping_add(1);
+    }
+    *output.offset(position as isize) = '\0' as ::core::ffi::c_char;
+    return 0 as ::core::ffi::c_int;
+}
+unsafe extern "C" fn hex_value(mut c: ::core::ffi::c_char) -> ::core::ffi::c_int {
+    if c as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+        && c as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+    {
+        return c as ::core::ffi::c_int - '0' as ::core::ffi::c_int;
+    }
+    if c as ::core::ffi::c_int >= 'a' as ::core::ffi::c_int
+        && c as ::core::ffi::c_int <= 'f' as ::core::ffi::c_int
+    {
+        return c as ::core::ffi::c_int - 'a' as ::core::ffi::c_int + 10 as ::core::ffi::c_int;
+    }
+    if c as ::core::ffi::c_int >= 'A' as ::core::ffi::c_int
+        && c as ::core::ffi::c_int <= 'F' as ::core::ffi::c_int
+    {
+        return c as ::core::ffi::c_int - 'A' as ::core::ffi::c_int + 10 as ::core::ffi::c_int;
+    }
+    return -1 as ::core::ffi::c_int;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lightnvr_uuid_generate_v5(
+    mut namespace_uuid: *const ::core::ffi::c_char,
+    mut name: *const ::core::ffi::c_char,
+    mut name_len: size_t,
+    mut output: *mut ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    if output.is_null() || name.is_null() || !lightnvr_uuid_is_valid(namespace_uuid) {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut namespace_bytes: [::core::ffi::c_uchar; 16] = [0; 16];
+    let mut byte: size_t = 0 as size_t;
+    let mut index: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while index < 36 as ::core::ffi::c_int {
+        if !(index == 8 as ::core::ffi::c_int
+            || index == 13 as ::core::ffi::c_int
+            || index == 18 as ::core::ffi::c_int
+            || index == 23 as ::core::ffi::c_int)
+        {
+            let mut high: ::core::ffi::c_int = hex_value(*namespace_uuid.offset(index as isize));
+            index += 1;
+            let mut low: ::core::ffi::c_int = hex_value(*namespace_uuid.offset(index as isize));
+            let c2rust_fresh3 = byte;
+            byte = byte.wrapping_add(1);
+            namespace_bytes[c2rust_fresh3] =
+                (high << 4 as ::core::ffi::c_int | low) as ::core::ffi::c_uchar;
+        }
+        index += 1;
+    }
+    let mut sha1: *const mbedtls_md_info_t =
+        mbedtls_md_info_from_type(mbedtls_md_type_t::MBEDTLS_MD_SHA1);
+    if sha1.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut context: mbedtls_md_context_t = mbedtls_md_context_t {
+        private_md_info: ::core::ptr::null::<mbedtls_md_info_t>(),
+        private_md_ctx: ::core::ptr::null_mut::<::core::ffi::c_void>(),
+        private_hmac_ctx: ::core::ptr::null_mut::<::core::ffi::c_void>(),
+    };
+    mbedtls_md_init(&raw mut context);
+    let mut digest: [::core::ffi::c_uchar; 20] = [0; 20];
+    let mut rc: ::core::ffi::c_int =
+        mbedtls_md_setup(&raw mut context, sha1, 0 as ::core::ffi::c_int);
+    if rc == 0 as ::core::ffi::c_int {
+        rc = mbedtls_md_starts(&raw mut context);
+    }
+    if rc == 0 as ::core::ffi::c_int {
+        rc = mbedtls_md_update(
+            &raw mut context,
+            &raw mut namespace_bytes as *mut ::core::ffi::c_uchar,
+            ::core::mem::size_of::<[::core::ffi::c_uchar; 16]>(),
+        );
+    }
+    if rc == 0 as ::core::ffi::c_int {
+        rc = mbedtls_md_update(
+            &raw mut context,
+            name as *const ::core::ffi::c_uchar,
+            name_len,
+        );
+    }
+    if rc == 0 as ::core::ffi::c_int {
+        rc = mbedtls_md_finish(
+            &raw mut context,
+            &raw mut digest as *mut ::core::ffi::c_uchar,
+        );
+    }
+    mbedtls_md_free(&raw mut context);
+    if rc != 0 as ::core::ffi::c_int {
+        return -1 as ::core::ffi::c_int;
+    }
+    digest[6usize] = (digest[6usize] as ::core::ffi::c_uint & 0xf as ::core::ffi::c_uint
+        | 0x50 as ::core::ffi::c_uint) as ::core::ffi::c_uchar;
+    digest[8usize] = (digest[8usize] as ::core::ffi::c_uint & 0x3f as ::core::ffi::c_uint
+        | 0x80 as ::core::ffi::c_uint) as ::core::ffi::c_uchar;
+    let mut position: size_t = 0 as size_t;
+    let mut index_0: size_t = 0 as size_t;
+    while index_0 < 16 as size_t {
+        if index_0 == 4 as size_t
+            || index_0 == 6 as size_t
+            || index_0 == 8 as size_t
+            || index_0 == 10 as size_t
+        {
+            let c2rust_fresh4 = position;
+            position = position.wrapping_add(1);
+            *output.offset(c2rust_fresh4 as isize) = '-' as ::core::ffi::c_char;
+        }
+        let c2rust_fresh5 = position;
+        position = position.wrapping_add(1);
+        *output.offset(c2rust_fresh5 as isize) = hex_digit(
+            (digest[index_0] as ::core::ffi::c_int >> 4 as ::core::ffi::c_int)
+                as ::core::ffi::c_uchar,
+        );
+        let c2rust_fresh6 = position;
+        position = position.wrapping_add(1);
+        *output.offset(c2rust_fresh6 as isize) = hex_digit(digest[index_0]);
+        index_0 = index_0.wrapping_add(1);
     }
     *output.offset(position as isize) = '\0' as ::core::ffi::c_char;
     return 0 as ::core::ffi::c_int;

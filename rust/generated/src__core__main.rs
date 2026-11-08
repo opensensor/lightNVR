@@ -193,6 +193,28 @@ unsafe extern "C" {
     unsafe fn mqtt_cleanup();
     unsafe fn mqtt_delivery_worker_start() -> ::core::ffi::c_int;
     unsafe fn mqtt_delivery_worker_shutdown();
+    unsafe fn sqlite3_shutdown() -> ::core::ffi::c_int;
+    unsafe fn sqlite3_release_memory(_: ::core::ffi::c_int) -> ::core::ffi::c_int;
+    unsafe fn observation_evidence_init(
+        config_0: *const observation_evidence_config_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn observation_evidence_shutdown(drain_timeout_ms: ::core::ffi::c_int);
+    unsafe fn observation_evidence_set_enabled_probe(
+        r#fn: observation_evidence_enabled_fn,
+        ctx: *mut ::core::ffi::c_void,
+    );
+    unsafe fn observation_evidence_stream_enabled_probe(
+        camera_uuid: *const ::core::ffi::c_char,
+        ctx: *mut ::core::ffi::c_void,
+    ) -> bool;
+    unsafe fn observation_relay_start(
+        options: *const observation_relay_options_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn observation_relay_stop();
+    unsafe fn observation_retention_startup(
+        storage_path: *const ::core::ffi::c_char,
+        result: *mut observation_reconcile_result_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn mkdir_recursive(path: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn ensure_path(path: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn safe_strcpy(
@@ -297,8 +319,6 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
     unsafe fn go2rtc_integration_full_start() -> bool;
     unsafe fn go2rtc_integration_cleanup();
-    unsafe fn sqlite3_shutdown() -> ::core::ffi::c_int;
-    unsafe fn sqlite3_release_memory(_: ::core::ffi::c_int) -> ::core::ffi::c_int;
     unsafe fn init_database_ex(
         db_path: *const ::core::ffi::c_char,
         flags: ::core::ffi::c_uint,
@@ -315,6 +335,11 @@ unsafe extern "C" {
         interval_seconds: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
     unsafe fn stop_recording_sync_thread() -> ::core::ffi::c_int;
+    unsafe fn db_get_system_setting(
+        key: *const ::core::ffi::c_char,
+        out: *mut ::core::ffi::c_char,
+        out_len: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
     unsafe fn db_get_system_setting_alloc(
         key: *const ::core::ffi::c_char,
         out: *mut *mut ::core::ffi::c_char,
@@ -364,6 +389,11 @@ unsafe extern "C" {
         __endptr: *mut *mut ::core::ffi::c_char,
         __base: ::core::ffi::c_int,
     ) -> ::core::ffi::c_long;
+    unsafe fn strtoll(
+        __nptr: *const ::core::ffi::c_char,
+        __endptr: *mut *mut ::core::ffi::c_char,
+        __base: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_longlong;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
     unsafe fn exit(__status: ::core::ffi::c_int) -> !;
     unsafe fn getenv(__name: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
@@ -394,6 +424,7 @@ pub type pid_t = __pid_t;
 pub type ssize_t = isize;
 pub type clockid_t = __clockid_t;
 pub type time_t = __time_t;
+pub type int64_t = i64;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct __sigset_t {
@@ -842,6 +873,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -988,6 +1023,35 @@ impl component_state_t {
     pub const COMPONENT_RUNNING: Self = Self(0);
     pub const COMPONENT_STOPPING: Self = Self(1);
     pub const COMPONENT_STOPPED: Self = Self(2);
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_evidence_config_t {
+    pub storage_path: *const ::core::ffi::c_char,
+    pub global_max_bytes: int64_t,
+    pub global_max_items: ::core::ffi::c_int,
+    pub per_camera_max_items: ::core::ffi::c_int,
+    pub per_camera_max_bytes: int64_t,
+}
+pub type observation_evidence_enabled_fn =
+    Option<unsafe extern "C" fn(*const ::core::ffi::c_char, *mut ::core::ffi::c_void) -> bool>;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_relay_options_t {
+    pub batch_size: ::core::ffi::c_int,
+    pub poll_interval_ms: ::core::ffi::c_int,
+    pub outbox_cap: ::core::ffi::c_int,
+    pub startup_drain_ms: ::core::ffi::c_int,
+    pub storage_path: *const ::core::ffi::c_char,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_reconcile_result_t {
+    pub tmp_files_deleted: ::core::ffi::c_int,
+    pub stale_files_deleted: ::core::ffi::c_int,
+    pub pending_interrupted: ::core::ffi::c_int,
+    pub ready_missing: ::core::ffi::c_int,
+    pub epoch_regenerated: bool,
 }
 pub type stream_handle_t = *mut stream_handle_s;
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1141,6 +1205,7 @@ unsafe extern "C" fn signal_safe_write(mut msg: *const ::core::ffi::c_char) {
     }
     *__errno_location() = saved_errno;
 }
+pub const OBS_EVIDENCE_DEFAULT_DRAIN_MS: ::core::ffi::c_int = 2000 as ::core::ffi::c_int;
 #[unsafe(no_mangle)]
 pub static mut running: bool = r#true != 0;
 #[unsafe(no_mangle)]
@@ -3024,6 +3089,118 @@ unsafe fn main_0(
                     _log_stream_name,
                     b"Storage manager initialized\0".as_ptr() as *const ::core::ffi::c_char,
                 );
+                let mut observation_reconcile: observation_reconcile_result_t =
+                    observation_reconcile_result_t {
+                        tmp_files_deleted: 0,
+                        stale_files_deleted: 0,
+                        pending_interrupted: 0,
+                        ready_missing: 0,
+                        epoch_regenerated: false,
+                    };
+                if observation_retention_startup(
+                    &raw mut config.storage_path as *mut ::core::ffi::c_char,
+                    &raw mut observation_reconcile,
+                ) != 0 as ::core::ffi::c_int
+                {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Observation evidence reconciliation incomplete; evidence eviction disabled\0"
+                            .as_ptr() as *const ::core::ffi::c_char,
+                    );
+                }
+                let mut evidence_config: observation_evidence_config_t =
+                    observation_evidence_config_t {
+                        storage_path: ::core::ptr::null::<::core::ffi::c_char>(),
+                        global_max_bytes: 0,
+                        global_max_items: 0,
+                        per_camera_max_items: 0,
+                        per_camera_max_bytes: 0,
+                    };
+                let mut queue_bytes: [::core::ffi::c_char; 32] = [
+                    0 as ::core::ffi::c_char,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ];
+                evidence_config.storage_path =
+                    &raw mut config.storage_path as *mut ::core::ffi::c_char;
+                if db_get_system_setting(
+                    b"observation_global_queue_bytes\0".as_ptr() as *const ::core::ffi::c_char,
+                    &raw mut queue_bytes as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>() as ::core::ffi::c_int,
+                ) == 0 as ::core::ffi::c_int
+                    && queue_bytes[0usize] as ::core::ffi::c_int != 0
+                {
+                    let mut value: ::core::ffi::c_longlong = strtoll(
+                        &raw mut queue_bytes as *mut ::core::ffi::c_char,
+                        ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
+                        10 as ::core::ffi::c_int,
+                    );
+                    if value > 0 as ::core::ffi::c_longlong {
+                        evidence_config.global_max_bytes = value as int64_t;
+                    }
+                }
+                if observation_evidence_init(&raw mut evidence_config) != 0 as ::core::ffi::c_int {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Failed to initialize observation evidence; evidence admission disabled\0"
+                            .as_ptr() as *const ::core::ffi::c_char,
+                    );
+                } else {
+                    observation_evidence_set_enabled_probe(
+                        Some(
+                            observation_evidence_stream_enabled_probe
+                                as unsafe extern "C" fn(
+                                    *const ::core::ffi::c_char,
+                                    *mut ::core::ffi::c_void,
+                                ) -> bool,
+                        ),
+                        NULL,
+                    );
+                }
+                if observation_relay_start(::core::ptr::null::<observation_relay_options_t>())
+                    != 0 as ::core::ffi::c_int
+                {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Failed to start observation publication relay; staged observation changes stay pending\0"
+                            .as_ptr() as *const ::core::ffi::c_char,
+                    );
+                }
                 health_overrides = ::core::ptr::null_mut::<::core::ffi::c_char>();
                 health_overrides_length = 0 as size_t;
                 health_overrides_result = db_get_system_setting_alloc(
@@ -4713,6 +4890,8 @@ unsafe fn main_0(
             b"Cleaning up detection resources...\0".as_ptr() as *const ::core::ffi::c_char,
         );
         cleanup_detection_resources();
+        observation_relay_stop();
+        observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
             LOG_COMPONENT,
@@ -4929,6 +5108,8 @@ unsafe fn main_0(
         cleanup_mp4_recording_backend();
         cleanup_hls_streaming_backend();
         cleanup_transcoding_backend();
+        observation_relay_stop();
+        observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);
         event_bus_shutdown(r#true != 0);
         mqtt_event_adapter_unregister();
         event_identity_shutdown();

@@ -307,6 +307,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -3048,6 +3052,10 @@ pub unsafe extern "C" fn start_mp4_recording(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -3269,6 +3277,10 @@ pub unsafe extern "C" fn start_mp4_recording_with_url(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -3610,6 +3622,10 @@ pub unsafe extern "C" fn start_mp4_recording_with_trigger(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -3841,6 +3857,10 @@ pub unsafe extern "C" fn start_mp4_recording_with_url_and_trigger(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(

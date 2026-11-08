@@ -53,6 +53,7 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
 }
 pub type size_t = usize;
+pub type int64_t = i64;
 pub type CURL = ();
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -794,6 +795,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 pub type uint8_t = u8;
 #[derive(Clone, Copy, PartialEq, Eq)]

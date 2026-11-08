@@ -141,6 +141,7 @@ pub type __syscall_slong_t = ::core::ffi::c_long;
 pub type off_t = __off_t;
 pub type ssize_t = isize;
 pub type clockid_t = __clockid_t;
+pub type int64_t = i64;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct timespec {
@@ -436,6 +437,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]

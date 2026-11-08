@@ -40,6 +40,14 @@ unsafe extern "C" {
         __format: *const ::core::ffi::c_char,
         ...
     ) -> ::core::ffi::c_int;
+    unsafe fn observation_asset_state_parse(
+        name: *const ::core::ffi::c_char,
+        state: *mut observation_asset_state_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn observation_reason_is_valid(
+        state: observation_asset_state_t,
+        reason: *const ::core::ffi::c_char,
+    ) -> bool;
     unsafe fn lightnvr_uuid_is_valid(value: *const ::core::ffi::c_char) -> bool;
     unsafe fn lightnvr_uuid_generate_v4(output: *mut ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn memset(
@@ -171,6 +179,15 @@ pub struct event_envelope_t {
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
+pub struct observation_asset_state_t(pub ::core::ffi::c_uint);
+impl observation_asset_state_t {
+    pub const OBS_ASSET_PENDING: Self = Self(0);
+    pub const OBS_ASSET_READY: Self = Self(1);
+    pub const OBS_ASSET_UNAVAILABLE: Self = Self(2);
+    pub const OBS_ASSET_EXPIRED: Self = Self(3);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct C2Rust_Unnamed(pub ::core::ffi::c_uint);
 impl C2Rust_Unnamed {
     pub const _ISupper: Self = Self(256);
@@ -206,15 +223,32 @@ unsafe extern "C" fn tolower(mut __c: ::core::ffi::c_int) -> ::core::ffi::c_int 
         __c
     };
 }
+pub const OBS_LABEL_SIZE: ::core::ffi::c_int = 32 as ::core::ffi::c_int;
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
-static mut EVENT_TYPES: [event_type_definition_t; 13] = [
+static mut EVENT_TYPES: [event_type_definition_t; 14] = [
     event_type_definition_t {
         r#type: b"io.lightnvr.detection.object.v1\0".as_ptr() as *const ::core::ffi::c_char,
         family: b"detection\0".as_ptr() as *const ::core::ffi::c_char,
         description: b"One or more objects observed by a camera\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        severity: event_severity_t::EVENT_SEVERITY_INFO,
+        dynamic_severity: false,
+        minimum_severity: event_severity_t::EVENT_SEVERITY_INFO,
+        maximum_severity: event_severity_t::EVENT_SEVERITY_INFO,
+        sensitivity: event_sensitivity_t::EVENT_SENSITIVITY_OPERATIONAL,
+        media_policy: event_media_policy_t::EVENT_MEDIA_REFERENCE_ALLOWED,
+        expected_rate: event_expected_rate_t::EVENT_RATE_HIGH,
+        subject_kind: event_subject_kind_t::EVENT_SUBJECT_CAMERA,
+        default_expiry_seconds: 3600 as ::core::ffi::c_int,
+    },
+    event_type_definition_t {
+        r#type: b"io.lightnvr.detection.observation_changed.v1\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        family: b"detection\0".as_ptr() as *const ::core::ffi::c_char,
+        description: b"A durable object observation was created or changed\0".as_ptr()
             as *const ::core::ffi::c_char,
         severity: event_severity_t::EVENT_SEVERITY_INFO,
         dynamic_severity: false,
@@ -901,6 +935,321 @@ unsafe extern "C" fn system_subject_matches_scope(
     }
     return r#false != 0;
 }
+unsafe extern "C" fn valid_rfc3339_utc(mut value: *const ::core::ffi::c_char) -> bool {
+    if value.is_null() {
+        return r#false != 0;
+    }
+    let mut length: size_t = strnlen(value, 40 as size_t);
+    if length < 20 as size_t || length >= 40 as size_t {
+        return r#false != 0;
+    }
+    let mut pattern: *const ::core::ffi::c_char =
+        b"dddd-dd-ddTdd:dd:dd\0".as_ptr() as *const ::core::ffi::c_char;
+    let mut index: size_t = 0 as size_t;
+    while index < 19 as size_t {
+        if *pattern.offset(index as isize) as ::core::ffi::c_int == 'd' as ::core::ffi::c_int {
+            if *(*__ctype_b_loc()).offset(*value.offset(index as isize) as ::core::ffi::c_uchar
+                as ::core::ffi::c_int as isize) as ::core::ffi::c_int
+                & C2Rust_Unnamed::_ISdigit.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                    as ::core::ffi::c_int
+                == 0
+            {
+                return r#false != 0;
+            }
+        } else if *value.offset(index as isize) as ::core::ffi::c_int
+            != *pattern.offset(index as isize) as ::core::ffi::c_int
+        {
+            return r#false != 0;
+        }
+        index = index.wrapping_add(1);
+    }
+    let mut cursor: size_t = 19 as size_t;
+    if *value.offset(cursor as isize) as ::core::ffi::c_int == '.' as ::core::ffi::c_int {
+        let mut digits: size_t = 0 as size_t;
+        cursor = cursor.wrapping_add(1);
+        while *(*__ctype_b_loc()).offset(
+            *value.offset(cursor as isize) as ::core::ffi::c_uchar as ::core::ffi::c_int as isize
+        ) as ::core::ffi::c_int
+            & C2Rust_Unnamed::_ISdigit.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                as ::core::ffi::c_int
+            != 0
+            && digits < 9 as size_t
+        {
+            cursor = cursor.wrapping_add(1);
+            digits = digits.wrapping_add(1);
+        }
+        if digits == 0 as size_t {
+            return r#false != 0;
+        }
+    }
+    return *value.offset(cursor as isize) as ::core::ffi::c_int == 'Z' as ::core::ffi::c_int
+        && *value.offset(cursor.wrapping_add(1 as size_t) as isize) as ::core::ffi::c_int
+            == '\0' as ::core::ffi::c_int;
+}
+unsafe extern "C" fn valid_observation_label(mut value: *const ::core::ffi::c_char) -> bool {
+    if value.is_null() {
+        return r#false != 0;
+    }
+    let mut length: size_t = strnlen(value, OBS_LABEL_SIZE as size_t);
+    if length == 0 as size_t || length >= OBS_LABEL_SIZE as size_t {
+        return r#false != 0;
+    }
+    let mut cursor: *const ::core::ffi::c_uchar = value as *const ::core::ffi::c_uchar;
+    while *cursor != 0 {
+        if *(*__ctype_b_loc()).offset(*cursor as ::core::ffi::c_int as isize) as ::core::ffi::c_int
+            & C2Rust_Unnamed::_IScntrl.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                as ::core::ffi::c_int
+            != 0
+        {
+            return r#false != 0;
+        }
+        cursor = cursor.offset(1);
+    }
+    return r#true != 0;
+}
+unsafe extern "C" fn validate_observation_changed(
+    mut event: *const event_envelope_t,
+    mut error: *mut ::core::ffi::c_char,
+    mut error_size: size_t,
+) -> ::core::ffi::c_int {
+    let mut data: *const cJSON = (*event).data;
+    let mut observation_id: *const cJSON = required_field(
+        data,
+        b"observation_id\0".as_ptr() as *const ::core::ffi::c_char,
+        cJSON_String,
+        error,
+        error_size,
+    );
+    let mut revision: *const cJSON = required_field(
+        data,
+        b"revision\0".as_ptr() as *const ::core::ffi::c_char,
+        cJSON_Number,
+        error,
+        error_size,
+    );
+    let mut camera_uuid: *const cJSON = required_field(
+        data,
+        b"camera_uuid\0".as_ptr() as *const ::core::ffi::c_char,
+        cJSON_String,
+        error,
+        error_size,
+    );
+    let mut label: *const cJSON = required_field(
+        data,
+        b"label\0".as_ptr() as *const ::core::ffi::c_char,
+        cJSON_String,
+        error,
+        error_size,
+    );
+    let mut observed_at: *const cJSON = required_field(
+        data,
+        b"observed_at\0".as_ptr() as *const ::core::ffi::c_char,
+        cJSON_String,
+        error,
+        error_size,
+    );
+    let mut cause: *const cJSON = required_field(
+        data,
+        b"change_cause\0".as_ptr() as *const ::core::ffi::c_char,
+        cJSON_String,
+        error,
+        error_size,
+    );
+    let mut state: *const cJSON = required_field(
+        data,
+        b"evidence_state\0".as_ptr() as *const ::core::ffi::c_char,
+        cJSON_String,
+        error,
+        error_size,
+    );
+    let mut asset_id: *const cJSON = required_field(
+        data,
+        b"asset_id\0".as_ptr() as *const ::core::ffi::c_char,
+        cJSON_String,
+        error,
+        error_size,
+    );
+    if observation_id.is_null()
+        || revision.is_null()
+        || camera_uuid.is_null()
+        || label.is_null()
+        || observed_at.is_null()
+        || cause.is_null()
+        || state.is_null()
+        || asset_id.is_null()
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut reason: *const cJSON = cJSON_GetObjectItemCaseSensitive(
+        data,
+        b"evidence_reason\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    if reason.is_null() {
+        set_error(
+            error,
+            error_size,
+            b"event data is missing required field 'evidence_reason'\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if !lightnvr_uuid_is_valid((*observation_id).valuestring)
+        || !lightnvr_uuid_is_valid((*asset_id).valuestring)
+        || !lightnvr_uuid_is_valid((*camera_uuid).valuestring)
+    {
+        set_error(
+            error,
+            error_size,
+            b"observation identifiers must be UUIDs\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if strcmp(
+        (&raw const (*event).subject as *const ::core::ffi::c_char)
+            .offset(7 as ::core::ffi::c_int as isize),
+        (*camera_uuid).valuestring,
+    ) != 0 as ::core::ffi::c_int
+    {
+        set_error(
+            error,
+            error_size,
+            b"observation camera_uuid must match the event subject\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if (*revision).valuedouble < 1 as ::core::ffi::c_int as ::core::ffi::c_double
+        || (*revision).valuedouble > INT_MAX as ::core::ffi::c_double
+        || (*revision).valuedouble != (*revision).valueint as ::core::ffi::c_double
+    {
+        set_error(
+            error,
+            error_size,
+            b"observation revision must be an integer >= 1\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if !valid_observation_label((*label).valuestring) {
+        set_error(
+            error,
+            error_size,
+            b"observation label must be 1..31 bytes\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if !valid_rfc3339_utc((*observed_at).valuestring) {
+        set_error(
+            error,
+            error_size,
+            b"observation observed_at must be RFC 3339 UTC\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if strcmp(
+        (*cause).valuestring,
+        b"created\0".as_ptr() as *const ::core::ffi::c_char,
+    ) != 0 as ::core::ffi::c_int
+        && strcmp(
+            (*cause).valuestring,
+            b"evidence\0".as_ptr() as *const ::core::ffi::c_char,
+        ) != 0 as ::core::ffi::c_int
+        && strcmp(
+            (*cause).valuestring,
+            b"classification\0".as_ptr() as *const ::core::ffi::c_char,
+        ) != 0 as ::core::ffi::c_int
+    {
+        set_error(
+            error,
+            error_size,
+            b"observation change_cause is unknown\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut evidence_state: observation_asset_state_t =
+        observation_asset_state_t::OBS_ASSET_PENDING;
+    if observation_asset_state_parse((*state).valuestring, &raw mut evidence_state)
+        != 0 as ::core::ffi::c_int
+    {
+        set_error(
+            error,
+            error_size,
+            b"observation evidence_state is unknown\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if cJSON_IsNull(reason) == 0 && cJSON_IsString(reason) == 0 {
+        set_error(
+            error,
+            error_size,
+            b"observation evidence_reason must be a string or null\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut reason_text: *const ::core::ffi::c_char = if cJSON_IsString(reason) != 0 {
+        (*reason).valuestring
+    } else {
+        ::core::ptr::null_mut::<::core::ffi::c_char>()
+    };
+    if !reason_text.is_null()
+        && *reason_text.offset(0isize) as ::core::ffi::c_int == '\0' as ::core::ffi::c_int
+    {
+        set_error(
+            error,
+            error_size,
+            b"observation evidence_reason must not be empty\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if !observation_reason_is_valid(evidence_state, reason_text) {
+        set_error(
+            error,
+            error_size,
+            b"observation evidence_reason is inconsistent with evidence_state\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut snapshot: *const cJSON = cJSON_GetObjectItemCaseSensitive(
+        data,
+        b"snapshot_url\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    if evidence_state.0 == observation_asset_state_t::OBS_ASSET_READY.0 {
+        let mut expected: [::core::ffi::c_char; 96] = [0; 96];
+        snprintf(
+            &raw mut expected as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 96]>(),
+            b"/api/observations/%s/snapshot\0".as_ptr() as *const ::core::ffi::c_char,
+            (*observation_id).valuestring,
+        );
+        if cJSON_IsString(snapshot) == 0
+            || strcmp(
+                (*snapshot).valuestring,
+                &raw mut expected as *mut ::core::ffi::c_char,
+            ) != 0 as ::core::ffi::c_int
+        {
+            set_error(
+                error,
+                error_size,
+                b"ready observation events need their own snapshot_url\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+            );
+            return -1 as ::core::ffi::c_int;
+        }
+    } else if !snapshot.is_null() {
+        set_error(
+            error,
+            error_size,
+            b"snapshot_url is only allowed when evidence is ready\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    return 0 as ::core::ffi::c_int;
+}
 unsafe extern "C" fn validate_type_data(
     mut event: *const event_envelope_t,
     mut error: *mut ::core::ffi::c_char,
@@ -909,6 +1258,13 @@ unsafe extern "C" fn validate_type_data(
     let mut r#type: *const ::core::ffi::c_char =
         &raw const (*event).r#type as *const ::core::ffi::c_char;
     let mut data: *const cJSON = (*event).data;
+    if strcmp(
+        r#type,
+        b"io.lightnvr.detection.observation_changed.v1\0".as_ptr() as *const ::core::ffi::c_char,
+    ) == 0 as ::core::ffi::c_int
+    {
+        return validate_observation_changed(event, error, error_size);
+    }
     if strcmp(
         r#type,
         b"io.lightnvr.detection.object.v1\0".as_ptr() as *const ::core::ffi::c_char,
@@ -1777,7 +2133,7 @@ pub unsafe extern "C" fn event_registry_all(
     mut count: *mut ::core::ffi::c_int,
 ) -> *const event_type_definition_t {
     if !count.is_null() {
-        *count = ::core::mem::size_of::<[event_type_definition_t; 13]>()
+        *count = ::core::mem::size_of::<[event_type_definition_t; 14]>()
             .wrapping_div(::core::mem::size_of::<event_type_definition_t>())
             as ::core::ffi::c_int;
     }

@@ -93,6 +93,14 @@ unsafe extern "C" {
         capacity: size_t,
     ) -> size_t;
     unsafe fn mqtt_presence_get_stats(stats: *mut mqtt_presence_stats_t);
+    unsafe fn observation_diagnostics_collect(
+        out: *mut observation_diagnostics_t,
+        now_ms: int64_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn observation_diagnostics_free(diagnostics: *mut observation_diagnostics_t);
+    unsafe fn observation_diagnostics_relay_lag_seconds(
+        diagnostics: *const observation_diagnostics_t,
+    ) -> ::core::ffi::c_double;
     unsafe fn get_total_stream_count() -> ::core::ffi::c_int;
     unsafe fn get_storage_health(health: *mut storage_health_t) -> ::core::ffi::c_int;
     unsafe fn safe_strcpy(
@@ -612,6 +620,130 @@ impl system_health_sampling_tier_t {
     pub const SYSTEM_HEALTH_TIER_SLOW: Self = Self(2);
     pub const SYSTEM_HEALTH_TIER_DEVICE: Self = Self(3);
 }
+pub type observation_diagnostics_t = observation_diagnostics_snapshot;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_diagnostics_snapshot {
+    pub collected_at_ms: int64_t,
+    pub evidence: observation_evidence_stats_t,
+    pub relay: observation_relay_stats_t,
+    pub db_available: bool,
+    pub db: observation_db_diagnostics_t,
+    pub cameras: *mut observation_retention_camera_status_t,
+    pub camera_count: ::core::ffi::c_int,
+    pub budget_exhausted_cameras: ::core::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_retention_camera_status_t {
+    pub camera_uuid: [::core::ffi::c_char; 37],
+    pub retained_bytes: int64_t,
+    pub max_bytes: int64_t,
+    pub max_age_days: ::core::ffi::c_int,
+    pub budget_exhausted: bool,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_db_diagnostics_t {
+    pub meta: observation_meta_t,
+    pub has_oldest_observed_at: bool,
+    pub oldest_observed_at_ms: int64_t,
+    pub observations: int64_t,
+    pub publications_pending: int64_t,
+    pub publications_failed: int64_t,
+    pub publications_expired: int64_t,
+    pub oldest_pending_created_at_ms: int64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_meta_t {
+    pub epoch_uuid: [::core::ffi::c_char; 37],
+    pub oldest_seq: int64_t,
+    pub head_seq: int64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_relay_stats_t {
+    pub running: bool,
+    pub passes: uint64_t,
+    pub relayed: uint64_t,
+    pub duplicates: uint64_t,
+    pub relayed_no_route: uint64_t,
+    pub expired: uint64_t,
+    pub failed: uint64_t,
+    pub enqueue_full: uint64_t,
+    pub enqueue_errors: uint64_t,
+    pub mark_errors: uint64_t,
+    pub read_errors: uint64_t,
+    pub cap_pauses: uint64_t,
+    pub backoffs: uint64_t,
+    pub sidecar_writes: uint64_t,
+    pub sidecar_errors: uint64_t,
+    pub epoch_regenerations: uint64_t,
+    pub last_relayed_seq: int64_t,
+    pub oldest_pending_created_at_ms: int64_t,
+    pub last_pass_pending: ::core::ffi::c_int,
+    pub outbox_type_pending: int64_t,
+    pub consecutive_failures: ::core::ffi::c_int,
+    pub backoff_until_ms: int64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_evidence_stats_t {
+    pub initialized: bool,
+    pub worker_running: bool,
+    pub allocated: bool,
+    pub accepted: uint64_t,
+    pub dropped_queue_full: uint64_t,
+    pub dropped_budget: uint64_t,
+    pub dropped_disabled: uint64_t,
+    pub dropped_untracked: uint64_t,
+    pub unavailable_submitted: uint64_t,
+    pub ready: uint64_t,
+    pub failed_encode: uint64_t,
+    pub failed_write: uint64_t,
+    pub failed_db: uint64_t,
+    pub disabled_at_encode: uint64_t,
+    pub interrupted: uint64_t,
+    pub bytes_written: uint64_t,
+    pub backlog_items: uint32_t,
+    pub backlog_bytes: uint64_t,
+    pub drop_ring_depth: uint32_t,
+    pub high_water_items: uint32_t,
+    pub high_water_bytes: uint64_t,
+    pub budget_exhausted_cameras: uint32_t,
+    pub limit_items: uint32_t,
+    pub limit_camera_items: uint32_t,
+    pub limit_bytes: uint64_t,
+    pub limit_camera_bytes: uint64_t,
+    pub camera_high_water_items: uint32_t,
+    pub submit_latency_count: uint64_t,
+    pub submit_latency_sum_ns: uint64_t,
+    pub submit_latency_max_ns: uint64_t,
+    pub submit_latency_bucket: [uint64_t; 10],
+    pub discard_deferred: uint64_t,
+    pub discard_inline: uint64_t,
+    pub discard_pending_bytes: uint64_t,
+    pub limit_discard_bytes: uint64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed {
+    pub outcome: *const ::core::ffi::c_char,
+    pub value: uint64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed_0 {
+    pub reason: *const ::core::ffi::c_char,
+    pub value: uint64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed_1 {
+    pub reason: *const ::core::ffi::c_char,
+    pub value: uint64_t,
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct system_health_process_run_t {
@@ -741,7 +873,8 @@ impl authorization_action_t {
     pub const AUTHZ_LPR_SEARCH: Self = Self(16);
     pub const AUTHZ_LPR_EXPORT: Self = Self(17);
     pub const AUTHZ_LPR_DELETE: Self = Self(18);
-    pub const AUTHZ_ACTION_COUNT: Self = Self(19);
+    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
+    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -765,6 +898,7 @@ pub const EVENT_OUTBOX_DEFAULT_MAX_BYTES: ::core::ffi::c_longlong = 64 as ::core
     * 1024 as ::core::ffi::c_longlong;
 pub const MQTT_EVENT_OUTBOX_DESTINATION: [::core::ffi::c_char; 13] =
     unsafe { ::core::mem::transmute::<[u8; 13], [::core::ffi::c_char; 13]>(*b"mqtt:default\0") };
+pub const OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS: ::core::ffi::c_int = 10 as ::core::ffi::c_int;
 unsafe extern "C" fn prom_buf_init(mut b: *mut prom_buf_t, mut initial_cap: size_t) {
     (*b).data = malloc(initial_cap) as *mut ::core::ffi::c_char;
     (*b).len = 0 as size_t;
@@ -3949,6 +4083,637 @@ pub unsafe extern "C" fn api_metrics_render_system_health(
     );
     return buffer.data;
 }
+unsafe extern "C" fn prom_family(
+    mut b: *mut prom_buf_t,
+    mut name: *const ::core::ffi::c_char,
+    mut r#type: *const ::core::ffi::c_char,
+    mut help: *const ::core::ffi::c_char,
+) {
+    prom_buf_append(
+        b,
+        b"# HELP %s %s\n\0".as_ptr() as *const ::core::ffi::c_char,
+        name,
+        help,
+    );
+    prom_buf_append(
+        b,
+        b"# TYPE %s %s\n\0".as_ptr() as *const ::core::ffi::c_char,
+        name,
+        r#type,
+    );
+}
+unsafe extern "C" fn prom_u64(
+    mut b: *mut prom_buf_t,
+    mut name: *const ::core::ffi::c_char,
+    mut r#type: *const ::core::ffi::c_char,
+    mut help: *const ::core::ffi::c_char,
+    mut value: uint64_t,
+) {
+    prom_family(b, name, r#type, help);
+    prom_buf_append(
+        b,
+        b"%s %llu\n\0".as_ptr() as *const ::core::ffi::c_char,
+        name,
+        value as ::core::ffi::c_ulonglong,
+    );
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn api_metrics_render_observations(
+    mut d: *const observation_diagnostics_t,
+) -> *mut ::core::ffi::c_char {
+    if d.is_null() {
+        return ::core::ptr::null_mut::<::core::ffi::c_char>();
+    }
+    let mut e: *const observation_evidence_stats_t = &raw const (*d).evidence;
+    let mut r: *const observation_relay_stats_t = &raw const (*d).relay;
+    let mut b: prom_buf_t = prom_buf_t {
+        data: ::core::ptr::null_mut::<::core::ffi::c_char>(),
+        len: 0,
+        cap: 0,
+    };
+    prom_buf_init(&raw mut b, 8192 as size_t);
+    if b.data.is_null() {
+        return ::core::ptr::null_mut::<::core::ffi::c_char>();
+    }
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_accepted_total\0".as_ptr() as *const ::core::ffi::c_char,
+        b"counter\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Observation batches whose evidence frame was queued\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).accepted,
+    );
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_dropped_total\0".as_ptr() as *const ::core::ffi::c_char,
+        b"counter\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Observation evidence submissions dropped, by reason\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    let drops: [C2Rust_Unnamed_1; 4] = [
+        C2Rust_Unnamed_1 {
+            reason: b"queue_full\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*e).dropped_queue_full,
+        },
+        C2Rust_Unnamed_1 {
+            reason: b"budget_exhausted\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*e).dropped_budget,
+        },
+        C2Rust_Unnamed_1 {
+            reason: b"disabled\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*e).dropped_disabled,
+        },
+        C2Rust_Unnamed_1 {
+            reason: b"untracked\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*e).dropped_untracked,
+        },
+    ];
+    let mut i: size_t = 0 as size_t;
+    while i < ::core::mem::size_of::<[C2Rust_Unnamed_1; 4]>()
+        .wrapping_div(::core::mem::size_of::<C2Rust_Unnamed_1>())
+    {
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_dropped_total{reason=\"%s\"} %llu\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            drops[i].reason,
+            drops[i].value as ::core::ffi::c_ulonglong,
+        );
+        i = i.wrapping_add(1);
+    }
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_unavailable_total\0".as_ptr() as *const ::core::ffi::c_char,
+        b"counter\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Observation batches recorded without media (no_matching_media)\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).unavailable_submitted,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_ready_total\0".as_ptr() as *const ::core::ffi::c_char,
+        b"counter\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Evidence assets committed as ready\0".as_ptr() as *const ::core::ffi::c_char,
+        (*e).ready,
+    );
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_evidence_failures_total\0".as_ptr() as *const ::core::ffi::c_char,
+        b"counter\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Evidence assets that became unavailable after admission, by reason\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    let failures: [C2Rust_Unnamed_0; 5] = [
+        C2Rust_Unnamed_0 {
+            reason: b"encode_failed\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*e).failed_encode,
+        },
+        C2Rust_Unnamed_0 {
+            reason: b"write_failed\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*e).failed_write,
+        },
+        C2Rust_Unnamed_0 {
+            reason: b"db_error\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*e).failed_db,
+        },
+        C2Rust_Unnamed_0 {
+            reason: b"disabled\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*e).disabled_at_encode,
+        },
+        C2Rust_Unnamed_0 {
+            reason: b"interrupted\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*e).interrupted,
+        },
+    ];
+    let mut i_0: size_t = 0 as size_t;
+    while i_0
+        < ::core::mem::size_of::<[C2Rust_Unnamed_0; 5]>()
+            .wrapping_div(::core::mem::size_of::<C2Rust_Unnamed_0>())
+    {
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_evidence_failures_total{reason=\"%s\"} %llu\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            failures[i_0].reason,
+            failures[i_0].value as ::core::ffi::c_ulonglong,
+        );
+        i_0 = i_0.wrapping_add(1);
+    }
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_bytes_written_total\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        b"counter\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Evidence JPEG bytes written\0".as_ptr() as *const ::core::ffi::c_char,
+        (*e).bytes_written,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_backlog_items\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Evidence frames queued for encoding\0".as_ptr() as *const ::core::ffi::c_char,
+        (*e).backlog_items as uint64_t,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_backlog_bytes\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Bytes held by queued evidence frames\0".as_ptr() as *const ::core::ffi::c_char,
+        (*e).backlog_bytes,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_drop_ring_depth\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Drop records waiting to be written\0".as_ptr() as *const ::core::ffi::c_char,
+        (*e).drop_ring_depth as uint64_t,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_high_water_items\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Highest evidence backlog in items this process run\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).high_water_items as uint64_t,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_high_water_bytes\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Highest evidence backlog in bytes this process run\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).high_water_bytes,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_queue_allocated\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Whether the evidence queue or worker exists (0 while evidence is unused)\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (if (*e).allocated as ::core::ffi::c_int != 0 {
+            1 as ::core::ffi::c_uint
+        } else {
+            0 as ::core::ffi::c_uint
+        }) as uint64_t,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_worker_running\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Whether the evidence encoder worker is running\0".as_ptr() as *const ::core::ffi::c_char,
+        (if (*e).worker_running as ::core::ffi::c_int != 0 {
+            1 as ::core::ffi::c_uint
+        } else {
+            0 as ::core::ffi::c_uint
+        }) as uint64_t,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_camera_high_water_items\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Highest evidence backlog held by one camera this process run\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).camera_high_water_items as uint64_t,
+    );
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_evidence_limit_items\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Configured evidence queue depth bound, global and per camera\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_evidence_limit_items{scope=\"global\"} %u\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).limit_items as ::core::ffi::c_uint,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_evidence_limit_items{scope=\"camera\"} %u\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).limit_camera_items as ::core::ffi::c_uint,
+    );
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_evidence_limit_bytes\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Configured evidence queue byte bound, global and per camera\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_evidence_limit_bytes{scope=\"global\"} %llu\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).limit_bytes as ::core::ffi::c_ulonglong,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_evidence_limit_bytes{scope=\"camera\"} %llu\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).limit_camera_bytes as ::core::ffi::c_ulonglong,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_evidence_limit_bytes{scope=\"discard\"} %llu\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).limit_discard_bytes as ::core::ffi::c_ulonglong,
+    );
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_evidence_discards_total\0".as_ptr() as *const ::core::ffi::c_char,
+        b"counter\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Rejected evidence frames released by the worker (deferred) or by the producer (inline)\0"
+            .as_ptr() as *const ::core::ffi::c_char,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_evidence_discards_total{mode=\"deferred\"} %llu\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).discard_deferred as ::core::ffi::c_ulonglong,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_evidence_discards_total{mode=\"inline\"} %llu\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).discard_inline as ::core::ffi::c_ulonglong,
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_discard_pending_bytes\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Rejected evidence frame bytes waiting for the worker to release them\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).discard_pending_bytes,
+    );
+    static mut submit_le: [*const ::core::ffi::c_char; 10] = [
+        b"0.000001\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.000005\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.00001\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.00005\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.0001\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.00025\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.0005\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.001\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.01\0".as_ptr() as *const ::core::ffi::c_char,
+        b"+Inf\0".as_ptr() as *const ::core::ffi::c_char,
+    ];
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_submit_latency_seconds\0".as_ptr() as *const ::core::ffi::c_char,
+        b"histogram\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Producer time inside evidence admission this process run\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    let mut cumulative: ::core::ffi::c_ulonglong = 0 as ::core::ffi::c_ulonglong;
+    let mut i_1: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_1 < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS {
+        cumulative = cumulative
+            .wrapping_add((*e).submit_latency_bucket[i_1 as usize] as ::core::ffi::c_ulonglong);
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_submit_latency_seconds_bucket{le=\"%s\"} %llu\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            submit_le[i_1 as usize],
+            cumulative,
+        );
+        i_1 += 1;
+    }
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_submit_latency_seconds_sum %.9f\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).submit_latency_sum_ns as ::core::ffi::c_double / 1e9f64,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_submit_latency_seconds_count %llu\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).submit_latency_count as ::core::ffi::c_ulonglong,
+    );
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_submit_latency_max_seconds\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Slowest producer evidence admission this process run\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_submit_latency_max_seconds %.9f\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*e).submit_latency_max_ns as ::core::ffi::c_double / 1e9f64,
+    );
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_evidence_retained_bytes\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Ready evidence bytes retained per camera as of the last retention pass\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    let mut i_2: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_2 < (*d).camera_count {
+        let mut uuid: [::core::ffi::c_char; 75] = [0; 75];
+        prom_label_escape(
+            &raw mut (*(*d).cameras.offset(i_2 as isize)).camera_uuid as *mut ::core::ffi::c_char,
+            &raw mut uuid as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 75]>(),
+        );
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_evidence_retained_bytes{camera_uuid=\"%s\"} %lld\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            &raw mut uuid as *mut ::core::ffi::c_char,
+            (*(*d).cameras.offset(i_2 as isize)).retained_bytes as ::core::ffi::c_longlong,
+        );
+        i_2 += 1;
+    }
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_evidence_budget_bytes\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Per-camera evidence byte budget\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    let mut i_3: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_3 < (*d).camera_count {
+        let mut uuid_0: [::core::ffi::c_char; 75] = [0; 75];
+        prom_label_escape(
+            &raw mut (*(*d).cameras.offset(i_3 as isize)).camera_uuid as *mut ::core::ffi::c_char,
+            &raw mut uuid_0 as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 75]>(),
+        );
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_evidence_budget_bytes{camera_uuid=\"%s\"} %lld\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            &raw mut uuid_0 as *mut ::core::ffi::c_char,
+            (*(*d).cameras.offset(i_3 as isize)).max_bytes as ::core::ffi::c_longlong,
+        );
+        i_3 += 1;
+    }
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_evidence_budget_exhausted\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Whether a camera is over budget with only protected evidence left\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    let mut i_4: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_4 < (*d).camera_count {
+        let mut uuid_1: [::core::ffi::c_char; 75] = [0; 75];
+        prom_label_escape(
+            &raw mut (*(*d).cameras.offset(i_4 as isize)).camera_uuid as *mut ::core::ffi::c_char,
+            &raw mut uuid_1 as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 75]>(),
+        );
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_evidence_budget_exhausted{camera_uuid=\"%s\"} %d\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            &raw mut uuid_1 as *mut ::core::ffi::c_char,
+            if (*(*d).cameras.offset(i_4 as isize)).budget_exhausted as ::core::ffi::c_int != 0 {
+                1 as ::core::ffi::c_int
+            } else {
+                0 as ::core::ffi::c_int
+            },
+        );
+        i_4 += 1;
+    }
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_evidence_budget_exhausted_cameras\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Cameras whose evidence admission is paused by the byte budget\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        if (*d).budget_exhausted_cameras > 0 as ::core::ffi::c_int {
+            (*d).budget_exhausted_cameras as uint64_t
+        } else {
+            0 as uint64_t
+        },
+    );
+    if (*d).db_available {
+        prom_u64(
+            &raw mut b,
+            b"lightnvr_observation_history_observations\0".as_ptr() as *const ::core::ffi::c_char,
+            b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Retained observation rows\0".as_ptr() as *const ::core::ffi::c_char,
+            (*d).db.observations as uint64_t,
+        );
+        prom_family(
+            &raw mut b,
+            b"lightnvr_observation_history_oldest_seq\0".as_ptr() as *const ::core::ffi::c_char,
+            b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Oldest retained change seq (oldest recoverable cursor is seq - 1)\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_history_oldest_seq %lld\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            (*d).db.meta.oldest_seq as ::core::ffi::c_longlong,
+        );
+        prom_family(
+            &raw mut b,
+            b"lightnvr_observation_history_head_seq\0".as_ptr() as *const ::core::ffi::c_char,
+            b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Newest change seq\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_history_head_seq %lld\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            (*d).db.meta.head_seq as ::core::ffi::c_longlong,
+        );
+        prom_family(
+            &raw mut b,
+            b"lightnvr_observation_history_oldest_observed_timestamp_seconds\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+            b"observed_at of the oldest retained observation (Unix seconds)\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        if (*d).db.has_oldest_observed_at {
+            prom_buf_append(
+                &raw mut b,
+                b"lightnvr_observation_history_oldest_observed_timestamp_seconds %.3f\n\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                (*d).db.oldest_observed_at_ms as ::core::ffi::c_double / 1000.0f64,
+            );
+        }
+        prom_family(
+            &raw mut b,
+            b"lightnvr_observation_publications\0".as_ptr() as *const ::core::ffi::c_char,
+            b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Observation change publications by state\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_publications{state=\"pending\"} %lld\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            (*d).db.publications_pending as ::core::ffi::c_longlong,
+        );
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_publications{state=\"failed\"} %lld\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            (*d).db.publications_failed as ::core::ffi::c_longlong,
+        );
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_publications{state=\"expired\"} %lld\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            (*d).db.publications_expired as ::core::ffi::c_longlong,
+        );
+    }
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_relay_lag_seconds\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Age of the oldest pending observation publication\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    prom_buf_append(
+        &raw mut b,
+        b"lightnvr_observation_relay_lag_seconds %.3f\n\0".as_ptr() as *const ::core::ffi::c_char,
+        observation_diagnostics_relay_lag_seconds(d),
+    );
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_relay_running\0".as_ptr() as *const ::core::ffi::c_char,
+        b"gauge\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Whether the observation publication relay is running\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (if (*r).running as ::core::ffi::c_int != 0 {
+            1 as ::core::ffi::c_uint
+        } else {
+            0 as ::core::ffi::c_uint
+        }) as uint64_t,
+    );
+    prom_family(
+        &raw mut b,
+        b"lightnvr_observation_relay_events_total\0".as_ptr() as *const ::core::ffi::c_char,
+        b"counter\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Observation publication relay outcomes this process run\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    let relay: [C2Rust_Unnamed; 12] = [
+        C2Rust_Unnamed {
+            outcome: b"relayed\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).relayed,
+        },
+        C2Rust_Unnamed {
+            outcome: b"duplicate\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).duplicates,
+        },
+        C2Rust_Unnamed {
+            outcome: b"no_route\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).relayed_no_route,
+        },
+        C2Rust_Unnamed {
+            outcome: b"expired\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).expired,
+        },
+        C2Rust_Unnamed {
+            outcome: b"failed\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).failed,
+        },
+        C2Rust_Unnamed {
+            outcome: b"outbox_full\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).enqueue_full,
+        },
+        C2Rust_Unnamed {
+            outcome: b"enqueue_error\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).enqueue_errors,
+        },
+        C2Rust_Unnamed {
+            outcome: b"mark_error\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).mark_errors,
+        },
+        C2Rust_Unnamed {
+            outcome: b"read_error\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).read_errors,
+        },
+        C2Rust_Unnamed {
+            outcome: b"cap_pause\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).cap_pauses,
+        },
+        C2Rust_Unnamed {
+            outcome: b"backoff\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).backoffs,
+        },
+        C2Rust_Unnamed {
+            outcome: b"sidecar_error\0".as_ptr() as *const ::core::ffi::c_char,
+            value: (*r).sidecar_errors,
+        },
+    ];
+    let mut i_5: size_t = 0 as size_t;
+    while i_5
+        < ::core::mem::size_of::<[C2Rust_Unnamed; 12]>()
+            .wrapping_div(::core::mem::size_of::<C2Rust_Unnamed>())
+    {
+        prom_buf_append(
+            &raw mut b,
+            b"lightnvr_observation_relay_events_total{outcome=\"%s\"} %llu\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            relay[i_5].outcome,
+            relay[i_5].value as ::core::ffi::c_ulonglong,
+        );
+        i_5 = i_5.wrapping_add(1);
+    }
+    prom_u64(
+        &raw mut b,
+        b"lightnvr_observation_history_epoch_regenerations_total\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        b"counter\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Cursor epoch regenerations after a detected database rewind\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        (*r).epoch_regenerations,
+    );
+    return b.data;
+}
 unsafe extern "C" fn get_go2rtc_rss_bytes() -> uint64_t {
     unsafe extern "C" {
         #[link_name = "get_go2rtc_memory_usage"]
@@ -4558,6 +5323,103 @@ pub unsafe extern "C" fn handle_get_metrics(
             );
             free(health_metrics as *mut ::core::ffi::c_void);
         }
+    }
+    let mut observations: observation_diagnostics_t = observation_diagnostics_t {
+        collected_at_ms: 0,
+        evidence: observation_evidence_stats_t {
+            initialized: false,
+            worker_running: false,
+            allocated: false,
+            accepted: 0,
+            dropped_queue_full: 0,
+            dropped_budget: 0,
+            dropped_disabled: 0,
+            dropped_untracked: 0,
+            unavailable_submitted: 0,
+            ready: 0,
+            failed_encode: 0,
+            failed_write: 0,
+            failed_db: 0,
+            disabled_at_encode: 0,
+            interrupted: 0,
+            bytes_written: 0,
+            backlog_items: 0,
+            backlog_bytes: 0,
+            drop_ring_depth: 0,
+            high_water_items: 0,
+            high_water_bytes: 0,
+            budget_exhausted_cameras: 0,
+            limit_items: 0,
+            limit_camera_items: 0,
+            limit_bytes: 0,
+            limit_camera_bytes: 0,
+            camera_high_water_items: 0,
+            submit_latency_count: 0,
+            submit_latency_sum_ns: 0,
+            submit_latency_max_ns: 0,
+            submit_latency_bucket: [0; 10],
+            discard_deferred: 0,
+            discard_inline: 0,
+            discard_pending_bytes: 0,
+            limit_discard_bytes: 0,
+        },
+        relay: observation_relay_stats_t {
+            running: false,
+            passes: 0,
+            relayed: 0,
+            duplicates: 0,
+            relayed_no_route: 0,
+            expired: 0,
+            failed: 0,
+            enqueue_full: 0,
+            enqueue_errors: 0,
+            mark_errors: 0,
+            read_errors: 0,
+            cap_pauses: 0,
+            backoffs: 0,
+            sidecar_writes: 0,
+            sidecar_errors: 0,
+            epoch_regenerations: 0,
+            last_relayed_seq: 0,
+            oldest_pending_created_at_ms: 0,
+            last_pass_pending: 0,
+            outbox_type_pending: 0,
+            consecutive_failures: 0,
+            backoff_until_ms: 0,
+        },
+        db_available: false,
+        db: observation_db_diagnostics_t {
+            meta: observation_meta_t {
+                epoch_uuid: [0; 37],
+                oldest_seq: 0,
+                head_seq: 0,
+            },
+            has_oldest_observed_at: false,
+            oldest_observed_at_ms: 0,
+            observations: 0,
+            publications_pending: 0,
+            publications_failed: 0,
+            publications_expired: 0,
+            oldest_pending_created_at_ms: 0,
+        },
+        cameras: ::core::ptr::null_mut::<observation_retention_camera_status_t>(),
+        camera_count: 0,
+        budget_exhausted_cameras: 0,
+    };
+    if observation_diagnostics_collect(&raw mut observations, 0 as int64_t)
+        == 0 as ::core::ffi::c_int
+    {
+        let mut observation_metrics: *mut ::core::ffi::c_char =
+            api_metrics_render_observations(&raw mut observations);
+        if !observation_metrics.is_null() {
+            prom_buf_append(
+                &raw mut buf,
+                b"%s\0".as_ptr() as *const ::core::ffi::c_char,
+                observation_metrics,
+            );
+            free(observation_metrics as *mut ::core::ffi::c_void);
+        }
+        observation_diagnostics_free(&raw mut observations);
     }
     let mut self_metrics: *mut ::core::ffi::c_char = api_metrics_render_self_observability();
     if !self_metrics.is_null() {

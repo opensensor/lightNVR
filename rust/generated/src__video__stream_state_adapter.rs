@@ -164,6 +164,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -728,6 +732,10 @@ pub unsafe extern "C" fn set_stream_priority_adapter(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     pthread_mutex_lock(&raw mut (*state).mutex);
     memcpy(
@@ -854,6 +862,10 @@ pub unsafe extern "C" fn set_stream_detection_recording_adapter(
             publish_url: [0; 512],
             playback_transport: [0; 24],
             eptz_config: [0; 1024],
+            observation_evidence_enabled: false,
+            observation_labels: [0; 512],
+            observation_max_age_days: 0,
+            observation_max_bytes: 0,
         };
         pthread_mutex_lock(&raw mut (*state).mutex);
         memcpy(
@@ -957,6 +969,10 @@ pub unsafe extern "C" fn set_stream_detection_params_adapter(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     pthread_mutex_lock(&raw mut (*state).mutex);
     memcpy(

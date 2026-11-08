@@ -1,4 +1,5 @@
 use ::c2rust_bitfields;
+use ::libc;
 unsafe extern "C" {
     pub type _IO_wide_data;
     pub type _IO_codecvt;
@@ -74,6 +75,13 @@ unsafe extern "C" {
         nByte: ::core::ffi::c_int,
         ppStmt: *mut *mut sqlite3_stmt,
         pzTail: *mut *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+    unsafe fn sqlite3_bind_text(
+        _: *mut sqlite3_stmt,
+        _: ::core::ffi::c_int,
+        _: *const ::core::ffi::c_char,
+        _: ::core::ffi::c_int,
+        _: Option<unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()>,
     ) -> ::core::ffi::c_int;
     unsafe fn sqlite3_step(_: *mut sqlite3_stmt) -> ::core::ffi::c_int;
     unsafe fn sqlite3_column_text(
@@ -267,6 +275,7 @@ pub type pid_t = __pid_t;
 pub type ssize_t = isize;
 pub type clockid_t = __clockid_t;
 pub type time_t = __time_t;
+pub type int64_t = i64;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct timespec {
@@ -416,6 +425,7 @@ pub struct dirent {
 pub type DIR = __dirstream;
 pub type sqlite_int64 = ::core::ffi::c_longlong;
 pub type sqlite3_int64 = sqlite_int64;
+pub type sqlite3_destructor_type = Option<unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()>;
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct C2Rust_Unnamed_0(pub ::core::ffi::c_uint);
@@ -676,6 +686,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -10747,6 +10761,51 @@ unsafe extern "C" fn private_existing_database_files(
     }
     return 0 as ::core::ffi::c_int;
 }
+unsafe extern "C" fn regenerate_observation_epoch_after_restore() -> ::core::ffi::c_int {
+    let mut epoch: [::core::ffi::c_char; 37] = [0; 37];
+    if db.is_null()
+        || lightnvr_uuid_generate_v4(&raw mut epoch as *mut ::core::ffi::c_char)
+            != 0 as ::core::ffi::c_int
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut stmt: *mut sqlite3_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+    let mut rc: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    if sqlite3_prepare_v2(
+        db,
+        b"UPDATE observation_meta SET epoch_uuid = ? WHERE id = 1;\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        -1 as ::core::ffi::c_int,
+        &raw mut stmt,
+        ::core::ptr::null_mut::<*const ::core::ffi::c_char>(),
+    ) == SQLITE_OK
+    {
+        sqlite3_bind_text(
+            stmt,
+            1 as ::core::ffi::c_int,
+            &raw mut epoch as *mut ::core::ffi::c_char,
+            -1 as ::core::ffi::c_int,
+            ::core::mem::transmute::<
+                ::libc::intptr_t,
+                Option<unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()>,
+            >(-1 as ::core::ffi::c_int as ::libc::intptr_t),
+        );
+        if sqlite3_step(stmt) == SQLITE_DONE {
+            rc = 0 as ::core::ffi::c_int;
+        }
+    }
+    sqlite3_finalize(stmt);
+    if rc == 0 as ::core::ffi::c_int {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_INFO,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Regenerated observation cursor epoch after database restore\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+    }
+    return rc;
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn init_database(
     mut db_path: *const ::core::ffi::c_char,
@@ -10761,6 +10820,7 @@ pub unsafe extern "C" fn init_database_ex(
     let mut rc: ::core::ffi::c_int = 0;
     let mut err_msg: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
     let mut is_new_database: bool = r#false != 0;
+    let mut restored_from_backup: bool = r#false != 0;
     let mut test_db: *mut sqlite3 = ::core::ptr::null_mut::<sqlite3>();
     let mut stmt: *mut sqlite3_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
     if !db.is_null() {
@@ -11059,6 +11119,7 @@ pub unsafe extern "C" fn init_database_ex(
                         b"Successfully restored database from backup\0".as_ptr()
                             as *const ::core::ffi::c_char,
                     );
+                    restored_from_backup = r#true != 0;
                 }
             } else {
                 _log_message_ctx(
@@ -11174,6 +11235,7 @@ pub unsafe extern "C" fn init_database_ex(
                                     b"Successfully restored database from backup\0".as_ptr()
                                         as *const ::core::ffi::c_char,
                                 );
+                                restored_from_backup = r#true != 0;
                             }
                         } else {
                             _log_message_ctx(
@@ -11614,6 +11676,18 @@ pub unsafe extern "C" fn init_database_ex(
         sqlite3_close_v2(db);
         db = ::core::ptr::null_mut::<sqlite3>();
         return -1 as ::core::ffi::c_int;
+    }
+    if restored_from_backup as ::core::ffi::c_int != 0
+        && db_init_flags & C2Rust_Unnamed_1::DB_INIT_NO_MIGRATE.0 == 0
+        && regenerate_observation_epoch_after_restore() != 0 as ::core::ffi::c_int
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to regenerate the observation cursor epoch after restore\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
     }
     if db_camera_tags_backfill_legacy_once() != 0 as ::core::ffi::c_int {
         _log_message_ctx(

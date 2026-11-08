@@ -166,6 +166,16 @@ unsafe extern "C" {
         src: *const ::core::ffi::c_char,
         size: size_t,
     ) -> ::core::ffi::c_int;
+    unsafe fn stream_frame_rate_select(
+        average: AVRational,
+        nominal: AVRational,
+        provisional: *mut bool,
+    ) -> ::core::ffi::c_double;
+    unsafe fn stream_frame_rate_round(fps: ::core::ffi::c_double) -> ::core::ffi::c_int;
+    unsafe fn stream_frame_rate_observe(
+        measurement: *mut stream_frame_rate_measurement_t,
+        now_us: int64_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn init_packet_buffer_pool(memory_limit_mb: size_t) -> ::core::ffi::c_int;
     unsafe fn calculate_packet_buffer_pool_size() -> size_t;
     unsafe fn cleanup_packet_buffer_pool();
@@ -198,16 +208,6 @@ unsafe extern "C" {
         count: *mut ::core::ffi::c_int,
         memory_usage: *mut size_t,
         duration: *mut ::core::ffi::c_int,
-    ) -> ::core::ffi::c_int;
-    unsafe fn stream_frame_rate_select(
-        average: AVRational,
-        nominal: AVRational,
-        provisional: *mut bool,
-    ) -> ::core::ffi::c_double;
-    unsafe fn stream_frame_rate_round(fps: ::core::ffi::c_double) -> ::core::ffi::c_int;
-    unsafe fn stream_frame_rate_observe(
-        measurement: *mut stream_frame_rate_measurement_t,
-        now_us: int64_t,
     ) -> ::core::ffi::c_int;
     unsafe fn load_detection_model(
         model_path: *const ::core::ffi::c_char,
@@ -254,12 +254,54 @@ unsafe extern "C" {
         channels: ::core::ffi::c_int,
         result: *mut detection_result_t,
     ) -> ::core::ffi::c_int;
+    unsafe fn detection_evidence_label_eligible(
+        labels_csv: *const ::core::ffi::c_char,
+        label: *const ::core::ffi::c_char,
+    ) -> bool;
+    unsafe fn detection_evidence_transform_compute(
+        frame_w: ::core::ffi::c_int,
+        frame_h: ::core::ffi::c_int,
+        net_w: ::core::ffi::c_int,
+        net_h: ::core::ffi::c_int,
+        letterbox: bool,
+        out: *mut observation_evidence_transform_t,
+    );
+    unsafe fn detection_evidence_model_geometry(
+        model: detection_model_t,
+        net_w: *mut ::core::ffi::c_int,
+        net_h: *mut ::core::ffi::c_int,
+        letterbox: *mut bool,
+    ) -> ::core::ffi::c_int;
+    unsafe fn detection_evidence_observed_at_ms(frame_ts: time_t) -> int64_t;
+    unsafe fn detection_evidence_capture(
+        camera: *const detection_evidence_camera_t,
+        engine: *const detection_evidence_engine_t,
+        detections: *const detection_t,
+        count: ::core::ffi::c_int,
+        observed_at_ms: int64_t,
+        rgb24: *mut uint8_t,
+        width: ::core::ffi::c_int,
+        height: ::core::ffi::c_int,
+        transform: *const observation_evidence_transform_t,
+        submit_result: *mut observation_evidence_result_t,
+        asset_uuid_out: *mut ::core::ffi::c_char,
+    ) -> detection_evidence_status_t;
+    unsafe fn detection_evidence_record_no_media(
+        camera: *const detection_evidence_camera_t,
+        engine: *const detection_evidence_engine_t,
+        detections: *const detection_t,
+        count: ::core::ffi::c_int,
+        observed_at_ms: int64_t,
+        keep_boxes: bool,
+        submit_result: *mut observation_evidence_result_t,
+        asset_uuid_out: *mut ::core::ffi::c_char,
+    ) -> detection_evidence_status_t;
     unsafe fn api_detection_options_from_config(options: *mut api_detection_options_t);
     unsafe fn api_detection_options_apply_json(
         options: *mut api_detection_options_t,
         config_json: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
-    unsafe fn detect_objects_api_with_options(
+    unsafe fn detect_objects_api_with_evidence(
         api_url: *const ::core::ffi::c_char,
         frame_data: *const ::core::ffi::c_uchar,
         width: ::core::ffi::c_int,
@@ -271,6 +313,7 @@ unsafe extern "C" {
         recording_id: uint64_t,
         frame_timestamp: time_t,
         options: *const api_detection_options_t,
+        evidence: *const api_detection_evidence_t,
     ) -> ::core::ffi::c_int;
     unsafe fn configure_motion_detection(
         stream_name: *const ::core::ffi::c_char,
@@ -290,6 +333,14 @@ unsafe extern "C" {
     unsafe fn set_motion_detection_enabled(
         stream_name: *const ::core::ffi::c_char,
         enabled: bool,
+    ) -> ::core::ffi::c_int;
+    unsafe fn filter_detections_by_zones(
+        stream_name: *const ::core::ffi::c_char,
+        result: *mut detection_result_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn filter_detections_by_stream_objects(
+        stream_name: *const ::core::ffi::c_char,
+        result: *mut detection_result_t,
     ) -> ::core::ffi::c_int;
     unsafe fn mp4_writer_initialize(
         writer: *mut mp4_writer_t,
@@ -319,14 +370,6 @@ unsafe extern "C" {
         timestamp: time_t,
         output: *mut ::core::ffi::c_char,
         output_size: size_t,
-    ) -> ::core::ffi::c_int;
-    unsafe fn filter_detections_by_zones(
-        stream_name: *const ::core::ffi::c_char,
-        result: *mut detection_result_t,
-    ) -> ::core::ffi::c_int;
-    unsafe fn filter_detections_by_stream_objects(
-        stream_name: *const ::core::ffi::c_char,
-        result: *mut detection_result_t,
     ) -> ::core::ffi::c_int;
     unsafe fn get_streaming_config() -> *mut config_t;
     unsafe fn get_stream_state_by_name(
@@ -423,6 +466,11 @@ unsafe extern "C" {
         stream_name: *const ::core::ffi::c_char,
         fps: ::core::ffi::c_double,
     );
+    unsafe fn memcpy(
+        __dest: *mut ::core::ffi::c_void,
+        __src: *const ::core::ffi::c_void,
+        __n: size_t,
+    ) -> *mut ::core::ffi::c_void;
     unsafe fn memset(
         __s: *mut ::core::ffi::c_void,
         __c: ::core::ffi::c_int,
@@ -451,6 +499,7 @@ unsafe extern "C" {
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
+    unsafe fn malloc(__size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn calloc(__nmemb: size_t, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
 }
@@ -2704,6 +2753,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -3098,6 +3151,8 @@ pub struct unified_detection_ctx_t {
     pub engine_count: ::core::ffi::c_int,
     pub recording_grace_interval: ::core::ffi::c_int,
     pub has_onvif_engine: bool,
+    pub observation_evidence_enabled: atomic_int,
+    pub observation_labels: [::core::ffi::c_char; 512],
     pub last_packet_time: atomic_int_fast64_t,
     pub consecutive_failures: atomic_int,
     pub reconnect_attempt: ::core::ffi::c_int,
@@ -3166,6 +3221,64 @@ pub struct recording_metadata_t {
     pub disk_pressure_eligible: bool,
     pub schedule_restricted: ::core::ffi::c_int,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct observation_evidence_result_t(pub ::core::ffi::c_int);
+impl observation_evidence_result_t {
+    pub const OBS_EVIDENCE_ACCEPTED: Self = Self(0);
+    pub const OBS_EVIDENCE_DROPPED_QUEUE_FULL: Self = Self(1);
+    pub const OBS_EVIDENCE_DROPPED_BUDGET: Self = Self(2);
+    pub const OBS_EVIDENCE_DISABLED: Self = Self(3);
+    pub const OBS_EVIDENCE_INVALID: Self = Self(-1);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct detection_evidence_status_t(pub ::core::ffi::c_uint);
+impl detection_evidence_status_t {
+    pub const DETECTION_EVIDENCE_SUBMITTED: Self = Self(0);
+    pub const DETECTION_EVIDENCE_NOT_ENABLED: Self = Self(1);
+    pub const DETECTION_EVIDENCE_NOT_ELIGIBLE: Self = Self(2);
+    pub const DETECTION_EVIDENCE_NOT_OBJECT_ENGINE: Self = Self(3);
+    pub const DETECTION_EVIDENCE_ERROR: Self = Self(4);
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_evidence_transform_t {
+    pub mode: observation_transform_mode_t,
+    pub source_width: ::core::ffi::c_int,
+    pub source_height: ::core::ffi::c_int,
+    pub inference_width: ::core::ffi::c_int,
+    pub inference_height: ::core::ffi::c_int,
+    pub scale_x: ::core::ffi::c_double,
+    pub scale_y: ::core::ffi::c_double,
+    pub pad_x: ::core::ffi::c_double,
+    pub pad_y: ::core::ffi::c_double,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct observation_transform_mode_t(pub ::core::ffi::c_uint);
+impl observation_transform_mode_t {
+    pub const OBS_TRANSFORM_NONE: Self = Self(0);
+    pub const OBS_TRANSFORM_RESIZE: Self = Self(1);
+    pub const OBS_TRANSFORM_LETTERBOX: Self = Self(2);
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct detection_evidence_engine_t {
+    pub engine_key: *const ::core::ffi::c_char,
+    pub engine_type: *const ::core::ffi::c_char,
+    pub model_path: *const ::core::ffi::c_char,
+    pub model_version: *const ::core::ffi::c_char,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct detection_evidence_camera_t {
+    pub camera_uuid: *const ::core::ffi::c_char,
+    pub stream_name: *const ::core::ffi::c_char,
+    pub evidence_enabled: bool,
+    pub labels_csv: *const ::core::ffi::c_char,
+    pub recording_id: int64_t,
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct stream_state_manager_t {
@@ -3227,6 +3340,15 @@ impl stream_state_t {
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
+pub struct api_detection_evidence_t {
+    pub camera_uuid: *const ::core::ffi::c_char,
+    pub engine_key: *const ::core::ffi::c_char,
+    pub evidence_enabled: bool,
+    pub labels_csv: *const ::core::ffi::c_char,
+    pub observed_at_ms: int64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
 pub struct api_detection_options_t {
     pub format: api_detection_format_t,
     pub backend: [::core::ffi::c_char; 32],
@@ -3261,14 +3383,16 @@ unsafe extern "C" fn av_q2d(mut a: AVRational) -> ::core::ffi::c_double {
 pub const AV_PKT_FLAG_KEY: ::core::ffi::c_int = 0x1 as ::core::ffi::c_int;
 pub const AV_CODEC_PROP_INTRA_ONLY: ::core::ffi::c_int =
     (1 as ::core::ffi::c_int) << 0 as ::core::ffi::c_int;
+pub const RGB24_SWS_TAIL_PADDING: ::core::ffi::c_int = 128 as ::core::ffi::c_int;
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const MAX_STREAMS: ::core::ffi::c_int = LIGHTNVR_MAX_STREAMS;
+pub const OBSERVATION_LABELS_MAX: ::core::ffi::c_int = 512 as ::core::ffi::c_int;
 pub const MAX_DETECTIONS: ::core::ffi::c_int = 20 as ::core::ffi::c_int;
+pub const STREAM_FRAME_RATE_DEFAULT: ::core::ffi::c_int = 15 as ::core::ffi::c_int;
 pub const MAX_BUFFER_SECONDS: ::core::ffi::c_int = 30 as ::core::ffi::c_int;
 pub const MIN_BUFFER_SECONDS: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
 pub const PACKET_BUFFER_TRIGGER_HEADROOM_SECONDS: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
-pub const STREAM_FRAME_RATE_DEFAULT: ::core::ffi::c_int = 15 as ::core::ffi::c_int;
 pub const MAX_DETECTION_ENGINES_PER_STREAM: ::core::ffi::c_int = 8 as ::core::ffi::c_int;
 pub const MAX_UNIFIED_DETECTION_THREADS: ::core::ffi::c_int = MAX_STREAMS;
 pub const BASE_RECONNECT_DELAY_MS: ::core::ffi::c_int = 500 as ::core::ffi::c_int;
@@ -4635,9 +4759,9 @@ unsafe extern "C" fn load_runtime_engine_config(
         let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
         while i < count {
             if stored[i as usize].enabled {
-                let c2rust_fresh1 = (*ctx).engine_count;
+                let c2rust_fresh2 = (*ctx).engine_count;
                 (*ctx).engine_count += 1;
-                (*ctx).engines[c2rust_fresh1 as usize] = stored[i as usize];
+                (*ctx).engines[c2rust_fresh2 as usize] = stored[i as usize];
             }
             i += 1;
         }
@@ -5176,6 +5300,7 @@ unsafe extern "C" fn onvif_detection_thread_func(
             tv_nsec: 0,
         };
         clock_gettime(CLOCK_MONOTONIC, &raw mut poll_start);
+        let mut poll_wall_ms: int64_t = detection_evidence_observed_at_ms(0 as time_t);
         let mut ret: ::core::ffi::c_int = detect_motion_onvif(
             &raw mut (*ctx).onvif_url_cached as *mut ::core::ffi::c_char,
             &raw mut (*ctx).onvif_username_cached as *mut ::core::ffi::c_char,
@@ -5190,6 +5315,7 @@ unsafe extern "C" fn onvif_detection_thread_func(
             break;
         }
         if ret == 0 as ::core::ffi::c_int && result.count > 0 as ::core::ffi::c_int {
+            udt_record_onvif_observations(ctx, &raw mut result, poll_wall_ms);
             let mut seen: ::core::ffi::c_longlong =
                 time(::core::ptr::null_mut::<time_t>()) as ::core::ffi::c_longlong;
             if ::core::intrinsics::atomic_xchg::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
@@ -6158,6 +6284,10 @@ pub unsafe extern "C" fn start_unified_detection_thread(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -6230,6 +6360,20 @@ pub unsafe extern "C" fn start_unified_detection_thread(
     (*ctx).record_audio = detection_should_record_audio(&raw mut config, global_cfg);
     (*ctx).audio_voice_enhancement = config.audio_voice_enhancement;
     (*ctx).annotation_only = annotation_only;
+    ::core::intrinsics::atomic_store::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut (*ctx).observation_evidence_enabled,
+        if config.observation_evidence_enabled as ::core::ffi::c_int != 0 {
+            1 as ::core::ffi::c_int
+        } else {
+            0 as ::core::ffi::c_int
+        },
+    );
+    safe_strcpy(
+        &raw mut (*ctx).observation_labels as *mut ::core::ffi::c_char,
+        &raw mut config.observation_labels as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        0 as size_t,
+    );
     ::core::intrinsics::atomic_store::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
         &raw mut (*ctx).external_motion_trigger,
         0 as ::core::ffi::c_int,
@@ -6749,6 +6893,46 @@ pub unsafe extern "C" fn unified_detection_notify_motion(
     }
     pthread_mutex_unlock(&raw mut contexts_mutex);
 }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn unified_detection_set_observation_settings(
+    mut stream_name: *const ::core::ffi::c_char,
+    mut enabled: bool,
+    mut labels_csv: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    if stream_name.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    pthread_mutex_lock(&raw mut contexts_mutex);
+    let mut ctx: *mut unified_detection_ctx_t = find_context_by_name(stream_name);
+    if !ctx.is_null() {
+        pthread_mutex_lock(&raw mut (*ctx).mutex);
+        safe_strcpy(
+            &raw mut (*ctx).observation_labels as *mut ::core::ffi::c_char,
+            if !labels_csv.is_null() {
+                labels_csv
+            } else {
+                b"\0".as_ptr() as *const ::core::ffi::c_char
+            },
+            ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+            0 as size_t,
+        );
+        pthread_mutex_unlock(&raw mut (*ctx).mutex);
+        ::core::intrinsics::atomic_store::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            &raw mut (*ctx).observation_evidence_enabled,
+            if enabled as ::core::ffi::c_int != 0 {
+                1 as ::core::ffi::c_int
+            } else {
+                0 as ::core::ffi::c_int
+            },
+        );
+    }
+    pthread_mutex_unlock(&raw mut contexts_mutex);
+    return if !ctx.is_null() {
+        0 as ::core::ffi::c_int
+    } else {
+        -1 as ::core::ffi::c_int
+    };
+}
 unsafe extern "C" fn connect_to_stream(
     mut ctx: *mut unified_detection_ctx_t,
 ) -> ::core::ffi::c_int {
@@ -7186,6 +7370,10 @@ unsafe extern "C" fn udt_update_stream_video_params(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config_by_name(
         &raw mut (*ctx).stream_name as *mut ::core::ffi::c_char,
@@ -8573,6 +8761,10 @@ unsafe extern "C" fn udt_start_recording(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config_by_name(
         &raw mut (*ctx).stream_name as *mut ::core::ffi::c_char,
@@ -9164,6 +9356,238 @@ unsafe extern "C" fn run_detection_on_frame(
 unsafe extern "C" fn frame_to_rgb24(mut frame: *const AVFrame) -> *mut uint8_t {
     return ffmpeg_frame_to_rgb24_padded(frame, ::core::ptr::null_mut::<size_t>());
 }
+unsafe extern "C" fn udt_evidence_wanted(
+    mut ctx: *mut unified_detection_ctx_t,
+    mut detections: *const detection_t,
+    mut count: ::core::ffi::c_int,
+    mut labels: *mut ::core::ffi::c_char,
+) -> bool {
+    if count <= 0 as ::core::ffi::c_int
+        || ::core::intrinsics::atomic_load::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            &raw mut (*ctx).observation_evidence_enabled,
+        ) == 0
+    {
+        return r#false != 0;
+    }
+    pthread_mutex_lock(&raw mut (*ctx).mutex);
+    memcpy(
+        labels as *mut ::core::ffi::c_void,
+        &raw mut (*ctx).observation_labels as *mut ::core::ffi::c_char
+            as *const ::core::ffi::c_void,
+        OBSERVATION_LABELS_MAX as size_t,
+    );
+    pthread_mutex_unlock(&raw mut (*ctx).mutex);
+    *labels.offset((OBSERVATION_LABELS_MAX - 1 as ::core::ffi::c_int) as isize) =
+        '\0' as ::core::ffi::c_char;
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < count {
+        if detection_evidence_label_eligible(
+            labels,
+            &raw const (*detections.offset(i as isize)).label as *const ::core::ffi::c_char,
+        ) {
+            return r#true != 0;
+        }
+        i += 1;
+    }
+    return r#false != 0;
+}
+unsafe extern "C" fn udt_evidence_settings(
+    mut ctx: *mut unified_detection_ctx_t,
+    mut labels: *mut ::core::ffi::c_char,
+) -> bool {
+    *labels.offset(0isize) = '\0' as ::core::ffi::c_char;
+    if ::core::intrinsics::atomic_load::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut (*ctx).observation_evidence_enabled,
+    ) == 0
+    {
+        return r#false != 0;
+    }
+    pthread_mutex_lock(&raw mut (*ctx).mutex);
+    memcpy(
+        labels as *mut ::core::ffi::c_void,
+        &raw mut (*ctx).observation_labels as *mut ::core::ffi::c_char
+            as *const ::core::ffi::c_void,
+        OBSERVATION_LABELS_MAX as size_t,
+    );
+    pthread_mutex_unlock(&raw mut (*ctx).mutex);
+    *labels.offset((OBSERVATION_LABELS_MAX - 1 as ::core::ffi::c_int) as isize) =
+        '\0' as ::core::ffi::c_char;
+    return r#true != 0;
+}
+unsafe extern "C" fn udt_submit_evidence(
+    mut ctx: *mut unified_detection_ctx_t,
+    mut engine_key: *const ::core::ffi::c_char,
+    mut model_path: *const ::core::ffi::c_char,
+    mut model: detection_model_t,
+    mut detections: *const detection_t,
+    mut count: ::core::ffi::c_int,
+    mut labels: *const ::core::ffi::c_char,
+    mut now: time_t,
+    mut rgb: *mut uint8_t,
+    mut width: ::core::ffi::c_int,
+    mut height: ::core::ffi::c_int,
+) {
+    let mut net_w: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut net_h: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut letterbox: bool = r#false != 0;
+    if detection_evidence_model_geometry(model, &raw mut net_w, &raw mut net_h, &raw mut letterbox)
+        != 0 as ::core::ffi::c_int
+    {
+        net_h = 0 as ::core::ffi::c_int;
+        net_w = net_h;
+    }
+    let mut transform: observation_evidence_transform_t = observation_evidence_transform_t {
+        mode: observation_transform_mode_t::OBS_TRANSFORM_NONE,
+        source_width: 0,
+        source_height: 0,
+        inference_width: 0,
+        inference_height: 0,
+        scale_x: 0.,
+        scale_y: 0.,
+        pad_x: 0.,
+        pad_y: 0.,
+    };
+    detection_evidence_transform_compute(
+        width,
+        height,
+        net_w,
+        net_h,
+        letterbox,
+        &raw mut transform,
+    );
+    let mut camera: detection_evidence_camera_t = detection_evidence_camera_t {
+        camera_uuid: &raw mut (*ctx).camera_uuid as *mut ::core::ffi::c_char,
+        stream_name: &raw mut (*ctx).stream_name as *mut ::core::ffi::c_char,
+        evidence_enabled: r#true != 0,
+        labels_csv: labels,
+        recording_id: detection_link_recording_id(ctx) as int64_t,
+    };
+    let mut engine: detection_evidence_engine_t = detection_evidence_engine_t {
+        engine_key: engine_key,
+        engine_type: b"object\0".as_ptr() as *const ::core::ffi::c_char,
+        model_path: model_path,
+        model_version: ::core::ptr::null::<::core::ffi::c_char>(),
+    };
+    let mut submitted: observation_evidence_result_t =
+        observation_evidence_result_t::OBS_EVIDENCE_INVALID;
+    let mut status: detection_evidence_status_t = detection_evidence_capture(
+        &raw mut camera,
+        &raw mut engine,
+        detections,
+        count,
+        detection_evidence_observed_at_ms(now),
+        rgb,
+        width,
+        height,
+        &raw mut transform,
+        &raw mut submitted,
+        ::core::ptr::null_mut::<::core::ffi::c_char>(),
+    );
+    if status.0 == detection_evidence_status_t::DETECTION_EVIDENCE_SUBMITTED.0
+        && submitted.0 != observation_evidence_result_t::OBS_EVIDENCE_ACCEPTED.0
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_DEBUG,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"[%s] Observation evidence for engine %s not queued (%d)\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            &raw mut (*ctx).stream_name as *mut ::core::ffi::c_char,
+            if !engine_key.is_null() {
+                engine_key
+            } else {
+                b"legacy-primary\0".as_ptr() as *const ::core::ffi::c_char
+            },
+            submitted.0,
+        );
+    }
+}
+unsafe extern "C" fn udt_single_engine_key(
+    mut ctx: *const unified_detection_ctx_t,
+) -> *const ::core::ffi::c_char {
+    return if (*ctx).engine_count == 1 as ::core::ffi::c_int
+        && (*ctx).engines[0usize].engine_key[0usize] as ::core::ffi::c_int != 0
+    {
+        &raw const (*(&raw const (*ctx).engines as *const stream_detection_engine_t).offset(0isize))
+            .engine_key as *const ::core::ffi::c_char
+    } else {
+        b"legacy-primary\0".as_ptr() as *const ::core::ffi::c_char
+    };
+}
+unsafe extern "C" fn udt_record_onvif_observations(
+    mut ctx: *mut unified_detection_ctx_t,
+    mut result: *const detection_result_t,
+    mut observed_at_ms: int64_t,
+) {
+    if ctx.is_null()
+        || result.is_null()
+        || (*result).count <= 0 as ::core::ffi::c_int
+        || (*ctx).camera_uuid[0usize] == 0
+    {
+        return;
+    }
+    let mut labels: [::core::ffi::c_char; 512] = [0; 512];
+    if !udt_evidence_settings(ctx, &raw mut labels as *mut ::core::ffi::c_char) {
+        return;
+    }
+    let mut engine_key: *const ::core::ffi::c_char =
+        b"legacy-primary\0".as_ptr() as *const ::core::ffi::c_char;
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < (*ctx).engine_count {
+        if strcmp(
+            &raw mut (*(&raw mut (*ctx).engines as *mut stream_detection_engine_t)
+                .offset(i as isize))
+            .engine_type as *mut ::core::ffi::c_char,
+            b"onvif\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+            && (*ctx).engines[i as usize].engine_key[0usize] as ::core::ffi::c_int != 0
+        {
+            engine_key = &raw mut (*(&raw mut (*ctx).engines as *mut stream_detection_engine_t)
+                .offset(i as isize))
+            .engine_key as *mut ::core::ffi::c_char;
+            break;
+        } else {
+            i += 1;
+        }
+    }
+    let mut camera: detection_evidence_camera_t = detection_evidence_camera_t {
+        camera_uuid: &raw mut (*ctx).camera_uuid as *mut ::core::ffi::c_char,
+        stream_name: &raw mut (*ctx).stream_name as *mut ::core::ffi::c_char,
+        evidence_enabled: r#true != 0,
+        labels_csv: &raw mut labels as *mut ::core::ffi::c_char,
+        recording_id: detection_link_recording_id(ctx) as int64_t,
+    };
+    let mut engine: detection_evidence_engine_t = detection_evidence_engine_t {
+        engine_key: engine_key,
+        engine_type: b"onvif\0".as_ptr() as *const ::core::ffi::c_char,
+        model_path: ::core::ptr::null::<::core::ffi::c_char>(),
+        model_version: ::core::ptr::null::<::core::ffi::c_char>(),
+    };
+    let mut submitted: observation_evidence_result_t =
+        observation_evidence_result_t::OBS_EVIDENCE_INVALID;
+    let mut status: detection_evidence_status_t = detection_evidence_record_no_media(
+        &raw mut camera,
+        &raw mut engine,
+        &raw const (*result).detections as *const detection_t,
+        (*result).count,
+        observed_at_ms,
+        r#false != 0,
+        &raw mut submitted,
+        ::core::ptr::null_mut::<::core::ffi::c_char>(),
+    );
+    if status.0 == detection_evidence_status_t::DETECTION_EVIDENCE_SUBMITTED.0
+        && submitted.0 != observation_evidence_result_t::OBS_EVIDENCE_ACCEPTED.0
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_DEBUG,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"[%s] ONVIF observation not queued (%d)\0".as_ptr() as *const ::core::ffi::c_char,
+            &raw mut (*ctx).stream_name as *mut ::core::ffi::c_char,
+            submitted.0,
+        );
+    }
+}
 unsafe extern "C" fn append_engine_result(
     mut ctx: *mut unified_detection_ctx_t,
     mut engine: *const stream_detection_engine_t,
@@ -9184,9 +9608,9 @@ unsafe extern "C" fn append_engine_result(
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < (*candidate).count && (*combined).count < MAX_DETECTIONS {
         if (*candidate).detections[i as usize].confidence >= (*engine).threshold {
-            let c2rust_fresh0 = (*combined).count;
+            let c2rust_fresh1 = (*combined).count;
             (*combined).count += 1;
-            (*combined).detections[c2rust_fresh0 as usize] = (*candidate).detections[i as usize];
+            (*combined).detections[c2rust_fresh1 as usize] = (*candidate).detections[i as usize];
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_INFO,
                 LOG_COMPONENT,
@@ -9274,11 +9698,13 @@ unsafe extern "C" fn detect_with_runtime_engines(
     if any_due_frame_engine as ::core::ffi::c_int != 0 && rgb.is_null() {
         return onvif_triggered;
     }
+    let mut slice_start: [::core::ffi::c_int; 8] = [0 as ::core::ffi::c_int; 8];
+    let mut slice_count: [::core::ffi::c_int; 8] = [0 as ::core::ffi::c_int; 8];
     let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i_0 < (*ctx).engine_count {
         let mut engine_0: *mut stream_detection_engine_t =
             (&raw mut (*ctx).engines as *mut stream_detection_engine_t).offset(i_0 as isize);
-        's_98: {
+        's_102: {
             if !(!(*engine_0).enabled
                 || (*ctx).engine_last_run[i_0 as usize] > 0 as time_t
                     && now - (*ctx).engine_last_run[i_0 as usize]
@@ -9353,11 +9779,14 @@ unsafe extern "C" fn detect_with_runtime_engines(
                         );
                     }
                 } else {
-                    break 's_98;
+                    break 's_102;
                 }
                 (*ctx).engine_last_run[i_0 as usize] = now;
                 if result == 0 as ::core::ffi::c_int {
+                    let mut before: ::core::ffi::c_int = (*combined).count;
                     append_engine_result(ctx, engine_0, combined, &raw mut candidate);
+                    slice_start[i_0 as usize] = before;
+                    slice_count[i_0 as usize] = (*combined).count - before;
                 } else if !(*ctx).engine_load_failed[i_0 as usize] {
                     _log_message_ctx(
                         log_level_t::LOG_LEVEL_WARN,
@@ -9371,6 +9800,81 @@ unsafe extern "C" fn detect_with_runtime_engines(
             }
         }
         i_0 += 1;
+    }
+    let mut labels: [::core::ffi::c_char; 512] = [0; 512];
+    let mut wanted: [::core::ffi::c_int; 8] = [0; 8];
+    let mut wanted_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut i_1: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while !rgb.is_null() && i_1 < (*ctx).engine_count {
+        if slice_count[i_1 as usize] > 0 as ::core::ffi::c_int
+            && strcmp(
+                &raw mut (*(&raw mut (*ctx).engines as *mut stream_detection_engine_t)
+                    .offset(i_1 as isize))
+                .engine_type as *mut ::core::ffi::c_char,
+                b"object\0".as_ptr() as *const ::core::ffi::c_char,
+            ) == 0 as ::core::ffi::c_int
+            && udt_evidence_wanted(
+                ctx,
+                (&raw mut (*combined).detections as *mut detection_t)
+                    .offset(slice_start[i_1 as usize] as isize),
+                slice_count[i_1 as usize],
+                &raw mut labels as *mut ::core::ffi::c_char,
+            ) as ::core::ffi::c_int
+                != 0
+        {
+            let c2rust_fresh0 = wanted_count;
+            wanted_count += 1;
+            wanted[c2rust_fresh0 as usize] = i_1;
+        }
+        i_1 += 1;
+    }
+    let mut w: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while w < wanted_count {
+        let mut i_2: ::core::ffi::c_int = wanted[w as usize];
+        let mut owned: *mut uint8_t = rgb;
+        's_260: {
+            if (w + 1 as ::core::ffi::c_int) < wanted_count {
+                let mut size: size_t = ((*frame).width as size_t)
+                    .wrapping_mul((*frame).height as size_t)
+                    .wrapping_mul(3 as size_t);
+                owned = malloc(size.wrapping_add(RGB24_SWS_TAIL_PADDING as size_t)) as *mut uint8_t;
+                if owned.is_null() {
+                    break 's_260;
+                } else {
+                    memcpy(
+                        owned as *mut ::core::ffi::c_void,
+                        rgb as *const ::core::ffi::c_void,
+                        size,
+                    );
+                    memset(
+                        owned.offset(size as isize) as *mut ::core::ffi::c_void,
+                        0 as ::core::ffi::c_int,
+                        RGB24_SWS_TAIL_PADDING as size_t,
+                    );
+                }
+            } else {
+                rgb = ::core::ptr::null_mut::<uint8_t>();
+            }
+            udt_submit_evidence(
+                ctx,
+                &raw mut (*(&raw mut (*ctx).engines as *mut stream_detection_engine_t)
+                    .offset(i_2 as isize))
+                .engine_key as *mut ::core::ffi::c_char,
+                &raw mut (*(&raw mut (*ctx).engines as *mut stream_detection_engine_t)
+                    .offset(i_2 as isize))
+                .model_path as *mut ::core::ffi::c_char,
+                (*ctx).engine_models[i_2 as usize],
+                (&raw mut (*combined).detections as *mut detection_t)
+                    .offset(slice_start[i_2 as usize] as isize),
+                slice_count[i_2 as usize],
+                &raw mut labels as *mut ::core::ffi::c_char,
+                now,
+                owned,
+                (*frame).width,
+                (*frame).height,
+            );
+        }
+        w += 1;
     }
     free(rgb as *mut ::core::ffi::c_void);
     return (*combined).count > 0 as ::core::ffi::c_int
@@ -9395,6 +9899,7 @@ unsafe extern "C" fn detect_on_decoded_frame(
     }
     let mut width: ::core::ffi::c_int = (*frame).width;
     let mut height: ::core::ffi::c_int = (*frame).height;
+    let mut evidence_rgb: *mut uint8_t = ::core::ptr::null_mut::<uint8_t>();
     if is_api_detection(&raw mut (*ctx).model_path as *mut ::core::ffi::c_char) {
         let mut rec_id: uint64_t = detection_link_recording_id(ctx);
         let mut rgb_buf: *mut uint8_t = frame_to_rgb24(frame);
@@ -9411,8 +9916,19 @@ unsafe extern "C" fn detect_on_decoded_frame(
             detector_name: [0; 64],
         };
         resolve_api_detection_options(ctx, &raw mut api_options);
+        let mut labels: [::core::ffi::c_char; 512] = [0; 512];
+        let mut evidence: api_detection_evidence_t = api_detection_evidence_t {
+            camera_uuid: &raw mut (*ctx).camera_uuid as *mut ::core::ffi::c_char,
+            engine_key: udt_single_engine_key(ctx),
+            evidence_enabled: udt_evidence_settings(
+                ctx,
+                &raw mut labels as *mut ::core::ffi::c_char,
+            ),
+            labels_csv: &raw mut labels as *mut ::core::ffi::c_char,
+            observed_at_ms: detection_evidence_observed_at_ms(now),
+        };
         let mut ret: ::core::ffi::c_int = if !api_url.is_null() {
-            detect_objects_api_with_options(
+            detect_objects_api_with_evidence(
                 api_url,
                 rgb_buf as *const ::core::ffi::c_uchar,
                 width,
@@ -9424,6 +9940,7 @@ unsafe extern "C" fn detect_on_decoded_frame(
                 rec_id,
                 now,
                 &raw mut api_options,
+                &raw mut evidence,
             )
         } else {
             -1 as ::core::ffi::c_int
@@ -9543,8 +10060,8 @@ unsafe extern "C" fn detect_on_decoded_frame(
             3 as ::core::ffi::c_int,
             result,
         );
-        free(rgb_buf_1 as *mut ::core::ffi::c_void);
         if ret_1 != 0 as ::core::ffi::c_int {
+            free(rgb_buf_1 as *mut ::core::ffi::c_void);
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_WARN,
                 LOG_COMPONENT,
@@ -9556,8 +10073,18 @@ unsafe extern "C" fn detect_on_decoded_frame(
             );
             return r#false != 0;
         }
+        if (*result).count > 0 as ::core::ffi::c_int
+            && ::core::intrinsics::atomic_load::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+                &raw mut (*ctx).observation_evidence_enabled,
+            ) != 0
+        {
+            evidence_rgb = rgb_buf_1;
+        } else {
+            free(rgb_buf_1 as *mut ::core::ffi::c_void);
+        }
     }
     if (*result).count == 0 as ::core::ffi::c_int {
+        free(evidence_rgb as *mut ::core::ffi::c_void);
         return r#false != 0;
     }
     filter_detections_by_zones(
@@ -9608,6 +10135,32 @@ unsafe extern "C" fn detect_on_decoded_frame(
         i += 1;
     }
     (*result).count = kept;
+    let mut labels_0: [::core::ffi::c_char; 512] = [0; 512];
+    if !evidence_rgb.is_null()
+        && udt_evidence_wanted(
+            ctx,
+            &raw mut (*result).detections as *mut detection_t,
+            (*result).count,
+            &raw mut labels_0 as *mut ::core::ffi::c_char,
+        ) as ::core::ffi::c_int
+            != 0
+    {
+        udt_submit_evidence(
+            ctx,
+            udt_single_engine_key(ctx),
+            &raw mut (*ctx).model_path as *mut ::core::ffi::c_char,
+            (*ctx).model,
+            &raw mut (*result).detections as *mut detection_t,
+            (*result).count,
+            &raw mut labels_0 as *mut ::core::ffi::c_char,
+            now,
+            evidence_rgb,
+            width,
+            height,
+        );
+    } else {
+        free(evidence_rgb as *mut ::core::ffi::c_void);
+    }
     return (*result).count > 0 as ::core::ffi::c_int;
 }
 unsafe extern "C" fn report_detections(
@@ -10031,8 +10584,8 @@ pub const ONVIF_PULL_DROP_RETRY_DELAY_MS: ::core::ffi::c_int = 250 as ::core::ff
 pub const ONVIF_DETECT_RETRY: ::core::ffi::c_int = -2 as ::core::ffi::c_int;
 pub const STREAM_ERR_MODEL_LOAD: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const RETENTION_TIER_IMPORTANT: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const LIGHTNVR_MAX_STREAMS: ::core::ffi::c_int = 1024 as ::core::ffi::c_int;
 pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;

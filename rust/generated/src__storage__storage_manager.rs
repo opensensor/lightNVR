@@ -239,6 +239,7 @@ unsafe extern "C" {
         payload: *const ::core::ffi::c_char,
         retain: bool,
     ) -> ::core::ffi::c_int;
+    unsafe fn observation_retention_maintenance_tick();
     unsafe fn sanitize_stream_name(
         input: *const ::core::ffi::c_char,
         output: *mut ::core::ffi::c_char,
@@ -508,6 +509,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -3888,6 +3893,10 @@ unsafe extern "C" fn standard_cleanup_cycle() {
                 publish_url: [0; 512],
                 playback_transport: [0; 24],
                 eptz_config: [0; 1024],
+                observation_evidence_enabled: false,
+                observation_labels: [0; 512],
+                observation_max_age_days: 0,
+                observation_max_bytes: 0,
             };
             's_81: {
                 if s >= configured_count {
@@ -4245,6 +4254,7 @@ unsafe extern "C" fn unified_storage_controller_func(
             );
         }
         cleanup_pressured_targets();
+        observation_retention_maintenance_tick();
         unified_ctrl.last_heartbeat = now;
         if do_force {
             _log_message_ctx(

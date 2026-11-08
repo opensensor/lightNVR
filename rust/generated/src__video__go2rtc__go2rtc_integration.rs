@@ -787,6 +787,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -27372,6 +27376,10 @@ unsafe extern "C" fn ensure_stream_registered_with_go2rtc(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -27616,6 +27624,10 @@ unsafe extern "C" fn check_stream_consensus() -> bool {
                 publish_url: [0; 512],
                 playback_transport: [0; 24],
                 eptz_config: [0; 1024],
+                observation_evidence_enabled: false,
+                observation_labels: [0; 512],
+                observation_max_age_days: 0,
+                observation_max_bytes: 0,
             };
             if get_stream_config(stream, &raw mut config) == 0 as ::core::ffi::c_int {
                 if config.enabled {
@@ -28105,6 +28117,10 @@ unsafe extern "C" fn unified_health_monitor_thread(
                                     publish_url: [0; 512],
                                     playback_transport: [0; 24],
                                     eptz_config: [0; 1024],
+                                    observation_evidence_enabled: false,
+                                    observation_labels: [0; 512],
+                                    observation_max_age_days: 0,
+                                    observation_max_bytes: 0,
                                 };
                                 if get_stream_config(stream, &raw mut config)
                                     == 0 as ::core::ffi::c_int
@@ -28855,6 +28871,10 @@ pub unsafe extern "C" fn go2rtc_integration_start_recording_with_trigger(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -29078,6 +29098,10 @@ pub unsafe extern "C" fn go2rtc_integration_start_hls(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -29993,6 +30017,10 @@ unsafe extern "C" fn go2rtc_integration_reload_stream_config_locked(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     let mut have_config: bool = r#false != 0;
     if !stream.is_null() && get_stream_config(stream, &raw mut config) == 0 as ::core::ffi::c_int {
@@ -30456,6 +30484,10 @@ pub unsafe extern "C" fn go2rtc_integration_register_stream(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(

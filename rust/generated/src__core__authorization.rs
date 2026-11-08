@@ -202,6 +202,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -452,7 +456,8 @@ impl authorization_action_t {
     pub const AUTHZ_LPR_SEARCH: Self = Self(16);
     pub const AUTHZ_LPR_EXPORT: Self = Self(17);
     pub const AUTHZ_LPR_DELETE: Self = Self(18);
-    pub const AUTHZ_ACTION_COUNT: Self = Self(19);
+    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
+    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -615,7 +620,7 @@ impl camera_collection_filter_result_t {
     pub const CAMERA_COLLECTION_FILTER_OUT_OF_MEMORY: Self = Self(-3);
     pub const CAMERA_COLLECTION_FILTER_DATABASE_ERROR: Self = Self(-4);
 }
-static mut action_catalog: [authorization_action_metadata_t; 19] = [
+static mut action_catalog: [authorization_action_metadata_t; 20] = [
     authorization_action_metadata_t {
         action: authorization_action_t::AUTHZ_LIVE_VIEW,
         key: b"live.view\0".as_ptr() as *const ::core::ffi::c_char,
@@ -793,6 +798,16 @@ static mut action_catalog: [authorization_action_metadata_t; 19] = [
             as *const ::core::ffi::c_char,
         camera_scoped: r#true != 0,
         destructive: r#true != 0,
+        enforced: r#true != 0,
+    },
+    authorization_action_metadata_t {
+        action: authorization_action_t::AUTHZ_OBSERVATIONS_ANNOTATE,
+        key: b"observations.annotate\0".as_ptr() as *const ::core::ffi::c_char,
+        category: b"Integrations\0".as_ptr() as *const ::core::ffi::c_char,
+        description: b"Annotate detection observations with classifier results\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        camera_scoped: r#true != 0,
+        destructive: r#false != 0,
         enforced: r#true != 0,
     },
 ];

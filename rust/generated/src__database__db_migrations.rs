@@ -1388,7 +1388,39 @@ static mut migration_0094_down: [::core::ffi::c_char; 323] = unsafe {
         *b"-- Pending challenges must not survive removal of replay protection.\nDELETE FROM sessions WHERE mfa_pending = 1;\nALTER TABLE users DROP COLUMN totp_setup_expires_at;\nALTER TABLE users DROP COLUMN totp_window_started_at;\nALTER TABLE users DROP COLUMN totp_failed_attempts;\nALTER TABLE users DROP COLUMN totp_last_used_step;\0",
     )
 };
-static mut embedded_migrations_data: [migration_t; 94] = unsafe {
+static mut migration_0095_up: [::core::ffi::c_char; 6453] = unsafe {
+    ::core::mem::transmute::<
+        [u8; 6453],
+        [::core::ffi::c_char; 6453],
+    >(
+        *b"CREATE TABLE observation_assets (\n    uuid TEXT PRIMARY KEY,\n    camera_uuid TEXT NOT NULL,\n    state TEXT NOT NULL CHECK (state IN ('pending', 'ready', 'unavailable', 'expired')),\n    reason TEXT CHECK (reason IS NULL OR length(reason) BETWEEN 1 AND 32),\n    origin TEXT CHECK (origin IS NULL OR origin IN ('inference_input', 'submitted_image')),\n    media_type TEXT,\n    path TEXT,\n    bytes INTEGER CHECK (bytes IS NULL OR bytes >= 0),\n    width INTEGER CHECK (width IS NULL OR width > 0),\n    height INTEGER CHECK (height IS NULL OR height > 0),\n    captured_at_ms INTEGER,\n    transform_json TEXT,\n    protected INTEGER NOT NULL DEFAULT 0 CHECK (protected IN (0, 1)),\n    expires_at_ms INTEGER,\n    created_at_ms INTEGER NOT NULL,\n    updated_at_ms INTEGER NOT NULL,\n    CHECK ((state IN ('pending', 'ready')) = (reason IS NULL))\n);\n\n-- Reconciliation scans by state; retention walks one camera's ready assets\n-- oldest first.\nCREATE INDEX idx_observation_assets_state_camera\nON observation_assets(state, camera_uuid, created_at_ms);\n\nCREATE TABLE object_observations (\n    uuid TEXT PRIMARY KEY,\n    camera_uuid TEXT NOT NULL,\n    stream_name_at_capture TEXT NOT NULL,\n    batch_id TEXT NOT NULL,\n    object_index INTEGER NOT NULL CHECK (object_index BETWEEN 0 AND 19),\n    observed_at_ms INTEGER NOT NULL,\n    created_at_ms INTEGER NOT NULL,\n    engine_key TEXT NOT NULL,\n    engine_type TEXT NOT NULL CHECK (engine_type IN ('object', 'api', 'onvif', 'external')),\n    model TEXT,\n    model_version TEXT,\n    label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 31),\n    confidence REAL NOT NULL CHECK (confidence >= 0.0 AND confidence <= 1.0),\n    box_x REAL,\n    box_y REAL,\n    box_width REAL,\n    box_height REAL,\n    track_id TEXT,\n    track_namespace TEXT,\n    track_session TEXT,\n    recording_id INTEGER REFERENCES recordings(id) ON DELETE SET NULL,\n    asset_uuid TEXT REFERENCES observation_assets(uuid),\n    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),\n    UNIQUE(batch_id, object_index),\n    -- Normalized xywh relative to the stored evidence image; all or nothing.\n    -- The 1e-6 slack absorbs rounding to 6 decimals. IS NOT NULL is explicit\n    -- because a CHECK that evaluates to NULL passes.\n    CHECK ((box_x IS NULL AND box_y IS NULL AND box_width IS NULL AND box_height IS NULL)\n        OR (box_x IS NOT NULL AND box_y IS NOT NULL\n            AND box_width IS NOT NULL AND box_height IS NOT NULL\n            AND box_x >= 0.0 AND box_y >= 0.0\n            AND box_width > 0.0 AND box_height > 0.0\n            AND box_x + box_width <= 1.000001 AND box_y + box_height <= 1.000001)),\n    CHECK ((track_id IS NULL AND track_namespace IS NULL AND track_session IS NULL)\n        OR (length(track_id) BETWEEN 1 AND 64\n            AND track_namespace IS NOT NULL AND track_session IS NOT NULL))\n);\n\nCREATE INDEX idx_object_observations_camera_time\nON object_observations(camera_uuid, observed_at_ms);\n\nCREATE INDEX idx_object_observations_label_time\nON object_observations(label, observed_at_ms);\n\nCREATE INDEX idx_object_observations_created\nON object_observations(created_at_ms);\n\n-- Asset transitions bump every referencing observation; refcount is derived.\nCREATE INDEX idx_object_observations_asset\nON object_observations(asset_uuid);\n\n-- Keeps the ON DELETE SET NULL action cheap on every recording delete.\nCREATE INDEX idx_object_observations_recording\nON object_observations(recording_id);\n\n-- seq is the history cursor: monotonic persistence order, never reused.\nCREATE TABLE observation_changes (\n    seq INTEGER PRIMARY KEY AUTOINCREMENT,\n    observation_uuid TEXT NOT NULL REFERENCES object_observations(uuid) ON DELETE CASCADE,\n    revision INTEGER NOT NULL CHECK (revision >= 1),\n    cause TEXT NOT NULL CHECK (cause IN ('created', 'evidence', 'classification')),\n    evidence_state TEXT NOT NULL CHECK (evidence_state IN ('pending', 'ready', 'unavailable', 'expired')),\n    evidence_reason TEXT CHECK (evidence_reason IS NULL OR length(evidence_reason) BETWEEN 1 AND 32),\n    created_at_ms INTEGER NOT NULL,\n    UNIQUE(observation_uuid, revision),\n    CHECK ((evidence_state IN ('pending', 'ready')) = (evidence_reason IS NULL)),\n    CHECK ((cause = 'created') = (revision = 1))\n);\n\nCREATE TABLE observation_publications (\n    change_seq INTEGER PRIMARY KEY REFERENCES observation_changes(seq) ON DELETE CASCADE,\n    message_id TEXT NOT NULL UNIQUE,\n    state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN (\n        'pending', 'relayed', 'relayed_no_route', 'expired', 'failed'\n    )),\n    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),\n    last_error TEXT,\n    updated_at_ms INTEGER NOT NULL\n);\n\n-- The relay reads pending rows in seq order.\nCREATE INDEX idx_observation_publications_pending\nON observation_publications(change_seq) WHERE state = 'pending';\n\n-- One row. epoch_uuid identifies this DB generation for cursors (contract\n-- D9); oldest_seq is the lowest seq that may still be retained (prune\n-- boundary, initially 1). Kept out of system_settings so it can be written\n-- inside observation transactions.\nCREATE TABLE observation_meta (\n    id INTEGER PRIMARY KEY CHECK (id = 1),\n    epoch_uuid TEXT NOT NULL CHECK (length(epoch_uuid) = 36),\n    oldest_seq INTEGER NOT NULL DEFAULT 1 CHECK (oldest_seq >= 1)\n);\n\nINSERT INTO observation_meta (id, epoch_uuid, oldest_seq)\nVALUES (\n    1,\n    lower(\n        hex(randomblob(4)) || '-' ||\n        hex(randomblob(2)) || '-4' ||\n        substr(hex(randomblob(2)), 2) || '-' ||\n        substr('89ab', (abs(random()) % 4) + 1, 1) ||\n        substr(hex(randomblob(2)), 2) || '-' ||\n        hex(randomblob(6))\n    ),\n    1\n);\n\n-- Per-camera evidence settings (contract section 13). Evidence is off by\n-- default; an empty label list means every object label.\nALTER TABLE streams ADD COLUMN observation_evidence_enabled INTEGER NOT NULL DEFAULT 0\n    CHECK (observation_evidence_enabled IN (0, 1));\nALTER TABLE streams ADD COLUMN observation_labels TEXT NOT NULL DEFAULT '';\nALTER TABLE streams ADD COLUMN observation_max_age_days INTEGER NOT NULL DEFAULT 7\n    CHECK (observation_max_age_days > 0);\nALTER TABLE streams ADD COLUMN observation_max_bytes INTEGER NOT NULL DEFAULT 2147483648\n    CHECK (observation_max_bytes > 0);\n\nINSERT OR IGNORE INTO system_settings (key, value)\nVALUES ('observation_history_retention_days', '30');\n\nINSERT OR IGNORE INTO system_settings (key, value)\nVALUES ('observation_global_queue_bytes', '33554432');\0",
+    )
+};
+static mut migration_0095_down: [::core::ffi::c_char; 1100] = unsafe {
+    ::core::mem::transmute::<
+        [u8; 1100],
+        [::core::ffi::c_char; 1100],
+    >(
+        *b"-- Drops all observation history and evidence metadata; take a backup first.\n-- Evidence files under <storage_path>/observations are left on disk.\nDELETE FROM system_settings WHERE key IN (\n    'observation_history_retention_days', 'observation_global_queue_bytes'\n);\nALTER TABLE streams DROP COLUMN observation_max_bytes;\nALTER TABLE streams DROP COLUMN observation_max_age_days;\nALTER TABLE streams DROP COLUMN observation_labels;\nALTER TABLE streams DROP COLUMN observation_evidence_enabled;\nDROP TABLE IF EXISTS observation_meta;\nDROP INDEX IF EXISTS idx_observation_publications_pending;\nDROP TABLE IF EXISTS observation_publications;\nDROP TABLE IF EXISTS observation_changes;\nDROP INDEX IF EXISTS idx_object_observations_recording;\nDROP INDEX IF EXISTS idx_object_observations_asset;\nDROP INDEX IF EXISTS idx_object_observations_created;\nDROP INDEX IF EXISTS idx_object_observations_label_time;\nDROP INDEX IF EXISTS idx_object_observations_camera_time;\nDROP TABLE IF EXISTS object_observations;\nDROP INDEX IF EXISTS idx_observation_assets_state_camera;\nDROP TABLE IF EXISTS observation_assets;\0",
+    )
+};
+static mut migration_0096_up: [::core::ffi::c_char; 1971] = unsafe {
+    ::core::mem::transmute::<
+        [u8; 1971],
+        [::core::ffi::c_char; 1971],
+    >(
+        *b"CREATE TABLE observation_classifications (\n    observation_uuid TEXT NOT NULL REFERENCES object_observations(uuid) ON DELETE CASCADE,\n    key TEXT NOT NULL CHECK (length(key) BETWEEN 3 AND 65),\n    writer_namespace TEXT NOT NULL CHECK (length(writer_namespace) BETWEEN 1 AND 32),\n    writer_user_id INTEGER NOT NULL CHECK (writer_user_id > 0),\n    classifier TEXT NOT NULL CHECK (length(classifier) BETWEEN 1 AND 64),\n    model_version TEXT CHECK (model_version IS NULL OR length(model_version) BETWEEN 1 AND 64),\n    label TEXT NOT NULL CHECK (length(CAST(label AS BLOB)) BETWEEN 1 AND 128),\n    taxonomy_id TEXT CHECK (taxonomy_id IS NULL OR length(taxonomy_id) BETWEEN 1 AND 64),\n    confidence REAL NOT NULL CHECK (confidence >= 0.0 AND confidence <= 1.0),\n    classified_at_ms INTEGER NOT NULL CHECK (classified_at_ms >= 0),\n    input_asset_uuid TEXT NOT NULL CHECK (length(input_asset_uuid) = 36),\n    input_revision INTEGER NOT NULL CHECK (input_revision >= 1),\n    kind TEXT NOT NULL CHECK (kind IN ('automated', 'owner_confirmed')),\n    annotation_revision INTEGER NOT NULL DEFAULT 1 CHECK (annotation_revision >= 1),\n    created_at_ms INTEGER NOT NULL,\n    updated_at_ms INTEGER NOT NULL,\n    PRIMARY KEY (observation_uuid, key),\n    -- The key's namespace segment is the writer's namespace.\n    CHECK (substr(key, 1, length(writer_namespace) + 1) = writer_namespace || '/')\n);\n\n-- New persisted action-mask positions are appended; existing positions never\n-- move. Built-in roles fail closed: only Administrator receives the action.\nINSERT INTO authz_actions\n    (action_key, category, description, camera_scoped, destructive, sort_order, bit_index)\nVALUES\n    ('observations.annotate', 'Integrations',\n     'Annotate detection observations with classifier results', 1, 0, 200, 19);\n\nINSERT INTO authz_role_actions (role_uuid, action_key)\nSELECT '00000000-0000-4000-8000-000000000001', action_key\nFROM authz_actions\nWHERE action_key = 'observations.annotate';\0",
+    )
+};
+static mut migration_0096_down: [::core::ffi::c_char; 257] = unsafe {
+    ::core::mem::transmute::<
+        [u8; 257],
+        [::core::ffi::c_char; 257],
+    >(
+        *b"-- Drops all classification annotations; take a backup first.\nDELETE FROM authz_role_actions WHERE action_key = 'observations.annotate';\nDELETE FROM authz_actions WHERE action_key = 'observations.annotate';\nDROP TABLE IF EXISTS observation_classifications;\0",
+    )
+};
+static mut embedded_migrations_data: [migration_t; 96] = unsafe {
     [
         migration_t {
             version: ::core::mem::transmute::<
@@ -2988,9 +3020,43 @@ static mut embedded_migrations_data: [migration_t; 94] = unsafe {
             status: migrate_status_t::MIGRATE_STATUS_PENDING,
             is_embedded: r#true != 0,
         },
+        migration_t {
+            version: ::core::mem::transmute::<
+                [u8; 32],
+                [::core::ffi::c_char; 32],
+            >(*b"0095\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
+            description: ::core::mem::transmute::<
+                [u8; 256],
+                [::core::ffi::c_char; 256],
+            >(
+                *b"add_object_observations\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+            ),
+            filepath: [0; 512],
+            sql_up: &raw const migration_0095_up as *const ::core::ffi::c_char,
+            sql_down: &raw const migration_0095_down as *const ::core::ffi::c_char,
+            status: migrate_status_t::MIGRATE_STATUS_PENDING,
+            is_embedded: r#true != 0,
+        },
+        migration_t {
+            version: ::core::mem::transmute::<
+                [u8; 32],
+                [::core::ffi::c_char; 32],
+            >(*b"0096\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
+            description: ::core::mem::transmute::<
+                [u8; 256],
+                [::core::ffi::c_char; 256],
+            >(
+                *b"add_observation_classifications\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+            ),
+            filepath: [0; 512],
+            sql_up: &raw const migration_0096_up as *const ::core::ffi::c_char,
+            sql_down: &raw const migration_0096_down as *const ::core::ffi::c_char,
+            status: migrate_status_t::MIGRATE_STATUS_PENDING,
+            is_embedded: r#true != 0,
+        },
     ]
 };
-pub const EMBEDDED_MIGRATIONS_COUNT: ::core::ffi::c_int = 94 as ::core::ffi::c_int;
+pub const EMBEDDED_MIGRATIONS_COUNT: ::core::ffi::c_int = 96 as ::core::ffi::c_int;
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const DEFAULT_MIGRATIONS_DIR: [::core::ffi::c_char; 31] = unsafe {

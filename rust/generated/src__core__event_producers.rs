@@ -6,24 +6,6 @@ unsafe extern "C" {
         __tp: *const tm,
     ) -> size_t;
     unsafe fn gmtime_r(__timer: *const time_t, __tp: *mut tm) -> *mut tm;
-    unsafe fn system_health_scope_name(scope: system_health_scope_t) -> *const ::core::ffi::c_char;
-    unsafe fn system_health_capability_name(
-        capability: system_health_capability_t,
-    ) -> *const ::core::ffi::c_char;
-    unsafe fn system_health_unit_name(unit: system_health_unit_t) -> *const ::core::ffi::c_char;
-    unsafe fn system_health_severity_name(
-        severity: system_health_severity_t,
-    ) -> *const ::core::ffi::c_char;
-    unsafe fn system_health_condition_code(
-        condition: system_health_condition_t,
-    ) -> *const ::core::ffi::c_char;
-    unsafe fn lightnvr_uuid_is_valid(value: *const ::core::ffi::c_char) -> bool;
-    unsafe fn snprintf(
-        __s: *mut ::core::ffi::c_char,
-        __maxlen: size_t,
-        __format: *const ::core::ffi::c_char,
-        ...
-    ) -> ::core::ffi::c_int;
     unsafe fn cJSON_Delete(item: *mut cJSON);
     unsafe fn cJSON_CreateObject() -> *mut cJSON;
     unsafe fn cJSON_AddItemToArray(array: *mut cJSON, item: *mut cJSON) -> cJSON_bool;
@@ -51,7 +33,6 @@ unsafe extern "C" {
         object: *mut cJSON,
         name: *const ::core::ffi::c_char,
     ) -> *mut cJSON;
-    static mut g_config: config_t;
     unsafe fn event_registry_find(
         r#type: *const ::core::ffi::c_char,
     ) -> *const event_type_definition_t;
@@ -68,6 +49,25 @@ unsafe extern "C" {
         error_size: size_t,
     ) -> ::core::ffi::c_int;
     unsafe fn event_envelope_clear(event: *mut event_envelope_t);
+    unsafe fn system_health_scope_name(scope: system_health_scope_t) -> *const ::core::ffi::c_char;
+    unsafe fn system_health_capability_name(
+        capability: system_health_capability_t,
+    ) -> *const ::core::ffi::c_char;
+    unsafe fn system_health_unit_name(unit: system_health_unit_t) -> *const ::core::ffi::c_char;
+    unsafe fn system_health_severity_name(
+        severity: system_health_severity_t,
+    ) -> *const ::core::ffi::c_char;
+    unsafe fn system_health_condition_code(
+        condition: system_health_condition_t,
+    ) -> *const ::core::ffi::c_char;
+    unsafe fn lightnvr_uuid_is_valid(value: *const ::core::ffi::c_char) -> bool;
+    unsafe fn snprintf(
+        __s: *mut ::core::ffi::c_char,
+        __maxlen: size_t,
+        __format: *const ::core::ffi::c_char,
+        ...
+    ) -> ::core::ffi::c_int;
+    static mut g_config: config_t;
     unsafe fn event_bus_publish(
         event: *const event_envelope_t,
         error: *mut ::core::ffi::c_char,
@@ -131,6 +131,91 @@ pub struct tm {
 pub type uint8_t = u8;
 pub type uint32_t = u32;
 pub type uint64_t = u64;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct cJSON {
+    pub next: *mut cJSON,
+    pub prev: *mut cJSON,
+    pub child: *mut cJSON,
+    pub r#type: ::core::ffi::c_int,
+    pub valuestring: *mut ::core::ffi::c_char,
+    pub valueint: ::core::ffi::c_int,
+    pub valuedouble: ::core::ffi::c_double,
+    pub string: *mut ::core::ffi::c_char,
+}
+pub type cJSON_bool = ::core::ffi::c_int;
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct event_severity_t(pub ::core::ffi::c_uint);
+impl event_severity_t {
+    pub const EVENT_SEVERITY_INFO: Self = Self(0);
+    pub const EVENT_SEVERITY_WARNING: Self = Self(1);
+    pub const EVENT_SEVERITY_ERROR: Self = Self(2);
+    pub const EVENT_SEVERITY_CRITICAL: Self = Self(3);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct event_sensitivity_t(pub ::core::ffi::c_uint);
+impl event_sensitivity_t {
+    pub const EVENT_SENSITIVITY_OPERATIONAL: Self = Self(0);
+    pub const EVENT_SENSITIVITY_INTERNAL: Self = Self(1);
+    pub const EVENT_SENSITIVITY_RESTRICTED: Self = Self(2);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct event_media_policy_t(pub ::core::ffi::c_uint);
+impl event_media_policy_t {
+    pub const EVENT_MEDIA_FORBIDDEN: Self = Self(0);
+    pub const EVENT_MEDIA_REFERENCE_ALLOWED: Self = Self(1);
+    pub const EVENT_MEDIA_BINARY_OPT_IN: Self = Self(2);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct event_expected_rate_t(pub ::core::ffi::c_uint);
+impl event_expected_rate_t {
+    pub const EVENT_RATE_LOW: Self = Self(0);
+    pub const EVENT_RATE_MEDIUM: Self = Self(1);
+    pub const EVENT_RATE_HIGH: Self = Self(2);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct event_subject_kind_t(pub ::core::ffi::c_uint);
+impl event_subject_kind_t {
+    pub const EVENT_SUBJECT_CAMERA: Self = Self(0);
+    pub const EVENT_SUBJECT_STORAGE: Self = Self(1);
+    pub const EVENT_SUBJECT_SYSTEM: Self = Self(2);
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct event_type_definition_t {
+    pub r#type: *const ::core::ffi::c_char,
+    pub family: *const ::core::ffi::c_char,
+    pub description: *const ::core::ffi::c_char,
+    pub severity: event_severity_t,
+    pub dynamic_severity: bool,
+    pub minimum_severity: event_severity_t,
+    pub maximum_severity: event_severity_t,
+    pub sensitivity: event_sensitivity_t,
+    pub media_policy: event_media_policy_t,
+    pub expected_rate: event_expected_rate_t,
+    pub subject_kind: event_subject_kind_t,
+    pub default_expiry_seconds: ::core::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct event_envelope_t {
+    pub specversion: [::core::ffi::c_char; 4],
+    pub id: [::core::ffi::c_char; 37],
+    pub r#type: [::core::ffi::c_char; 96],
+    pub source: [::core::ffi::c_char; 128],
+    pub subject: [::core::ffi::c_char; 96],
+    pub time: [::core::ffi::c_char; 32],
+    pub datacontenttype: [::core::ffi::c_char; 32],
+    pub occurred_at: time_t,
+    pub expires_at: time_t,
+    pub severity: event_severity_t,
+    pub data: *mut cJSON,
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct system_health_scope_t(pub ::core::ffi::c_uint);
@@ -313,169 +398,16 @@ pub struct detection_result_t {
     pub count: ::core::ffi::c_int,
     pub detections: [detection_t; 20],
 }
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct cJSON {
-    pub next: *mut cJSON,
-    pub prev: *mut cJSON,
-    pub child: *mut cJSON,
-    pub r#type: ::core::ffi::c_int,
-    pub valuestring: *mut ::core::ffi::c_char,
-    pub valueint: ::core::ffi::c_int,
-    pub valuedouble: ::core::ffi::c_double,
-    pub string: *mut ::core::ffi::c_char,
-}
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct event_severity_t(pub ::core::ffi::c_uint);
-impl event_severity_t {
-    pub const EVENT_SEVERITY_INFO: Self = Self(0);
-    pub const EVENT_SEVERITY_WARNING: Self = Self(1);
-    pub const EVENT_SEVERITY_ERROR: Self = Self(2);
-    pub const EVENT_SEVERITY_CRITICAL: Self = Self(3);
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct event_type_definition_t {
-    pub r#type: *const ::core::ffi::c_char,
-    pub family: *const ::core::ffi::c_char,
-    pub description: *const ::core::ffi::c_char,
-    pub severity: event_severity_t,
-    pub dynamic_severity: bool,
-    pub minimum_severity: event_severity_t,
-    pub maximum_severity: event_severity_t,
-    pub sensitivity: event_sensitivity_t,
-    pub media_policy: event_media_policy_t,
-    pub expected_rate: event_expected_rate_t,
-    pub subject_kind: event_subject_kind_t,
-    pub default_expiry_seconds: ::core::ffi::c_int,
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct event_subject_kind_t(pub ::core::ffi::c_uint);
-impl event_subject_kind_t {
-    pub const EVENT_SUBJECT_CAMERA: Self = Self(0);
-    pub const EVENT_SUBJECT_STORAGE: Self = Self(1);
-    pub const EVENT_SUBJECT_SYSTEM: Self = Self(2);
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct event_expected_rate_t(pub ::core::ffi::c_uint);
-impl event_expected_rate_t {
-    pub const EVENT_RATE_LOW: Self = Self(0);
-    pub const EVENT_RATE_MEDIUM: Self = Self(1);
-    pub const EVENT_RATE_HIGH: Self = Self(2);
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct event_media_policy_t(pub ::core::ffi::c_uint);
-impl event_media_policy_t {
-    pub const EVENT_MEDIA_FORBIDDEN: Self = Self(0);
-    pub const EVENT_MEDIA_REFERENCE_ALLOWED: Self = Self(1);
-    pub const EVENT_MEDIA_BINARY_OPT_IN: Self = Self(2);
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct event_sensitivity_t(pub ::core::ffi::c_uint);
-impl event_sensitivity_t {
-    pub const EVENT_SENSITIVITY_OPERATIONAL: Self = Self(0);
-    pub const EVENT_SENSITIVITY_INTERNAL: Self = Self(1);
-    pub const EVENT_SENSITIVITY_RESTRICTED: Self = Self(2);
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct event_bus_result_t(pub ::core::ffi::c_int);
-impl event_bus_result_t {
-    pub const EVENT_BUS_OK: Self = Self(0);
-    pub const EVENT_BUS_NOT_RUNNING: Self = Self(-1);
-    pub const EVENT_BUS_INVALID_EVENT: Self = Self(-2);
-    pub const EVENT_BUS_QUEUE_FULL: Self = Self(-3);
-    pub const EVENT_BUS_ALLOCATION_FAILED: Self = Self(-4);
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct event_envelope_t {
-    pub specversion: [::core::ffi::c_char; 4],
-    pub id: [::core::ffi::c_char; 37],
-    pub r#type: [::core::ffi::c_char; 96],
-    pub source: [::core::ffi::c_char; 128],
-    pub subject: [::core::ffi::c_char; 96],
-    pub time: [::core::ffi::c_char; 32],
-    pub datacontenttype: [::core::ffi::c_char; 32],
-    pub occurred_at: time_t,
-    pub expires_at: time_t,
-    pub severity: event_severity_t,
-    pub data: *mut cJSON,
-}
-pub type cJSON_bool = ::core::ffi::c_int;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stream_config_t {
-    pub camera_uuid: [::core::ffi::c_char; 37],
-    pub location_uuid: [::core::ffi::c_char; 37],
-    pub name: [::core::ffi::c_char; 256],
-    pub url: [::core::ffi::c_char; 512],
-    pub enabled: bool,
-    pub width: ::core::ffi::c_int,
-    pub height: ::core::ffi::c_int,
-    pub fps: ::core::ffi::c_int,
-    pub codec: [::core::ffi::c_char; 16],
-    pub priority: ::core::ffi::c_int,
-    pub record: bool,
-    pub segment_duration: ::core::ffi::c_int,
-    pub detection_based_recording: bool,
-    pub detection_model: [::core::ffi::c_char; 512],
-    pub detection_interval: ::core::ffi::c_int,
-    pub detection_threshold: ::core::ffi::c_float,
-    pub pre_detection_buffer: ::core::ffi::c_int,
-    pub post_detection_buffer: ::core::ffi::c_int,
-    pub detection_api_url: [::core::ffi::c_char; 512],
-    pub detection_object_filter: [::core::ffi::c_char; 16],
-    pub detection_object_filter_list: [::core::ffi::c_char; 256],
-    pub streaming_enabled: bool,
-    pub protocol: stream_protocol_t,
-    pub record_audio: bool,
-    pub audio_voice_enhancement: bool,
-    pub onvif_username: [::core::ffi::c_char; 64],
-    pub onvif_password: [::core::ffi::c_char; 64],
-    pub onvif_profile: [::core::ffi::c_char; 64],
-    pub onvif_port: ::core::ffi::c_int,
-    pub onvif_discovery_enabled: bool,
-    pub is_onvif: bool,
-    pub backchannel_enabled: bool,
-    pub retention_days: ::core::ffi::c_int,
-    pub detection_retention_days: ::core::ffi::c_int,
-    pub max_storage_mb: ::core::ffi::c_int,
-    pub tier_critical_multiplier: ::core::ffi::c_double,
-    pub tier_important_multiplier: ::core::ffi::c_double,
-    pub tier_ephemeral_multiplier: ::core::ffi::c_double,
-    pub storage_priority: ::core::ffi::c_int,
-    pub ptz_enabled: bool,
-    pub ptz_max_x: ::core::ffi::c_int,
-    pub ptz_max_y: ::core::ffi::c_int,
-    pub ptz_max_z: ::core::ffi::c_int,
-    pub ptz_has_home: bool,
-    pub record_on_schedule: bool,
-    pub recording_schedule: [uint8_t; 168],
-    pub detection_record_on_schedule: bool,
-    pub detection_recording_schedule: [uint8_t; 168],
-    pub tags: [::core::ffi::c_char; 256],
-    pub admin_url: [::core::ffi::c_char; 512],
-    pub privacy_mode: bool,
-    pub motion_trigger_source: [::core::ffi::c_char; 256],
-    pub go2rtc_source_override: [::core::ffi::c_char; 8192],
-    pub sub_stream_url: [::core::ffi::c_char; 512],
-    pub detection_url: [::core::ffi::c_char; 512],
-    pub publish_url: [::core::ffi::c_char; 512],
-    pub playback_transport: [::core::ffi::c_char; 24],
-    pub eptz_config: [::core::ffi::c_char; 1024],
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct stream_protocol_t(pub ::core::ffi::c_uint);
-impl stream_protocol_t {
-    pub const STREAM_PROTOCOL_TCP: Self = Self(0);
-    pub const STREAM_PROTOCOL_UDP: Self = Self(1);
+pub struct event_producer_enqueue_result_t(pub ::core::ffi::c_int);
+impl event_producer_enqueue_result_t {
+    pub const EVENT_PRODUCER_ENQUEUE_FAILED: Self = Self(-1);
+    pub const EVENT_PRODUCER_ENQUEUE_ENQUEUED: Self = Self(0);
+    pub const EVENT_PRODUCER_ENQUEUE_DUPLICATE: Self = Self(1);
+    pub const EVENT_PRODUCER_ENQUEUE_NO_ROUTE: Self = Self(2);
+    pub const EVENT_PRODUCER_ENQUEUE_MQTT_DISABLED: Self = Self(3);
+    pub const EVENT_PRODUCER_ENQUEUE_FULL: Self = Self(4);
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -634,6 +566,79 @@ pub struct detection_engine_config_t {
     pub num_threads: ::core::ffi::c_int,
     pub delegate: [::core::ffi::c_char; 16],
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct stream_config_t {
+    pub camera_uuid: [::core::ffi::c_char; 37],
+    pub location_uuid: [::core::ffi::c_char; 37],
+    pub name: [::core::ffi::c_char; 256],
+    pub url: [::core::ffi::c_char; 512],
+    pub enabled: bool,
+    pub width: ::core::ffi::c_int,
+    pub height: ::core::ffi::c_int,
+    pub fps: ::core::ffi::c_int,
+    pub codec: [::core::ffi::c_char; 16],
+    pub priority: ::core::ffi::c_int,
+    pub record: bool,
+    pub segment_duration: ::core::ffi::c_int,
+    pub detection_based_recording: bool,
+    pub detection_model: [::core::ffi::c_char; 512],
+    pub detection_interval: ::core::ffi::c_int,
+    pub detection_threshold: ::core::ffi::c_float,
+    pub pre_detection_buffer: ::core::ffi::c_int,
+    pub post_detection_buffer: ::core::ffi::c_int,
+    pub detection_api_url: [::core::ffi::c_char; 512],
+    pub detection_object_filter: [::core::ffi::c_char; 16],
+    pub detection_object_filter_list: [::core::ffi::c_char; 256],
+    pub streaming_enabled: bool,
+    pub protocol: stream_protocol_t,
+    pub record_audio: bool,
+    pub audio_voice_enhancement: bool,
+    pub onvif_username: [::core::ffi::c_char; 64],
+    pub onvif_password: [::core::ffi::c_char; 64],
+    pub onvif_profile: [::core::ffi::c_char; 64],
+    pub onvif_port: ::core::ffi::c_int,
+    pub onvif_discovery_enabled: bool,
+    pub is_onvif: bool,
+    pub backchannel_enabled: bool,
+    pub retention_days: ::core::ffi::c_int,
+    pub detection_retention_days: ::core::ffi::c_int,
+    pub max_storage_mb: ::core::ffi::c_int,
+    pub tier_critical_multiplier: ::core::ffi::c_double,
+    pub tier_important_multiplier: ::core::ffi::c_double,
+    pub tier_ephemeral_multiplier: ::core::ffi::c_double,
+    pub storage_priority: ::core::ffi::c_int,
+    pub ptz_enabled: bool,
+    pub ptz_max_x: ::core::ffi::c_int,
+    pub ptz_max_y: ::core::ffi::c_int,
+    pub ptz_max_z: ::core::ffi::c_int,
+    pub ptz_has_home: bool,
+    pub record_on_schedule: bool,
+    pub recording_schedule: [uint8_t; 168],
+    pub detection_record_on_schedule: bool,
+    pub detection_recording_schedule: [uint8_t; 168],
+    pub tags: [::core::ffi::c_char; 256],
+    pub admin_url: [::core::ffi::c_char; 512],
+    pub privacy_mode: bool,
+    pub motion_trigger_source: [::core::ffi::c_char; 256],
+    pub go2rtc_source_override: [::core::ffi::c_char; 8192],
+    pub sub_stream_url: [::core::ffi::c_char; 512],
+    pub detection_url: [::core::ffi::c_char; 512],
+    pub publish_url: [::core::ffi::c_char; 512],
+    pub playback_transport: [::core::ffi::c_char; 24],
+    pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct stream_protocol_t(pub ::core::ffi::c_uint);
+impl stream_protocol_t {
+    pub const STREAM_PROTOCOL_TCP: Self = Self(0);
+    pub const STREAM_PROTOCOL_UDP: Self = Self(1);
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct event_router_result_t(pub ::core::ffi::c_int);
@@ -643,11 +648,21 @@ impl event_router_result_t {
     pub const EVENT_ROUTER_MATCH: Self = Self(1);
     pub const EVENT_ROUTER_DEFAULT: Self = Self(2);
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct event_bus_result_t(pub ::core::ffi::c_int);
+impl event_bus_result_t {
+    pub const EVENT_BUS_OK: Self = Self(0);
+    pub const EVENT_BUS_NOT_RUNNING: Self = Self(-1);
+    pub const EVENT_BUS_INVALID_EVENT: Self = Self(-2);
+    pub const EVENT_BUS_QUEUE_FULL: Self = Self(-3);
+    pub const EVENT_BUS_ALLOCATION_FAILED: Self = Self(-4);
+}
+pub const EVENT_SUBJECT_MAX: ::core::ffi::c_int = 96 as ::core::ffi::c_int;
+pub const EVENT_TIME_MAX: ::core::ffi::c_int = 32 as ::core::ffi::c_int;
 pub const SYSTEM_HEALTH_ID_LENGTH: ::core::ffi::c_uint = 64 as ::core::ffi::c_uint;
 pub const MAX_DETECTIONS: ::core::ffi::c_int = 20 as ::core::ffi::c_int;
 pub const MAX_STREAM_NAME: ::core::ffi::c_int = 256 as ::core::ffi::c_int;
-pub const EVENT_SUBJECT_MAX: ::core::ffi::c_int = 96 as ::core::ffi::c_int;
-pub const EVENT_TIME_MAX: ::core::ffi::c_int = 32 as ::core::ffi::c_int;
 pub const EVENT_ROUTE_DEFAULT_DESTINATION: [::core::ffi::c_char; 13] =
     unsafe { ::core::mem::transmute::<[u8; 13], [::core::ffi::c_char; 13]>(*b"mqtt:default\0") };
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
@@ -833,11 +848,50 @@ unsafe extern "C" fn publish_event(
         error_size,
     );
 }
-unsafe extern "C" fn durably_enqueue_event(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn event_producer_enqueue_result_name(
+    mut result: event_producer_enqueue_result_t,
+) -> *const ::core::ffi::c_char {
+    match result {
+        event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FAILED => {
+            return b"failed\0".as_ptr() as *const ::core::ffi::c_char;
+        }
+        event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_ENQUEUED => {
+            return b"enqueued\0".as_ptr() as *const ::core::ffi::c_char;
+        }
+        event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_DUPLICATE => {
+            return b"duplicate\0".as_ptr() as *const ::core::ffi::c_char;
+        }
+        event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_NO_ROUTE => {
+            return b"no_route\0".as_ptr() as *const ::core::ffi::c_char;
+        }
+        event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_MQTT_DISABLED => {
+            return b"mqtt_disabled\0".as_ptr() as *const ::core::ffi::c_char;
+        }
+        event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FULL => {
+            return b"full\0".as_ptr() as *const ::core::ffi::c_char;
+        }
+        _ => {}
+    }
+    return b"unknown\0".as_ptr() as *const ::core::ffi::c_char;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn event_producer_enqueue_durable(
     mut event: *const event_envelope_t,
     mut error: *mut ::core::ffi::c_char,
     mut error_size: size_t,
-) -> ::core::ffi::c_int {
+) -> event_producer_enqueue_result_t {
+    if !error.is_null() && error_size > 0 as size_t {
+        *error.offset(0isize) = '\0' as ::core::ffi::c_char;
+    }
+    if event.is_null() {
+        set_error(
+            error,
+            error_size,
+            b"event is required\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FAILED;
+    }
     let mut plan: event_route_delivery_plan_t = event_route_delivery_plan_t {
         event_id: [
             0 as ::core::ffi::c_char,
@@ -893,12 +947,12 @@ unsafe extern "C" fn durably_enqueue_event(
             error_size,
             b"event route evaluation failed\0".as_ptr() as *const ::core::ffi::c_char,
         );
-        return -1 as ::core::ffi::c_int;
+        return event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FAILED;
     }
     if route_result.0 == event_router_result_t::EVENT_ROUTER_DEFAULT.0 {
         if !g_config.mqtt_enabled {
             event_route_delivery_plan_clear(&raw mut plan);
-            return 0 as ::core::ffi::c_int;
+            return event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_MQTT_DISABLED;
         }
         let mut result: event_outbox_enqueue_result_t = mqtt_delivery_worker_enqueue(
             event,
@@ -906,23 +960,33 @@ unsafe extern "C" fn durably_enqueue_event(
             ::core::ptr::null_mut::<int64_t>(),
         );
         event_route_delivery_plan_clear(&raw mut plan);
-        if result.0 == event_outbox_enqueue_result_t::EVENT_OUTBOX_ENQUEUED.0
-            || result.0 == event_outbox_enqueue_result_t::EVENT_OUTBOX_DUPLICATE.0
-        {
-            return 0 as ::core::ffi::c_int;
+        if result.0 == event_outbox_enqueue_result_t::EVENT_OUTBOX_ENQUEUED.0 {
+            return event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_ENQUEUED;
+        }
+        if result.0 == event_outbox_enqueue_result_t::EVENT_OUTBOX_DUPLICATE.0 {
+            return event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_DUPLICATE;
         }
         set_error(
             error,
             error_size,
             b"durable event outbox enqueue failed\0".as_ptr() as *const ::core::ffi::c_char,
         );
-        return -1 as ::core::ffi::c_int;
+        return event_producer_enqueue_result_t(
+            if result.0 == event_outbox_enqueue_result_t::EVENT_OUTBOX_FULL.0 {
+                event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FULL.0
+            } else {
+                event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FAILED.0
+            },
+        );
     }
     if route_result.0 == event_router_result_t::EVENT_ROUTER_NO_MATCH.0 {
         event_route_delivery_plan_clear(&raw mut plan);
-        return 0 as ::core::ffi::c_int;
+        return event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_NO_ROUTE;
     }
     let mut failed: bool = r#false != 0;
+    let mut any_error: bool = r#false != 0;
+    let mut any_enqueued: bool = r#false != 0;
+    let mut any_duplicate: bool = r#false != 0;
     let mut destination_accepted: [bool; 512] = [
         r#false != 0,
         false,
@@ -1456,7 +1520,7 @@ unsafe extern "C" fn durably_enqueue_event(
                 previous = previous.wrapping_add(1);
             }
         }
-        's_82: {
+        's_113: {
             if !duplicate_destination {
                 let mut result_0: event_outbox_enqueue_result_t =
                     event_outbox_enqueue_result_t::EVENT_OUTBOX_ENQUEUED;
@@ -1466,7 +1530,7 @@ unsafe extern "C" fn durably_enqueue_event(
                 ) == 0 as ::core::ffi::c_int
                 {
                     if !g_config.mqtt_enabled {
-                        break 's_82;
+                        break 's_113;
                     } else {
                         result_0 = mqtt_delivery_worker_enqueue(
                             event,
@@ -1486,8 +1550,16 @@ unsafe extern "C" fn durably_enqueue_event(
                     && result_0.0 != event_outbox_enqueue_result_t::EVENT_OUTBOX_DUPLICATE.0
                 {
                     failed = r#true != 0;
+                    if result_0.0 != event_outbox_enqueue_result_t::EVENT_OUTBOX_FULL.0 {
+                        any_error = r#true != 0;
+                    }
                 } else {
                     destination_accepted[index] = r#true != 0;
+                    if result_0.0 == event_outbox_enqueue_result_t::EVENT_OUTBOX_ENQUEUED.0 {
+                        any_enqueued = r#true != 0;
+                    } else {
+                        any_duplicate = r#true != 0;
+                    }
                 }
             }
         }
@@ -1522,6 +1594,7 @@ unsafe extern "C" fn durably_enqueue_event(
                 ) != 0 as ::core::ffi::c_int
             {
                 failed = r#true != 0;
+                any_error = r#true != 0;
             }
             index_0 = index_0.wrapping_add(1);
         }
@@ -1533,9 +1606,34 @@ unsafe extern "C" fn durably_enqueue_event(
             error_size,
             b"durable event route enqueue failed\0".as_ptr() as *const ::core::ffi::c_char,
         );
-        return -1 as ::core::ffi::c_int;
+        return event_producer_enqueue_result_t(if any_error as ::core::ffi::c_int != 0 {
+            event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FAILED.0
+        } else {
+            event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FULL.0
+        });
     }
-    return 0 as ::core::ffi::c_int;
+    if any_enqueued {
+        return event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_ENQUEUED;
+    }
+    if any_duplicate {
+        return event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_DUPLICATE;
+    }
+    return event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_MQTT_DISABLED;
+}
+unsafe extern "C" fn durably_enqueue_event(
+    mut event: *const event_envelope_t,
+    mut error: *mut ::core::ffi::c_char,
+    mut error_size: size_t,
+) -> ::core::ffi::c_int {
+    let mut result: event_producer_enqueue_result_t =
+        event_producer_enqueue_durable(event, error, error_size);
+    return if result.0 == event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FAILED.0
+        || result.0 == event_producer_enqueue_result_t::EVENT_PRODUCER_ENQUEUE_FULL.0
+    {
+        -1 as ::core::ffi::c_int
+    } else {
+        0 as ::core::ffi::c_int
+    };
 }
 unsafe extern "C" fn camera_subject_for_stream(
     mut stream_name: *const ::core::ffi::c_char,
@@ -1610,6 +1708,10 @@ unsafe extern "C" fn camera_subject_for_stream(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config_by_name(stream_name, &raw mut stream) != 0 as ::core::ffi::c_int
         || !lightnvr_uuid_is_valid(&raw mut stream.camera_uuid as *mut ::core::ffi::c_char)
@@ -2003,6 +2105,10 @@ pub unsafe extern "C" fn event_producer_publish_detection_for_stream(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config_by_name(stream_name, &raw mut stream) != 0 as ::core::ffi::c_int
         || !lightnvr_uuid_is_valid(&raw mut stream.camera_uuid as *mut ::core::ffi::c_char)

@@ -125,6 +125,7 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_long;
 }
 pub type size_t = usize;
+pub type int64_t = i64;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct __pthread_internal_list {
@@ -224,6 +225,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -302,6 +307,7 @@ impl C2Rust_Unnamed {
     pub const COL_LOCATION_UUID: Self = Self(54);
     pub const COL_PLAYBACK_TRANSPORT: Self = Self(55);
     pub const COL_EPTZ_CONFIG: Self = Self(56);
+    pub const COL_OBSERVATION_EVIDENCE_ENABLED: Self = Self(57);
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -364,6 +370,7 @@ impl C2Rust_Unnamed_0 {
     pub const COL_LOCATION_UUID: Self = Self(54);
     pub const COL_PLAYBACK_TRANSPORT: Self = Self(55);
     pub const COL_EPTZ_CONFIG: Self = Self(56);
+    pub const COL_OBSERVATION_EVIDENCE_ENABLED: Self = Self(57);
 }
 pub const SQLITE_OK: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const SQLITE_ROW: ::core::ffi::c_int = 100 as ::core::ffi::c_int;
@@ -374,6 +381,9 @@ pub const MAX_PATH_LENGTH: ::core::ffi::c_int = 512 as ::core::ffi::c_int;
 pub const MAX_STREAM_NAME: ::core::ffi::c_int = 256 as ::core::ffi::c_int;
 pub const CAMERA_UUID_STRING_SIZE: ::core::ffi::c_int = 37 as ::core::ffi::c_int;
 pub const MAX_URL_LENGTH: ::core::ffi::c_int = 512 as ::core::ffi::c_int;
+pub const OBSERVATION_DEFAULT_MAX_AGE_DAYS: ::core::ffi::c_int = 7 as ::core::ffi::c_int;
+pub const OBSERVATION_DEFAULT_MAX_BYTES: ::core::ffi::c_longlong =
+    2147483648 as ::core::ffi::c_longlong;
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 unsafe extern "C" fn serialize_recording_schedule(
@@ -476,6 +486,82 @@ unsafe extern "C" fn normalized_playback_transport(
     } else {
         b"auto\0".as_ptr() as *const ::core::ffi::c_char
     };
+}
+unsafe extern "C" fn normalized_observation_max_age_days(
+    mut value: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    return if value > 0 as ::core::ffi::c_int {
+        value
+    } else {
+        OBSERVATION_DEFAULT_MAX_AGE_DAYS
+    };
+}
+unsafe extern "C" fn normalized_observation_max_bytes(mut value: int64_t) -> sqlite3_int64 {
+    return if value > 0 as int64_t {
+        value as sqlite3_int64
+    } else {
+        OBSERVATION_DEFAULT_MAX_BYTES
+    };
+}
+unsafe extern "C" fn bind_observation_settings(
+    mut stmt: *mut sqlite3_stmt,
+    mut first: ::core::ffi::c_int,
+    mut stream: *const stream_config_t,
+) {
+    sqlite3_bind_int(
+        stmt,
+        first,
+        if (*stream).observation_evidence_enabled as ::core::ffi::c_int != 0 {
+            1 as ::core::ffi::c_int
+        } else {
+            0 as ::core::ffi::c_int
+        },
+    );
+    sqlite3_bind_text(
+        stmt,
+        first + 1 as ::core::ffi::c_int,
+        &raw const (*stream).observation_labels as *const ::core::ffi::c_char,
+        -1 as ::core::ffi::c_int,
+        SQLITE_STATIC,
+    );
+    sqlite3_bind_int(
+        stmt,
+        first + 2 as ::core::ffi::c_int,
+        normalized_observation_max_age_days((*stream).observation_max_age_days),
+    );
+    sqlite3_bind_int64(
+        stmt,
+        first + 3 as ::core::ffi::c_int,
+        normalized_observation_max_bytes((*stream).observation_max_bytes),
+    );
+}
+unsafe extern "C" fn load_observation_settings(
+    mut stmt: *mut sqlite3_stmt,
+    mut first: ::core::ffi::c_int,
+    mut stream: *mut stream_config_t,
+) {
+    (*stream).observation_evidence_enabled =
+        sqlite3_column_int(stmt, first) != 0 as ::core::ffi::c_int;
+    let mut labels: *const ::core::ffi::c_char =
+        sqlite3_column_text(stmt, first + 1 as ::core::ffi::c_int) as *const ::core::ffi::c_char;
+    safe_strcpy(
+        &raw mut (*stream).observation_labels as *mut ::core::ffi::c_char,
+        if !labels.is_null() {
+            labels
+        } else {
+            b"\0".as_ptr() as *const ::core::ffi::c_char
+        },
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        0 as size_t,
+    );
+    (*stream).observation_max_age_days = normalized_observation_max_age_days(sqlite3_column_int(
+        stmt,
+        first + 2 as ::core::ffi::c_int,
+    ));
+    (*stream).observation_max_bytes = normalized_observation_max_bytes(sqlite3_column_int64(
+        stmt,
+        first + 3 as ::core::ffi::c_int,
+    ) as int64_t) as int64_t;
 }
 unsafe extern "C" fn normalized_go2rtc_source_override(
     mut value: *const ::core::ffi::c_char,
@@ -618,7 +704,7 @@ pub unsafe extern "C" fn add_stream_config(mut stream: *const stream_config_t) -
             sqlite3_finalize(check_stmt);
             check_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
         }
-        let mut update_sql: *const ::core::ffi::c_char = b"UPDATE streams SET url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, detection_based_recording = ?, detection_model = ?, detection_threshold = ?, detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, detection_api_url = ?, detection_object_filter = ?, detection_object_filter_list = ?, protocol = ?, is_onvif = ?, record_audio = ?, backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, onvif_username = ?, onvif_password = ?, onvif_profile = ?, onvif_port = ?, record_on_schedule = ?, recording_schedule = ?, tags = ?, admin_url = ?, privacy_mode = ?, motion_trigger_source = ?, go2rtc_source_override = ?, sub_stream_url = ?, audio_voice_enhancement = ?, detection_url = ?, publish_url = ?, detection_record_on_schedule = ?, detection_recording_schedule = ?, playback_transport = ?, eptz_config = ? WHERE id = ?;\0"
+        let mut update_sql: *const ::core::ffi::c_char = b"UPDATE streams SET url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, detection_based_recording = ?, detection_model = ?, detection_threshold = ?, detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, detection_api_url = ?, detection_object_filter = ?, detection_object_filter_list = ?, protocol = ?, is_onvif = ?, record_audio = ?, backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, onvif_username = ?, onvif_password = ?, onvif_profile = ?, onvif_port = ?, record_on_schedule = ?, recording_schedule = ?, tags = ?, admin_url = ?, privacy_mode = ?, motion_trigger_source = ?, go2rtc_source_override = ?, sub_stream_url = ?, audio_voice_enhancement = ?, detection_url = ?, publish_url = ?, detection_record_on_schedule = ?, detection_recording_schedule = ?, playback_transport = ?, eptz_config = ?, observation_evidence_enabled = ?, observation_labels = ?, observation_max_age_days = ?, observation_max_bytes = ? WHERE id = ?;\0"
             .as_ptr() as *const ::core::ffi::c_char;
         rc = sqlite3_prepare_v2(
             db,
@@ -971,7 +1057,8 @@ pub unsafe extern "C" fn add_stream_config(mut stream: *const stream_config_t) -
             -1 as ::core::ffi::c_int,
             SQLITE_STATIC,
         );
-        sqlite3_bind_int64(stmt, 55 as ::core::ffi::c_int, existing_id as sqlite3_int64);
+        bind_observation_settings(stmt, 55 as ::core::ffi::c_int, stream);
+        sqlite3_bind_int64(stmt, 59 as ::core::ffi::c_int, existing_id as sqlite3_int64);
         let mut owns_transaction: bool = r#false != 0;
         if !stream_transaction_begin(db, &raw mut owns_transaction) {
             _log_message_ctx(
@@ -1065,7 +1152,7 @@ pub unsafe extern "C" fn add_stream_config(mut stream: *const stream_config_t) -
         sqlite3_finalize(check_stmt);
         check_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
     }
-    let mut sql: *const ::core::ffi::c_char = b"INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, detection_based_recording, detection_model, detection_threshold, detection_interval, pre_detection_buffer, post_detection_buffer, detection_api_url, detection_object_filter, detection_object_filter_list, protocol, is_onvif, record_audio, backchannel_enabled, retention_days, detection_retention_days, max_storage_mb, tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, onvif_username, onvif_password, onvif_profile, onvif_port, record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, detection_record_on_schedule, detection_recording_schedule, playback_transport, eptz_config, camera_uuid, location_uuid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', (abs(random()) % 4) + 1, 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))), (SELECT uuid FROM camera_locations WHERE is_system = 1 LIMIT 1));\0"
+    let mut sql: *const ::core::ffi::c_char = b"INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, detection_based_recording, detection_model, detection_threshold, detection_interval, pre_detection_buffer, post_detection_buffer, detection_api_url, detection_object_filter, detection_object_filter_list, protocol, is_onvif, record_audio, backchannel_enabled, retention_days, detection_retention_days, max_storage_mb, tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, onvif_username, onvif_password, onvif_profile, onvif_port, record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, detection_record_on_schedule, detection_recording_schedule, playback_transport, eptz_config, observation_evidence_enabled, observation_labels, observation_max_age_days, observation_max_bytes, camera_uuid, location_uuid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', (abs(random()) % 4) + 1, 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))), (SELECT uuid FROM camera_locations WHERE is_system = 1 LIMIT 1));\0"
         .as_ptr() as *const ::core::ffi::c_char;
     rc = sqlite3_prepare_v2(
         db,
@@ -1424,6 +1511,7 @@ pub unsafe extern "C" fn add_stream_config(mut stream: *const stream_config_t) -
         -1 as ::core::ffi::c_int,
         SQLITE_STATIC,
     );
+    bind_observation_settings(stmt, 56 as ::core::ffi::c_int, stream);
     let mut owns_transaction_0: bool = r#false != 0;
     if !stream_transaction_begin(db, &raw mut owns_transaction_0) {
         _log_message_ctx(
@@ -1602,7 +1690,7 @@ pub unsafe extern "C" fn update_stream_config(
         return -1 as ::core::ffi::c_int;
     }
     pthread_mutex_lock(db_mutex);
-    let mut sql: *const ::core::ffi::c_char = b"UPDATE streams SET name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, detection_based_recording = ?, detection_model = ?, detection_threshold = ?, detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, detection_api_url = ?, detection_object_filter = ?, detection_object_filter_list = ?, protocol = ?, is_onvif = ?, record_audio = ?, backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, onvif_username = ?, onvif_password = ?, onvif_profile = ?, onvif_port = ?, record_on_schedule = ?, recording_schedule = ?, tags = ?, admin_url = ?, privacy_mode = COALESCE(?, privacy_mode), motion_trigger_source = ?, go2rtc_source_override = ?, sub_stream_url = ?, audio_voice_enhancement = ?, detection_url = ?, publish_url = ?, detection_record_on_schedule = ?, detection_recording_schedule = ?, playback_transport = ?, eptz_config = ? WHERE name = ?;\0"
+    let mut sql: *const ::core::ffi::c_char = b"UPDATE streams SET name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, detection_based_recording = ?, detection_model = ?, detection_threshold = ?, detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, detection_api_url = ?, detection_object_filter = ?, detection_object_filter_list = ?, protocol = ?, is_onvif = ?, record_audio = ?, backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, onvif_username = ?, onvif_password = ?, onvif_profile = ?, onvif_port = ?, record_on_schedule = ?, recording_schedule = ?, tags = ?, admin_url = ?, privacy_mode = COALESCE(?, privacy_mode), motion_trigger_source = ?, go2rtc_source_override = ?, sub_stream_url = ?, audio_voice_enhancement = ?, detection_url = ?, publish_url = ?, detection_record_on_schedule = ?, detection_recording_schedule = ?, playback_transport = ?, eptz_config = ?, observation_evidence_enabled = ?, observation_labels = ?, observation_max_age_days = ?, observation_max_bytes = ? WHERE name = ?;\0"
         .as_ptr() as *const ::core::ffi::c_char;
     rc = sqlite3_prepare_v2(
         db,
@@ -1953,9 +2041,10 @@ pub unsafe extern "C" fn update_stream_config(
         -1 as ::core::ffi::c_int,
         SQLITE_STATIC,
     );
+    bind_observation_settings(stmt, 56 as ::core::ffi::c_int, stream);
     sqlite3_bind_text(
         stmt,
-        56 as ::core::ffi::c_int,
+        60 as ::core::ffi::c_int,
         name,
         -1 as ::core::ffi::c_int,
         SQLITE_STATIC,
@@ -2408,7 +2497,7 @@ pub unsafe extern "C" fn get_stream_config_by_name(
         return -1 as ::core::ffi::c_int;
     }
     pthread_mutex_lock(db_mutex);
-    let mut sql: *const ::core::ffi::c_char = b"SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, detection_based_recording, detection_model, detection_threshold, detection_interval, pre_detection_buffer, post_detection_buffer, detection_api_url, detection_object_filter, detection_object_filter_list, protocol, is_onvif, record_audio, backchannel_enabled, retention_days, detection_retention_days, max_storage_mb, tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, onvif_username, onvif_password, onvif_profile, onvif_port, record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid, playback_transport, eptz_config FROM streams WHERE name = ?;\0"
+    let mut sql: *const ::core::ffi::c_char = b"SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, detection_based_recording, detection_model, detection_threshold, detection_interval, pre_detection_buffer, post_detection_buffer, detection_api_url, detection_object_filter, detection_object_filter_list, protocol, is_onvif, record_audio, backchannel_enabled, retention_days, detection_retention_days, max_storage_mb, tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, onvif_username, onvif_password, onvif_profile, onvif_port, record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid, playback_transport, eptz_config, observation_evidence_enabled, observation_labels, observation_max_age_days, observation_max_bytes FROM streams WHERE name = ?;\0"
         .as_ptr() as *const ::core::ffi::c_char;
     rc = sqlite3_prepare_v2(
         db,
@@ -2976,6 +3065,11 @@ pub unsafe extern "C" fn get_stream_config_by_name(
             ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
             0 as size_t,
         );
+        load_observation_settings(
+            stmt,
+            C2Rust_Unnamed::COL_OBSERVATION_EVIDENCE_ENABLED.0 as ::core::ffi::c_int,
+            stream,
+        );
         result = 0 as ::core::ffi::c_int;
     }
     if !stmt.is_null() {
@@ -3346,7 +3440,7 @@ unsafe extern "C" fn get_all_stream_configs_on_connection(
         );
         return -1 as ::core::ffi::c_int;
     }
-    let mut sql: *const ::core::ffi::c_char = b"SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, detection_based_recording, detection_model, detection_threshold, detection_interval, pre_detection_buffer, post_detection_buffer, detection_api_url, detection_object_filter, detection_object_filter_list, protocol, is_onvif, record_audio, backchannel_enabled, retention_days, detection_retention_days, max_storage_mb, tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, onvif_username, onvif_password, onvif_profile, onvif_port, record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid, playback_transport, eptz_config FROM streams ORDER BY name;\0"
+    let mut sql: *const ::core::ffi::c_char = b"SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, detection_based_recording, detection_model, detection_threshold, detection_interval, pre_detection_buffer, post_detection_buffer, detection_api_url, detection_object_filter, detection_object_filter_list, protocol, is_onvif, record_audio, backchannel_enabled, retention_days, detection_retention_days, max_storage_mb, tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, onvif_username, onvif_password, onvif_profile, onvif_port, record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid, playback_transport, eptz_config, observation_evidence_enabled, observation_labels, observation_max_age_days, observation_max_bytes FROM streams ORDER BY name;\0"
         .as_ptr() as *const ::core::ffi::c_char;
     rc = sqlite3_prepare_v2(
         db,
@@ -3922,6 +4016,11 @@ unsafe extern "C" fn get_all_stream_configs_on_connection(
             },
             ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
             0 as size_t,
+        );
+        load_observation_settings(
+            stmt,
+            C2Rust_Unnamed_0::COL_OBSERVATION_EVIDENCE_ENABLED.0 as ::core::ffi::c_int,
+            s,
         );
         count += 1;
     }

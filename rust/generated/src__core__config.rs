@@ -183,6 +183,7 @@ pub type __blksize_t = ::core::ffi::c_long;
 pub type __blkcnt_t = ::core::ffi::c_long;
 pub type __syscall_slong_t = ::core::ffi::c_long;
 pub type mode_t = __mode_t;
+pub type int64_t = i64;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct timespec {
@@ -627,6 +628,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -831,6 +836,9 @@ pub const DB_STARTUP_CHECK_FULL: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const DB_BACKUP_VERIFY_OFF: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const DB_BACKUP_VERIFY_QUICK: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const DB_BACKUP_VERIFY_FULL: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
+pub const OBSERVATION_DEFAULT_MAX_AGE_DAYS: ::core::ffi::c_int = 7 as ::core::ffi::c_int;
+pub const OBSERVATION_DEFAULT_MAX_BYTES: ::core::ffi::c_longlong =
+    2147483648 as ::core::ffi::c_longlong;
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
@@ -1903,6 +1911,13 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
         (*(*config).streams.offset(i as isize)).tier_important_multiplier = 2.0f64;
         (*(*config).streams.offset(i as isize)).tier_ephemeral_multiplier = 0.25f64;
         (*(*config).streams.offset(i as isize)).storage_priority = 5 as ::core::ffi::c_int;
+        (*(*config).streams.offset(i as isize)).observation_evidence_enabled = r#false != 0;
+        (*(*config).streams.offset(i as isize)).observation_labels[0usize] =
+            '\0' as ::core::ffi::c_char;
+        (*(*config).streams.offset(i as isize)).observation_max_age_days =
+            OBSERVATION_DEFAULT_MAX_AGE_DAYS;
+        (*(*config).streams.offset(i as isize)).observation_max_bytes =
+            OBSERVATION_DEFAULT_MAX_BYTES as int64_t;
         i += 1;
     }
     (*config).mqtt_enabled = r#false != 0;
