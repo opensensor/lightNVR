@@ -138,6 +138,9 @@ static uint64_t detection_link_recording_id(unified_detection_ctx_t *ctx);
 static bool should_annotate_continuous(unified_detection_ctx_t *ctx);
 // ONVIF async detection thread helpers (defined before start_unified_detection_thread)
 static void *onvif_detection_thread_func(void *arg);
+static void  udt_record_onvif_observations(unified_detection_ctx_t *ctx,
+                                           const detection_result_t *result,
+                                           int64_t observed_at_ms);
 static int   start_onvif_detection_thread(unified_detection_ctx_t *ctx);
 static void  stop_onvif_detection_thread(unified_detection_ctx_t *ctx);
 static bool  runtime_has_engine_type(const unified_detection_ctx_t *ctx,
@@ -723,6 +726,8 @@ static void *onvif_detection_thread_func(void *arg) {
 
         struct timespec poll_start;
         clock_gettime(CLOCK_MONOTONIC, &poll_start);
+        /* detect_motion_onvif stamps the event before its PullMessages call. */
+        int64_t poll_wall_ms = detection_evidence_observed_at_ms(0);
 
         int ret = detect_motion_onvif(ctx->onvif_url_cached,
                                       ctx->onvif_username_cached,
@@ -736,6 +741,9 @@ static void *onvif_detection_thread_func(void *arg) {
         if (!atomic_load(&ctx->onvif_thread_running)) break;
 
         if (ret == 0 && result.count > 0) {
+            /* INT_01 L7: object-class events (not plain motion) become
+             * observations with evidence unavailable(no_matching_media). */
+            udt_record_onvif_observations(ctx, &result, poll_wall_ms);
             long long seen = (long long)time(NULL);
             if (atomic_exchange(&ctx->onvif_motion_detected, 1) == 0) {
                 // Start of a motion episode: the pre-roll is anchored here
@@ -3074,6 +3082,20 @@ static bool udt_evidence_wanted(unified_detection_ctx_t *ctx,
     return false;
 }
 
+/* Copy the cached settings (labels always NUL-terminated). Returns the
+ * enabled flag. Used by the API and ONVIF paths, which learn the labels only
+ * after the call. */
+static bool udt_evidence_settings(unified_detection_ctx_t *ctx,
+                                  char labels[OBSERVATION_LABELS_MAX]) {
+    labels[0] = '\0';
+    if (!atomic_load(&ctx->observation_evidence_enabled)) return false;
+    pthread_mutex_lock(&ctx->mutex);
+    memcpy(labels, ctx->observation_labels, OBSERVATION_LABELS_MAX);
+    pthread_mutex_unlock(&ctx->mutex);
+    labels[OBSERVATION_LABELS_MAX - 1] = '\0';
+    return true;
+}
+
 /* Hand one engine's surviving detections and the owned inference frame to the
  * L3 queue. Always consumes rgb. */
 static void udt_submit_evidence(unified_detection_ctx_t *ctx, const char *engine_key,
@@ -3118,6 +3140,44 @@ static const char *udt_single_engine_key(const unified_detection_ctx_t *ctx) {
         ? ctx->engines[0].engine_key : "legacy-primary";
 }
 
+/* INT_01 L7: ONVIF events carry a class but no frame (contract reason
+ * no_matching_media; a separately timed snapshot is never substituted). Runs
+ * on the ONVIF polling thread; settings come from the ctx cache and the
+ * hand-off goes through the L3 drop ring, so no DB access here. */
+static void udt_record_onvif_observations(unified_detection_ctx_t *ctx,
+                                          const detection_result_t *result,
+                                          int64_t observed_at_ms) {
+    if (!ctx || !result || result->count <= 0 || !ctx->camera_uuid[0]) return;
+    char labels[OBSERVATION_LABELS_MAX];
+    if (!udt_evidence_settings(ctx, labels)) return;
+
+    const char *engine_key = "legacy-primary";
+    for (int i = 0; i < ctx->engine_count; ++i) {
+        if (strcmp(ctx->engines[i].engine_type, "onvif") == 0 && ctx->engines[i].engine_key[0]) {
+            engine_key = ctx->engines[i].engine_key;
+            break;
+        }
+    }
+    detection_evidence_camera_t camera = {
+        .camera_uuid = ctx->camera_uuid,
+        .stream_name = ctx->stream_name,
+        .evidence_enabled = true,
+        .labels_csv = labels,
+        .recording_id = (int64_t)detection_link_recording_id(ctx),
+    };
+    detection_evidence_engine_t engine = {
+        .engine_key = engine_key,
+        .engine_type = "onvif",
+    };
+    observation_evidence_result_t submitted = OBS_EVIDENCE_INVALID;
+    detection_evidence_status_t status = detection_evidence_record_no_media(
+        &camera, &engine, result->detections, result->count,
+        observed_at_ms, false, &submitted, NULL);
+    if (status == DETECTION_EVIDENCE_SUBMITTED && submitted != OBS_EVIDENCE_ACCEPTED) {
+        log_debug("[%s] ONVIF observation not queued (%d)", ctx->stream_name, (int)submitted);
+    }
+}
+
 static void append_engine_result(unified_detection_ctx_t *ctx,
                                  const stream_detection_engine_t *engine,
                                  detection_result_t *combined,
@@ -3138,7 +3198,10 @@ static void append_engine_result(unified_detection_ctx_t *ctx,
 /* Multi-engine frame fan-out. A decoded frame is converted to RGB once and
  * shared by every due local engine. ONVIF remains an asynchronous event
  * source. API engines are deliberately isolated until their legacy helper no
- * longer persists internally; running them here would duplicate rows/events. */
+ * longer persists internally; running them here would duplicate rows/events.
+ * (INT_01 L7: an isolated API engine therefore never produces observation
+ * evidence here; the single-engine API branch of detect_on_decoded_frame is
+ * the only API evidence producer.) */
 static bool detect_with_runtime_engines(unified_detection_ctx_t *ctx,
                                         AVFrame *frame, time_t now,
                                         detection_result_t *combined) {
@@ -3276,11 +3339,21 @@ static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
         const char *api_url = get_actual_api_url(ctx->stream_name, ctx->model_path);
         api_detection_options_t api_options;
         resolve_api_detection_options(ctx, &api_options);
+        /* INT_01 L7: capture-time identity plus the cached evidence settings;
+         * the exact JPEG submitted to the server becomes the evidence. */
+        char labels[OBSERVATION_LABELS_MAX];
+        api_detection_evidence_t evidence = {
+            .camera_uuid = ctx->camera_uuid,
+            .engine_key = udt_single_engine_key(ctx),
+            .evidence_enabled = udt_evidence_settings(ctx, labels),
+            .labels_csv = labels,
+            .observed_at_ms = detection_evidence_observed_at_ms(now),
+        };
         int ret = api_url
-            ? detect_objects_api_with_options(api_url, rgb_buf, width, height, 3,
-                                              result, ctx->stream_name,
-                                              ctx->detection_threshold, rec_id, now,
-                                              &api_options)
+            ? detect_objects_api_with_evidence(api_url, rgb_buf, width, height, 3,
+                                               result, ctx->stream_name,
+                                               ctx->detection_threshold, rec_id, now,
+                                               &api_options, &evidence)
             : -1;
         free(rgb_buf);
 

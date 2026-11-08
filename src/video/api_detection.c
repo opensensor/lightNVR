@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <stdint.h>
+#include <math.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <curl/curl.h>
@@ -23,9 +24,11 @@
 #include "core/curl_init.h"
 #include "core/shutdown_coordinator.h"
 #include "core/event_producers.h"
+#include "core/observation_evidence.h"
 #include "utils/base64.h"
 #include "utils/strings.h"
 #include "video/api_detection.h"
+#include "video/detection_evidence.h"
 #include "video/detection_result.h"
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
@@ -436,9 +439,60 @@ static void log_json_item(const char *message, const cJSON *item, bool as_error)
     free(json_str);
 }
 
+/* INT_01 L7: optional "letterbox" / "model" / "model_version" (see header). */
+static void parse_response_meta(const cJSON *root, api_detection_response_meta_t *meta) {
+    memset(meta, 0, sizeof(*meta));
+    meta->pad_x = meta->pad_y = -1.0;
+
+    const cJSON *model = cJSON_GetObjectItemCaseSensitive(root, "model");
+    if (cJSON_IsString(model) && model->valuestring[0] != '\0' &&
+        strlen(model->valuestring) < sizeof(meta->model)) {
+        safe_strcpy(meta->model, model->valuestring, sizeof(meta->model), 0);
+    }
+    const cJSON *version = cJSON_GetObjectItemCaseSensitive(root, "model_version");
+    if (cJSON_IsString(version) && version->valuestring[0] != '\0' &&
+        strlen(version->valuestring) < sizeof(meta->model_version)) {
+        safe_strcpy(meta->model_version, version->valuestring, sizeof(meta->model_version), 0);
+    }
+
+    const cJSON *lb = cJSON_GetObjectItemCaseSensitive(root, "letterbox");
+    if (!lb || !cJSON_IsObject(lb)) {
+        return;
+    }
+    double w = 0.0, h = 0.0, v = 0.0;
+    if (!number_item(lb, "width", &w) || !number_item(lb, "height", &h) ||
+        !(w >= 1.0) || !(h >= 1.0) || w > 65535.0 || h > 65535.0) {
+        log_warn("API Detection: Ignoring letterbox declaration without a valid width/height");
+        return;
+    }
+    meta->inference_width = (int)w;
+    meta->inference_height = (int)h;
+    if (number_item(lb, "scale", &v) && v > 0.0) {
+        meta->scale_x = meta->scale_y = v;
+    }
+    if (number_item(lb, "scale_x", &v) && v > 0.0) meta->scale_x = v;
+    if (number_item(lb, "scale_y", &v) && v > 0.0) meta->scale_y = v;
+    if (number_item(lb, "pad_x", &v) && v >= 0.0) meta->pad_x = v;
+    if (number_item(lb, "pad_y", &v) && v >= 0.0) meta->pad_y = v;
+    const cJSON *units = cJSON_GetObjectItemCaseSensitive(lb, "box_units");
+    meta->pixel_units = cJSON_IsString(units) && strcasecmp(units->valuestring, "pixels") == 0;
+    meta->letterbox = true;
+}
+
 int api_detection_parse_response(const char *json,
                                  const api_detection_options_t *options,
                                  detection_result_t *result) {
+    return api_detection_parse_response_meta(json, options, result, NULL);
+}
+
+int api_detection_parse_response_meta(const char *json,
+                                      const api_detection_options_t *options,
+                                      detection_result_t *result,
+                                      api_detection_response_meta_t *meta) {
+    if (meta) {
+        memset(meta, 0, sizeof(*meta));
+        meta->pad_x = meta->pad_y = -1.0;
+    }
     if (!json || !result) {
         return -1;
     }
@@ -453,6 +507,10 @@ int api_detection_parse_response(const char *json,
         const char *error_ptr = cJSON_GetErrorPtr();
         log_error("API Detection: Failed to parse JSON response: %s", error_ptr ? error_ptr : "Unknown error");
         return -1;
+    }
+
+    if (meta && cJSON_IsObject(root)) {
+        parse_response_meta(root, meta);
     }
 
     if (doods2) {
@@ -533,6 +591,120 @@ int api_detection_parse_response(const char *json,
 
     cJSON_Delete(root);
     return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+/* INT_01 L7: response geometry and submitted-image size                     */
+/* ------------------------------------------------------------------------- */
+
+int api_detection_apply_response_geometry(const api_detection_response_meta_t *meta,
+                                          int image_w, int image_h,
+                                          int source_w, int source_h,
+                                          detection_result_t *result,
+                                          observation_evidence_transform_t *transform) {
+    if (image_w <= 0 || image_h <= 0 || !result) {
+        return -1;
+    }
+    if (source_w <= 0 || source_h <= 0) {
+        source_w = image_w;
+        source_h = image_h;
+    }
+
+    observation_evidence_transform_t t;
+    memset(&t, 0, sizeof(t));
+    t.mode = OBS_TRANSFORM_NONE;
+    t.source_width = source_w;
+    t.source_height = source_h;
+    t.inference_width = image_w;
+    t.inference_height = image_h;
+    t.scale_x = t.scale_y = 1.0;
+
+    if (meta && meta->letterbox && meta->inference_width > 0 && meta->inference_height > 0) {
+        const double iw = (double)meta->inference_width;
+        const double ih = (double)meta->inference_height;
+        double sx = meta->scale_x, sy = meta->scale_y;
+        if (!(sx > 0.0) || !(sy > 0.0)) {
+            double uniform = iw / image_w < ih / image_h ? iw / image_w : ih / image_h;
+            if (!(sx > 0.0)) sx = uniform;
+            if (!(sy > 0.0)) sy = uniform;
+        }
+        double px = meta->pad_x, py = meta->pad_y;
+        if (px < 0.0) px = floor((iw - round(image_w * sx)) / 2.0);
+        if (py < 0.0) py = floor((ih - round(image_h * sy)) / 2.0);
+        if (px < 0.0) px = 0.0;
+        if (py < 0.0) py = 0.0;
+
+        for (int i = 0; i < result->count; ++i) {
+            detection_t *d = &result->detections[i];
+            double u = d->x, v = d->y, du = d->width, dv = d->height;
+            if (!meta->pixel_units) {
+                u *= iw; du *= iw;
+                v *= ih; dv *= ih;
+            }
+            d->x = (float)(((u - px) / sx) / image_w);
+            d->y = (float)(((v - py) / sy) / image_h);
+            d->width = (float)((du / sx) / image_w);
+            d->height = (float)((dv / sy) / image_h);
+        }
+
+        t.mode = OBS_TRANSFORM_LETTERBOX;
+        t.inference_width = meta->inference_width;
+        t.inference_height = meta->inference_height;
+        t.scale_x = sx;
+        t.scale_y = sy;
+        t.pad_x = px;
+        t.pad_y = py;
+    }
+
+    if (transform) {
+        *transform = t;
+    }
+    return 0;
+}
+
+int api_detection_jpeg_dimensions(const uint8_t *jpeg, size_t size, int *width, int *height) {
+    if (!jpeg || size < 4 || !width || !height || jpeg[0] != 0xFF || jpeg[1] != 0xD8) {
+        return -1;
+    }
+    size_t pos = 2;
+    while (pos + 4 <= size) {
+        if (jpeg[pos] != 0xFF) {
+            return -1;
+        }
+        uint8_t marker = jpeg[pos + 1];
+        if (marker == 0xFF) {          /* fill byte */
+            pos++;
+            continue;
+        }
+        if (marker == 0xD8 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
+            pos += 2;                  /* standalone markers */
+            continue;
+        }
+        if (marker == 0xD9 || marker == 0xDA) {
+            return -1;                 /* EOI / SOS before any SOFn */
+        }
+        size_t seg = ((size_t)jpeg[pos + 2] << 8) | jpeg[pos + 3];
+        if (seg < 2 || pos + 2 + seg > size) {
+            return -1;
+        }
+        bool sof = marker >= 0xC0 && marker <= 0xCF &&
+                   marker != 0xC4 && marker != 0xC8 && marker != 0xCC;
+        if (sof) {
+            if (seg < 7) {
+                return -1;
+            }
+            int h = ((int)jpeg[pos + 5] << 8) | jpeg[pos + 6];
+            int w = ((int)jpeg[pos + 7] << 8) | jpeg[pos + 8];
+            if (w <= 0 || h <= 0) {
+                return -1;
+            }
+            *width = w;
+            *height = h;
+            return 0;
+        }
+        pos += 2 + seg;
+    }
+    return -1;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -682,7 +854,8 @@ static int perform_detection_request(const char *context, const char *base_url,
                                      const unsigned char *jpeg_data, size_t jpeg_size,
                                      float threshold, const char *request_id,
                                      const api_detection_options_t *options,
-                                     detection_result_t *result) {
+                                     detection_result_t *result,
+                                     api_detection_response_meta_t *meta) {
     CURL *curl = NULL;
     curl_mime *mime = NULL;
     struct curl_slist *headers = NULL;
@@ -777,7 +950,7 @@ static int perform_detection_request(const char *context, const char *base_url,
     make_response_preview(&chunk, preview, sizeof(preview));
     log_info("%s: Response preview: %s", context, preview);
 
-    ret = api_detection_parse_response(chunk.memory, options, result);
+    ret = api_detection_parse_response_meta(chunk.memory, options, result, meta);
     if (ret != 0) {
         log_error("%s: Response size: %zu bytes", context, chunk.size);
     }
@@ -791,15 +964,120 @@ cleanup:
     return ret;
 }
 
+/* INT_01 L7: the exact image sent to the detection server. */
+typedef struct {
+    uint8_t *jpeg;        /* owned; consumed by finalize_detections() */
+    size_t size;
+    int width, height;    /* JPEG pixel size (0 = unknown) */
+    observation_evidence_transform_t transform;
+} submitted_image_t;
+
+static bool has_camera_uuid(const api_detection_evidence_t *evidence) {
+    return evidence && evidence->camera_uuid && evidence->camera_uuid[0] != '\0';
+}
+
+/* Resolve the JPEG's size and map any server-declared letterbox onto it
+ * before zone filtering, so every consumer sees boxes normalized to the
+ * submitted image (contract section 3.2). source_w/h <= 0 = the JPEG is the
+ * source (go2rtc snapshot). */
+static void apply_submitted_geometry(const char *context, const char *stream_name,
+                                     const api_detection_response_meta_t *meta,
+                                     int source_w, int source_h,
+                                     detection_result_t *result, submitted_image_t *image) {
+    if (image->width <= 0 || image->height <= 0) {
+        if (api_detection_jpeg_dimensions(image->jpeg, image->size,
+                                          &image->width, &image->height) != 0) {
+            image->width = image->height = 0;
+        }
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        if (meta->letterbox) {
+            log_warn("%s: Cannot map the declared letterbox for %s: submitted JPEG size unknown",
+                     context, stream_name ? stream_name : "(none)");
+        }
+        return;
+    }
+    api_detection_apply_response_geometry(meta, image->width, image->height, source_w, source_h,
+                                          result, &image->transform);
+}
+
+/* Hand the submitted JPEG and the surviving detections to the L3 queue when
+ * the camera wants evidence. Always consumes image->jpeg. */
+static void submit_api_evidence(const char *context, const char *stream_name,
+                                const detection_result_t *result, float threshold,
+                                uint64_t recording_id,
+                                const api_detection_options_t *options,
+                                const api_detection_evidence_t *evidence,
+                                const api_detection_response_meta_t *meta,
+                                submitted_image_t *image) {
+    uint8_t *jpeg = image->jpeg;
+    image->jpeg = NULL;
+    if (!has_camera_uuid(evidence) || !evidence->evidence_enabled || result->count <= 0 ||
+        !jpeg || image->width <= 0 || image->height <= 0) {
+        free(jpeg);
+        return;
+    }
+
+    /* Same survivors as the detection thread keeps: confidence >= threshold. */
+    detection_t survivors[MAX_DETECTIONS];
+    int n = 0;
+    for (int i = 0; i < result->count && n < MAX_DETECTIONS; ++i) {
+        if (threshold > 0.0f && result->detections[i].confidence < threshold) continue;
+        survivors[n++] = result->detections[i];
+    }
+    if (n == 0) {
+        free(jpeg);
+        return;
+    }
+
+    const char *model = NULL;
+    if (meta->model[0] != '\0') {
+        model = meta->model;
+    } else if (options->format == API_DETECTION_FORMAT_DOODS2 &&
+               options->detector_name[0] != '\0' &&
+               strcmp(options->detector_name, "default") != 0) {
+        model = options->detector_name;
+    }
+    detection_evidence_camera_t camera = {
+        .camera_uuid = evidence->camera_uuid,
+        .stream_name = stream_name,
+        .evidence_enabled = true,
+        .labels_csv = evidence->labels_csv,
+        .recording_id = (int64_t)recording_id,
+    };
+    detection_evidence_engine_t engine = {
+        .engine_key = evidence->engine_key,
+        .engine_type = "api",
+        .model_path = model,
+        .model_version = meta->model_version[0] ? meta->model_version : NULL,
+    };
+    observation_evidence_result_t submitted = OBS_EVIDENCE_INVALID;
+    detection_evidence_status_t status = detection_evidence_capture_jpeg(
+        &camera, &engine, survivors, n, evidence->observed_at_ms,
+        jpeg, image->size, image->width, image->height, &image->transform,
+        &submitted, NULL);
+    if (status == DETECTION_EVIDENCE_SUBMITTED && submitted != OBS_EVIDENCE_ACCEPTED) {
+        log_debug("%s: Observation evidence for %s not queued (%d)", context,
+                  stream_name, (int)submitted);
+    }
+}
+
 /**
- * Apply zone and object filters, persist, and publish detections for a stream.
- * Returns 0 on success, -1 when zone filtering fails.
+ * Apply zone and object filters, persist, and publish detections for a stream,
+ * then hand the submitted image to the evidence queue (INT_01 L7). Always
+ * consumes image->jpeg. Returns 0 on success, -1 when zone filtering fails.
  */
 static int finalize_detections(const char *context, const char *stream_name,
                                detection_result_t *result, time_t frame_timestamp,
-                               uint64_t recording_id) {
+                               uint64_t recording_id, float threshold,
+                               const api_detection_options_t *options,
+                               const api_detection_evidence_t *evidence,
+                               const api_detection_response_meta_t *meta,
+                               submitted_image_t *image) {
     if (!stream_name || stream_name[0] == '\0') {
         log_warn("%s: No stream name provided, skipping database storage", context);
+        free(image->jpeg);
+        image->jpeg = NULL;
         return 0;
     }
 
@@ -807,24 +1085,52 @@ static int finalize_detections(const char *context, const char *stream_name,
     if (filter_detections_by_zones(stream_name, result) != 0) {
         log_error("%s: Failed to filter detections by zones for stream %s, aborting detection pipeline for this frame",
                   context, stream_name);
+        free(image->jpeg);
+        image->jpeg = NULL;
         return -1;
     }
 
     filter_detections_by_stream_objects(stream_name, result);
 
     time_t timestamp = (frame_timestamp != 0) ? frame_timestamp : time(NULL);
-    store_detections_in_db(stream_name, result, timestamp, recording_id);
+    const bool by_camera = has_camera_uuid(evidence);
+    if (by_camera) {
+        store_detections_in_db_for_camera(evidence->camera_uuid, stream_name, result,
+                                          timestamp, recording_id);
+    } else {
+        store_detections_in_db(stream_name, result, timestamp, recording_id);
+    }
 
     if (result->count > 0) {
         char event_error[256] = {0};
-        if (event_producer_publish_detection_for_stream(
-                stream_name, result, timestamp,
-                event_error, sizeof(event_error)) != 0) {
+        int rc = by_camera
+            ? event_producer_publish_detection(evidence->camera_uuid, stream_name, result,
+                                               timestamp, event_error, sizeof(event_error))
+            : event_producer_publish_detection_for_stream(stream_name, result, timestamp,
+                                                          event_error, sizeof(event_error));
+        if (rc != 0) {
             log_debug("%s: Event enqueue failed for %s: %s", context, stream_name, event_error);
         }
     }
 
+    submit_api_evidence(context, stream_name, result, threshold, recording_id,
+                        options, evidence, meta, image);
     return 0;
+}
+
+/* Copy the caller's evidence settings, stamping the capture time now (before
+ * the up-to-10 s request) when the caller did not. */
+static const api_detection_evidence_t *stamp_evidence(const api_detection_evidence_t *in,
+                                                      api_detection_evidence_t *storage,
+                                                      time_t frame_timestamp) {
+    if (!in) {
+        return NULL;
+    }
+    *storage = *in;
+    if (storage->observed_at_ms <= 0) {
+        storage->observed_at_ms = detection_evidence_observed_at_ms(frame_timestamp);
+    }
+    return storage;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -902,7 +1208,22 @@ int detect_objects_api_with_options(const char *api_url, const unsigned char *fr
                                     float threshold, uint64_t recording_id,
                                     time_t frame_timestamp,
                                     const api_detection_options_t *options) {
+    return detect_objects_api_with_evidence(api_url, frame_data, width, height, channels,
+                                            result, stream_name, threshold, recording_id,
+                                            frame_timestamp, options, NULL);
+}
+
+int detect_objects_api_with_evidence(const char *api_url, const unsigned char *frame_data,
+                                     int width, int height, int channels,
+                                     detection_result_t *result, const char *stream_name,
+                                     float threshold, uint64_t recording_id,
+                                     time_t frame_timestamp,
+                                     const api_detection_options_t *options,
+                                     const api_detection_evidence_t *evidence_in) {
     static const char *context = "API Detection";
+    api_detection_evidence_t evidence_storage;
+    const api_detection_evidence_t *evidence =
+        stamp_evidence(evidence_in, &evidence_storage, frame_timestamp);
 
     // Check if we're in shutdown mode or if the stream has been stopped.
     if (is_shutdown_initiated()) {
@@ -991,13 +1312,26 @@ int detect_objects_api_with_options(const char *api_url, const unsigned char *fr
         return -1;
     }
 
+    api_detection_response_meta_t meta;
     int ret = perform_detection_request(context, actual_api_url, jpeg_data, jpeg_size,
-                                        threshold, stream_name, options, result);
-    free(jpeg_data);
+                                        threshold, stream_name, options, result, &meta);
 
     if (ret == 0) {
-        ret = finalize_detections(context, stream_name, result, frame_timestamp, recording_id);
+        /* The bytes just sent ARE the evidence; never fetch a second image.
+         * A locally encoded frame keeps its size; a go2rtc snapshot is
+         * measured from its SOF marker and is its own source. */
+        submitted_image_t image = {
+            .jpeg = jpeg_data, .size = jpeg_size,
+            .width = snapshot_ok ? 0 : width, .height = snapshot_ok ? 0 : height,
+        };
+        jpeg_data = NULL;
+        apply_submitted_geometry(context, stream_name, &meta,
+                                 snapshot_ok ? 0 : width, snapshot_ok ? 0 : height,
+                                 result, &image);
+        ret = finalize_detections(context, stream_name, result, frame_timestamp, recording_id,
+                                  threshold, options, evidence, &meta, &image);
     }
+    free(jpeg_data);
 
     if (ret != 0) {
         result->count = 0;
@@ -1030,7 +1364,20 @@ int detect_objects_api_snapshot_with_options(const char *api_url, const char *st
                                              detection_result_t *result, float threshold,
                                              uint64_t recording_id, time_t frame_timestamp,
                                              const api_detection_options_t *options) {
+    return detect_objects_api_snapshot_with_evidence(api_url, stream_name, result, threshold,
+                                                     recording_id, frame_timestamp, options,
+                                                     NULL);
+}
+
+int detect_objects_api_snapshot_with_evidence(const char *api_url, const char *stream_name,
+                                              detection_result_t *result, float threshold,
+                                              uint64_t recording_id, time_t frame_timestamp,
+                                              const api_detection_options_t *options,
+                                              const api_detection_evidence_t *evidence_in) {
     static const char *context = "API Detection (snapshot)";
+    api_detection_evidence_t evidence_storage;
+    const api_detection_evidence_t *evidence =
+        stamp_evidence(evidence_in, &evidence_storage, frame_timestamp);
 
     // Check if we're in shutdown mode
     if (is_shutdown_initiated()) {
@@ -1088,13 +1435,19 @@ int detect_objects_api_snapshot_with_options(const char *api_url, const char *st
         return API_DETECTION_SNAPSHOT_UNAVAILABLE;
     }
 
+    api_detection_response_meta_t meta;
     int ret = perform_detection_request(context, actual_api_url, jpeg_data, jpeg_size,
-                                        threshold, stream_name, options, result);
-    free(jpeg_data);
+                                        threshold, stream_name, options, result, &meta);
 
     if (ret == 0) {
-        ret = finalize_detections(context, stream_name, result, frame_timestamp, recording_id);
+        /* The go2rtc snapshot was the inference input, so it is the evidence. */
+        submitted_image_t image = { .jpeg = jpeg_data, .size = jpeg_size };
+        jpeg_data = NULL;
+        apply_submitted_geometry(context, stream_name, &meta, 0, 0, result, &image);
+        ret = finalize_detections(context, stream_name, result, frame_timestamp, recording_id,
+                                  threshold, options, evidence, &meta, &image);
     }
+    free(jpeg_data);
 
     if (ret != 0) {
         result->count = 0;

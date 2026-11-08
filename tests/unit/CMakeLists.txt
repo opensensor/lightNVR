@@ -213,6 +213,8 @@ target_compile_definitions(test_onvif_lpr_event PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 add_layer2_test_with_ffmpeg(test_api_detection)
+target_compile_definitions(test_api_detection PRIVATE
+    OBS_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/integrations/observations")
 add_layer2_test_with_ffmpeg(test_mp4_failed_open_memory CI_UNIT)
 add_layer2_test_with_ffmpeg(test_ffmpeg_rgb24_padding)
 if(TARGET lightnvr-ffmpeg-guard)
@@ -605,7 +607,7 @@ target_compile_definitions(test_detection_current_frame PRIVATE
 )
 target_link_options(test_detection_current_frame PRIVATE
     "-Wl,--wrap=detect_objects_api_snapshot_with_options"
-    "-Wl,--wrap=detect_objects_api_with_options"
+    "-Wl,--wrap=detect_objects_api_with_evidence"
     "-Wl,--wrap=filter_detections_by_zones"
     "-Wl,--wrap=filter_detections_by_stream_objects"
 )
@@ -641,6 +643,12 @@ target_link_options(test_detection_observation_evidence PRIVATE
     "-Wl,--wrap=filter_detections_by_stream_objects"
 )
 set_tests_properties(test_detection_observation_evidence PROPERTIES TIMEOUT 60)
+add_layer3_test(test_api_detection_observation_evidence CI_UNIT CI_SANITIZER)
+target_link_options(test_api_detection_observation_evidence PRIVATE
+    "-Wl,--wrap=filter_detections_by_zones"
+    "-Wl,--wrap=filter_detections_by_stream_objects"
+)
+set_tests_properties(test_api_detection_observation_evidence PROPERTIES TIMEOUT 60)
 
 # Health tasks register their tests in independent fragments so parallel work
 # never needs to modify this shared list.

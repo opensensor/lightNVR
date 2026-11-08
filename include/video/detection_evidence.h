@@ -138,4 +138,44 @@ detection_evidence_status_t detection_evidence_capture(
     observation_evidence_result_t *submit_result,
     char asset_uuid_out[OBS_UUID_SIZE]);
 
+/*
+ * INT_01 L7: HTTP API detector. Build the batch and hand the EXACT submitted
+ * JPEG bytes (request body image, or the go2rtc snapshot fetched as the
+ * inference input) to observation_evidence_submit_jpeg(); nothing is
+ * re-encoded and no second image is ever fetched. engine->engine_type must be
+ * "api". width/height are the JPEG's pixel size and the boxes must already be
+ * normalized to it (api_detection maps a server-declared letterbox first).
+ * Takes ownership of jpeg on EVERY return (free()d when not submitted).
+ */
+detection_evidence_status_t detection_evidence_capture_jpeg(
+    const detection_evidence_camera_t *camera,
+    const detection_evidence_engine_t *engine,
+    const detection_t *detections, int count,
+    int64_t observed_at_ms,
+    uint8_t *jpeg, size_t jpeg_size, int width, int height,
+    const observation_evidence_transform_t *transform,
+    observation_evidence_result_t *submit_result,
+    char asset_uuid_out[OBS_UUID_SIZE]);
+
+/* True for the generic "motion" label ONVIF reports when the camera names no
+ * object class (case-insensitive). Such events never become observations. */
+bool detection_evidence_is_motion_label(const char *label);
+
+/*
+ * INT_01 L7: event sources that cannot supply the matching frame (ONVIF,
+ * external events; engine_type "onvif" or "external"). Object-class
+ * detections become observations whose asset is created directly as
+ * unavailable(no_matching_media) via observation_evidence_submit_unavailable();
+ * "motion" detections are skipped (contract section 3: motion never
+ * observes). keep_boxes false records box = null (ONVIF's whole-frame box is
+ * synthetic). Never touches the DB or blocks.
+ */
+detection_evidence_status_t detection_evidence_record_no_media(
+    const detection_evidence_camera_t *camera,
+    const detection_evidence_engine_t *engine,
+    const detection_t *detections, int count,
+    int64_t observed_at_ms, bool keep_boxes,
+    observation_evidence_result_t *submit_result,
+    char asset_uuid_out[OBS_UUID_SIZE]);
+
 #endif /* LIGHTNVR_VIDEO_DETECTION_EVIDENCE_H */

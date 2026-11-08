@@ -298,3 +298,117 @@ detection_evidence_status_t detection_evidence_capture(
     free(batch);
     return DETECTION_EVIDENCE_SUBMITTED;
 }
+
+/* ---- INT_01 L7: HTTP API (submitted JPEG) -------------------------------- */
+
+detection_evidence_status_t detection_evidence_capture_jpeg(
+    const detection_evidence_camera_t *camera,
+    const detection_evidence_engine_t *engine,
+    const detection_t *detections, int count,
+    int64_t observed_at_ms,
+    uint8_t *jpeg, size_t jpeg_size, int width, int height,
+    const observation_evidence_transform_t *transform,
+    observation_evidence_result_t *submit_result,
+    char asset_uuid_out[OBS_UUID_SIZE]) {
+    if (asset_uuid_out) asset_uuid_out[0] = '\0';
+    if (!camera || !engine) {
+        free(jpeg);
+        return DETECTION_EVIDENCE_ERROR;
+    }
+    if (!camera->evidence_enabled) {
+        free(jpeg);
+        return DETECTION_EVIDENCE_NOT_ENABLED;
+    }
+    if (!engine->engine_type || strcmp(engine->engine_type, "api") != 0) {
+        free(jpeg);
+        return DETECTION_EVIDENCE_NOT_OBJECT_ENGINE;
+    }
+    if (!jpeg || jpeg_size == 0 || width <= 0 || height <= 0) {
+        free(jpeg);
+        return DETECTION_EVIDENCE_ERROR;
+    }
+
+    observation_batch_input_t *batch = malloc(sizeof(*batch));
+    if (!batch) {
+        free(jpeg);
+        return DETECTION_EVIDENCE_ERROR;
+    }
+    int n = detection_evidence_build_batch(camera, engine, detections, count,
+                                           observed_at_ms, batch);
+    if (n <= 0) {
+        free(batch);
+        free(jpeg);
+        return n == 0 ? DETECTION_EVIDENCE_NOT_ELIGIBLE : DETECTION_EVIDENCE_ERROR;
+    }
+
+    observation_evidence_result_t r = observation_evidence_submit_jpeg(
+        batch, jpeg, jpeg_size, width, height, transform, asset_uuid_out);
+    if (submit_result) *submit_result = r;
+    if (r != OBS_EVIDENCE_ACCEPTED) {
+        log_debug("[%s] API observation evidence not accepted (result %d, %d object(s))",
+                  camera->stream_name ? camera->stream_name : "?", (int)r, n);
+    }
+    free(batch);
+    return DETECTION_EVIDENCE_SUBMITTED;
+}
+
+/* ---- INT_01 L7: ONVIF / external (no matching media) --------------------- */
+
+bool detection_evidence_is_motion_label(const char *label) {
+    return label && strcasecmp(label, "motion") == 0;
+}
+
+detection_evidence_status_t detection_evidence_record_no_media(
+    const detection_evidence_camera_t *camera,
+    const detection_evidence_engine_t *engine,
+    const detection_t *detections, int count,
+    int64_t observed_at_ms, bool keep_boxes,
+    observation_evidence_result_t *submit_result,
+    char asset_uuid_out[OBS_UUID_SIZE]) {
+    if (asset_uuid_out) asset_uuid_out[0] = '\0';
+    if (!camera || !engine || count < 0 || (count > 0 && !detections)) {
+        return DETECTION_EVIDENCE_ERROR;
+    }
+    if (!camera->evidence_enabled) return DETECTION_EVIDENCE_NOT_ENABLED;
+    if (!engine->engine_type || (strcmp(engine->engine_type, "onvif") != 0 &&
+                                 strcmp(engine->engine_type, "external") != 0)) {
+        return DETECTION_EVIDENCE_NOT_OBJECT_ENGINE;
+    }
+
+    /* Object-class events only: drop the generic motion label first so the
+     * object_index stays the position among the stored objects. */
+    detection_t objects[MAX_DETECTIONS];
+    int kept = 0;
+    for (int i = 0; i < count && kept < MAX_DETECTIONS; ++i) {
+        if (detection_evidence_is_motion_label(detections[i].label)) continue;
+        objects[kept++] = detections[i];
+    }
+    if (kept == 0) return DETECTION_EVIDENCE_NOT_ELIGIBLE;
+
+    observation_batch_input_t *batch = malloc(sizeof(*batch));
+    if (!batch) return DETECTION_EVIDENCE_ERROR;
+    int n = detection_evidence_build_batch(camera, engine, objects, kept,
+                                           observed_at_ms, batch);
+    if (n <= 0) {
+        free(batch);
+        return n == 0 ? DETECTION_EVIDENCE_NOT_ELIGIBLE : DETECTION_EVIDENCE_ERROR;
+    }
+    if (!keep_boxes) {
+        for (int i = 0; i < n; ++i) {
+            observation_object_input_t *o = &batch->objects[i];
+            o->has_box = false;
+            o->box_x = o->box_y = o->box_width = o->box_height = 0.0;
+        }
+    }
+
+    observation_evidence_result_t r = observation_evidence_submit_unavailable(
+        batch, "no_matching_media", asset_uuid_out);
+    if (submit_result) *submit_result = r;
+    if (r != OBS_EVIDENCE_ACCEPTED) {
+        log_debug("[%s] %s observation not recorded (result %d, %d object(s))",
+                  camera->stream_name ? camera->stream_name : "?", engine->engine_type,
+                  (int)r, n);
+    }
+    free(batch);
+    return DETECTION_EVIDENCE_SUBMITTED;
+}
