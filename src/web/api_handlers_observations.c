@@ -215,6 +215,22 @@ cJSON *observation_classification_to_json(const observation_classification_t *an
     return json;
 }
 
+cJSON *observation_detection_link_to_json(const observation_detection_link_t *link) {
+    if (!link || !link->linked) return NULL;
+    cJSON *json = cJSON_CreateObject();
+    if (!json) return NULL;
+    cJSON_AddStringToObject(json, "id", link->observation_uuid);
+    cJSON_AddBoolToObject(json, "owner_confirmed", link->owner_confirmed);
+    cJSON *classification = link->has_classification
+        ? observation_classification_to_json(&link->classification) : cJSON_CreateNull();
+    if (!classification || !cJSON_AddItemToObject(json, "classification", classification)) {
+        cJSON_Delete(classification);
+        cJSON_Delete(json);
+        return NULL;
+    }
+    return json;
+}
+
 static bool add_annotations(cJSON *list, const observation_classification_t *items, int count) {
     for (int i = 0; i < count; i++) {
         cJSON *item = observation_classification_to_json(&items[i]);

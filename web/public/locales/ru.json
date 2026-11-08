@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "Камеры сверх бюджета доказательств",
   "system.observations.oldestRecoverable": "Самый старый восстановимый курсор",
   "system.observations.publications": "Публикации ожидают / с ошибкой / истекли",
-  "system.observations.relayLag": "Задержка ретранслятора (секунды)"
+  "system.observations.relayLag": "Задержка ретранслятора (секунды)",
+  "detections.classification.title": "Классифицированные обнаружения",
+  "detections.classification.detector": "Детектор: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "через {classifier}",
+  "detections.classification.ownerConfirmed": "Подтверждено владельцем",
+  "detections.classification.unclassified": "Не классифицировано",
+  "detections.classification.observationLink": "Наблюдение"
 }

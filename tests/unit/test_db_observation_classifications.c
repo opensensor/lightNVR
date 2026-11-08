@@ -32,6 +32,7 @@
 
 static char db_path[256];
 static char cam[OBS_UUID_SIZE];
+static char cam_b[OBS_UUID_SIZE];
 
 /* ---- helpers ---------------------------------------------------------- */
 
@@ -98,18 +99,20 @@ typedef struct {
 
 /* One "bird" observation; ready evidence puts it at revision 2 like the C3
  * single-ready fixture. */
-static fixture_obs_t make_observation(observation_asset_state_t final_state) {
+static fixture_obs_t make_observation_at(const char *camera_uuid, const char *label,
+                                         int64_t observed_at_ms,
+                                         observation_asset_state_t final_state) {
     observation_batch_input_t batch;
     memset(&batch, 0, sizeof(batch));
     TEST_ASSERT_EQUAL_INT(0, lightnvr_uuid_generate_v4(batch.batch_id));
-    safe_strcpy(batch.camera_uuid, cam, sizeof(batch.camera_uuid), 0);
-    batch.observed_at_ms = base_time_ms++;
+    safe_strcpy(batch.camera_uuid, camera_uuid, sizeof(batch.camera_uuid), 0);
+    batch.observed_at_ms = observed_at_ms;
     safe_strcpy(batch.engine_key, "legacy-primary", sizeof(batch.engine_key), 0);
     safe_strcpy(batch.engine_type, "object", sizeof(batch.engine_type), 0);
     safe_strcpy(batch.model, "ssd_mobilenet_v2.sod", sizeof(batch.model), 0);
     batch.object_count = 1;
     batch.objects[0].object_index = 0;
-    safe_strcpy(batch.objects[0].label, "bird", sizeof(batch.objects[0].label), 0);
+    safe_strcpy(batch.objects[0].label, label, sizeof(batch.objects[0].label), 0);
     batch.objects[0].confidence = 0.87;
     batch.objects[0].has_box = true;
     batch.objects[0].box_x = 0.412; batch.objects[0].box_y = 0.288;
@@ -146,6 +149,10 @@ static fixture_obs_t make_observation(observation_asset_state_t final_state) {
             &transition));
     }
     return out;
+}
+
+static fixture_obs_t make_observation(observation_asset_state_t final_state) {
+    return make_observation_at(cam, "bird", base_time_ms++, final_state);
 }
 
 /* C3 01-create-automated request body. */
@@ -599,6 +606,131 @@ static void test_publication_failure_rolls_back_the_annotation(void) {
     TEST_ASSERT_EQUAL_INT(3, r.observation_revision);
 }
 
+/* ---- detection -> observation link (L15) ------------------------------ */
+
+#define LINK_TS 1795000000LL
+
+static observation_detection_link_t link_one(const char *camera_uuid, const char *label,
+                                             int64_t timestamp) {
+    observation_detection_ref_t ref = {.label = label, .timestamp = timestamp};
+    observation_detection_link_t out;
+    memset(&out, 0x5a, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_link_detections(camera_uuid, &ref, 1, &out));
+    return out;
+}
+
+static void test_link_detections_nearest_within_window_case_insensitive(void) {
+    fixture_obs_t a = make_observation_at(cam, "bird", LINK_TS * 1000 + 400, OBS_ASSET_READY);
+    fixture_obs_t b = make_observation_at(cam, "Bird", (LINK_TS + 1) * 1000 + 100, OBS_ASSET_READY);
+    fixture_obs_t c = make_observation_at(cam, "bird", (LINK_TS - 2) * 1000 + 999, OBS_ASSET_READY);
+    fixture_obs_t d = make_observation_at(cam, "person", LINK_TS * 1000, OBS_ASSET_READY);
+
+    observation_detection_ref_t refs[] = {
+        {"BIRD", LINK_TS},          /* a (same second) beats b (1 s away) */
+        {"bird", LINK_TS + 1},      /* b (same second) beats a (1 s away) */
+        {"bird", LINK_TS - 3},      /* c is exactly 1 s away: inside the window */
+        {"bird", LINK_TS + 3},      /* b is 2 s away: outside the window */
+        {"cat", LINK_TS},           /* label must match */
+        {"person", LINK_TS},
+        {NULL, LINK_TS},            /* no label: never linked */
+    };
+    size_t n = sizeof(refs) / sizeof(refs[0]);
+    observation_detection_link_t out[sizeof(refs) / sizeof(refs[0])];
+    memset(out, 0x5a, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_link_detections(cam, refs, n, out));
+    TEST_ASSERT_TRUE(out[0].linked);
+    TEST_ASSERT_EQUAL_STRING(a.observation_uuid, out[0].observation_uuid);
+    TEST_ASSERT_TRUE(out[1].linked);
+    TEST_ASSERT_EQUAL_STRING(b.observation_uuid, out[1].observation_uuid);
+    TEST_ASSERT_TRUE(out[2].linked);
+    TEST_ASSERT_EQUAL_STRING(c.observation_uuid, out[2].observation_uuid);
+    TEST_ASSERT_FALSE(out[3].linked);
+    TEST_ASSERT_EQUAL_STRING("", out[3].observation_uuid);
+    TEST_ASSERT_FALSE(out[4].linked);
+    TEST_ASSERT_TRUE(out[5].linked);
+    TEST_ASSERT_EQUAL_STRING(d.observation_uuid, out[5].observation_uuid);
+    TEST_ASSERT_FALSE(out[6].linked);
+    for (size_t i = 0; i < n; ++i) {
+        TEST_ASSERT_FALSE(out[i].has_classification);   /* nothing annotated yet */
+        TEST_ASSERT_FALSE(out[i].owner_confirmed);
+    }
+
+    /* Equal distance: the earliest observation wins, deterministically. */
+    observation_detection_link_t tie = link_one(cam, "bird", LINK_TS - 1);
+    TEST_ASSERT_TRUE(tie.linked);
+    TEST_ASSERT_EQUAL_STRING(c.observation_uuid, tie.observation_uuid);
+}
+
+static void test_link_detections_never_crosses_cameras(void) {
+    fixture_obs_t other = make_observation_at(cam_b, "bird", LINK_TS * 1000, OBS_ASSET_READY);
+    observation_classification_input_t in = automated_input(&other);
+    observation_classification_result_t r;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_CLS_CREATED, put(&other, &in, &r));
+
+    /* Same second and label, but captured by another camera: not linked. */
+    observation_detection_link_t mine = link_one(cam, "bird", LINK_TS);
+    TEST_ASSERT_FALSE(mine.linked);
+    TEST_ASSERT_FALSE(mine.has_classification);
+
+    observation_detection_link_t theirs = link_one(cam_b, "bird", LINK_TS);
+    TEST_ASSERT_TRUE(theirs.linked);
+    TEST_ASSERT_EQUAL_STRING(other.observation_uuid, theirs.observation_uuid);
+    TEST_ASSERT_TRUE(theirs.has_classification);
+}
+
+static void test_link_detections_prefers_owner_confirmed_annotation(void) {
+    fixture_obs_t obs = make_observation_at(cam, "bird", LINK_TS * 1000 + 10, OBS_ASSET_READY);
+    observation_detection_link_t link = link_one(cam, "bird", LINK_TS);
+    TEST_ASSERT_TRUE(link.linked);
+    TEST_ASSERT_FALSE(link.has_classification);
+    TEST_ASSERT_FALSE(link.owner_confirmed);
+
+    observation_classification_input_t automated = automated_input(&obs);
+    observation_classification_result_t r;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_CLS_CREATED, put(&obs, &automated, &r));
+    link = link_one(cam, "bird", LINK_TS);
+    TEST_ASSERT_TRUE(link.has_classification);
+    TEST_ASSERT_FALSE(link.owner_confirmed);
+    TEST_ASSERT_EQUAL_INT(OBS_CLS_KIND_AUTOMATED, link.classification.kind);
+    TEST_ASSERT_EQUAL_STRING("Black-capped Chickadee", link.classification.label);
+    TEST_ASSERT_EQUAL_STRING("yawamf", link.classification.classifier);
+    ASSERT_NEAR(0.93, link.classification.confidence);
+
+    /* A newer automated key never outranks an owner decision. */
+    observation_classification_input_t owner = owner_input(&obs);
+    owner.name = "owner";
+    owner.expected_revision = 0;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_CLS_CREATED, put(&obs, &owner, &r));
+    observation_classification_input_t later = automated_input(&obs);
+    later.name = "later";
+    later.label = "House Sparrow";
+    later.input_revision = 4;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_CLS_CREATED, put(&obs, &later, &r));
+    exec_sql("UPDATE observation_classifications SET updated_at_ms = CASE key "
+             "WHEN 'yawamf/owner' THEN 100 ELSE 900 END;");
+    link = link_one(cam, "bird", LINK_TS);
+    TEST_ASSERT_TRUE(link.has_classification);
+    TEST_ASSERT_TRUE(link.owner_confirmed);
+    TEST_ASSERT_EQUAL_INT(OBS_CLS_KIND_OWNER_CONFIRMED, link.classification.kind);
+    TEST_ASSERT_EQUAL_STRING("Carolina Chickadee", link.classification.label);
+    TEST_ASSERT_EQUAL_STRING("yawamf/owner", link.classification.key);
+
+    /* The detector fields are untouched by the join. */
+    observation_record_t record = get_record(&obs);
+    TEST_ASSERT_EQUAL_STRING("bird", record.label);
+    ASSERT_NEAR(0.87, record.confidence);
+}
+
+static void test_link_detections_rejects_bad_arguments(void) {
+    observation_detection_ref_t ref = {.label = "bird", .timestamp = LINK_TS};
+    observation_detection_link_t out;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_INVALID, db_observation_link_detections(NULL, &ref, 1, &out));
+    TEST_ASSERT_EQUAL_INT(DB_OBS_INVALID, db_observation_link_detections("not-a-uuid", &ref, 1, &out));
+    TEST_ASSERT_EQUAL_INT(DB_OBS_INVALID, db_observation_link_detections(cam, NULL, 1, &out));
+    TEST_ASSERT_EQUAL_INT(DB_OBS_INVALID, db_observation_link_detections(cam, &ref, 1, NULL));
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_link_detections(cam, NULL, 0, NULL));
+}
+
 /* ---- reads ------------------------------------------------------------ */
 
 static void test_list_separates_automated_and_owner_by_updated_at(void) {
@@ -816,6 +948,7 @@ int main(void) {
 
     UNITY_BEGIN();
     make_camera("cls_cam", cam);
+    make_camera("cls_cam_b", cam_b);
     RUN_TEST(test_create_automated_bumps_revision_and_stages_publication);
     RUN_TEST(test_identical_retry_is_noop_regardless_of_expected_revision);
     RUN_TEST(test_expected_revision_compare_and_set);
@@ -826,6 +959,10 @@ int main(void) {
     RUN_TEST(test_ninth_key_hits_the_annotation_limit);
     RUN_TEST(test_publication_failure_rolls_back_the_annotation);
     RUN_TEST(test_list_separates_automated_and_owner_by_updated_at);
+    RUN_TEST(test_link_detections_nearest_within_window_case_insensitive);
+    RUN_TEST(test_link_detections_never_crosses_cameras);
+    RUN_TEST(test_link_detections_prefers_owner_confirmed_annotation);
+    RUN_TEST(test_link_detections_rejects_bad_arguments);
     RUN_TEST(test_annotate_action_is_bit_19_and_administrator_only);
     RUN_TEST(test_migration_0096_up_down_up);
     int result = UNITY_END();

@@ -108,3 +108,27 @@ test('the observation schemas accept the contract examples', async () => {
   assert.equal(validators.validateObservationClassificationWrite(write), true);
   assert.equal(validators.validateObservationClassificationWrite({...write, extra: 1}), false);
 });
+
+// P2 (L15): detection results gain an optional, closed observation summary.
+test('detection results accept the additive observation summary', async () => {
+  const validators = await import(new URL('web/generated/api/validators.js', root));
+  const detection = {label: 'bird', confidence: 0.82, x: 0.1, y: 0.2, width: 0.3, height: 0.4,
+    timestamp: 1794000195, end_timestamp: 1794000195};
+  const classification = {key: 'yawamf/species', writer_namespace: 'yawamf', classifier: 'yawamf',
+    model_version: null, label: 'Carolina Chickadee', taxonomy_id: null, confidence: 1,
+    classified_at: '2026-11-08T14:03:15.002Z', input_asset_id: '55555555-5555-4555-8555-555555555555',
+    input_revision: 3, kind: 'owner_confirmed', annotation_revision: 2,
+    created_at: '2026-11-08T14:03:15.100Z', updated_at: '2026-11-08T18:20:41.200Z'};
+  const id = '44444444-4444-4444-8444-444444444444';
+  const page = detections => ({detections, timestamp: '2026-11-08 14:03:15', stream_status: 'Running'});
+  assert.equal(validators.validateEvidenceDetections(page([detection])), true, 'unlinked is unchanged');
+  assert.equal(validators.validateEvidenceDetections(page([{...detection,
+    observation: {id, owner_confirmed: false, classification: null}}])), true);
+  assert.equal(validators.validateEvidenceDetections(page([{...detection,
+    observation: {id, owner_confirmed: true, classification}}])), true);
+  assert.equal(validators.validateEvidenceDetection({...detection,
+    observation: {id, owner_confirmed: true, classification, extra: 1}}), false);
+  assert.equal(validators.validateEvidenceDetection({...detection,
+    observation: {id, classification: null}}), false);
+  assert.equal(validators.validateEvidenceDetection({...detection, observation: null}), false);
+});

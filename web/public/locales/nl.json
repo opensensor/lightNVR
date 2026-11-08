@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "Camera's boven het bewijsbudget",
   "system.observations.oldestRecoverable": "Oudste herstelbare cursor",
   "system.observations.publications": "Publicaties in behandeling / mislukt / verlopen",
-  "system.observations.relayLag": "Relayvertraging (seconden)"
+  "system.observations.relayLag": "Relayvertraging (seconden)",
+  "detections.classification.title": "Geclassificeerde detecties",
+  "detections.classification.detector": "Detector: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "via {classifier}",
+  "detections.classification.ownerConfirmed": "Bevestigd door eigenaar",
+  "detections.classification.unclassified": "Niet geclassificeerd",
+  "detections.classification.observationLink": "Waarneming"
 }

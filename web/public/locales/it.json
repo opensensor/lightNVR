@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "Telecamere oltre il budget delle prove",
   "system.observations.oldestRecoverable": "Cursore recuperabile più vecchio",
   "system.observations.publications": "Pubblicazioni in attesa / non riuscite / scadute",
-  "system.observations.relayLag": "Ritardo del relay (secondi)"
+  "system.observations.relayLag": "Ritardo del relay (secondi)",
+  "detections.classification.title": "Rilevamenti classificati",
+  "detections.classification.detector": "Rilevatore: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "tramite {classifier}",
+  "detections.classification.ownerConfirmed": "Confermato dal proprietario",
+  "detections.classification.unclassified": "Non classificato",
+  "detections.classification.observationLink": "Osservazione"
 }

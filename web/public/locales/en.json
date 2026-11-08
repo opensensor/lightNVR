@@ -3004,5 +3004,12 @@
   "system.observations.budgetExhausted": "Cameras over evidence budget",
   "system.observations.oldestRecoverable": "Oldest recoverable cursor",
   "system.observations.publications": "Publications pending / failed / expired",
-  "system.observations.relayLag": "Relay lag (seconds)"
+  "system.observations.relayLag": "Relay lag (seconds)",
+  "detections.classification.title": "Classified detections",
+  "detections.classification.detector": "Detector: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "via {classifier}",
+  "detections.classification.ownerConfirmed": "Owner confirmed",
+  "detections.classification.unclassified": "Not classified",
+  "detections.classification.observationLink": "Observation"
 }

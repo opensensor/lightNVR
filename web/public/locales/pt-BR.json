@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "Câmeras acima do orçamento de evidências",
   "system.observations.oldestRecoverable": "Cursor recuperável mais antigo",
   "system.observations.publications": "Publicações pendentes / com falha / expiradas",
-  "system.observations.relayLag": "Atraso do relay (segundos)"
+  "system.observations.relayLag": "Atraso do relay (segundos)",
+  "detections.classification.title": "Detecções classificadas",
+  "detections.classification.detector": "Detector: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "via {classifier}",
+  "detections.classification.ownerConfirmed": "Confirmado pelo proprietário",
+  "detections.classification.unclassified": "Não classificado",
+  "detections.classification.observationLink": "Observação"
 }

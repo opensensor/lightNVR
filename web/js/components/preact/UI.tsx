@@ -17,6 +17,8 @@ import utc from 'dayjs/plugin/utc';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import { ConfirmDialog } from './common/ModalDialog.tsx';
 import { loadRecordingPlayback } from '../../utils/recording-playback.ts';
+import { DetectionClassifications, detectionOverlayLabel } from './DetectionClassifications.tsx';
+import type { DetectionObservation } from '../../types/core.ts';
 
 export { ConfirmDialog } from './common/ModalDialog.tsx';
 
@@ -44,6 +46,8 @@ interface DetectionResult {
   width: number;
   height: number;
   timestamp?: number;
+  /** INT_01 L15: server-linked observation summary, when one matches. */
+  observation?: DetectionObservation;
 }
 
 type WebkitFullscreenDocument = Document & {
@@ -628,7 +632,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
       // Draw label background
       const fontSize = Math.round(Math.max(12, 14 * scale));
       ctx.font = `${fontSize}px Arial`;
-      const labelText = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
+      const labelText = detectionOverlayLabel(detection);
       const labelWidth = ctx.measureText(labelText).width + 10;
       const labelHeight = fontSize + 8;
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -1026,6 +1030,9 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
                   }`}>
                     {detectionStatus}
                   </div>
+
+                  {/* INT_01 L15: classifications linked to these detections */}
+                  <DetectionClassifications detections={detections} />
                 </div>
               </div>
             </div>

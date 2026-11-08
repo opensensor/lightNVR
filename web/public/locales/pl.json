@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "Kamery powyżej budżetu dowodów",
   "system.observations.oldestRecoverable": "Najstarszy odzyskiwalny kursor",
   "system.observations.publications": "Publikacje oczekujące / nieudane / wygasłe",
-  "system.observations.relayLag": "Opóźnienie przekaźnika (sekundy)"
+  "system.observations.relayLag": "Opóźnienie przekaźnika (sekundy)",
+  "detections.classification.title": "Sklasyfikowane wykrycia",
+  "detections.classification.detector": "Detektor: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "przez {classifier}",
+  "detections.classification.ownerConfirmed": "Potwierdzone przez właściciela",
+  "detections.classification.unclassified": "Niesklasyfikowane",
+  "detections.classification.observationLink": "Obserwacja"
 }

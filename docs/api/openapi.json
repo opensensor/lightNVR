@@ -43599,6 +43599,9 @@
           },
           "end_timestamp": {
             "type": "integer"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/EvidenceDetectionObservation"
           }
         },
         "required": [
@@ -43610,6 +43613,34 @@
           "label",
           "timestamp",
           "end_timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceDetectionObservation": {
+        "type": "object",
+        "description": "INT_01 P2 (L15). Present only when the detection links to an observation of the same camera: observed in the same second \u00b11 with the same label (ASCII case-insensitive), nearest second first. classification is the annotation to display \u2014 owner_confirmed[0] before automated[0] of GET /api/observations/{id} \u2014 or null; the detection's own label and confidence are the detector's and never change.",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "owner_confirmed": {
+            "type": "boolean"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationClassification"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "owner_confirmed",
+          "classification"
         ],
         "additionalProperties": false
       },

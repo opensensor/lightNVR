@@ -70,4 +70,11 @@ cJSON *observation_record_to_json(const observation_record_t *record, const char
  * Returns NULL on allocation failure. */
 cJSON *observation_classification_to_json(const observation_classification_t *annotation);
 
+/* Optional "observation" member of a GET /api/detection/results/{name}
+ * detection (INT_01 L15): {id, owner_confirmed, classification} where
+ * classification is the displayed annotation (owner_confirmed[0] before
+ * automated[0]) or null. Returns NULL when the link is absent (unlinked
+ * detections carry no member) or on allocation failure. */
+cJSON *observation_detection_link_to_json(const observation_detection_link_t *link);
+
 #endif /* LIGHTNVR_API_HANDLERS_OBSERVATIONS_H */

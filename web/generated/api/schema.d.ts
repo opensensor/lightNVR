@@ -4602,10 +4602,17 @@ export interface components {
             end_timestamp: number;
             height: number;
             label: string;
+            observation?: components["schemas"]["EvidenceDetectionObservation"];
             timestamp: number;
             width: number;
             x: number;
             y: number;
+        };
+        /** @description INT_01 P2 (L15). Present only when the detection links to an observation of the same camera: observed in the same second ±1 with the same label (ASCII case-insensitive), nearest second first. classification is the annotation to display — owner_confirmed[0] before automated[0] of GET /api/observations/{id} — or null; the detection's own label and confidence are the detector's and never change. */
+        EvidenceDetectionObservation: {
+            classification: components["schemas"]["ObservationClassification"] | null;
+            id: components["schemas"]["ObservationUuid"];
+            owner_confirmed: boolean;
         };
         EvidenceDetections: {
             detections: components["schemas"]["EvidenceDetection"][];

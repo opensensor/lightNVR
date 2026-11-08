@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "Kameras über dem Nachweisbudget",
   "system.observations.oldestRecoverable": "Ältester wiederherstellbarer Cursor",
   "system.observations.publications": "Veröffentlichungen ausstehend / fehlgeschlagen / abgelaufen",
-  "system.observations.relayLag": "Relay-Verzögerung (Sekunden)"
+  "system.observations.relayLag": "Relay-Verzögerung (Sekunden)",
+  "detections.classification.title": "Klassifizierte Erkennungen",
+  "detections.classification.detector": "Detektor: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "über {classifier}",
+  "detections.classification.ownerConfirmed": "Vom Eigentümer bestätigt",
+  "detections.classification.unclassified": "Nicht klassifiziert",
+  "detections.classification.observationLink": "Beobachtung"
 }

@@ -504,3 +504,84 @@ int db_observation_classifications_list_many(const char *const *observation_uuid
     free(set);
     return rc;
 }
+
+/* ---- detection -> observation link (L15) -------------------------------- */
+
+/* ?1 camera, ?2/?3 observed_at_ms bounds of the +/-1 s window (so the
+ * (camera_uuid, observed_at_ms) index serves the range), ?4 label, ?5 the
+ * detection second. Nearest second first, then earliest, then UUID. */
+#define LINK_MATCH_SQL \
+    "SELECT uuid FROM object_observations " \
+    "WHERE camera_uuid = ?1 AND observed_at_ms BETWEEN ?2 AND ?3 " \
+    "AND label = ?4 COLLATE NOCASE " \
+    "ORDER BY abs((observed_at_ms / 1000) - ?5), observed_at_ms, uuid LIMIT 1;"
+
+static int link_one(sqlite3_stmt *match, sqlite3_stmt *list, const char *camera_uuid,
+                    const observation_detection_ref_t *ref, observation_classification_set_t *set,
+                    observation_detection_link_t *out) {
+    memset(out, 0, sizeof(*out));
+    if (!ref->label || !ref->label[0]) return DB_OBS_OK;
+    /* Keep the arithmetic far from int64 overflow; such timestamps never match. */
+    if (ref->timestamp < 0 || ref->timestamp > INT64_MAX / 2000) return DB_OBS_OK;
+    int64_t window = OBS_DETECTION_LINK_WINDOW_SECONDS;
+    sqlite3_reset(match);
+    sqlite3_clear_bindings(match);
+    sqlite3_bind_text(match, 1, camera_uuid, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(match, 2, (ref->timestamp - window) * 1000);
+    sqlite3_bind_int64(match, 3, (ref->timestamp + window) * 1000 + 999);
+    sqlite3_bind_text(match, 4, ref->label, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(match, 5, ref->timestamp);
+    int step = sqlite3_step(match);
+    if (step == SQLITE_DONE) return DB_OBS_OK;
+    if (step != SQLITE_ROW) return DB_OBS_ERROR;
+    copy_column(match, 0, out->observation_uuid, sizeof(out->observation_uuid));
+    if (!lightnvr_uuid_is_valid(out->observation_uuid)) {
+        memset(out, 0, sizeof(*out));
+        return DB_OBS_OK;
+    }
+    out->linked = true;
+    if (list_with(list, out->observation_uuid, set) != DB_OBS_OK) return DB_OBS_ERROR;
+    if (set->owner_confirmed_count > 0) {
+        out->owner_confirmed = true;
+        out->has_classification = true;
+        out->classification = set->owner_confirmed[0];
+    } else if (set->automated_count > 0) {
+        out->has_classification = true;
+        out->classification = set->automated[0];
+    }
+    return DB_OBS_OK;
+}
+
+int db_observation_link_detections(const char *camera_uuid,
+                                   const observation_detection_ref_t *refs, size_t count,
+                                   observation_detection_link_t *out) {
+    if (count == 0) return DB_OBS_OK;
+    if (!refs || !out) return DB_OBS_INVALID;
+    memset(out, 0, count * sizeof(*out));
+    if (!lightnvr_uuid_is_valid(camera_uuid)) return DB_OBS_INVALID;
+    observation_classification_set_t *set = malloc(sizeof(*set));
+    if (!set) return DB_OBS_ERROR;
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
+        free(set);
+        return DB_OBS_ERROR;
+    }
+    sqlite3_stmt *match = NULL;
+    sqlite3_stmt *list = NULL;
+    int rc = DB_OBS_ERROR;
+    if (sqlite3_prepare_v2(db, LINK_MATCH_SQL, -1, &match, NULL) == SQLITE_OK &&
+        sqlite3_prepare_v2(db, CLS_LIST_SQL, -1, &list, NULL) == SQLITE_OK) {
+        rc = DB_OBS_OK;
+        for (size_t i = 0; rc == DB_OBS_OK && i < count; ++i)
+            rc = link_one(match, list, camera_uuid, &refs[i], set, &out[i]);
+    }
+    if (rc != DB_OBS_OK) {
+        log_error("Failed to link detections to observations: %s", sqlite3_errmsg(db));
+        memset(out, 0, count * sizeof(*out));
+    }
+    sqlite3_finalize(match);
+    sqlite3_finalize(list);
+    db_close_readonly_connection(db);
+    free(set);
+    return rc;
+}

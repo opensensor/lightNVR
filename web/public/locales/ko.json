@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "증거 예산 초과 카메라",
   "system.observations.oldestRecoverable": "복구 가능한 가장 오래된 커서",
   "system.observations.publications": "게시 대기 / 실패 / 만료",
-  "system.observations.relayLag": "릴레이 지연 (초)"
+  "system.observations.relayLag": "릴레이 지연 (초)",
+  "detections.classification.title": "분류된 감지",
+  "detections.classification.detector": "감지기: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "{classifier} 제공",
+  "detections.classification.ownerConfirmed": "소유자 확인됨",
+  "detections.classification.unclassified": "분류되지 않음",
+  "detections.classification.observationLink": "관측"
 }

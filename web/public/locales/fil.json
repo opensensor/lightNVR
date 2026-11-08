@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "Mga camera na lampas sa badyet ng ebidensya",
   "system.observations.oldestRecoverable": "Pinakalumang mababawing cursor",
   "system.observations.publications": "Mga publikasyong nakabinbin / nabigo / nag-expire",
-  "system.observations.relayLag": "Antala ng relay (segundo)"
+  "system.observations.relayLag": "Antala ng relay (segundo)",
+  "detections.classification.title": "Mga naka-classify na detection",
+  "detections.classification.detector": "Detector: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "sa pamamagitan ng {classifier}",
+  "detections.classification.ownerConfirmed": "Kinumpirma ng may-ari",
+  "detections.classification.unclassified": "Hindi naka-classify",
+  "detections.classification.observationLink": "Obserbasyon"
 }

@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "الكاميرات التي تجاوزت ميزانية الأدلة",
   "system.observations.oldestRecoverable": "أقدم مؤشر قابل للاسترداد",
   "system.observations.publications": "المنشورات المعلقة / الفاشلة / المنتهية",
-  "system.observations.relayLag": "تأخر الترحيل (ثوانٍ)"
+  "system.observations.relayLag": "تأخر الترحيل (ثوانٍ)",
+  "detections.classification.title": "الاكتشافات المصنفة",
+  "detections.classification.detector": "الكاشف: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "عبر {classifier}",
+  "detections.classification.ownerConfirmed": "مؤكد من المالك",
+  "detections.classification.unclassified": "غير مصنف",
+  "detections.classification.observationLink": "الملاحظة"
 }

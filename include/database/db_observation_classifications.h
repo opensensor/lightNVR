@@ -158,4 +158,46 @@ int db_observation_classifications_list_many(const char *const *observation_uuid
                                              observation_classification_visit_fn visit,
                                              void *context);
 
+/* ---- detection -> observation link (INT_01 L15) -------------------------
+ *
+ * Legacy detection rows carry no observation_uuid (the L3 worker creates the
+ * observation asynchronously, after the detection row is written), so the
+ * link is a join:
+ *
+ *   object_observations.camera_uuid = camera_uuid
+ *   AND observed_at_ms / 1000 within +/-1 s of the detection timestamp
+ *   AND label equal case-insensitively (ASCII),
+ *
+ * served by idx_object_observations_camera_time. When several observations
+ * match, the nearest second wins, then the earliest observed_at_ms, then the
+ * UUID, so the choice is deterministic. Only camera_uuid's observations are
+ * ever considered: the caller passes the camera it already authorized, so an
+ * observation captured by another camera can never be linked. */
+
+#define OBS_DETECTION_LINK_WINDOW_SECONDS 1
+
+typedef struct {
+    const char *label;      /* detector label (detections.label) */
+    int64_t timestamp;      /* detections.timestamp, epoch seconds */
+} observation_detection_ref_t;
+
+typedef struct {
+    bool linked;
+    char observation_uuid[OBS_UUID_SIZE];
+    /* The annotation to display: owner_confirmed[0] when any owner decision
+     * exists, else automated[0] (each list newest updated_at first). */
+    bool has_classification;
+    bool owner_confirmed;   /* at least one owner_confirmed annotation */
+    observation_classification_t classification;
+} observation_detection_link_t;
+
+/* Link count detections of one camera on one read-only connection (one
+ * prepared match and one annotation statement). out[i] corresponds to
+ * refs[i]; an unmatched or label-less ref is linked=false. Returns DB_OBS_OK,
+ * DB_OBS_INVALID (bad camera UUID or NULL arrays) or DB_OBS_ERROR (out is
+ * then all unlinked). */
+int db_observation_link_detections(const char *camera_uuid,
+                                   const observation_detection_ref_t *refs, size_t count,
+                                   observation_detection_link_t *out);
+
 #endif /* LIGHTNVR_DATABASE_DB_OBSERVATION_CLASSIFICATIONS_H */

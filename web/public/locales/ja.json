@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "エビデンス予算超過のカメラ",
   "system.observations.oldestRecoverable": "復元可能な最古のカーソル",
   "system.observations.publications": "公開 保留 / 失敗 / 期限切れ",
-  "system.observations.relayLag": "リレーの遅延 (秒)"
+  "system.observations.relayLag": "リレーの遅延 (秒)",
+  "detections.classification.title": "分類済みの検出",
+  "detections.classification.detector": "検出器: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "{classifier} による",
+  "detections.classification.ownerConfirmed": "所有者が確認済み",
+  "detections.classification.unclassified": "未分類",
+  "detections.classification.observationLink": "観測"
 }

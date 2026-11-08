@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "Камери понад бюджет доказів",
   "system.observations.oldestRecoverable": "Найстаріший відновлюваний курсор",
   "system.observations.publications": "Публікації в очікуванні / невдалі / прострочені",
-  "system.observations.relayLag": "Затримка ретранслятора (секунди)"
+  "system.observations.relayLag": "Затримка ретранслятора (секунди)",
+  "detections.classification.title": "Класифіковані виявлення",
+  "detections.classification.detector": "Детектор: {label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "через {classifier}",
+  "detections.classification.ownerConfirmed": "Підтверджено власником",
+  "detections.classification.unclassified": "Не класифіковано",
+  "detections.classification.observationLink": "Спостереження"
 }

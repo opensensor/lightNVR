@@ -1783,6 +1783,53 @@ static void test_get_and_list_include_classifications(void) {
 
 /* The classification change is staged for the relay (MQTT) with the
  * section 5.4 message ID, which a retry neither changes nor duplicates. */
+/* L15: the summary embedded in detection results. */
+static void test_detection_link_summary_json(void) {
+    observation_detection_link_t link;
+    memset(&link, 0, sizeof(link));
+    TEST_ASSERT_NULL(observation_detection_link_to_json(NULL));
+    TEST_ASSERT_NULL(observation_detection_link_to_json(&link));   /* unlinked: no member */
+
+    link.linked = true;
+    safe_strcpy(link.observation_uuid, "0b8f5c6e-8a63-4a0e-9b0e-2f9c0f6d7a10",
+                sizeof(link.observation_uuid), 0);
+    cJSON *bare = observation_detection_link_to_json(&link);
+    TEST_ASSERT_NOT_NULL(bare);
+    TEST_ASSERT_EQUAL_INT(3, cJSON_GetArraySize(bare));
+    TEST_ASSERT_EQUAL_STRING(link.observation_uuid,
+                             cJSON_GetObjectItemCaseSensitive(bare, "id")->valuestring);
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(bare, "owner_confirmed")));
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItemCaseSensitive(bare, "classification")));
+    cJSON_Delete(bare);
+
+    link.has_classification = true;
+    link.owner_confirmed = true;
+    observation_classification_t *a = &link.classification;
+    safe_strcpy(a->key, "yawamf/species", sizeof(a->key), 0);
+    safe_strcpy(a->writer_namespace, "yawamf", sizeof(a->writer_namespace), 0);
+    a->writer_user_id = 41;
+    safe_strcpy(a->classifier, "yawamf", sizeof(a->classifier), 0);
+    safe_strcpy(a->label, "Carolina Chickadee", sizeof(a->label), 0);
+    a->confidence = 1.0;
+    a->classified_at_ms = 1794015641100LL;
+    safe_strcpy(a->input_asset_uuid, "6f1d2b3c-4a5e-4f60-8a7b-9c0d1e2f3a4b",
+                sizeof(a->input_asset_uuid), 0);
+    a->input_revision = 3;
+    a->kind = OBS_CLS_KIND_OWNER_CONFIRMED;
+    a->annotation_revision = 2;
+    a->created_at_ms = 1794000195100LL;
+    a->updated_at_ms = 1794015641200LL;
+    cJSON *full = observation_detection_link_to_json(&link);
+    TEST_ASSERT_NOT_NULL(full);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(full, "owner_confirmed")));
+    cJSON *classification = cJSON_GetObjectItemCaseSensitive(full, "classification");
+    cJSON *expected = observation_classification_to_json(a);
+    TEST_ASSERT_TRUE(cJSON_Compare(expected, classification, true));
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(classification, "writer_user_id"));
+    cJSON_Delete(expected);
+    cJSON_Delete(full);
+}
+
 static void test_put_stages_a_classification_change_with_stable_message_id(void) {
     grant_all(cam_a, true, false, true);
     seeded_t seeded = seed(cam_a, "bird", OBS_ASSET_READY);
@@ -1894,6 +1941,7 @@ int main(void) {
     RUN_TEST(test_put_update_limit_and_absent_key_conflict);
     RUN_TEST(test_get_and_list_include_classifications);
     RUN_TEST(test_put_stages_a_classification_change_with_stable_message_id);
+    RUN_TEST(test_detection_link_summary_json);
     int result = UNITY_END();
 
     event_identity_shutdown();

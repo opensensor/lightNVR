@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "超出证据预算的摄像头",
   "system.observations.oldestRecoverable": "最早可恢复游标",
   "system.observations.publications": "发布 待处理 / 失败 / 已过期",
-  "system.observations.relayLag": "中继延迟（秒）"
+  "system.observations.relayLag": "中继延迟（秒）",
+  "detections.classification.title": "已分类的检测",
+  "detections.classification.detector": "检测器：{label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "来源：{classifier}",
+  "detections.classification.ownerConfirmed": "所有者已确认",
+  "detections.classification.unclassified": "未分类",
+  "detections.classification.observationLink": "观测"
 }

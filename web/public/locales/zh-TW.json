@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "超出證據預算的攝影機",
   "system.observations.oldestRecoverable": "最早可復原游標",
   "system.observations.publications": "發布 待處理 / 失敗 / 已過期",
-  "system.observations.relayLag": "中繼延遲（秒）"
+  "system.observations.relayLag": "中繼延遲（秒）",
+  "detections.classification.title": "已分類的偵測",
+  "detections.classification.detector": "偵測器：{label} ({confidence}%)",
+  "detections.classification.classified": "{label} ({confidence}%)",
+  "detections.classification.source": "來源：{classifier}",
+  "detections.classification.ownerConfirmed": "擁有者已確認",
+  "detections.classification.unclassified": "未分類",
+  "detections.classification.observationLink": "觀測"
 }

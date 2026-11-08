@@ -2737,5 +2737,12 @@
   "system.observations.budgetExhausted": "Kanıt bütçesini aşan kameralar",
   "system.observations.oldestRecoverable": "Kurtarılabilir en eski imleç",
   "system.observations.publications": "Yayınlar bekleyen / başarısız / süresi dolmuş",
-  "system.observations.relayLag": "Aktarma gecikmesi (saniye)"
+  "system.observations.relayLag": "Aktarma gecikmesi (saniye)",
+  "detections.classification.title": "Sınıflandırılmış algılamalar",
+  "detections.classification.detector": "Algılayıcı: {label} (%{confidence})",
+  "detections.classification.classified": "{label} (%{confidence})",
+  "detections.classification.source": "{classifier} aracılığıyla",
+  "detections.classification.ownerConfirmed": "Sahibi tarafından onaylandı",
+  "detections.classification.unclassified": "Sınıflandırılmamış",
+  "detections.classification.observationLink": "Gözlem"
 }

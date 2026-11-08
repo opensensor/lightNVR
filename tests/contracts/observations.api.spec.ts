@@ -26,15 +26,16 @@ const messageId = (source: string, observation: string, revision: number) => uui
 
 type Seeded = {observation: string; asset: string};
 /** A ready observation at revision 2, written straight into the isolated fixture DB. */
-function seedReady(server: Server, camera: 'A' | 'B'): Seeded {
+function seedReady(server: Server, camera: 'A' | 'B', observedAtMs?: number): Seeded {
   const now = Date.now(), observation = randomUUID(), asset = randomUUID();
+  const observedAt = observedAtMs ?? now;
   const uuid = server.cameras[camera].camera_uuid;
   database(server, `INSERT INTO observation_assets (uuid, camera_uuid, state, origin, media_type, path, bytes, width, height, captured_at_ms, expires_at_ms, created_at_ms, updated_at_ms)
     VALUES (?, ?, 'ready', 'inference_input', 'image/jpeg', ?, 10, 640, 360, ?, ?, ?, ?)`,
   [asset, uuid, `observations/${uuid}/2026-11-08/${asset}.jpg`, now, now + 86400000, now, now]);
   database(server, `INSERT INTO object_observations (uuid, camera_uuid, stream_name_at_capture, batch_id, object_index, observed_at_ms, created_at_ms, engine_key, engine_type, label, confidence, asset_uuid, revision)
     VALUES (?, ?, ?, ?, 0, ?, ?, 'legacy-primary', 'object', 'bird', 0.87, ?, 2)`,
-  [observation, uuid, camera, randomUUID(), now, now, asset]);
+  [observation, uuid, camera, randomUUID(), observedAt, now, asset]);
   return {observation, asset};
 }
 function rows(server: Server, sql: string, value: string): number {
@@ -149,6 +150,36 @@ test('A7-annotate: another camera is 404, view without annotate is 403, and deni
   expect(denied.response.status).toBe(403);
   expect(denied.body.code).toBe('forbidden');
   expect(annotations(server, onA.observation)).toBe(2);
+});
+
+test('L15: detection results link the same-camera observation and show the owner decision first', async ({server}) => {
+  const second = Math.floor(Date.now() / 1000) - 3600;
+  const onA = seedReady(server, 'A', second * 1000 + 250);
+  const onB = seedReady(server, 'B', second * 1000 + 250);   // same second and label, other camera
+  const detection = 'INSERT INTO detections (stream_name, camera_uuid, timestamp, label, confidence, x, y, width, height) VALUES (?, ?, ?, ?, 0.9, 0.1, 0.1, 0.2, 0.2)';
+  database(server, detection, ['A', server.cameras.A.camera_uuid, second, 'Bird']);
+  database(server, detection, ['A', server.cameras.A.camera_uuid, second + 5, 'person']);
+  const namespace = (await ok(server, '/api/integrations/capabilities')).principal.writer_namespace;
+  const results = () => ok(server, `/api/detection/results/A?start=${second - 10}&end=${second + 10}`, viewer);
+
+  let listed = await results();
+  valid('EvidenceDetections', listed);
+  let bird = listed.detections.find((d: Json) => d.label === 'Bird');
+  expect(bird.observation).toEqual({id: onA.observation, owner_confirmed: false, classification: null});
+  expect(listed.detections.find((d: Json) => d.label === 'person')).not.toHaveProperty('observation');
+
+  const automated = await put(server, route(onA, namespace, 'auto'), body(onA));
+  expect(automated.response.status).toBe(201);
+  const owner = await put(server, route(onA, namespace, 'owner'), body(onA, {label: 'Carolina Chickadee', confidence: 1, kind: 'owner_confirmed', input_revision: 3}));
+  expect(owner.response.status).toBe(201);
+
+  listed = await results();
+  valid('EvidenceDetections', listed);
+  bird = listed.detections.find((d: Json) => d.label === 'Bird');
+  // The detector's label and confidence are unchanged beside the owner decision.
+  expect(bird).toMatchObject({label: 'Bird', confidence: expect.closeTo(0.9, 5)});
+  expect(bird.observation).toEqual({id: onA.observation, owner_confirmed: true, classification: owner.body.annotation});
+  expect(JSON.stringify(listed)).not.toContain(onB.observation);
 });
 
 test('a stored classification reaches a real MQTT sink once, with its stable message ID', async ({server}) => {
