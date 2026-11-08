@@ -826,9 +826,90 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   - a filter that excludes another camera;
   - rollback on an injected failure between the change and publication
     inserts.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - RED: `test_observation_codec` and `test_db_observations` failed to link
+    (every new symbol undefined). `test_db_streams` failed 2/42 on the new
+    evidence-setting tests ("Expected 7 Was 0"). GREEN: codec 6/6,
+    observations 15/15 (stable over repeated runs), streams 42/42, `test_uuid`
+    3/3, in `build-tls` and `build-tls-asan` (ASan clean). The
+    `db_|stream|config|migration|uuid|observation|schema|embedded|api_handlers|event_|detection`
+    ctest subset passes 94/94. The full suite fails only the known
+    FFmpeg/SOD/audio tests (stale local headers).
+  - Run: `cd build-tls && make test_db_observations test_observation_codec && ./bin/test_db_observations && ./bin/test_observation_codec`.
+  - API for L3/L4/L5/L8/L13 (`include/database/db_observations.h`). Results
+    are `db_obs_result_t`: `OK`, `DUPLICATE`, `CAS_LOST`, `ERROR`, `INVALID`,
+    `NOT_FOUND`, `INVALID_CURSOR`, `CURSOR_EXPIRED` and `CONFLICT`.
+    - `db_observation_insert_batch(const observation_batch_input_t*, const observation_asset_input_t*, observation_insert_result_t*)`.
+      A retry of the same `batch_id` returns `DUPLICATE` with the existing
+      IDs and writes nothing. A reused `batch_id` on another camera returns
+      `CONFLICT`. An unknown `camera_uuid` returns `NOT_FOUND`. The stream
+      name defaults to the stream row's name.
+    - `db_observation_asset_transition(asset_uuid, from, to, reason, const observation_asset_media_t*, observation_transition_result_t*)`:
+      a compare-and-set that returns `CAS_LOST`. The allowed edges are
+      pending→ready, pending→unavailable(`encode_failed|write_failed|interrupted|disabled`),
+      ready→unavailable(`write_failed`) and ready→expired(`retention_expired|deleted`).
+      Insert-only reasons (`queue_full`, `budget_exhausted`,
+      `no_matching_media`) are rejected as transitions.
+    - `db_observation_bump_revision_locked(sqlite3*, source, observation_uuid, cause, now_ms, &seq, &revision)`
+      is for L13. The caller holds `get_db_mutex()` inside `BEGIN IMMEDIATE`.
+      It snapshots the current asset state into the change row.
+    - `db_observation_get`, `db_observation_asset_get`, and
+      `db_observations_list(const observation_list_query_t*, cursor, observation_page_t*)`
+      (free it with `db_observation_page_free`). The query takes an already
+      authorized camera set (`camera_uuids`/`camera_count`, or `all_cameras`),
+      up to 8 labels, `since`/`until` and `limit` (0 means 100; 1..500). The
+      cursor is NULL, `"head"` or opaque. On `CURSOR_EXPIRED`, the page
+      carries `oldest_cursor` and `oldest_observed_at_ms`.
+    - `db_observation_meta_get(observation_meta_t*)` returns the epoch,
+      `oldest_seq` and `head_seq`.
+      `db_observation_meta_regenerate_epoch()` is for D9 (L4/L11). It is not
+      yet wired into the `db_core.c` restore paths.
+    - `db_observation_pending_publications(observation_publication_t*, max)`
+      returns a count. Each entry carries everything the L5 envelope needs:
+      message_id, cause, the state and reason at that revision,
+      camera/label/observed_at, asset and the change `created_at_ms`.
+      `db_observation_publication_mark(seq, state, last_error)` moves a row
+      out of pending. Passing `PENDING` records a retry. Every call
+      increments `attempts`, and a row that is no longer pending returns
+      `CAS_LOST`.
+    - `db_observations_prune(before_ms, batch, observation_prune_result_t*)`.
+  - Helpers:
+    - `lightnvr_uuid_generate_v5()` (`utils/uuid.h`, mbedTLS `md` SHA-1).
+      `observation_message_id()` matches the §5.4 vector.
+    - `base64url_encode()` and the strict `base64url_decode()`
+      (`utils/base64.h`).
+    - `observation_cursor_encode()` / `observation_cursor_decode()` match the
+      §7.4 example.
+    - `observation_reason_is_valid()` implements the §4.3 enum.
+  - `stream_config_t` gains `observation_evidence_enabled`,
+    `observation_labels[512]`, `observation_max_age_days` and `int64_t
+    observation_max_bytes`. All three save paths and both load paths in
+    `db_streams.c` handle them. Budgets of 0 or less are saved and loaded as
+    7 days / 2 GiB, so a zeroed config cannot violate the 0095 CHECKs.
+    `config.c` defaults are set too.
+  - Gotchas:
+    - `event_identity_init()` must run before any mutation, because message
+      IDs need the source. The source is read before the DB mutex is taken;
+      `event_identity_init` holds its own mutex while calling
+      `db_get_system_setting`.
+    - Reads (list, get, pending publications, meta) open a private read-only
+      connection in one read transaction (one WAL snapshot) and never take
+      the global mutex. The watermark and scan are therefore consistent.
+    - Observations whose capture camera has no `streams` row are excluded
+      from list and get. `streams.camera_uuid` is immutable (trigger), so a
+      soft-deleted (disabled) camera stays visible.
+    - Prune deletes asset rows only when they are unreferenced and
+      `unavailable`/`expired`. An unreferenced `ready`/`pending` asset keeps
+      its row, so L4 must delete the file, expire the asset, and then prune
+      or delete it.
+    - Expiry keeps `path`, `bytes`, `width` and `height` on the asset row.
+      `path` is internal and must never be serialized (L8).
+    - Boxes are rounded to 6 decimals at insert. Clamping is the producer's
+      job (L6/L7); out-of-range boxes are rejected with `INVALID`.
+    - The rollback test injects its failure with a TEMP trigger on
+      `observation_publications`, so production code has no test hook.
+- **files edited/created**: `include/database/db_observations.h`, `src/database/db_observations.c`, `include/utils/uuid.h`, `src/utils/uuid.c`, `include/utils/base64.h`, `src/utils/base64.c`, `include/core/config.h`, `src/core/config.c`, `src/database/db_streams.c`, `tests/unit/test_db_observations.c`, `tests/unit/test_observation_codec.c`, `tests/unit/test_db_streams.c`, `tests/unit/CMakeLists.txt` (commit `49bda76e`)
 
 #### L3: Evidence frame queue and encoder worker
 - **depends_on**: [L2]
