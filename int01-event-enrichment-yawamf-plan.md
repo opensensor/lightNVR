@@ -3797,9 +3797,114 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
     in L13.
 - **validation**: Web unit tests and a Playwright UI spec show both the
   original and classified labels. Run i18n literal baseline checks.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Commit `119fad5b`. Built in `build-int01-L15` (mirrors `build-int01-L14`)
+    and `build-int01-L15-asan` (Debug ASan/UBSan). `libuv_api_handlers.c` did
+    not change, so `coverage.json` did not move (`coverage.mjs --check` OK).
+  - **Server-side join** (no N+1, authz stays in C): in
+    `handle_get_detection_results`, after the existing `live.view` check on
+    the stream's camera, `db_observation_link_detections(camera_uuid, refs, n,
+    out)` runs one prepared match plus one annotation statement on a single
+    read-only connection. The match is:
+    - `camera_uuid = ?` (only the authorized camera, so another camera's
+      observation can never be linked; legacy NULL-UUID detection rows link
+      through the authorized camera's UUID);
+    - `observed_at_ms BETWEEN (ts-1)*1000 AND (ts+1)*1000+999`, which
+      `EXPLAIN QUERY PLAN` shows as a range search on
+      `idx_object_observations_camera_time`;
+    - `label = ? COLLATE NOCASE` (ASCII).
+
+    The order is `abs(observed_at_ms/1000 - ts)`, then `observed_at_ms`,
+    then `uuid`, so ties are deterministic and the earliest wins. A DB failure
+    logs a warning and returns the detections without links.
+  - **API (additive)**: `EvidenceDetection` gains the optional
+    `observation` → `EvidenceDetectionObservation` `{id, owner_confirmed,
+    classification: ObservationClassification | null}`, which is closed.
+    `classification` is `owner_confirmed[0]` (newest `updated_at`) before
+    `automated[0]`. Unlinked detections carry no member; it is never
+    `null`. The C serializer is `observation_detection_link_to_json()` in
+    `api_handlers_observations.c` and reuses
+    `observation_classification_to_json()`, so it never emits
+    `writer_user_id`.
+  - **UI**: the new `DetectionClassifications.tsx` provides pure helpers
+    (`detectionClassificationView`, `detectionOverlayLabel`,
+    `classifiedDetections`, `renderDetectionClassifications`) and a
+    component. One row per linked observation shows `Detector: bird (82%)`,
+    the classified label and confidence, `via <classifier>`, an
+    `Owner confirmed` badge (from the shown annotation's `kind`), or
+    `Not classified`. Each row has an `Observation` link to
+    `/api/observations/{id}`.
+    - It appears under the TimelinePlayer toolbar and in the recording
+      video modal (`UI.tsx`) below the detection status.
+    - Both canvas overlays draw `bird (82%) · Carolina Chickadee (100%)`.
+    - `recordingsAPI.tsx` needed only the type, since `Detection` now
+      carries `observation?`.
+    - Seven `detections.classification.*` keys were added to all 18
+      locales. The i18n literal baseline is unchanged; lint is clean.
+  - **RED→GREEN**:
+    - RED with stubs: `test_db_observation_classifications` failed 4 of 16,
+      `test_api_handlers_observations` failed 1 of 26, and the jest spec
+      could not resolve the component. `observations.api.spec.ts` "L15"
+      fails against the `build-int01-L14` binary (`observation` undefined).
+    - GREEN in both builds, ASan and UBSan clean:
+      `test_db_observation_classifications` 16/16 and
+      `test_api_handlers_observations` 26/26. The cases cover nearest
+      second, the ±1 s edges (inside and outside), the case-insensitive
+      label, a wrong label, a NULL label, a deterministic tie, never
+      crossing cameras, no annotation (summary with `classification: null`),
+      owner over a newer automated key, and bad arguments.
+    - Web: jest `detectionClassifications.spec.js` 5/5 and the full suite
+      87 suites / 1027 tests; `npm run typecheck` and `npm run lint` are
+      clean.
+    - Tooling: `node --test tests/contracts/tooling/*.test.mjs` 60/60, with a
+      new validator case. `generate.mjs --check` is OK, and `lint.mjs` is
+      valid with the same 5 warnings.
+    - Contracts (`LIGHTNVR_CONTRACT_BIN=build-int01-L15/bin/lightnvr`):
+      `observations.api.spec.ts`, `evidence.api.spec.ts` and
+      `recordingsRead.api.spec.ts` give 24 passed and 1 skipped (MQTT). The
+      new L15 case SQL-seeds same-second observations on A and B plus
+      detections, checks that the `null` classification becomes the owner
+      decision after two PUTs, checks the detector `label`/`confidence`
+      are unchanged, and checks that B's observation never appears.
+    - Playwright UI: the new
+      `tests/integration/specs/detection-classification.ui.spec.ts` passes
+      1/1 (`LIGHTNVR_TEST_BIN=build-int01-L15/bin/lightnvr
+      LIGHTNVR_SKIP_GO2RTC=1`, after `npm run build`). It mocks the
+      timeline APIs. `timeline-boundary.ui` and `recordings.ui` pass 29/30;
+      the mobile-scroll case is flaky and passes on its own.
+  - **Gotchas for X3 / later**:
+    - The link is heuristic (same second ±1 and label). Two same-label
+      objects in one frame both link to the earliest observation in that
+      second, because the detection row has no object index. If exact
+      per-object identity is needed, store `observation_uuid` on detections
+      once L3 can write it synchronously.
+    - `/api/investigations/search` (`results[].detection`) and the
+      investigations timeline are **not** enriched; only
+      `/api/detection/results` is.
+    - The link only exists while the observation is retained (history
+      pruning cascades annotations), and only within the detection's own
+      second ±1. ONVIF/API detections whose `observed_at_ms` came from
+      wall-clock time more than 1 s after the detection timestamp will not
+      link.
+    - An X3 end-to-end check can call `GET
+      /api/detection/results/<stream>?start=&end=` after the YA-WAMF
+      write-back and expect `observation.classification.kind ==
+      "owner_confirmed"` once an owner decision exists.
+    - A `/tmp/lightnvr-test` left by an earlier run makes the integration
+      global setup fail with `health UI viewer fixture (500)`. Use the
+      default `LIGHTNVR_TEST_DIR`, which cleans it; the test ini hardcodes
+      `/tmp/lightnvr-test` paths.
 - **files edited/created**:
+  - `include/database/db_observation_classifications.h`, `src/database/db_observation_classifications.c` (`db_observation_link_detections`)
+  - `include/web/api_handlers_observations.h`, `src/web/api_handlers_observations.c` (`observation_detection_link_to_json`)
+  - `src/web/api_handlers_detection.c`
+  - `docs/api/openapi.json`; generated `include/web/openapi_document_generated.h`, `web/generated/api/schema.d.ts`, `web/generated/api/validators.js`
+  - `tests/unit/test_db_observation_classifications.c`, `tests/unit/test_api_handlers_observations.c`
+  - `tests/contracts/observations.api.spec.ts`, `tests/contracts/tooling/observations-contract.test.mjs`
+  - `web/js/components/preact/DetectionClassifications.tsx` (new), `web/js/components/preact/timeline/TimelinePlayer.tsx`, `web/js/components/preact/UI.tsx`, `web/js/types/core.ts`, `web/js/types/timeline.ts`
+  - `web/public/locales/*.json` (18 locales)
+  - `web/tests/detectionClassifications.spec.js` (new), `tests/integration/specs/detection-classification.ui.spec.ts` (new)
 
 #### W10: YA-WAMF classification write-back with correction precedence
 - **depends_on**: [W4, W5, W7, C3]
