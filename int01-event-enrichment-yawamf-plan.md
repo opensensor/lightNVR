@@ -1732,9 +1732,205 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
 - **validation**: Tests against a mocked httpx transport serving the C3
   fixtures cover every outcome class. The secret is redacted in the settings
   API response. The pure parser test passes on every fixture.
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commit `88e09e4d` on `feature/lightnvr-provider`, not pushed)
 - **log**:
+  - **RED→GREEN**: both new test modules failed at collection with
+    `ImportError: LightNvrSettings` (and the missing provider modules). After
+    the change, 137 pass, then 138 with a protocol-conformance check. Two real
+    bugs surfaced on the way:
+    - httpx copies an `httpx.Cookies` object into a fresh jar and drops its
+      policy, so a `Set-Cookie` came back on the next request. The client now
+      passes a `CookieJar` with a reject-all policy directly.
+    - Float milliseconds truncated `.481` to `.480` in `since`. The client now
+      rounds to integer milliseconds.
+  - **Gates**, run on the exact commit content in an isolated worktree at
+    HEAD, because W3's in-flight edits break 46 pure tests in the shared tree:
+    - W0, `test_dead_modules`, the startup test and the new tests: 191 passed.
+    - Pure lane: 2101 passed.
+    - Rest of the suite: 5593 passed, 56 skipped, 0 failed.
+    - `export_openapi.py --check`, `export_openapi_types.py --check`,
+      `dead_modules_check.py`, `docs_consistency_check.py`, the changelog
+      check, and repo-wide `ruff check` and `ruff format --check`: clean.
+  - **Public API**, `app/services/sources/lightnvr_client.py`:
+    - `LightNvrClient(api_url, token, *, timeout=10.0, transport=None)`.
+      Methods: `get(path, *, params, accept, max_bytes, timeout)`,
+      `get_capabilities()`, `list_streams(page=, page_size=)`,
+      `list_observations(params)`, `get_observation(id)`,
+      `get_snapshot(id, timeout=)` and `aclose()`. It returns
+      `LightNvrResponse(status_code, headers, body)`, with `.json_object()`
+      and `.content_type`.
+    - Errors: `LightNvrUnreachableError(reason, msg)` subclasses
+      `SourceUnavailableError`, with reason `not_configured|timeout|request_error`.
+      `LightNvrResponseTooLargeError` is raised past the limits (JSON 8 MiB,
+      media 20 MiB, both instance-adjustable).
+    - The client sends `Authorization: Bearer`, stores no cookies, never
+      follows redirects, and redacts the token from any logged exception
+      text.
+  - **Public API**, `app/services/sources/lightnvr_provider.py`:
+    - `LightNvrProvider(client, config, *, sleep=asyncio.sleep, clock=time.monotonic)`:
+      - `identity()` returns `("lightnvr", source_instance override or
+        capabilities.source.installation_uuid)`. Without an override it raises
+        `SourceUnavailableError` until capabilities load.
+      - `capabilities()` reads `capabilities_not_loaded` on every field until
+        the document loads.
+      - `apply_capabilities(doc)` is sync and pure-testable. It raises
+        `SourceUnavailableError` and keeps the last good state when the doc
+        is not `kind: lightnvr`, when `contract_versions.observations ≠ 1`,
+        when `source.id` ≠ `urn:lightnvr:<installation_uuid>`, or when there
+        is no `operations` block.
+      - `async refresh_capabilities()`.
+      - `capability_info` returns `LightNvrCapabilityInfo`: `source_urn`,
+        `installation_uuid`, `product_version`, `writer_namespace`,
+        `mqtt_enabled`, `delivery_topic`, the history page and filter limits,
+        and `camera_uuids`.
+      - `writer_namespace`.
+      - `live_topics()` and `parse_live_message(topic, payload)`.
+      - `observation_from_api(item)`.
+      - `async list_cameras()`, `async history(cursor, filters)`,
+        `async fetch_observation(id) -> SourceObservation | None` and
+        `async fetch_snapshot(...)`.
+      - `fetch_thumbnail` returns None and `external_snapshot_url` returns
+        None.
+      - `fetch_event`, `fetch_clip`, `fetch_clip_bytes`, `fetch_range_clip`,
+        `fetch_recording_frame` and `write_classification` raise
+        `UnsupportedCapabilityError`.
+      - `aclose()`.
+    - `LightNvrApiError(status_code, code)` means a permanent refusal. It is
+      **not** a `SourceUnavailableError`.
+    - Helpers: `lightnvr_event_key(instance, obs_id)` returns
+      `lnvr:<instance>:<obs_id>`, `observation_message_id(source, obs_id, rev)`
+      (the §5.4 UUIDv5), `is_canonical_uuid`, `build_lightnvr_provider(config)`.
+      Constants: `SOURCE_KIND_LIGHTNVR`, `OBSERVATION_CHANGED_EVENT_TYPE`,
+      `MESSAGE_ID_NAMESPACE`.
+    - `registry.configured_source_kind(app_settings)`.
+      `build_source_provider(kind=None, *, app_settings=None)` now picks
+      lightNVR when `settings.lightnvr.enabled`, so `main.py` is unchanged.
+  - **Settings**: `Settings.lightnvr: LightNvrSettings` has these fields:
+    - `enabled` (False);
+    - `api_url` (http/https only, no credentials, query or fragment);
+    - `token` (`repr=False`);
+    - `mqtt_topic_prefix` (`lightnvr`; plain levels, no wildcards);
+    - `camera_uuids` (accepts a list or a comma string; lowercased and
+      deduped, invalid entries dropped with a warning);
+    - `source_instance` (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, otherwise a
+      validation error);
+    - `request_timeout_seconds` (10, from 1 to 60).
+
+    Environment variables `LIGHTNVR__ENABLED|API_URL|TOKEN|MQTT_TOPIC_PREFIX|CAMERA_UUIDS|SOURCE_INSTANCE|REQUEST_TIMEOUT_SECONDS`
+    are documented in `docs/setup/environment-variables.md`. An environment
+    variable overrides the file per key. The settings API fields are
+    `lightnvr_enabled|api_url|token|mqtt_topic_prefix|camera_uuids|source_instance`.
+    The GET response returns `lightnvr_token` as `***REDACTED***`. A POST
+    with the placeholder keeps the stored token (`should_update_secret`). The
+    section is revalidated as a whole, and a bad value returns `422` without
+    being stored. The token is also covered by `configured_secrets()`, through
+    the `token` key.
+  - **Mapping decisions**:
+    - Live messages:
+      - Accepted only on `{prefix}/v1/events/io.lightnvr.detection.observation_changed.v1/<camera_uuid>`
+        and only after capabilities load.
+      - The envelope must have `specversion` 1.0, the exact `type`,
+        `source` equal to the capabilities URN, and `subject` equal to
+        `camera/<topic uuid>` and to `data.camera_uuid`.
+      - The `id` must equal the recomputed UUIDv5.
+      - Payloads are capped at 64 KiB.
+      - Unknown types, causes or states are dropped. An unknown
+        `unavailable`/`expired` reason is kept as `[a-z0-9_]`.
+      - Cameras outside `camera_uuids` are dropped.
+    - Live `camera_name` is the camera UUID, because the event carries no
+      stream name. History and `fetch_observation` items use
+      `stream_name_at_capture`, with control characters stripped and capped
+      at 63.
+    - History items have `change_cause=None` and a recomputed `message_id`
+      for `(source, id, current revision)`, so live/recovery dedup keys match.
+      `lifecycle` is always None.
+    - History outcomes:
+      - `410 cursor_expired` → `RecoveryRequired(oldest_cursor)` (None if the
+        cursor is unsafe);
+      - `400 invalid_cursor` → `RecoveryRequired(None, "invalid_cursor")`;
+      - 5xx, network error or an unreadable page → `SourceUnavailableError`;
+      - other 4xx (for example `403` on a camera filter) → `LightNvrApiError`.
+    - History filters:
+      - comma-joined cameras and labels; a label containing a comma is a
+        `ValueError`, sent before any request;
+      - `since`/`until` in RFC 3339 with milliseconds;
+      - `limit` clamped to `history_page_max`;
+      - empty `filters.cameras` falls back to the configured `camera_uuids`;
+      - more than 10 cameras → no server filter, filtered client-side;
+      - `has_snapshot` is ignored, because lightNVR has no such filter.
+    - Snapshot outcomes:
+      - `200` image/jpeg → `READY` (`cropped=False`);
+      - `202` → poll on Retry-After (header, then body
+        `retry_after_seconds`, then a default of 2), clamped to 1–30. The
+        budget is the `timeout` argument capped at 120 s, with at most 12
+        attempts, then `PENDING` with `retry_after_seconds`;
+      - `404 evidence_unavailable` → `UNAVAILABLE(reason)`;
+      - any other `404` → `MISSING("observation_not_found")`;
+      - `410` → `EXPIRED(reason)`;
+      - `403` → `UNAVAILABLE("forbidden")`;
+      - `501` → `UNAVAILABLE("not_implemented")`;
+      - 5xx → `TEMPORARILY_UNREACHABLE` (`service_unavailable` or
+        `http_5xx`, with Retry-After);
+      - timeout or connect error → `TEMPORARILY_UNREACHABLE`
+        (`timeout`/`request_error`);
+      - a non-JPEG body → `UNAVAILABLE("unexpected_media_type")`; an
+        oversized one → `UNAVAILABLE("snapshot_too_large")`;
+      - a non-canonical ID → `MISSING("invalid_observation_id")` with no
+        request.
+    - Capabilities are narrowed to what YA-WAMF implements. `annotate`, clips,
+      recordings and lifecycle stay False even if lightNVR declares them, with
+      the reason `not_implemented_by_consumer`.
+  - **Gotchas for W4/W6/W8/W10**:
+    - **W4/W6: call `await provider.refresh_capabilities()` at startup and on
+      MQTT reconnect.** Until it runs, `parse_live_message` returns `[]` and
+      `identity()` raises (unless `source_instance` is set). `history()`,
+      `fetch_observation()` and `list_cameras()` load it lazily, but `main.py`
+      does not. A failed refresh keeps the last good document.
+    - **W4**: a live observation is only a trigger. Call
+      `fetch_observation(external_id)` for the box, transform,
+      `stream_name_at_capture` and the current evidence state (contract
+      §16.2.3), and drop `change_cause == "classification"`. Siblings share
+      `asset_id`. Cache the full image once per asset and crop each
+      observation by its own box with `cropped=False`.
+    - **W4/W8: MQTT broker.** lightNVR events use the existing broker
+      settings (`frigate.mqtt_*`); only the topic comes from
+      `lightnvr.mqtt_topic_prefix`. Frigate availability and stall logic must
+      stay Frigate-only. `capability_info.delivery_topic` lets W8 warn when
+      the configured prefix disagrees with lightNVR.
+    - **W3/W4: event key characters.** The event key contains `:`.
+      `media_cache.sanitize_event_id` strips it, which is unique for
+      UUID-based keys, but W3's source-identity cache keys should not rely on
+      that.
+    - **W6**: `RecoveryRequired.oldest_cursor` can be None, meaning restart
+      without a cursor. `cursor="head"` is passed through for a live-only
+      start. Malformed history items are skipped with a warning count and the
+      cursor still advances. If W6 needs per-item skip reasons it must extend
+      `HistoryPage`, which is in W1's `base.py`. A `LightNvrApiError` is
+      permanent and a `SourceUnavailableError` is retryable.
+    - **W8**:
+      - Settings changes do not rebuild the active provider; restart, or
+        add a rebuild.
+      - `lightnvr_enabled` is already in the settings API. The UI selector
+        should write it, and a failure must never flip it.
+      - `list_cameras()` uses `GET /api/streams?summary=true&surface=live`,
+        paged by 100 for up to 20 pages, which needs only `live.view`.
+    - **W10**: read `provider.writer_namespace` (D3) and never hard-code
+      `yawamf`. Replace the `write_classification` stub and drop `annotate`
+      from `_consumer_capabilities`' unimplemented set.
+    - **Shared worktree**: `routers/settings.py` and `registry.py` held W3's
+      unstaged hunks. W5's versions were staged as HEAD plus W5 edits
+      (`git hash-object -w` + `update-index --cacheinfo`), and W3's hunks were
+      left in place. W3's registry hunk (`FrigateProvider(app_settings=…)`
+      without a client) still applies on top.
 - **files edited/created**:
+  - YA-WAMF `backend/app/services/sources/lightnvr_client.py` (new)
+  - YA-WAMF `backend/app/services/sources/lightnvr_provider.py` (new)
+  - YA-WAMF `backend/app/services/sources/registry.py` (lightNVR kind selection)
+  - YA-WAMF `backend/app/config_models.py` (`LightNvrSettings`), `backend/app/config.py`, `backend/app/config_loader.py`
+  - YA-WAMF `backend/app/routers/settings.py`, `backend/app/services/settings_update.py` (API fields, redaction)
+  - YA-WAMF `backend/openapi.json`, `apps/ui/src/lib/api/generated/openapi.ts` (regenerated)
+  - YA-WAMF `docs/setup/environment-variables.md`, `changelog.d/lightnvr-provider.md`
+  - YA-WAMF `backend/tests/pure/test_lightnvr_parse.py` (new), `backend/tests/test_lightnvr_provider.py` (new)
 
 #### W6: Cursor recovery and backfill for providers
 - **depends_on**: [W2, W4, W5]
