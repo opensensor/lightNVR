@@ -151,6 +151,8 @@ target_link_options(test_db_backup_publication PRIVATE -Wl,--wrap=rename -Wl,--w
 set_tests_properties(test_db_backup_publication PROPERTIES TIMEOUT 30)
 add_layer2_test(test_sqlite_migration_boundaries CI_UNIT CI_SANITIZER)
 set_tests_properties(test_sqlite_migration_boundaries PROPERTIES TIMEOUT 20)
+add_layer2_test(test_observation_migration CI_UNIT CI_SANITIZER)
+set_tests_properties(test_observation_migration PROPERTIES TIMEOUT 30)
 add_layer2_test(test_logger CI_UNIT CI_SANITIZER)
 add_layer2_test(test_strings CI_UNIT CI_SANITIZER)
 add_layer2_test(test_interruptible_sleep)
