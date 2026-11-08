@@ -18,7 +18,7 @@
  *   "*" or "auto"            -> "*:<port>" (auto-detect)
  *   IPv4 or hostname[:port]  -> "<host>:<port>"
  *   IPv6 or [IPv6][:port]    -> "[<ipv6>]:<port>"
- *   stun:host[:port]         -> passed through
+ *   stun[:port]             -> "stun:<port>" (public IP via configured ICE servers)
  * Duplicates collapse. Output strings are safe inside a double-quoted YAML scalar.
  *
  * @return number of candidates written (0 when the list is empty or NULL),

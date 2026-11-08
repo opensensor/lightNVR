@@ -1112,9 +1112,10 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
             fprintf(config_file, "    - \"%s\"\n", candidates[i]);
         }
 
-        // Add STUN server as candidate for ICE gathering
+        // go2rtc discovers the public host through ice_servers, then advertises
+        // our WebRTC listening port. A STUN server URL is not a candidate.
         if (global_config->go2rtc_stun_enabled) {
-            fprintf(config_file, "    - \"stun:%s\"\n", global_config->go2rtc_stun_server);
+            fprintf(config_file, "    - \"stun:%d\"\n", webrtc_port);
         }
 
         fprintf(config_file, "\n");

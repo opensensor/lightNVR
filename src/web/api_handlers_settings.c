@@ -1725,7 +1725,8 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             cJSON_Delete(settings);
             http_response_set_json_error(res, 400,
                 "Invalid go2rtc_external_ip: expected up to 8 comma-separated IPs or hostnames "
-                "(optionally :port), '*' for auto-detect, or stun:host[:port]");
+                "(optionally :port), '*' for auto-detect, or stun[:port]; "
+                "configure STUN servers in the STUN/ICE server settings");
             return;
         }
         safe_strcpy(g_config.go2rtc_external_ip, go2rtc_external_ip->valuestring, sizeof(g_config.go2rtc_external_ip), 0);

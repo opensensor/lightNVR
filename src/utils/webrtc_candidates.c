@@ -7,6 +7,7 @@
 
 #include "utils/webrtc_candidates.h"
 
+#include <arpa/inet.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -44,19 +45,16 @@ static bool candidate_host_ok(const char *h, size_t n) {
 }
 
 static bool candidate_ipv6_ok(const char *h, size_t n) {
-    if (n < 2 || n > 45) return false;
-    int colons = 0;
-    for (size_t i = 0; i < n; i++) {
-        char c = h[i];
-        if (c == ':') { colons++; continue; }
-        bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-        if (!hex && c != '.') return false;
-    }
-    return colons >= 2;
+    char text[INET6_ADDRSTRLEN];
+    struct in6_addr address;
+    if (n == 0 || n >= sizeof(text)) return false;
+    memcpy(text, h, n);
+    text[n] = '\0';
+    return inet_pton(AF_INET6, text, &address) == 1;
 }
 
 /* host[:port] with an optional bracketed IPv6 host; writes "<host>:<port>". */
-static bool candidate_address(const char *e, size_t n, int default_port, bool port_optional_out,
+static bool candidate_address(const char *e, size_t n, int default_port,
                               char *out, size_t out_size) {
     const char *host = e, *port = NULL;
     size_t host_len = n, port_len = 0;
@@ -94,8 +92,6 @@ static bool candidate_address(const char *e, size_t n, int default_port, bool po
     if (port) {
         w = snprintf(out, out_size, v6 ? "[%.*s]:%.*s" : "%.*s:%.*s",
                      (int)host_len, host, (int)port_len, port);
-    } else if (port_optional_out) {
-        w = snprintf(out, out_size, v6 ? "[%.*s]" : "%.*s", (int)host_len, host);
     } else {
         w = snprintf(out, out_size, v6 ? "[%.*s]:%d" : "%.*s:%d", (int)host_len, host, default_port);
     }
@@ -119,13 +115,16 @@ int go2rtc_parse_external_candidates(const char *list, int port,
         bool ok;
         if ((n == 1 && start[0] == '*') || (n == 4 && strncasecmp(start, "auto", 4) == 0)) {
             ok = snprintf(candidate, sizeof(candidate), "*:%d", port) > 0;
+        } else if (n == 4 && strncasecmp(start, "stun", 4) == 0) {
+            ok = snprintf(candidate, sizeof(candidate), "stun:%d", port) > 0;
         } else if (n > 5 && strncasecmp(start, "stun:", 5) == 0) {
-            char addr[GO2RTC_CANDIDATE_SIZE];
-            ok = candidate_address(start + 5, n - 5, port, true, addr, sizeof(addr)) &&
-                 addr[0] != '*' &&
-                 snprintf(candidate, sizeof(candidate), "stun:%s", addr) < (int)sizeof(candidate);
+            /* go2rtc's special host "stun" discovers our public IP using
+             * ice_servers. The port is our media port, not a STUN server. */
+            ok = candidate_port_ok(start + 5, n - 5) &&
+                 snprintf(candidate, sizeof(candidate), "stun:%.*s", (int)n - 5,
+                          start + 5) < (int)sizeof(candidate);
         } else {
-            ok = candidate_address(start, n, port, false, candidate, sizeof(candidate));
+            ok = candidate_address(start, n, port, candidate, sizeof(candidate));
         }
         if (!ok) return -1;
 
