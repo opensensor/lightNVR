@@ -1129,6 +1129,55 @@ char *api_metrics_render_observations(const observation_diagnostics_t *d) {
              e->allocated ? 1U : 0U);
     prom_u64(&b, "lightnvr_observation_evidence_worker_running", "gauge",
              "Whether the evidence encoder worker is running", e->worker_running ? 1U : 0U);
+    prom_u64(&b, "lightnvr_observation_evidence_camera_high_water_items", "gauge",
+             "Highest evidence backlog held by one camera this process run",
+             e->camera_high_water_items);
+    prom_family(&b, "lightnvr_observation_evidence_limit_items", "gauge",
+                "Configured evidence queue depth bound, global and per camera");
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_items{scope=\"global\"} %u\n",
+                    (unsigned)e->limit_items);
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_items{scope=\"camera\"} %u\n",
+                    (unsigned)e->limit_camera_items);
+    prom_family(&b, "lightnvr_observation_evidence_limit_bytes", "gauge",
+                "Configured evidence queue byte bound, global and per camera");
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_bytes{scope=\"global\"} %llu\n",
+                    (unsigned long long)e->limit_bytes);
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_bytes{scope=\"camera\"} %llu\n",
+                    (unsigned long long)e->limit_camera_bytes);
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_bytes{scope=\"discard\"} %llu\n",
+                    (unsigned long long)e->limit_discard_bytes);
+    prom_family(&b, "lightnvr_observation_evidence_discards_total", "counter",
+                "Rejected evidence frames released by the worker (deferred) or by the producer (inline)");
+    prom_buf_append(&b, "lightnvr_observation_evidence_discards_total{mode=\"deferred\"} %llu\n",
+                    (unsigned long long)e->discard_deferred);
+    prom_buf_append(&b, "lightnvr_observation_evidence_discards_total{mode=\"inline\"} %llu\n",
+                    (unsigned long long)e->discard_inline);
+    prom_u64(&b, "lightnvr_observation_evidence_discard_pending_bytes", "gauge",
+             "Rejected evidence frame bytes waiting for the worker to release them",
+             e->discard_pending_bytes);
+
+    /* Producer submit latency (X2, A11: admission never waits on I/O). The
+     * bucket strings mirror observation_evidence_submit_latency_bounds_ns. */
+    static const char *const submit_le[OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS] = {
+        "0.000001", "0.000005", "0.00001", "0.00005", "0.0001",
+        "0.00025", "0.0005", "0.001", "0.01", "+Inf",
+    };
+    prom_family(&b, "lightnvr_observation_submit_latency_seconds", "histogram",
+                "Producer time inside evidence admission this process run");
+    unsigned long long cumulative = 0;
+    for (int i = 0; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS; ++i) {
+        cumulative += (unsigned long long)e->submit_latency_bucket[i];
+        prom_buf_append(&b, "lightnvr_observation_submit_latency_seconds_bucket{le=\"%s\"} %llu\n",
+                        submit_le[i], cumulative);
+    }
+    prom_buf_append(&b, "lightnvr_observation_submit_latency_seconds_sum %.9f\n",
+                    (double)e->submit_latency_sum_ns / 1e9);
+    prom_buf_append(&b, "lightnvr_observation_submit_latency_seconds_count %llu\n",
+                    (unsigned long long)e->submit_latency_count);
+    prom_family(&b, "lightnvr_observation_submit_latency_max_seconds", "gauge",
+                "Slowest producer evidence admission this process run");
+    prom_buf_append(&b, "lightnvr_observation_submit_latency_max_seconds %.9f\n",
+                    (double)e->submit_latency_max_ns / 1e9);
 
     prom_family(&b, "lightnvr_observation_evidence_retained_bytes", "gauge",
                 "Ready evidence bytes retained per camera as of the last retention pass");

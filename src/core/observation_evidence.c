@@ -66,6 +66,8 @@ typedef struct {
     observation_batch_input_t batch;
     char asset_uuid[OBS_UUID_SIZE];
     char reason[OBS_REASON_SIZE];
+    uint8_t *discard;        /* rejected frame the worker frees (may be NULL) */
+    size_t discard_charge;   /* bytes reserved against g.discard_bytes */
 } drop_record_t;
 
 typedef struct {
@@ -128,6 +130,13 @@ static struct {
     atomic_uint high_water_items;
     atomic_ullong high_water_bytes;
 
+    atomic_uint camera_high_water_items;
+    int64_t discard_max_bytes;
+    atomic_llong discard_bytes;
+    atomic_ullong discard_deferred, discard_inline;
+    atomic_ullong submit_latency_count, submit_latency_sum_ns, submit_latency_max_ns;
+    atomic_ullong submit_latency_bucket[OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS];
+
     atomic_ullong accepted, dropped_queue_full, dropped_budget, dropped_disabled,
         dropped_untracked, unavailable_submitted, ready, failed_encode, failed_write,
         failed_db, disabled_at_encode, interrupted, bytes_written;
@@ -155,6 +164,27 @@ static void bump_max_uint(atomic_uint *target, unsigned value) {
 static void bump_max_ull(atomic_ullong *target, unsigned long long value) {
     unsigned long long current = atomic_load(target);
     while (value > current && !atomic_compare_exchange_weak(target, &current, value)) {}
+}
+
+const uint64_t observation_evidence_submit_latency_bounds_ns[OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 1] = {
+    1000ULL, 5000ULL, 10000ULL, 50000ULL, 100000ULL, 250000ULL, 500000ULL, 1000000ULL, 10000000ULL,
+};
+
+/* Lock-free: three relaxed atomic adds and one CAS-max per submit. */
+static void record_submit_latency(int64_t start_ns) {
+    int64_t elapsed = mono_ns() - start_ns;
+    unsigned long long ns = elapsed > 0 ? (unsigned long long)elapsed : 0ULL;
+    int bucket = OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 1;
+    for (int i = 0; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 1; ++i) {
+        if (ns <= observation_evidence_submit_latency_bounds_ns[i]) {
+            bucket = i;
+            break;
+        }
+    }
+    atomic_fetch_add_explicit(&g.submit_latency_bucket[bucket], 1, memory_order_relaxed);
+    atomic_fetch_add_explicit(&g.submit_latency_sum_ns, ns, memory_order_relaxed);
+    atomic_fetch_add_explicit(&g.submit_latency_count, 1, memory_order_relaxed);
+    bump_max_ull(&g.submit_latency_max_ns, ns);
 }
 
 static int stage_hook(observation_evidence_stage_t stage, const char *path) {
@@ -327,7 +357,8 @@ static drop_ring_t *ring_create(void) {
 }
 
 static bool ring_push(drop_ring_t *ring, const observation_batch_input_t *batch,
-                      const char *asset_uuid, const char *reason) {
+                      const char *asset_uuid, const char *reason, uint8_t *discard,
+                      size_t discard_charge) {
     if (!ring) return false;
     size_t pos = atomic_load_explicit(&ring->enqueue_pos, memory_order_relaxed);
     drop_cell_t *cell;
@@ -349,6 +380,8 @@ static bool ring_push(drop_ring_t *ring, const observation_batch_input_t *batch,
     cell->record.batch = *batch;
     safe_strcpy(cell->record.asset_uuid, asset_uuid, sizeof(cell->record.asset_uuid), 0);
     safe_strcpy(cell->record.reason, reason, sizeof(cell->record.reason), 0);
+    cell->record.discard = discard;
+    cell->record.discard_charge = discard_charge;
     atomic_fetch_add(&g.drop_pending, 1);
     atomic_store_explicit(&cell->seq, pos + 1, memory_order_release);
     return true;
@@ -404,6 +437,10 @@ static void process_drops(void) {
             if (!record) return;
         }
         if (!ring_pop(ring, record)) break;
+        if (record->discard) {
+            free(record->discard);
+            atomic_fetch_sub(&g.discard_bytes, (long long)record->discard_charge);
+        }
         insert_unavailable(&record->batch, record->asset_uuid, record->reason);
         atomic_fetch_sub(&g.drop_pending, 1);
     }
@@ -723,6 +760,7 @@ static bool reserve(int slot, size_t charge) {
             atomic_fetch_sub(&g_slots[slot].items, 1);
             goto undo_bytes;
         }
+        bump_max_uint(&g.camera_high_water_items, (unsigned)atomic_load(&g_slots[slot].items));
     }
     return true;
 undo_bytes:
@@ -736,12 +774,32 @@ static void wake_worker(void) {
     if (atomic_load(&g.thread_started)) sem_post(&g.wake);
 }
 
-/* Push a drop record; returns true when tracked. */
+/* Push a drop record; returns true when tracked. Takes ownership of discard
+ * (the rejected frame, may be NULL): releasing a multi-megabyte buffer is an
+ * munmap that measured 1.5-2.6 ms on a busy process (X2), so the worker frees
+ * it after popping the record. Pending deferred frames are bounded by
+ * g.discard_max_bytes; past that, or with the ring full, it is freed here. */
 static bool record_drop(const observation_batch_input_t *batch, const char *asset_uuid,
-                        const char *reason) {
-    if (ring_push(atomic_load(&g.ring), batch, asset_uuid, reason)) {
+                        const char *reason, uint8_t *discard, size_t discard_size) {
+    size_t charge = 0;
+    if (discard) {
+        if (reserve_bytes(&g.discard_bytes, (long long)discard_size, g.discard_max_bytes)) {
+            charge = discard_size;
+        } else {
+            free(discard);
+            discard = NULL;
+            atomic_fetch_add(&g.discard_inline, 1);
+        }
+    }
+    if (ring_push(atomic_load(&g.ring), batch, asset_uuid, reason, discard, charge)) {
+        if (discard) atomic_fetch_add(&g.discard_deferred, 1);
         wake_worker();
         return true;
+    }
+    if (discard) {
+        atomic_fetch_sub(&g.discard_bytes, (long long)charge);
+        free(discard);
+        atomic_fetch_add(&g.discard_inline, 1);
     }
     atomic_fetch_add(&g.dropped_untracked, 1);
     return false;
@@ -797,10 +855,10 @@ static observation_evidence_result_t admit(const observation_batch_input_t *batc
     }
 
     if (result != OBS_EVIDENCE_ACCEPTED) {
-        free(data);
         bool budget = result == OBS_EVIDENCE_DROPPED_BUDGET;
         atomic_fetch_add(budget ? &g.dropped_budget : &g.dropped_queue_full, 1);
-        if (record_drop(batch, asset_uuid, budget ? "budget_exhausted" : "queue_full") &&
+        if (record_drop(batch, asset_uuid, budget ? "budget_exhausted" : "queue_full", data,
+                        data_size) &&
             asset_uuid_out)
             safe_strcpy(asset_uuid_out, asset_uuid, OBS_UUID_SIZE, 0);
         leave();
@@ -842,20 +900,29 @@ static observation_evidence_result_t admit(const observation_batch_input_t *batc
 observation_evidence_result_t observation_evidence_submit(
     const observation_batch_input_t *batch, uint8_t *rgb24, int width, int height,
     const observation_evidence_transform_t *transform, char asset_uuid_out[OBS_UUID_SIZE]) {
+    int64_t start = mono_ns();
     size_t size = (width > 0 && height > 0) ? (size_t)width * (size_t)height * 3 : 0;
-    return admit(batch, rgb24, size, width, height, false, transform, asset_uuid_out);
+    observation_evidence_result_t rc =
+        admit(batch, rgb24, size, width, height, false, transform, asset_uuid_out);
+    if (rc != OBS_EVIDENCE_DISABLED) record_submit_latency(start);
+    return rc;
 }
 
 observation_evidence_result_t observation_evidence_submit_jpeg(
     const observation_batch_input_t *batch, uint8_t *jpeg, size_t jpeg_size, int width,
     int height, const observation_evidence_transform_t *transform,
     char asset_uuid_out[OBS_UUID_SIZE]) {
-    return admit(batch, jpeg, jpeg_size, width, height, true, transform, asset_uuid_out);
+    int64_t start = mono_ns();
+    observation_evidence_result_t rc =
+        admit(batch, jpeg, jpeg_size, width, height, true, transform, asset_uuid_out);
+    if (rc != OBS_EVIDENCE_DISABLED) record_submit_latency(start);
+    return rc;
 }
 
 observation_evidence_result_t observation_evidence_submit_unavailable(
     const observation_batch_input_t *batch, const char *reason,
     char asset_uuid_out[OBS_UUID_SIZE]) {
+    int64_t start = mono_ns();
     if (asset_uuid_out) asset_uuid_out[0] = '\0';
     if (!enter()) {
         atomic_fetch_add(&g.dropped_disabled, 1);
@@ -867,16 +934,18 @@ observation_evidence_result_t observation_evidence_submit_unavailable(
     if (!batch_valid(batch) || !reason || strcmp(reason, "no_matching_media") != 0 ||
         lightnvr_uuid_generate_v4(asset_uuid) != 0) {
         leave();
+        record_submit_latency(start);
         return OBS_EVIDENCE_INVALID;
     }
     ensure_started();
     observation_evidence_result_t result = OBS_EVIDENCE_DROPPED_QUEUE_FULL;
-    if (record_drop(batch, asset_uuid, reason)) {
+    if (record_drop(batch, asset_uuid, reason, NULL, 0)) {
         atomic_fetch_add(&g.unavailable_submitted, 1);
         if (asset_uuid_out) safe_strcpy(asset_uuid_out, asset_uuid, OBS_UUID_SIZE, 0);
         result = OBS_EVIDENCE_ACCEPTED;
     }
     leave();
+    record_submit_latency(start);
     return result;
 }
 
@@ -887,11 +956,16 @@ static void reset_counters(void) {
         &g.accepted, &g.dropped_queue_full, &g.dropped_budget, &g.dropped_disabled,
         &g.dropped_untracked, &g.unavailable_submitted, &g.ready, &g.failed_encode,
         &g.failed_write, &g.failed_db, &g.disabled_at_encode, &g.interrupted,
-        &g.bytes_written, &g.high_water_bytes,
+        &g.bytes_written, &g.high_water_bytes, &g.submit_latency_count,
+        &g.submit_latency_sum_ns, &g.submit_latency_max_ns, &g.discard_deferred,
+        &g.discard_inline,
     };
     for (size_t i = 0; i < sizeof(counters) / sizeof(counters[0]); ++i)
         atomic_store(counters[i], 0);
+    for (int i = 0; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS; ++i)
+        atomic_store(&g.submit_latency_bucket[i], 0);
     atomic_store(&g.high_water_items, 0);
+    atomic_store(&g.camera_high_water_items, 0);
 }
 
 int observation_evidence_init(const observation_evidence_config_t *config) {
@@ -917,6 +991,10 @@ int observation_evidence_init(const observation_evidence_config_t *config) {
                                  : OBS_EVIDENCE_PER_CAMERA_DEPTH;
     g.per_camera_max_bytes = config->per_camera_max_bytes > 0 ? config->per_camera_max_bytes
                                                               : g.global_max_bytes;
+    g.discard_max_bytes = g.global_max_bytes > OBS_EVIDENCE_DEFAULT_GLOBAL_BYTES
+                              ? g.global_max_bytes
+                              : OBS_EVIDENCE_DEFAULT_GLOBAL_BYTES;
+    atomic_store(&g.discard_bytes, 0);
     if (sem_init(&g.wake, 0, 0) != 0) {
         pthread_mutex_unlock(&g.start_lock);
         return -1;
@@ -1007,6 +1085,23 @@ void observation_evidence_get_stats(observation_evidence_stats_t *out) {
     out->drop_ring_depth = drops > 0 ? (uint32_t)drops : 0;
     out->high_water_items = atomic_load(&g.high_water_items);
     out->high_water_bytes = atomic_load(&g.high_water_bytes);
+    out->camera_high_water_items = atomic_load(&g.camera_high_water_items);
+    if (out->initialized) {
+        out->limit_items = (uint32_t)g.global_max_items;
+        out->limit_camera_items = (uint32_t)g.per_camera_max_items;
+        out->limit_bytes = (uint64_t)g.global_max_bytes;
+        out->limit_camera_bytes = (uint64_t)g.per_camera_max_bytes;
+        out->limit_discard_bytes = (uint64_t)g.discard_max_bytes;
+    }
+    out->discard_deferred = atomic_load(&g.discard_deferred);
+    out->discard_inline = atomic_load(&g.discard_inline);
+    long long pending_discard = atomic_load(&g.discard_bytes);
+    out->discard_pending_bytes = pending_discard > 0 ? (uint64_t)pending_discard : 0;
+    out->submit_latency_count = atomic_load(&g.submit_latency_count);
+    out->submit_latency_sum_ns = atomic_load(&g.submit_latency_sum_ns);
+    out->submit_latency_max_ns = atomic_load(&g.submit_latency_max_ns);
+    for (int i = 0; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS; ++i)
+        out->submit_latency_bucket[i] = atomic_load(&g.submit_latency_bucket[i]);
     int count = atomic_load_explicit(&g_slot_count, memory_order_acquire);
     for (int i = 0; i < count; ++i)
         if (atomic_load(&g_slots[i].budget_exhausted)) out->budget_exhausted_cameras++;

@@ -319,6 +319,22 @@ void test_serialization_of_a_populated_snapshot(void) {
     diag.evidence.drop_ring_depth = 12;
     diag.evidence.high_water_items = 13;
     diag.evidence.high_water_bytes = 4096;
+    diag.evidence.submit_latency_bucket[0] = 2;  /* <= 1 us */
+    diag.evidence.submit_latency_bucket[1] = 3;  /* <= 5 us */
+    diag.evidence.submit_latency_bucket[OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 2] = 1; /* <= 10 ms */
+    diag.evidence.submit_latency_bucket[OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 1] = 1; /* +Inf */
+    diag.evidence.submit_latency_count = 7;
+    diag.evidence.submit_latency_sum_ns = 50000000;
+    diag.evidence.submit_latency_max_ns = 20000000;
+    diag.evidence.limit_items = 64;
+    diag.evidence.limit_camera_items = 8;
+    diag.evidence.limit_bytes = 33554432;
+    diag.evidence.limit_camera_bytes = 33554432;
+    diag.evidence.camera_high_water_items = 6;
+    diag.evidence.discard_deferred = 14;
+    diag.evidence.discard_inline = 2;
+    diag.evidence.discard_pending_bytes = 2764800;
+    diag.evidence.limit_discard_bytes = 33554432;
     diag.relay.running = true;
     diag.relay.relayed = 20;
     diag.relay.relayed_no_route = 2;
@@ -375,6 +391,26 @@ void test_serialization_of_a_populated_snapshot(void) {
     ASSERT_LINE(text, "lightnvr_observation_relay_events_total{outcome=\"relayed\"} 20");
     ASSERT_LINE(text, "lightnvr_observation_relay_events_total{outcome=\"no_route\"} 2");
     ASSERT_LINE(text, "lightnvr_observation_history_epoch_regenerations_total 1");
+    /* X2: submit-latency histogram (cumulative buckets), configured limits
+     * and the per-camera high-water mark. */
+    ASSERT_LINE(text, "# TYPE lightnvr_observation_submit_latency_seconds histogram");
+    ASSERT_LINE(text, "lightnvr_observation_submit_latency_seconds_bucket{le=\"0.000001\"} 2");
+    ASSERT_LINE(text, "lightnvr_observation_submit_latency_seconds_bucket{le=\"0.000005\"} 5");
+    ASSERT_LINE(text, "lightnvr_observation_submit_latency_seconds_bucket{le=\"0.001\"} 5");
+    ASSERT_LINE(text, "lightnvr_observation_submit_latency_seconds_bucket{le=\"0.01\"} 6");
+    ASSERT_LINE(text, "lightnvr_observation_submit_latency_seconds_bucket{le=\"+Inf\"} 7");
+    ASSERT_LINE(text, "lightnvr_observation_submit_latency_seconds_sum 0.050000000");
+    ASSERT_LINE(text, "lightnvr_observation_submit_latency_seconds_count 7");
+    ASSERT_LINE(text, "lightnvr_observation_submit_latency_max_seconds 0.020000000");
+    ASSERT_LINE(text, "lightnvr_observation_evidence_limit_items{scope=\"global\"} 64");
+    ASSERT_LINE(text, "lightnvr_observation_evidence_limit_items{scope=\"camera\"} 8");
+    ASSERT_LINE(text, "lightnvr_observation_evidence_limit_bytes{scope=\"global\"} 33554432");
+    ASSERT_LINE(text, "lightnvr_observation_evidence_limit_bytes{scope=\"camera\"} 33554432");
+    ASSERT_LINE(text, "lightnvr_observation_evidence_camera_high_water_items 6");
+    ASSERT_LINE(text, "lightnvr_observation_evidence_discards_total{mode=\"deferred\"} 14");
+    ASSERT_LINE(text, "lightnvr_observation_evidence_discards_total{mode=\"inline\"} 2");
+    ASSERT_LINE(text, "lightnvr_observation_evidence_discard_pending_bytes 2764800");
+    ASSERT_LINE(text, "lightnvr_observation_evidence_limit_bytes{scope=\"discard\"} 33554432");
     free(text);
 
     cJSON *json = observation_diagnostics_to_json(&diag);

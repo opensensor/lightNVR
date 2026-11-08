@@ -59,6 +59,7 @@
 #define OBS_EVIDENCE_JPEG_QUALITY 85
 #define OBS_EVIDENCE_DIR "observations"
 #define OBS_EVIDENCE_DEFAULT_DRAIN_MS 2000
+#define OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS 10       /* 9 bounds + +Inf */
 
 typedef enum {
     OBS_EVIDENCE_ACCEPTED = 0,
@@ -105,8 +106,10 @@ int observation_evidence_init(const observation_evidence_config_t *config);
 void observation_evidence_shutdown(int drain_timeout_ms);
 
 /*
- * Submit a decoded inference frame. Takes ownership of rgb24 on EVERY return
- * (it is freed with free() when not accepted). rgb24 is packed RGB24,
+ * Submit a decoded inference frame. Takes ownership of rgb24 on EVERY return.
+ * When not accepted it is released with free(); for a tracked drop the worker
+ * does that, so the producer never pays for unmapping a large frame (bounded
+ * by limit_discard_bytes pending). rgb24 is packed RGB24,
  * width * 3 bytes per row, and must be allocated with at least
  * RGB24_SWS_TAIL_PADDING bytes of slack after width * height * 3, exactly as
  * ffmpeg_frame_to_rgb24_padded() returns it. batch is copied; its
@@ -191,9 +194,36 @@ typedef struct {
     uint32_t high_water_items;
     uint64_t high_water_bytes;
     uint32_t budget_exhausted_cameras;
+    /* X2 (A11): configured admission bounds and the highest item count any
+     * single camera held this process run. */
+    uint32_t limit_items;
+    uint32_t limit_camera_items;
+    uint64_t limit_bytes;
+    uint64_t limit_camera_bytes;
+    uint32_t camera_high_water_items;
+    /* Producer time spent inside every submit that reached admission (every
+     * result except DISABLED), this process run. Buckets are NOT cumulative:
+     * bucket i counts calls with latency <= bounds_ns[i] and > bounds_ns[i-1];
+     * the last bucket counts calls above the largest bound. */
+    uint64_t submit_latency_count;
+    uint64_t submit_latency_sum_ns;
+    uint64_t submit_latency_max_ns;
+    uint64_t submit_latency_bucket[OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS];
+    /* Frames of rejected submissions: released by the worker (deferred, so the
+     * producer never pays for unmapping a large buffer) or, past
+     * limit_discard_bytes pending or with the drop ring full, inline. */
+    uint64_t discard_deferred;
+    uint64_t discard_inline;
+    uint64_t discard_pending_bytes;
+    uint64_t limit_discard_bytes;    /* max(limit_bytes, OBS_EVIDENCE_DEFAULT_GLOBAL_BYTES) */
 } observation_evidence_stats_t;
 
 void observation_evidence_get_stats(observation_evidence_stats_t *out);
+
+/* Upper bounds (ns) of submit_latency_bucket[0 .. BUCKETS-2]; strictly
+ * increasing (1 us .. 10 ms). The last bucket is +Inf. */
+extern const uint64_t
+    observation_evidence_submit_latency_bounds_ns[OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 1];
 
 /* ---- Test hooks ---------------------------------------------------------- */
 

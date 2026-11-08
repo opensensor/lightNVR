@@ -466,6 +466,121 @@ static void test_queue_saturation_drops_without_blocking(void) {
     TEST_ASSERT_EQUAL_INT(OBS_ASSET_UNAVAILABLE, record.state);
 }
 
+/* X2 (A11): every admission that reaches the queue is timed into a
+ * fixed-bucket histogram, so the saturation gate can prove from the running
+ * binary that producers never wait on I/O. The configured limits and the
+ * per-camera high-water mark are reported so "limits hold" is checkable too. */
+static void test_submit_latency_histogram_and_limits(void) {
+    observation_evidence_config_t config;
+    memset(&config, 0, sizeof(config));
+    config.storage_path = storage_dir;
+    config.per_camera_max_items = 2;
+    config.global_max_items = 5;
+    config.global_max_bytes = 500000;
+    TEST_ASSERT_EQUAL_INT(0, observation_evidence_init(&config));
+
+    observation_evidence_stats_t s = stats();
+    TEST_ASSERT_EQUAL_UINT64(0, s.submit_latency_count);
+    TEST_ASSERT_EQUAL_UINT32(5, s.limit_items);
+    TEST_ASSERT_EQUAL_UINT32(2, s.limit_camera_items);
+    TEST_ASSERT_EQUAL_UINT64(500000, s.limit_bytes);
+    TEST_ASSERT_EQUAL_UINT64(500000, s.limit_camera_bytes);  /* defaults to global */
+    TEST_ASSERT_EQUAL_UINT32(0, s.camera_high_water_items);
+
+    stall_worker();
+    char asset[OBS_UUID_SIZE];
+    observation_batch_input_t batch = make_batch(cam_a, 1);
+    TEST_ASSERT_EQUAL_INT(OBS_EVIDENCE_ACCEPTED,
+        observation_evidence_submit(&batch, make_rgb(64, 48), 64, 48, NULL, asset));
+    wait_stalled();
+    int calls = 1;
+    for (int i = 0; i < 4; ++i, ++calls) {  /* 1 accepted, 3 queue_full */
+        observation_batch_input_t b = make_batch(cam_a, 1);
+        observation_evidence_submit(&b, make_rgb(64, 48), 64, 48, NULL, asset);
+    }
+    observation_batch_input_t onvif = make_batch(cam_b, 1);
+    TEST_ASSERT_EQUAL_INT(OBS_EVIDENCE_ACCEPTED,
+        observation_evidence_submit_unavailable(&onvif, "no_matching_media", asset));
+    calls++;
+    uint8_t *jpeg = malloc(16);
+    TEST_ASSERT_NOT_NULL(jpeg);
+    memset(jpeg, 0xff, 16);
+    observation_batch_input_t api = make_batch(cam_b, 1);
+    TEST_ASSERT_EQUAL_INT(OBS_EVIDENCE_ACCEPTED,
+        observation_evidence_submit_jpeg(&api, jpeg, 16, 8, 8, NULL, asset));
+    calls++;
+
+    s = stats();
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)calls, s.submit_latency_count);
+    uint64_t in_buckets = 0;
+    for (int i = 0; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS; ++i)
+        in_buckets += s.submit_latency_bucket[i];
+    TEST_ASSERT_EQUAL_UINT64(s.submit_latency_count, in_buckets);
+    TEST_ASSERT_TRUE(s.submit_latency_max_ns > 0);
+    TEST_ASSERT_TRUE(s.submit_latency_sum_ns >= s.submit_latency_max_ns);
+    TEST_ASSERT_TRUE_MESSAGE(s.submit_latency_max_ns < 1000000, "a submit took over 1 ms");
+    /* Bounds are strictly increasing and end at the +Inf bucket. */
+    for (int i = 1; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 1; ++i)
+        TEST_ASSERT_TRUE(observation_evidence_submit_latency_bounds_ns[i] >
+                         observation_evidence_submit_latency_bounds_ns[i - 1]);
+    TEST_ASSERT_EQUAL_UINT32(2, s.camera_high_water_items);
+    TEST_ASSERT_TRUE(s.high_water_items <= s.limit_items);
+    TEST_ASSERT_TRUE(s.high_water_bytes <= s.limit_bytes);
+
+    release_worker();
+    wait_idle();
+    observation_evidence_shutdown(0);
+    init_evidence(0, 0);  /* counters reset with the process-run counters */
+    s = stats();
+    TEST_ASSERT_EQUAL_UINT64(0, s.submit_latency_count);
+    TEST_ASSERT_EQUAL_UINT64(0, s.submit_latency_max_ns);
+    TEST_ASSERT_EQUAL_UINT32(0, s.camera_high_water_items);
+    TEST_ASSERT_EQUAL_UINT32(OBS_EVIDENCE_GLOBAL_DEPTH, s.limit_items);
+    TEST_ASSERT_EQUAL_UINT32(OBS_EVIDENCE_PER_CAMERA_DEPTH, s.limit_camera_items);
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)OBS_EVIDENCE_DEFAULT_GLOBAL_BYTES, s.limit_bytes);
+}
+
+/* X2 finding: free() of a dropped 720p RGB frame (2.7 MB, an munmap) took
+ * 1.5-2.6 ms on the detection thread. Rejected frames are handed to the worker
+ * for release, bounded by limit_discard_bytes (max(queue bytes, 32 MiB));
+ * past that bound the producer frees inline. */
+static void test_rejected_frames_are_released_by_the_worker(void) {
+    init_evidence(1, 0);
+    stall_worker();
+    char asset[OBS_UUID_SIZE];
+    observation_batch_input_t first = make_batch(cam_a, 1);
+    TEST_ASSERT_EQUAL_INT(OBS_EVIDENCE_ACCEPTED,
+        observation_evidence_submit(&first, make_rgb(32, 24), 32, 24, NULL, asset));
+    wait_stalled();
+
+    const int w = 1280, h = 720;
+    const uint64_t frame = (uint64_t)w * h * 3;
+    observation_evidence_stats_t s = stats();
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)OBS_EVIDENCE_DEFAULT_GLOBAL_BYTES, s.limit_discard_bytes);
+    const int fit = (int)(s.limit_discard_bytes / frame);  /* 12 frames in 32 MiB */
+    for (int i = 0; i < fit + 2; ++i) {
+        observation_batch_input_t b = make_batch(cam_a, 1);
+        TEST_ASSERT_EQUAL_INT(OBS_EVIDENCE_DROPPED_QUEUE_FULL,
+            observation_evidence_submit(&b, make_rgb(w, h), w, h, NULL, asset));
+    }
+    s = stats();
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)fit, s.discard_deferred);
+    TEST_ASSERT_EQUAL_UINT64(2, s.discard_inline);
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)fit * frame, s.discard_pending_bytes);
+    TEST_ASSERT_TRUE(s.discard_pending_bytes <= s.limit_discard_bytes);
+
+    release_worker();
+    wait_idle();
+    s = stats();
+    TEST_ASSERT_EQUAL_UINT64(0, s.discard_pending_bytes);
+    TEST_ASSERT_EQUAL_INT(fit + 2, count_assets("reason = 'queue_full'"));
+
+    /* A larger queue budget raises the deferral bound with it. */
+    observation_evidence_shutdown(0);
+    init_evidence(0, 64LL * 1024 * 1024);
+    TEST_ASSERT_EQUAL_UINT64(64ULL * 1024 * 1024, stats().limit_discard_bytes);
+}
+
 static void test_global_byte_budget_bounds_admission(void) {
     /* 64x48 RGB24 = 9216 bytes (+ overhead); a 20000-byte budget fits one. */
     init_evidence(0, 20000);
@@ -507,6 +622,10 @@ static void test_drop_ring_overflow_counts_untracked(void) {
     TEST_ASSERT_EQUAL_UINT64((uint64_t)total, s.dropped_queue_full);
     TEST_ASSERT_EQUAL_UINT64(10, s.dropped_untracked);
     TEST_ASSERT_EQUAL_UINT32(OBS_EVIDENCE_DROP_RING_SIZE, s.drop_ring_depth);
+    /* Tracked drops hand their frame to the worker; untracked ones (ring
+     * full) can only be freed inline. */
+    TEST_ASSERT_EQUAL_UINT64(OBS_EVIDENCE_DROP_RING_SIZE, s.discard_deferred);
+    TEST_ASSERT_EQUAL_UINT64(10, s.discard_inline);
     release_worker();
     wait_idle();
     char where[64];
@@ -701,6 +820,8 @@ int main(void) {
     RUN_TEST(test_ready_jpeg_decodes_to_frame_dimensions);
     RUN_TEST(test_jpeg_variant_stores_exact_bytes);
     RUN_TEST(test_queue_saturation_drops_without_blocking);
+    RUN_TEST(test_submit_latency_histogram_and_limits);
+    RUN_TEST(test_rejected_frames_are_released_by_the_worker);
     RUN_TEST(test_global_byte_budget_bounds_admission);
     RUN_TEST(test_drop_ring_overflow_counts_untracked);
     RUN_TEST(test_budget_flag_drops_as_budget_exhausted);

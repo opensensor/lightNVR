@@ -203,3 +203,157 @@ export function workloadFingerprint(result) {
     storage_device: result.host?.storage?.device,
   });
 }
+
+// ---------- X2: evidence-enabled saturation gate (A11) ----------
+
+/** Prometheus histogram {buckets: [{le, count}] cumulative and ascending, count, sum}; null when absent. */
+export function histogram(parsed, name) {
+  const rows = (parsed.get(`${name}_bucket`) || [])
+    .map(r => ({le: r.labels.le === '+Inf' ? Infinity : Number(r.labels.le), count: r.value}))
+    .filter(b => !Number.isNaN(b.le)).sort((a, b) => a.le - b.le);
+  if (rows.length === 0) return null;
+  return {buckets: rows, count: sumMetric(parsed, `${name}_count`) ?? rows.at(-1).count, sum: sumMetric(parsed, `${name}_sum`)};
+}
+
+/** end - start, bucket by bucket (a measurement window of a cumulative histogram). */
+export function histogramDelta(start, end) {
+  if (!end) return null;
+  if (!start) return end;
+  const before = new Map(start.buckets.map(b => [b.le, b.count]));
+  return {
+    buckets: end.buckets.map(b => ({le: b.le, count: b.count - (before.get(b.le) ?? 0)})),
+    count: end.count - start.count,
+    sum: Number.isFinite(end.sum) && Number.isFinite(start.sum) ? end.sum - start.sum : null,
+  };
+}
+
+/** Upper bound of the first bucket holding quantile q (0..1): a conservative estimate. */
+export function histogramUpperQuantile(h, q) {
+  if (!h || !(h.count > 0)) return null;
+  const target = q * h.count;
+  for (const b of h.buckets) if (b.count >= target) return b.le;
+  return Infinity;
+}
+
+const DROP_REASONS = ['queue_full', 'budget_exhausted', 'disabled', 'untracked'];
+const FAILURE_REASONS = ['encode_failed', 'write_failed', 'db_error', 'disabled', 'interrupted'];
+const SUBMIT_HISTOGRAM = 'lightnvr_observation_submit_latency_seconds';
+
+/**
+ * L10 observation families over a measurement window: counter deltas
+ * (start..end), per-process-run high-water gauges and configured limits (end),
+ * and gauge maxima over every scrape. Null when the binary has no L10 metrics.
+ */
+export function observationFeatureSummary(start, end, samples = []) {
+  if (!end.get('lightnvr_observation_accepted_total')) return null;
+  const at = (p, name, filter) => sumMetric(p, name, filter);
+  const delta = (name, filter) => (at(end, name, filter) ?? NaN) - (at(start, name, filter) ?? 0);
+  const all = [start, ...samples, end];
+  const maxOf = name => { const v = all.map(p => at(p, name)).filter(Number.isFinite); return v.length ? Math.max(...v) : null; };
+  const scoped = (name, scope) => at(end, name, l => l.scope === scope);
+  const latency = histogramDelta(histogram(start, SUBMIT_HISTOGRAM), histogram(end, SUBMIT_HISTOGRAM));
+  const round = v => (Number.isFinite(v) ? Math.round(v * 1e9) / 1e9 : v ?? null);
+  const leText = le => (Number.isFinite(le) ? le : '+Inf');
+  return {
+    accepted: delta('lightnvr_observation_accepted_total'),
+    dropped: Object.fromEntries(DROP_REASONS.map(r => [r, delta('lightnvr_observation_dropped_total', l => l.reason === r)])),
+    ready: delta('lightnvr_observation_evidence_ready_total'),
+    failures: Object.fromEntries(FAILURE_REASONS.map(r => [r, delta('lightnvr_observation_evidence_failures_total', l => l.reason === r)])),
+    unavailable_submitted: delta('lightnvr_observation_evidence_unavailable_total'),
+    bytes_written: delta('lightnvr_observation_evidence_bytes_written_total'),
+    high_water_items: at(end, 'lightnvr_observation_evidence_high_water_items'),
+    high_water_bytes: at(end, 'lightnvr_observation_evidence_high_water_bytes'),
+    camera_high_water_items: at(end, 'lightnvr_observation_evidence_camera_high_water_items'),
+    limits: {
+      items: scoped('lightnvr_observation_evidence_limit_items', 'global'),
+      camera_items: scoped('lightnvr_observation_evidence_limit_items', 'camera'),
+      bytes: scoped('lightnvr_observation_evidence_limit_bytes', 'global'),
+      camera_bytes: scoped('lightnvr_observation_evidence_limit_bytes', 'camera'),
+      discard_bytes: scoped('lightnvr_observation_evidence_limit_bytes', 'discard'),
+    },
+    discards: {
+      deferred: delta('lightnvr_observation_evidence_discards_total', l => l.mode === 'deferred'),
+      inline: delta('lightnvr_observation_evidence_discards_total', l => l.mode === 'inline'),
+    },
+    discard_pending_bytes_max: maxOf('lightnvr_observation_evidence_discard_pending_bytes'),
+    backlog_items_max: maxOf('lightnvr_observation_evidence_backlog_items'),
+    backlog_bytes_max: maxOf('lightnvr_observation_evidence_backlog_bytes'),
+    drop_ring_depth_max: maxOf('lightnvr_observation_evidence_drop_ring_depth'),
+    budget_exhausted_cameras_max: maxOf('lightnvr_observation_evidence_budget_exhausted_cameras'),
+    relay_lag_seconds_max: maxOf('lightnvr_observation_relay_lag_seconds'),
+    queue_allocated_end: at(end, 'lightnvr_observation_evidence_queue_allocated'),
+    worker_running_end: at(end, 'lightnvr_observation_evidence_worker_running'),
+    retained_bytes_by_camera_end: metricByLabel(end, 'lightnvr_observation_evidence_retained_bytes', 'camera_uuid'),
+    budget_bytes_by_camera_end: metricByLabel(end, 'lightnvr_observation_evidence_budget_bytes', 'camera_uuid'),
+    history_observations_end: at(end, 'lightnvr_observation_history_observations'),
+    publications_end: metricByLabel(end, 'lightnvr_observation_publications', 'state'),
+    submit_latency: latency && {
+      count: latency.count,
+      sum_seconds: round(latency.sum),
+      mean_seconds: latency.count > 0 && Number.isFinite(latency.sum) ? round(latency.sum / latency.count) : null,
+      max_seconds: at(end, 'lightnvr_observation_submit_latency_max_seconds'),
+      p50_upper_seconds: leText(histogramUpperQuantile(latency, 0.5)),
+      p99_upper_seconds: leText(histogramUpperQuantile(latency, 0.99)),
+      p999_upper_seconds: leText(histogramUpperQuantile(latency, 0.999)),
+      buckets: latency.buckets.map(b => ({le: leText(b.le), count: b.count})),
+      max_note: 'max_seconds is the per-process-run maximum (includes warmup); buckets are the window delta',
+    },
+  };
+}
+
+/** Contract §4.3 bounded reasons, by asset state. */
+export const ASSET_REASONS = Object.freeze({
+  unavailable: ['queue_full', 'budget_exhausted', 'encode_failed', 'write_failed', 'interrupted', 'no_matching_media', 'disabled'],
+  expired: ['retention_expired', 'deleted'],
+});
+
+/** rows: [{state, reason, n}] from observation_assets GROUP BY state, reason. */
+export function assetReasonSummary(rows) {
+  const byStateReason = {};
+  let withoutReason = 0;
+  const unknown = new Set();
+  for (const {state, reason, n} of rows) {
+    byStateReason[reason ? `${state}:${reason}` : state] = (byStateReason[reason ? `${state}:${reason}` : state] || 0) + n;
+    if (ASSET_REASONS[state]) {
+      if (!reason) withoutReason += n;
+      else if (!ASSET_REASONS[state].includes(reason)) unknown.add(reason);
+    }
+  }
+  return {by_state_reason: byStateReason, unavailable_or_expired_without_reason: withoutReason, unknown_reasons: [...unknown].sort()};
+}
+
+/**
+ * X2 A11 evidence checks on an enabled run (the recording-path checks are
+ * releaseGate): detections and evidence really happened, queue limits held,
+ * every drop carries a bounded reason (none untracked, the DB holds at least
+ * the window's drops by reason), no post-admission failures, and the producer
+ * submit never exceeded maxSubmitSeconds (it never waits on I/O).
+ * requireSaturation additionally demands that admission refused work.
+ */
+export function evidenceGate(baseline, candidate, {requireSaturation = false, maxSubmitSeconds = 0.001} = {}) {
+  const f = candidate.feature_metrics || {};
+  const lim = f.limits || {};
+  const assets = candidate.feature_db?.assets || {by_state_reason: {}};
+  const le = (v, limit) => Number.isFinite(v) && Number.isFinite(limit) && v <= limit;
+  const checks = [];
+  const add = (key, pass, value, limit) => checks.push({key, value: value ?? null, limit: limit ?? null, pass: Boolean(pass)});
+  const b = baseline.feature_metrics;
+  add('baseline.feature_inactive', b && b.accepted === 0 && !b.queue_allocated_end, b && {accepted: b.accepted, queue_allocated: b.queue_allocated_end});
+  add('evidence.detections', candidate.detector?.detections_in_window > 0, candidate.detector?.detections_in_window);
+  add('evidence.ready', f.accepted > 0 && f.ready > 0, {accepted: f.accepted, ready: f.ready});
+  add('evidence.db_observations', candidate.feature_db?.observations > 0, candidate.feature_db?.observations);
+  add('limits.items', le(f.high_water_items, lim.items) && le(f.backlog_items_max, lim.items), {high_water: f.high_water_items, backlog_max: f.backlog_items_max}, lim.items);
+  add('limits.bytes', le(f.high_water_bytes, lim.bytes) && le(f.backlog_bytes_max ?? 0, lim.bytes), {high_water: f.high_water_bytes, backlog_max: f.backlog_bytes_max}, lim.bytes);
+  add('limits.camera_items', le(f.camera_high_water_items, lim.camera_items), f.camera_high_water_items, lim.camera_items);
+  add('drops.untracked', f.dropped?.untracked === 0, f.dropped?.untracked, 0);
+  const recorded = ['queue_full', 'budget_exhausted'].every(r => (assets.by_state_reason[`unavailable:${r}`] || 0) >= (f.dropped?.[r] ?? Infinity));
+  add('drops.reasons_recorded', recorded && assets.unavailable_or_expired_without_reason === 0 && (assets.unknown_reasons || []).length === 0,
+    {window_drops: f.dropped, db: assets.by_state_reason, without_reason: assets.unavailable_or_expired_without_reason, unknown: assets.unknown_reasons});
+  const failed = f.failures ? f.failures.encode_failed + f.failures.write_failed + f.failures.db_error : NaN;
+  add('evidence.failures', failed === 0, f.failures, 0);
+  add('submit.count', f.submit_latency?.count > 0, f.submit_latency?.count);
+  add('submit.max_seconds', Number.isFinite(f.submit_latency?.max_seconds) && f.submit_latency.max_seconds < maxSubmitSeconds,
+    f.submit_latency?.max_seconds, maxSubmitSeconds);
+  if (requireSaturation) add('saturation.queue_full_drops', f.dropped?.queue_full > 0, f.dropped?.queue_full);
+  return {require_saturation: requireSaturation, max_submit_seconds: maxSubmitSeconds, pass: checks.every(c => c.pass), checks};
+}

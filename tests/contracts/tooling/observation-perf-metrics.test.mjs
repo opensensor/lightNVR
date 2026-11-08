@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   percentile, summarize, parsePrometheus, sumMetric, metricByLabel, segmentIntervals,
   countIntervalGaps, catalogGaps, resourceSummary, relativeDifferencePct, repeatability,
-  releaseGate, workloadFingerprint,
+  releaseGate, workloadFingerprint, histogram, histogramDelta, histogramUpperQuantile,
+  observationFeatureSummary, assetReasonSummary, evidenceGate,
 } from '../../performance/observations/metrics.mjs';
 
 test('percentile interpolates linearly (type 7)', () => {
@@ -123,4 +124,144 @@ test('workloadFingerprint ignores timing but not workload shape', () => {
   assert.equal(workloadFingerprint(base), workloadFingerprint(other));
   other.workload.streams = 8;
   assert.notEqual(workloadFingerprint(base), workloadFingerprint(other));
+});
+
+// ---------- X2: evidence-enabled saturation gate ----------
+
+const featureText = ({accepted = 0, queueFull = 0, untracked = 0, ready = 0, writeFailed = 0, hwItems = 0, hwBytes = 0,
+  camHw = 0, backlog = 0, buckets = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], sum = 0, max = 0, allocated = 0} = {}) => {
+  const les = ['0.000001', '0.000005', '0.00001', '0.00005', '0.0001', '0.00025', '0.0005', '0.001', '0.01', '+Inf'];
+  let cumulative = 0;
+  return [
+    `lightnvr_observation_accepted_total ${accepted}`,
+    `lightnvr_observation_dropped_total{reason="queue_full"} ${queueFull}`,
+    'lightnvr_observation_dropped_total{reason="budget_exhausted"} 0',
+    'lightnvr_observation_dropped_total{reason="disabled"} 0',
+    `lightnvr_observation_dropped_total{reason="untracked"} ${untracked}`,
+    `lightnvr_observation_evidence_ready_total ${ready}`,
+    'lightnvr_observation_evidence_failures_total{reason="encode_failed"} 0',
+    `lightnvr_observation_evidence_failures_total{reason="write_failed"} ${writeFailed}`,
+    'lightnvr_observation_evidence_failures_total{reason="db_error"} 0',
+    'lightnvr_observation_evidence_failures_total{reason="interrupted"} 0',
+    'lightnvr_observation_evidence_bytes_written_total 1000',
+    `lightnvr_observation_evidence_backlog_items ${backlog}`,
+    `lightnvr_observation_evidence_backlog_bytes ${backlog * 100}`,
+    'lightnvr_observation_evidence_drop_ring_depth 0',
+    `lightnvr_observation_evidence_high_water_items ${hwItems}`,
+    `lightnvr_observation_evidence_high_water_bytes ${hwBytes}`,
+    `lightnvr_observation_evidence_camera_high_water_items ${camHw}`,
+    'lightnvr_observation_evidence_limit_items{scope="global"} 64',
+    'lightnvr_observation_evidence_limit_items{scope="camera"} 8',
+    'lightnvr_observation_evidence_limit_bytes{scope="global"} 4194304',
+    'lightnvr_observation_evidence_limit_bytes{scope="camera"} 4194304',
+    `lightnvr_observation_evidence_discards_total{mode="deferred"} ${queueFull}`,
+    'lightnvr_observation_evidence_discards_total{mode="inline"} 0',
+    'lightnvr_observation_evidence_discard_pending_bytes 0',
+    'lightnvr_observation_evidence_limit_bytes{scope="discard"} 33554432',
+    `lightnvr_observation_evidence_queue_allocated ${allocated}`,
+    `lightnvr_observation_evidence_worker_running ${allocated}`,
+    ...les.map((le, i) => `lightnvr_observation_submit_latency_seconds_bucket{le="${le}"} ${(cumulative += buckets[i])}`),
+    `lightnvr_observation_submit_latency_seconds_sum ${sum}`,
+    `lightnvr_observation_submit_latency_seconds_count ${cumulative}`,
+    `lightnvr_observation_submit_latency_max_seconds ${max}`,
+  ].join('\n');
+};
+
+test('histogram helpers read cumulative buckets, subtract windows and bound quantiles', () => {
+  const start = histogram(parsePrometheus(featureText({buckets: [1, 1, 0, 0, 0, 0, 0, 0, 0, 0], sum: 0.000004})),
+    'lightnvr_observation_submit_latency_seconds');
+  const end = histogram(parsePrometheus(featureText({buckets: [5, 90, 4, 1, 0, 0, 0, 0, 0, 0], sum: 0.0004})),
+    'lightnvr_observation_submit_latency_seconds');
+  assert.equal(end.count, 100);
+  assert.equal(end.buckets.at(-1).le, Infinity);
+  const delta = histogramDelta(start, end);
+  assert.equal(delta.count, 98);
+  assert.equal(delta.buckets[0].count, 4);
+  assert.ok(Math.abs(delta.sum - 0.000396) < 1e-12);
+  assert.equal(histogramUpperQuantile(end, 0.5), 0.000005);
+  assert.equal(histogramUpperQuantile(end, 0.99), 0.00001);
+  assert.equal(histogramUpperQuantile(end, 1), 0.00005);
+  assert.equal(histogramUpperQuantile(null, 0.5), null);
+  assert.equal(histogram(parsePrometheus('x 1'), 'lightnvr_observation_submit_latency_seconds'), null);
+});
+
+test('observationFeatureSummary reports window deltas, run high-water marks and sample maxima', () => {
+  const start = parsePrometheus(featureText({accepted: 2, queueFull: 1, ready: 2, allocated: 1}));
+  const mid = parsePrometheus(featureText({accepted: 5, queueFull: 3, ready: 4, backlog: 3, allocated: 1}));
+  const end = parsePrometheus(featureText({accepted: 12, queueFull: 9, ready: 12, hwItems: 3, hwBytes: 300, camHw: 2,
+    backlog: 1, buckets: [0, 30, 0, 0, 0, 0, 0, 0, 0, 0], sum: 0.0001, max: 0.00004, allocated: 1}));
+  const s = observationFeatureSummary(start, end, [mid]);
+  assert.equal(s.accepted, 10);
+  assert.equal(s.ready, 10);
+  assert.deepEqual(s.dropped, {queue_full: 8, budget_exhausted: 0, disabled: 0, untracked: 0});
+  assert.equal(s.high_water_items, 3);
+  assert.equal(s.high_water_bytes, 300);
+  assert.equal(s.camera_high_water_items, 2);
+  assert.equal(s.backlog_items_max, 3);
+  assert.deepEqual(s.limits, {items: 64, camera_items: 8, bytes: 4194304, camera_bytes: 4194304, discard_bytes: 33554432});
+  assert.deepEqual(s.discards, {deferred: 8, inline: 0});
+  assert.equal(s.discard_pending_bytes_max, 0);
+  assert.equal(s.submit_latency.count, 30);
+  assert.equal(s.submit_latency.max_seconds, 0.00004);
+  assert.equal(s.submit_latency.p99_upper_seconds, 0.000005);
+  assert.equal(s.queue_allocated_end, 1);
+  assert.equal(observationFeatureSummary(parsePrometheus('x 1'), parsePrometheus('x 1'), []), null);
+});
+
+test('assetReasonSummary flags unavailable assets without a bounded reason', () => {
+  const ok = assetReasonSummary([{state: 'ready', reason: null, n: 5}, {state: 'unavailable', reason: 'queue_full', n: 3},
+    {state: 'expired', reason: 'retention_expired', n: 2}]);
+  assert.deepEqual(ok.by_state_reason, {ready: 5, 'unavailable:queue_full': 3, 'expired:retention_expired': 2});
+  assert.equal(ok.unavailable_or_expired_without_reason, 0);
+  assert.deepEqual(ok.unknown_reasons, []);
+  const bad = assetReasonSummary([{state: 'unavailable', reason: '', n: 1}, {state: 'unavailable', reason: 'mystery', n: 1}]);
+  assert.equal(bad.unavailable_or_expired_without_reason, 1);
+  assert.deepEqual(bad.unknown_reasons, ['mystery']);
+});
+
+const enabledRun = (over = {}) => ({
+  mode: 'enabled',
+  detector: {detections_in_window: 40},
+  feature_db: {observations: 50, assets: assetReasonSummary([{state: 'ready', reason: null, n: 30},
+    {state: 'unavailable', reason: 'queue_full', n: 9}])},
+  feature_metrics: observationFeatureSummary(parsePrometheus(featureText({allocated: 1})), parsePrometheus(featureText({
+    accepted: 30, queueFull: 9, ready: 30, hwItems: 1, hwBytes: 2800000, camHw: 1,
+    buckets: [0, 35, 4, 0, 0, 0, 0, 0, 0, 0], sum: 0.0001, max: 0.00002, allocated: 1})), []),
+  ...over,
+});
+const disabledRun = () => ({mode: 'disabled', feature_metrics: observationFeatureSummary(parsePrometheus(featureText()), parsePrometheus(featureText()), [])});
+
+test('evidenceGate passes a saturated run whose limits held and whose drops were recorded', () => {
+  const result = evidenceGate(disabledRun(), enabledRun(), {requireSaturation: true});
+  assert.equal(result.pass, true, JSON.stringify(result.checks.filter(c => !c.pass)));
+});
+
+test('evidenceGate fails on each violated A11 property', () => {
+  const failing = (run, opts, key) => {
+    const result = evidenceGate(disabledRun(), run, opts);
+    assert.equal(result.pass, false, key);
+    assert.ok(result.checks.some(c => c.key === key && !c.pass), `${key}: ${JSON.stringify(result.checks)}`);
+  };
+  const fm = over => observationFeatureSummary(parsePrometheus(featureText({allocated: 1})),
+    parsePrometheus(featureText({accepted: 30, queueFull: 9, ready: 30, hwItems: 1, hwBytes: 2800000, camHw: 1,
+      buckets: [0, 39, 0, 0, 0, 0, 0, 0, 0, 0], max: 0.00002, allocated: 1, ...over})), []);
+  failing(enabledRun({detector: {detections_in_window: 0}}), {}, 'evidence.detections');
+  failing(enabledRun({feature_metrics: fm({accepted: 0, ready: 0})}), {}, 'evidence.ready');
+  failing(enabledRun({feature_db: {observations: 0, assets: assetReasonSummary([])}}), {}, 'evidence.db_observations');
+  failing(enabledRun({feature_metrics: fm({hwItems: 65})}), {}, 'limits.items');
+  failing(enabledRun({feature_metrics: fm({hwBytes: 4194305})}), {}, 'limits.bytes');
+  failing(enabledRun({feature_metrics: fm({camHw: 9})}), {}, 'limits.camera_items');
+  failing(enabledRun({feature_metrics: fm({untracked: 1})}), {}, 'drops.untracked');
+  failing(enabledRun({feature_metrics: fm({writeFailed: 1})}), {}, 'evidence.failures');
+  failing(enabledRun({feature_metrics: fm({max: 0.0011})}), {}, 'submit.max_seconds');
+  failing(enabledRun({feature_metrics: fm({buckets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]})}), {}, 'submit.count');
+  failing(enabledRun({feature_db: {observations: 50, assets: assetReasonSummary([{state: 'unavailable', reason: 'queue_full', n: 2}])}}),
+    {}, 'drops.reasons_recorded');
+  failing(enabledRun({feature_db: {observations: 50, assets: assetReasonSummary([{state: 'unavailable', reason: 'queue_full', n: 9},
+    {state: 'unavailable', reason: null, n: 1}])}}), {}, 'drops.reasons_recorded');
+  failing(enabledRun({feature_metrics: fm({queueFull: 0})}), {requireSaturation: true}, 'saturation.queue_full_drops');
+  failing(enabledRun(), {maxSubmitSeconds: 0.00001}, 'submit.max_seconds');
+  const active = disabledRun();
+  active.feature_metrics.accepted = 3;
+  assert.equal(evidenceGate(active, enabledRun()).checks.find(c => c.key === 'baseline.feature_inactive').pass, false);
 });

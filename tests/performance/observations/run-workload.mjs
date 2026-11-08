@@ -14,7 +14,8 @@
 import {spawn, execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {watch} from 'node:fs';
-import {mkdir, readFile, readdir, stat, writeFile, copyFile, open} from 'node:fs/promises';
+import {mkdir, readFile, readdir, stat, writeFile, copyFile, open, rm} from 'node:fs/promises';
+import {DatabaseSync} from 'node:sqlite';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -22,7 +23,7 @@ import {reservePort} from '../../contracts/fixture-server.mjs';
 import {trackedDiffSha256} from '../git-provenance.mjs';
 import {
   summarize, parsePrometheus, sumMetric, metricByLabel, countIntervalGaps,
-  catalogGaps, resourceSummary,
+  catalogGaps, resourceSummary, observationFeatureSummary, assetReasonSummary,
 } from './metrics.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,7 @@ const GAP_THRESHOLD_SEC = 5; // RECORDING_GAP_THRESHOLD_SEC in include/telemetry
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf(name); return i < 0 ? fallback : args[i + 1]; };
 const flag = name => args.includes(name);
+const optAll = name => args.flatMap((a, i) => (a === name && i + 1 < args.length ? [args[i + 1]] : []));
 if (flag('--help')) {
   console.log(`Options (defaults from workload.json):
   --binary PATH          lightNVR binary (default $LIGHTNVR_CONTRACT_BIN or build/int01-c4-release/bin/lightnvr)
@@ -44,7 +46,9 @@ if (flag('--help')) {
   --detection-interval S
   --source FILE          use this H.264 clip instead of the synthetic testsrc2 clip
   --stream-extra FILE    JSON merged into every POST /api/streams body (X2: evidence opt-in)
-  --config-extra FILE    INI text appended to the generated lightnvr.ini (X2: evidence budgets)
+  --config-extra FILE    INI text appended to the generated lightnvr.ini
+  --system-setting K=V   (repeatable) system_settings row written before streams are added; lightNVR is
+                         restarted once so startup-only settings apply (X2: observation_global_queue_bytes)
   --work-dir DIR         where fixture storage lives (default build/perf-observations/work; must be a real disk, not tmpfs)
   --go2rtc PATH          go2rtc binary (default: go2rtc on PATH)
   --no-detector          omit the detector (diagnostic only; not a C4/X2 workload)
@@ -75,6 +79,11 @@ const workDir = path.resolve(opt('--work-dir', 'build/perf-observations/work'));
 const go2rtcBin = opt('--go2rtc', 'go2rtc');
 const streamExtra = opt('--stream-extra') ? JSON.parse(await readFile(opt('--stream-extra'), 'utf8')) : {};
 const configExtra = opt('--config-extra') ? await readFile(opt('--config-extra'), 'utf8') : '';
+const systemSettings = optAll('--system-setting').map(kv => {
+  const at = kv.indexOf('=');
+  if (at < 1) throw new Error(`--system-setting expects KEY=VALUE, got ${kv}`);
+  return [kv.slice(0, at), kv.slice(at + 1)];
+});
 
 // ---------- helpers ----------
 const sha256 = buf => createHash('sha256').update(buf).digest('hex');
@@ -167,7 +176,7 @@ const report = {
     detector: useDetector ? {kind: workload.detector.kind, model_file: path.basename(modelPath), interval_seconds: detectionInterval,
       threshold_percent: workload.detector.threshold_percent} : null},
   retention: workload.retention,
-  feature: {stream_extra: streamExtra, config_extra: configExtra || null},
+  feature: {stream_extra: streamExtra, config_extra: configExtra || null, system_settings: Object.fromEntries(systemSettings)},
   definitions: {
     'latency.segment_interval_ms': 'Per stream, wall-clock interval between first sight (inotify) of consecutive new segment files; nominal = segment_seconds*1000. A recording-path stall (writer, rotation, DB insert under the global DB mutex) lengthens it.',
     'latency.segment_interval_excess_ms': 'segment_interval_ms minus nominal.',
@@ -181,6 +190,11 @@ const report = {
     'No in-process packet-write latency histogram exists in lightNVR today; recording-path latency is the black-box segment-interval proxy plus the DB-mutex probe.',
     'Synthetic testsrc2 content produces no VOC detections: the detector runs inference at its cadence but creates no detections. X2 needs a fixture that yields detections and must rerun disabled mode on that same source and binary.',
   ],
+  definitions_x2: {
+    feature_metrics: 'L10 lightnvr_observation_* families: counters are window deltas (start..end scrape), high_water_* / camera_high_water_items / submit max are per-process-run maxima, *_max fields are maxima over every scrape, limits are the configured admission bounds.',
+    'feature_metrics.submit_latency': 'Producer time inside observation_evidence_submit*/admission (lightnvr_observation_submit_latency_seconds histogram, window delta). p*_upper_seconds are bucket upper bounds (conservative).',
+    feature_db: 'Read from the fixture DB after shutdown (the worker drains pending drop records at shutdown): observation rows, assets by state:reason, detection rows.',
+  },
 };
 if (useDetector) report.workload.detector.model_sha256 = sha256(await readFile(modelPath));
 const save = () => writeFile(path.join(output, 'results.json'), JSON.stringify(report, null, 2) + '\n');
@@ -249,6 +263,16 @@ try {
   server = await startFixture({binary, maxStreams: streams, seed: false, retain: true, extraConfig: configExtra});
   report.fixture_directory = server.directory;
   await server.json('/api/setup/status', {method: 'POST', body: {complete: true}});
+  if (systemSettings.length) {
+    // Startup-only settings (main.c reads observation_global_queue_bytes once):
+    // write them while stopped, then start the next process generation.
+    await server.kill('SIGTERM');
+    const db = new DatabaseSync(path.join(server.directory, 'lightnvr.db'));
+    const upsert = db.prepare("INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = strftime('%s', 'now')");
+    for (const [key, value] of systemSettings) upsert.run(key, value);
+    db.close();
+    await server.relaunch();
+  }
   const login = await server.request('/api/auth/login', {principal: 'anonymous', method: 'POST', body: server.credentials.admin});
   cookie = (login.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).join('; ');
   if (!login.ok || !cookie) throw new Error(`session login failed (${login.status})`);
@@ -310,6 +334,9 @@ try {
     source: 'count of "sod_cnn_predict returned" info lines in server.log during the window',
   } : null;
   report.log_errors_in_window = (logWindow.match(/\[ERROR\]/g) || []).length;
+  report.feature_metrics = observationFeatureSummary(promStart.parsed, promEnd.parsed, prom.map(p => p.parsed));
+  report.evidence_init_log = (logWindow.match(/Observation evidence initialized[^\n]*/) || (await readFile(logPath, 'utf8')).match(/Observation evidence initialized[^\n]*/g)?.slice(-1) || [null])[0];
+  report.window_unix = {start: Math.floor(windowStartWall / 1000), end: Math.ceil(windowEndWall / 1000)};
 
   // Intervals whose closing segment appears inside the window (predecessor may be in warmup).
   const endTimes = {};
@@ -392,6 +419,24 @@ try {
 } finally {
   watcher?.close();
   try { await server?.stop({failed: report.status !== 'completed' || flag('--keep')}); } catch (e) { report.cleanup_error = String(e); }
+  if (server && report.window_unix) {
+    try {
+      const db = new DatabaseSync(path.join(server.directory, 'lightnvr.db'), {readOnly: true});
+      const one = sql => Object.values(db.prepare(sql).get())[0];
+      const {start, end} = report.window_unix;
+      report.feature_db = {
+        observations: one('SELECT count(*) FROM object_observations'),
+        assets: assetReasonSummary(db.prepare('SELECT state, reason, count(*) AS n FROM observation_assets GROUP BY state, reason').all()),
+        ready_asset_bytes: one("SELECT coalesce(sum(bytes), 0) FROM observation_assets WHERE state = 'ready'"),
+        ready_asset_bytes_max: one("SELECT coalesce(max(bytes), 0) FROM observation_assets WHERE state = 'ready'"),
+        detections_total: one('SELECT count(*) FROM detections'),
+        detections_in_window: one(`SELECT count(*) FROM detections WHERE timestamp >= ${start} AND timestamp <= ${end}`),
+        detection_labels: Object.fromEntries(db.prepare('SELECT label, count(*) AS n FROM detections GROUP BY label').all().map(r => [r.label, r.n])),
+      };
+      db.close();
+    } catch (e) { report.feature_db = {error: String(e)}; }
+    if (!flag('--keep') && report.status === 'completed') await rm(server.directory, {recursive: true, force: true}).catch(() => {});
+  }
   stopping = true;
   for (const p of publishers) { try { process.kill(-p.child.pid, 'SIGTERM'); } catch {} }
   await Promise.race([Promise.all(publishers.map(p => p.exit)), pause(3000)]);
@@ -405,4 +450,6 @@ try {
 }
 console.log(JSON.stringify({status: report.status, output: path.relative(repoRoot, output), problems: report.problems, error: report.error,
   segment_interval_p95_ms: report.latency?.segment_interval_ms?.p95, db_probe_p95_ms: report.latency?.db_probe_ms?.p95,
-  gaps: report.gaps && {metrics: report.gaps.metrics_recording_gaps_total, catalog: report.gaps.catalog_gaps_total, interval: report.gaps.segment_interval_gaps}}));
+  gaps: report.gaps && {metrics: report.gaps.metrics_recording_gaps_total, catalog: report.gaps.catalog_gaps_total, interval: report.gaps.segment_interval_gaps},
+  detections_in_window: report.detector?.detections_in_window, accepted: report.feature_metrics?.accepted, dropped: report.feature_metrics?.dropped,
+  observations: report.feature_db?.observations}));
