@@ -355,9 +355,82 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   and `coverage-inventory.test.mjs` pass. The stub routes return `501`.
   `tests/contracts/tooling/*` passes. The generated header compiles. The existing operation-ID lists in
   `tests/contracts/*.spec.ts` stay unchanged; new IDs are not `*Evidence*`.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Commit `a847d2b6`. Added five operations under a new `Integrations` tag
+    and 20 schemas. They are the 8 required ones plus `ObservationUuid`,
+    `ObservationTime`, `ObservationEvidenceState`, `ObservationEvidenceReason`,
+    `ObservationBox`, `ObservationDetector`, `ObservationTrack`,
+    `ObservationRecordingReference`, `ObservationClassifications`,
+    `ObservationClassificationWrite` (the closed PUT body),
+    `ObservationClassificationResult` and `IntegrationCapabilityOperation`.
+    Ten of them are exported as web validators.
+  - **PUT path**: two segments,
+    `/api/observations/{id}/classifications/{namespace}/{name}`; native route
+    `/api/observations/#/classifications/#/#`.
+  - **Authorization**:
+    - capabilities: `{version:1, kind:"authenticated"}`;
+    - list and get: camera `live.view`;
+    - snapshot: camera `snapshot.create`;
+    - PUT: **`authenticated` for now**. `generate_native.py` rejects any
+      action missing from `authorization.c`, and `observations.annotate`
+      arrives in L13.
+  - **Stubs**: every route calls `httpd_check_action_access`. Without a
+    credential it returns `401`; otherwise it returns
+    `501 {"error","code":"not_implemented"}`. Every operation documents `501`.
+  - **Coverage regeneration**: no script existed (the earlier inventory was
+    hand-built), so I added **`scripts/contracts/coverage.mjs`**:
+    - `node scripts/contracts/coverage.mjs` refreshes line numbers, handler
+      names and `source_sha256`, and keeps every reviewed field;
+    - `--add-coverage <group>` also adds new registrations, each matched to
+      exactly one OpenAPI operation (`{param}` becomes `#`);
+    - `--check` fails on drift.
+
+    It errors on a stale entry (route removed) and on a registration with no
+    entry. On the HEAD inputs it reproduced `coverage.json` byte for byte. New
+    entries use coverage group `observations`. The `notes` counts were updated
+    by hand to 246 registrations and 237 operations.
+  - **RED→GREEN**: `tests/contracts/tooling/observations-contract.test.mjs`
+    failed 3/3 before the change (no schemas, ops, stub file or validators). It
+    passes 3/3 after. `tests/unit/test_api_handlers_observations.c` first
+    failed to compile (missing header) and now passes 2 tests (501 with the
+    code, and 401 unauthenticated).
+  - **Validation**:
+    - `lint.mjs`: valid, with the same 5 pre-existing warnings as HEAD.
+    - `generate.mjs --check`: OK.
+    - `node --test tests/contracts/tooling/*.test.mjs`: 49/49.
+    - `tsc -p tests/contracts/tsconfig.json`: clean.
+    - Full `build-tls` build of `lightnvr`, plus `test_api_handlers_openapi`
+      (8/8) and `test_openapi_projection` (21/21): pass.
+    - Live fixture server: all 5 routes return `501` with admin credentials
+      and `401` anonymously, and the admin `/api/openapi.json` projection
+      lists all 5.
+  - **Gotchas for later tasks**:
+    - **Every** route edit in `libuv_api_handlers.c` shifts line numbers. Run
+      `node scripts/contracts/coverage.mjs` afterwards, or
+      `coverage-inventory.test.mjs` fails on the sha256 and line checks.
+    - **L8**: keep handler names, or the script picks up a rename
+      automatically. Remove the `501` response from the GET ops once they are
+      implemented.
+    - **L14**: change the PUT `x-lightnvr-authorization` to camera
+      `observations.annotate` after L13 adds it to `authorization.c`, then
+      drop the P2 note and the `501`. Update the expectation in
+      `observations-contract.test.mjs` too.
+    - `ObservationEvidence` and `ObservationChangeEvent` enforce the
+      reason/state and `snapshot_url` consistency with `if`/`then`. The
+      strict Ajv needs `properties` declared in every `required` subschema,
+      or redocly warns.
+    - Response schemas use `additionalProperties: true` (readers ignore
+      unknown fields), and the PUT body is closed.
+    - `ObservationError.code` is an enum of the §11 codes. Adding a code
+      means editing OpenAPI.
+    - `build/` has `BUILD_TESTS=OFF`. Use `build-tls` for unit tests.
 - **files edited/created**:
+  - `docs/api/openapi.json`, `docs/api/contracts/coverage.json`
+  - generated: `include/web/openapi_document_generated.h`, `web/generated/api/{schema.d.ts,validators.js,validators.d.ts}`
+  - `src/web/api_handlers_observations.c` (new), `include/web/api_handlers_observations.h` (new), `src/web/libuv_api_handlers.c`
+  - `scripts/contracts/coverage.mjs` (new)
+  - `tests/contracts/tooling/observations-contract.test.mjs` (new), `tests/unit/test_api_handlers_observations.c` (new), `tests/unit/CMakeLists.txt`
 
 #### C3: Shared contract fixtures for both implementations
 - **depends_on**: [C1]
