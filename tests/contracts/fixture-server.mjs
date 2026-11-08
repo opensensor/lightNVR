@@ -79,7 +79,7 @@ export async function startFixture(options = {}) {
     fixture.port = reservation.port;
     fixture.baseURL = `http://127.0.0.1:${fixture.port}`;
     for (const dir of ['recordings', 'models']) await mkdir(path.join(directory, dir));
-    const config = `[general]\npid_file = ${directory}/lightnvr.pid\nlog_file = ${directory}/server.log\nlog_level = 2\nsyslog_enabled = false\n[storage]\npath = ${directory}/recordings\nmax_size = 0\nrecord_mp4_directly = false\n[database]\npath = ${directory}/lightnvr.db\n[web]\nport = ${fixture.port}\nbind_ip = 127.0.0.1\nroot = ${options.webRoot || `${root}/web/dist`}\nauth_enabled = true\nusername = admin\npassword = admin\nweb_thread_pool_size = 4\n[streams]\nmax_streams = ${maxStreams}\n[models]\npath = ${directory}/models\n[go2rtc]\nenabled = false\nauto_start = false\n`;
+    const config = `[general]\npid_file = ${directory}/lightnvr.pid\nlog_file = ${directory}/server.log\nlog_level = 2\nsyslog_enabled = false\n[storage]\npath = ${directory}/recordings\nmax_size = 0\nrecord_mp4_directly = false\n[database]\npath = ${directory}/lightnvr.db\n[web]\nport = ${fixture.port}\nbind_ip = 127.0.0.1\nroot = ${options.webRoot || `${root}/web/dist`}\nauth_enabled = true\nusername = admin\npassword = admin\nweb_thread_pool_size = 4\n[streams]\nmax_streams = ${maxStreams}\n[models]\npath = ${directory}/models\n[go2rtc]\nenabled = false\nauto_start = false\n` + (options.extraConfig ? `${options.extraConfig}\n` : '');
     const configPath = path.join(directory, 'lightnvr.ini');
     await writeFile(configPath, config);
     output = await open(fixture.logPath, 'w', 0o600);
