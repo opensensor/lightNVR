@@ -1430,9 +1430,128 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   - Contract coverage in L11.
   - OpenAPI projection lint shows each new route has exactly the declared
     authorization requirement.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Commit `2dfe559f`. The four GET stubs are replaced; the PUT stays `501`
+    (L14). Handler names and routes are unchanged, so `coverage.json` did not
+    move (`coverage.mjs --check` OK). The `501` response is removed from the
+    four GET operations in OpenAPI, the projections are regenerated, and
+    `observations-contract.test.mjs` now expects `501` only on the PUT.
+  - **Behaviour**:
+    - **Authorization** uses `httpd_evaluate_camera_identity_action` on the
+      capture-time `camera_uuid` for get and snapshot, so unknown,
+      deleted-camera and unauthorized IDs are byte-identical
+      `404 observation_not_found`. List and capabilities use
+      `db_fleet_camera_load_readonly` and `authorization_filter_cameras`.
+    - **List**: D1 comma lists (≤10 cameras, lowercased; ≤8 labels of
+      1..31 bytes), RFC 3339 `since`/`until` (`Z` or an offset), `limit`
+      1..500 and `cursor`/`head`. An empty or undecodable parameter is
+      `400 invalid_request` with `field`. An explicit camera without
+      `live.view`, unknown UUIDs included, is `403 forbidden` (audited as a
+      denial). Otherwise the scope is the principal's `live.view` set, and an
+      empty set gives an empty page. Errors map to `400 invalid_cursor` and
+      `410 cursor_expired` with `oldest_cursor`/`oldest_observed_at`.
+    - **Snapshot**:
+      - `ready` streams the file through `http_serve_file` with
+        `image/jpeg`, `Cache-Control: private, max-age=300` and
+        `ETag: "<asset_id>"`; `If-None-Match` gives `304`.
+      - `pending` is `202` with `Retry-After`; `unavailable` is
+        `404 evidence_unavailable` with `reason`; `expired` is
+        `410 evidence_expired` with `reason` and `expired_at` (the asset's
+        `updated_at_ms`).
+      - D4: a denied `snapshot.create` re-checks `live.view` and returns
+        `403 forbidden` if it is held, otherwise `404`.
+      - A `ready` row whose file is gone re-reads the asset: `410` if it has
+        expired meanwhile, else `404 evidence_unavailable(write_failed)`.
+        Nothing is substituted.
+      - The stored path must be `observations/…/*.jpg` relative to
+        `storage_path` (L3's format), or absolute under it, with no `.`/`..`
+        segments. Anything else is `500` and is logged.
+    - **Capabilities**:
+      - `source` comes from `event_identity`, and `product_version` is
+        `LIGHTNVR_VERSION_STRING`.
+      - history and snapshot are `authorized` when the action is held on any
+        camera, else `reason: not_authorized`. `annotate` is
+        `supported: false, not_available_in_this_version`.
+      - limits come from the `db_observations.h` constants.
+        `history.retention_days` is read from `system_settings` (default
+        30). `delivery.topic` is `<prefix>/v1/events/<type>/{camera_uuid}`.
+      - `cameras` holds at most 1,024 entries, each with `evidence_enabled`
+        from the stream config and the actions held.
+      - `principal.writer_namespace` is the D3 normalization, or null for an
+        invalid or reserved name.
+    - **Audit**:
+      - Snapshot: every fetch is recorded as `snapshot.create` with
+        `target_type "observation"` and `target_uuid` = the observation ID.
+        The details are camera_uuid, asset_id, evidence_state and the
+        decision source, never a path. Allowed reads follow the per-action
+        decision mode: `off` records nothing, `summarize` goes through
+        `audit_log_authorization` on the camera (a summary row cannot carry
+        an observation ID), and `record` writes the full row.
+      - Get: goes through `audit_log_authorization(live.view)` as today.
+      - List: audits only explicit-camera denials.
+  - **Exported for L14** (`include/web/api_handlers_observations.h`):
+    `observation_record_to_json()`, which follows the C3 conventions (pending
+    nulls width/height/bytes/expires_at; no `origin` means every media field
+    is null; no `path`), plus `observation_format_time()`,
+    `observation_parse_time()` and `observation_writer_namespace()`
+    (returns `-1` invalid / `-2` reserved).
+  - **RED→GREEN**:
+    - RED: the extended `test_api_handlers_observations` failed to link (18
+      undefined references to the new helpers and serializer).
+    - GREEN: 18/18 in `build-int01-L8` and in `build-int01-L8-asan`, ASan and
+      LSan clean.
+    - The tests run against a migrated DB seeded through the L2 API. They wrap
+      `httpd_check_action_access`, `httpd_evaluate_camera_identity_action`,
+      `authorization_filter_cameras`, `http_serve_file` and
+      `audit_log_append`.
+    - Coverage: every status code; the authorization intersection; D4;
+      malformed parameters (17 cases plus 11 cameras); paging, `head` and
+      expired-cursor resume; ETag/304; path containment; and the missing file.
+    - Exact `cJSON_Compare` equality with 8 observation fixtures and with the
+      `invalid-cursor`, `observation-not-found`, `snapshot-forbidden` and
+      `evidence-unavailable` bodies. Key and type shape matches the page,
+      capabilities, `cursor-expired`, `evidence-pending` and
+      `evidence-expired` fixtures.
+    - With `OBS_RESPONSE_DUMP_DIR` set, all 60 JSON bodies the test produces
+      validate against the generated web validators (Observation,
+      ObservationPage, ObservationError, IntegrationCapabilities).
+  - **Validation**: `node --test tests/contracts/tooling/*.test.mjs` 59/59;
+    `coverage.mjs --check` and `generate.mjs --check` OK; `lint.mjs` valid
+    with the same 5 pre-existing warnings. `test_api_handlers_openapi` 8/8,
+    `test_openapi_projection` 21/21, and the full `lightnvr` target builds.
+  - **Gotchas for later tasks**:
+    - **L9**: `openapi.json` now has no GET `501`s. Regenerate after your
+      schema edits; `coverage.json` only moves if `libuv_api_handlers.c`
+      does.
+    - **L10**: the setup probe `GET /api/observations?camera_uuid=X&limit=1`
+      works as is, and an unauthorized X is `403`, not an empty page.
+      `Retry-After` is provisional: 1 s while the asset is under 5 s old,
+      else 2 s. Once L3 exposes queue depth, wire `min(30, 2 × ahead)` into
+      `retry_after_seconds()`.
+    - **L11**: the unit tests wrap authz, so the Playwright suite must prove
+      real scoped-token isolation. The DB-restore case surfaces as `410`
+      with `oldest_cursor` in the current epoch. Capabilities
+      `history.oldest_observed_at` is installation-wide (the same value the
+      `410` body carries), not camera-scoped.
+    - **L14**: reuse `observation_record_to_json()` and fill the two
+      `classifications` lists inside it. Use `observation_writer_namespace()`
+      for the D3 check, and flip `observations.annotate` in
+      `handle_get_integration_capabilities()`; also add the
+      `observations.annotate` action to each `cameras[].actions`. The PUT
+      handler currently only authenticates and returns `501`.
+    - In unit tests, `--wrap=audit_log_append` does not intercept appends made
+      inside `audit_log.c` (such as via `audit_log_authorization`). Those
+      write to the real audit table.
+    - Concurrency: the L3 agent's plan commit swept in this task's staged
+      files. It was split back out by a soft reset of that local, unpushed
+      HEAD, so the L3 plan commit is now `0bf32a53`. Other agents should
+      stage with explicit paths or `-p` and commit right after staging.
 - **files edited/created**:
+  - `src/web/api_handlers_observations.c`, `include/web/api_handlers_observations.h`
+  - `tests/unit/test_api_handlers_observations.c`, `tests/unit/CMakeLists.txt` (wraps, `OBS_FIXTURE_DIR`, timeout)
+  - `docs/api/openapi.json` (GET `501`s removed), generated `include/web/openapi_document_generated.h`, `web/generated/api/schema.d.ts`
+  - `tests/contracts/tooling/observations-contract.test.mjs`
 
 #### L9: Per-camera opt-in and budget configuration (API + UI)
 - **depends_on**: [L2, C2]
