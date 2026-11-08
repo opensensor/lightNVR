@@ -56,6 +56,7 @@
 #include "video/detection.h"
 #include "video/detection_model.h"
 #include "video/detection_result.h"
+#include "video/detection_evidence.h"
 #include "video/api_detection.h"
 #include "video/motion_detection.h"
 #include "video/onvif_detection.h"
@@ -1279,6 +1280,9 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->record_audio = detection_should_record_audio(&config, global_cfg);
     ctx->audio_voice_enhancement = config.audio_voice_enhancement;
     ctx->annotation_only = annotation_only;
+    atomic_store(&ctx->observation_evidence_enabled, config.observation_evidence_enabled);
+    safe_strcpy(ctx->observation_labels, config.observation_labels,
+                sizeof(ctx->observation_labels), 0);
     atomic_store(&ctx->external_motion_trigger, 0);  // no pending external trigger
 
     // Replay-detection: will be set properly on first successful connect
@@ -1661,6 +1665,23 @@ void unified_detection_notify_motion(const char *stream_name, bool motion_active
                   stream_name, motion_active ? 1 : 2);
     }
     pthread_mutex_unlock(&contexts_mutex);
+}
+
+int unified_detection_set_observation_settings(const char *stream_name, bool enabled,
+                                               const char *labels_csv) {
+    if (!stream_name) return -1;
+
+    pthread_mutex_lock(&contexts_mutex);
+    unified_detection_ctx_t *ctx = find_context_by_name(stream_name);
+    if (ctx) {
+        pthread_mutex_lock(&ctx->mutex);
+        safe_strcpy(ctx->observation_labels, labels_csv ? labels_csv : "",
+                    sizeof(ctx->observation_labels), 0);
+        pthread_mutex_unlock(&ctx->mutex);
+        atomic_store(&ctx->observation_evidence_enabled, enabled);
+    }
+    pthread_mutex_unlock(&contexts_mutex);
+    return ctx ? 0 : -1;
 }
 
 
@@ -3025,6 +3046,78 @@ static uint8_t *frame_to_rgb24(const AVFrame *frame) {
     return ffmpeg_frame_to_rgb24_padded(frame, NULL);
 }
 
+/* ---- INT_01 L6: observation evidence capture --------------------------
+ *
+ * Runs on the thread that did the inference (UDT packet thread for the
+ * main-stream keyframe path, the detection-stream thread otherwise) while the
+ * RGB24 inference input is still alive, so the evidence is exactly the frame
+ * the model saw, at the resolution it was decoded at (the detection stream's
+ * when one is configured). Settings come from the ctx cache; nothing here
+ * reads the DB or blocks (observation_evidence_submit is non-blocking).
+ * store_detections_in_db_for_camera / event_producer_publish_detection in
+ * report_detections are unaffected.
+ */
+
+/* Copy the cached settings when evidence is on and at least one of the
+ * detections is eligible. Fast path (evidence off) is one atomic load. */
+static bool udt_evidence_wanted(unified_detection_ctx_t *ctx,
+                                const detection_t *detections, int count,
+                                char labels[OBSERVATION_LABELS_MAX]) {
+    if (count <= 0 || !atomic_load(&ctx->observation_evidence_enabled)) return false;
+    pthread_mutex_lock(&ctx->mutex);
+    memcpy(labels, ctx->observation_labels, OBSERVATION_LABELS_MAX);
+    pthread_mutex_unlock(&ctx->mutex);
+    labels[OBSERVATION_LABELS_MAX - 1] = '\0';
+    for (int i = 0; i < count; ++i) {
+        if (detection_evidence_label_eligible(labels, detections[i].label)) return true;
+    }
+    return false;
+}
+
+/* Hand one engine's surviving detections and the owned inference frame to the
+ * L3 queue. Always consumes rgb. */
+static void udt_submit_evidence(unified_detection_ctx_t *ctx, const char *engine_key,
+                                const char *model_path, detection_model_t model,
+                                const detection_t *detections, int count,
+                                const char *labels, time_t now,
+                                uint8_t *rgb, int width, int height) {
+    int net_w = 0, net_h = 0;
+    bool letterbox = false;
+    if (detection_evidence_model_geometry(model, &net_w, &net_h, &letterbox) != 0) {
+        net_w = net_h = 0;
+    }
+    observation_evidence_transform_t transform;
+    detection_evidence_transform_compute(width, height, net_w, net_h, letterbox, &transform);
+
+    detection_evidence_camera_t camera = {
+        .camera_uuid = ctx->camera_uuid,
+        .stream_name = ctx->stream_name,
+        .evidence_enabled = true,
+        .labels_csv = labels,
+        .recording_id = (int64_t)detection_link_recording_id(ctx),
+    };
+    detection_evidence_engine_t engine = {
+        .engine_key = engine_key,
+        .engine_type = "object",
+        .model_path = model_path,
+        .model_version = NULL,
+    };
+    observation_evidence_result_t submitted = OBS_EVIDENCE_INVALID;
+    detection_evidence_status_t status = detection_evidence_capture(
+        &camera, &engine, detections, count, detection_evidence_observed_at_ms(now),
+        rgb, width, height, &transform, &submitted, NULL);
+    if (status == DETECTION_EVIDENCE_SUBMITTED && submitted != OBS_EVIDENCE_ACCEPTED) {
+        log_debug("[%s] Observation evidence for engine %s not queued (%d)",
+                  ctx->stream_name, engine_key ? engine_key : "legacy-primary",
+                  (int)submitted);
+    }
+}
+
+static const char *udt_single_engine_key(const unified_detection_ctx_t *ctx) {
+    return (ctx->engine_count == 1 && ctx->engines[0].engine_key[0])
+        ? ctx->engines[0].engine_key : "legacy-primary";
+}
+
 static void append_engine_result(unified_detection_ctx_t *ctx,
                                  const stream_detection_engine_t *engine,
                                  detection_result_t *combined,
@@ -3076,6 +3169,10 @@ static bool detect_with_runtime_engines(unified_detection_ctx_t *ctx,
     uint8_t *rgb = any_due_frame_engine ? frame_to_rgb24(frame) : NULL;
     if (any_due_frame_engine && !rgb) return onvif_triggered;
 
+    /* Surviving detections of engine i are combined->detections[start, +n). */
+    int slice_start[MAX_DETECTION_ENGINES_PER_STREAM] = {0};
+    int slice_count[MAX_DETECTION_ENGINES_PER_STREAM] = {0};
+
     for (int i = 0; i < ctx->engine_count; ++i) {
         stream_detection_engine_t *engine = &ctx->engines[i];
         if (!engine->enabled ||
@@ -3106,10 +3203,47 @@ static bool detect_with_runtime_engines(unified_detection_ctx_t *ctx,
             continue;
         }
         ctx->engine_last_run[i] = now;
-        if (result == 0) append_engine_result(ctx, engine, combined, &candidate);
-        else if (!ctx->engine_load_failed[i])
+        if (result == 0) {
+            int before = combined->count;
+            append_engine_result(ctx, engine, combined, &candidate);
+            slice_start[i] = before;
+            slice_count[i] = combined->count - before;
+        } else if (!ctx->engine_load_failed[i]) {
             log_warn("[%s] Detection engine %s failed", ctx->stream_name,
                      engine->engine_key);
+        }
+    }
+
+    /* One observation batch (and one evidence asset) per object engine with
+     * eligible survivors: a batch has a single detector provenance. Motion
+     * results never become observations. The shared frame goes to the last
+     * such engine; earlier ones get a padded copy. */
+    char labels[OBSERVATION_LABELS_MAX];
+    int wanted[MAX_DETECTION_ENGINES_PER_STREAM];
+    int wanted_count = 0;
+    for (int i = 0; rgb && i < ctx->engine_count; ++i) {
+        if (slice_count[i] > 0 && strcmp(ctx->engines[i].engine_type, "object") == 0 &&
+            udt_evidence_wanted(ctx, &combined->detections[slice_start[i]],
+                                slice_count[i], labels)) {
+            wanted[wanted_count++] = i;
+        }
+    }
+    for (int w = 0; w < wanted_count; ++w) {
+        int i = wanted[w];
+        uint8_t *owned = rgb;
+        if (w + 1 < wanted_count) {
+            size_t size = (size_t)frame->width * (size_t)frame->height * 3;
+            owned = malloc(size + RGB24_SWS_TAIL_PADDING);
+            if (!owned) continue;
+            memcpy(owned, rgb, size);
+            memset(owned + size, 0, RGB24_SWS_TAIL_PADDING);
+        } else {
+            rgb = NULL;  /* ownership moves to the evidence queue */
+        }
+        udt_submit_evidence(ctx, ctx->engines[i].engine_key, ctx->engines[i].model_path,
+                            ctx->engine_models[i], &combined->detections[slice_start[i]],
+                            slice_count[i], labels, now, owned,
+                            frame->width, frame->height);
     }
     free(rgb);
     return combined->count > 0 || onvif_triggered;
@@ -3128,6 +3262,7 @@ static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
 
     int width  = frame->width;
     int height = frame->height;
+    uint8_t *evidence_rgb = NULL;  /* embedded-model inference input (L6) */
 
     /* ---- model dispatch ---- */
 
@@ -3205,18 +3340,27 @@ static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
         }
 
         int ret = detect_objects(ctx->model, rgb_buf, width, height, 3, result);
-        free(rgb_buf);
 
         if (ret != 0) {
+            free(rgb_buf);
             log_warn("[%s] Embedded model detection failed with error %d",
                      ctx->stream_name, ret);
             return false;
+        }
+        /* Keep the inference input alive for evidence when it may be needed. */
+        if (result->count > 0 && atomic_load(&ctx->observation_evidence_enabled)) {
+            evidence_rgb = rgb_buf;
+        } else {
+            free(rgb_buf);
         }
     }
 
     /* ---- post-processing: common to all model types ---- */
 
-    if (result->count == 0) return false;
+    if (result->count == 0) {
+        free(evidence_rgb);
+        return false;
+    }
 
     filter_detections_by_zones(ctx->stream_name, result);
     filter_detections_by_stream_objects(ctx->stream_name, result);
@@ -3242,6 +3386,17 @@ static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
         }
     }
     result->count = kept;
+
+    /* INT_01 L6: the surviving (zone, object-filter and threshold filtered)
+     * detections plus the exact frame the model saw. */
+    char labels[OBSERVATION_LABELS_MAX];
+    if (evidence_rgb && udt_evidence_wanted(ctx, result->detections, result->count, labels)) {
+        udt_submit_evidence(ctx, udt_single_engine_key(ctx), ctx->model_path, ctx->model,
+                            result->detections, result->count, labels, now,
+                            evidence_rgb, width, height);
+    } else {
+        free(evidence_rgb);
+    }
     return result->count > 0;
 }
 

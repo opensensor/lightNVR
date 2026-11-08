@@ -628,6 +628,17 @@ target_compile_definitions(test_udt_recording PRIVATE
     TEST_RECORDING_PATH="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4"
 )
 set_tests_properties(test_udt_recording PROPERTIES TIMEOUT 60)
+# INT_01 L6: local detector evidence (pure batch logic + UDT integration).
+add_layer2_test_with_ffmpeg(test_detection_evidence CI_UNIT CI_SANITIZER)
+add_layer3_test(test_detection_observation_evidence CI_UNIT CI_SANITIZER)
+target_link_options(test_detection_observation_evidence PRIVATE
+    "-Wl,--wrap=detect_objects"
+    "-Wl,--wrap=detect_motion"
+    "-Wl,--wrap=detection_evidence_model_geometry"
+    "-Wl,--wrap=filter_detections_by_zones"
+    "-Wl,--wrap=filter_detections_by_stream_objects"
+)
+set_tests_properties(test_detection_observation_evidence PROPERTIES TIMEOUT 60)
 
 # Health tasks register their tests in independent fragments so parallel work
 # never needs to modify this shared list.

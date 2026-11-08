@@ -55,6 +55,19 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
 bool is_sod_available(void);
 
 /**
+ * Network input size of a loaded SOD CNN model (INT_01 L6 transform audit).
+ *
+ * detect_with_sod_model() pre-shrinks large frames to 2x this size with
+ * swscale and sod_cnn_prepare_image() then resizes independently per axis to
+ * exactly this size, so the model consumes a plain (non-letterboxed) resize
+ * of the full frame and its boxes come back normalized to that frame.
+ *
+ * @return 0 and fills width/height, or -1 when the model is not a ready SOD
+ *         CNN (or SOD support is not compiled in)
+ */
+int sod_model_input_size(detection_model_t model, int *width, int *height);
+
+/**
  * Safely clean up a SOD model
  * This function ensures proper cleanup of SOD model resources
  *

@@ -225,6 +225,12 @@ static void put_stream_worker_locked(put_stream_task_t *task) {
         return;
     }
 
+    // INT_01 L6: a running detector caches the evidence settings; refresh them
+    // so the change applies without a restart. -1 = no detector running.
+    (void)unified_detection_set_observation_settings(task->stream_id,
+                                                     updated_config.observation_evidence_enabled,
+                                                     updated_config.observation_labels);
+
     if (set_stream_detection_params(stream,
                                    task->config.detection_interval,
                                    task->config.detection_threshold,

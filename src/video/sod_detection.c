@@ -197,6 +197,24 @@ bool is_sod_available(void) {
     return sod_available;
 }
 
+int sod_model_input_size(detection_model_t model, int *width, int *height) {
+    if (!model || !width || !height) return -1;
+#ifdef SOD_ENABLED
+    model_t *m = (model_t *)model;
+    if (strcmp(m->type, MODEL_TYPE_SOD) != 0 || !m->sod) return -1;
+    int net_w = 0, net_h = 0, net_c = 0;
+    if (sod_cnn_get_network_size((sod_cnn *)m->sod, &net_w, &net_h, &net_c) != 0 ||
+        net_w <= 0 || net_h <= 0) {
+        return -1;
+    }
+    *width = net_w;
+    *height = net_h;
+    return 0;
+#else
+    return -1;
+#endif
+}
+
 /**
  * Load a SOD model
  */

@@ -117,6 +117,13 @@ typedef struct {
     int engine_count;
     int recording_grace_interval;
     bool has_onvif_engine;
+
+    // INT_01 L6 observation evidence settings, cached from the stream row at
+    // thread start (and refreshed by unified_detection_set_observation_settings)
+    // so the inference threads never read the DB for this feature.
+    // observation_labels is guarded by mutex; the flag is read lock-free.
+    atomic_bool observation_evidence_enabled;
+    char observation_labels[OBSERVATION_LABELS_MAX];
     
     // Connection state
     atomic_int_fast64_t last_packet_time;
@@ -376,5 +383,15 @@ int get_unified_detection_stats(const char *stream_name,
  *                      false = motion ended
  */
 void unified_detection_notify_motion(const char *stream_name, bool motion_active);
+
+/**
+ * INT_01 L6: refresh the cached observation evidence settings of a running
+ * detection thread (streams.observation_evidence_enabled / observation_labels)
+ * so a settings change takes effect without a restart. No DB access.
+ *
+ * @return 0 when a running context was updated, -1 when none is running
+ */
+int unified_detection_set_observation_settings(const char *stream_name, bool enabled,
+                                               const char *labels_csv);
 
 #endif /* UNIFIED_DETECTION_THREAD_H */
