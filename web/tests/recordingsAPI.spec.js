@@ -339,12 +339,23 @@ describe('recordingsAPI', () => {
 
 describe('archive batch deletion outcomes', () => {
   const { useMutation, useQueryClient } = require('../js/query-client.ts');
+  let previousWindow;
+  let hadWindow;
   beforeEach(() => {
     jest.clearAllMocks();
     fetchJSON.mockReset();
+    hadWindow = Object.prototype.hasOwnProperty.call(global, 'window');
+    previousWindow = global.window;
     global.window = {};
   });
-  afterEach(() => { jest.restoreAllMocks(); delete global.window; });
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (hadWindow) {
+      global.window = previousWindow;
+    } else {
+      delete global.window;
+    }
+  });
 
   test('mutation waits for the durable job outcome before resolving and refreshing', async () => {
     const invalidateQueries = jest.fn();
