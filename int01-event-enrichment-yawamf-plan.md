@@ -284,9 +284,46 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   inventing a field or status. Every PRD R1–R6 and T1–T4 bullet maps to a
   contract section (include a traceability table). The ADR is merged before L1
   and C2 start.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Wrote the normative contract (commit `3ffc7408`). Decisions 1–9 are
+    adopted; deviations D1–D11 are in contract §1. Facts were checked against
+    the code: envelope validator key rules, `event_envelope_create_with_severity_and_id`,
+    authz catalog order and bits 15–18 in 0078 (19 and sort_order 200 are
+    free), `live.view` / `snapshot.create` on the existing detection
+    endpoints, `MAX_LABEL_LENGTH` 32 / `MAX_DETECTIONS` 20, the topic format,
+    and YA-WAMF `notify_mode` / `mark_notified` / `processing_job_state`.
+  - `reason_not_testable`: documentation only. Static verification instead:
+    a script confirmed that all 24 PRD IDs (R1–R6, T1–T4, A1–A14) appear in
+    the traceability table, that 38 relative links and anchors resolve, and
+    that there are no dangling § references.
+  - **Gotchas for later tasks**:
+    - **D1**: list filters are comma-separated, because the query getter
+      returns only the first occurrence and `query_string` is 1,024 bytes.
+    - **D2**: error bodies are `{error, code, …}`, so they stay valid `ApiError`.
+    - **D3**: the writer namespace is the normalized username, and authority is
+      pinned to the user id. It is advertised in capabilities, so W10 must not
+      hard-code `yawamf`.
+    - **D4**: snapshot returns `403` when `live.view` is held but
+      `snapshot.create` is not.
+    - **D5**: every observation has an asset row.
+    - **D6 (L1)**: `observation_changes` also needs `evidence_state` and
+      `evidence_reason` columns.
+    - **D7 (L1/L5)**: the publication states are `pending`, `relayed`,
+      `relayed_no_route`, `expired` and `failed`.
+    - **D8 (L5)**: cap this type at 2,000 pending outbox rows.
+    - **D9 (L4/L5/L11)**: write a `.cursor_head.json` sidecar for restore
+      detection, and regenerate the epoch at both
+      `restore_database_from_backup` call sites in `db_core.c`.
+    - **L5** needs a UUIDv5 helper (mbedTLS SHA-1); the frozen namespace and
+      a test vector are in §5.4. **L2/L8** need a base64url helper.
+    - **L8** must use `httpd_evaluate_camera_identity_action` rather than the
+      `httpd_authorize_*` helpers, which emit `403` and would leak existence.
+    - §19 (Performance) is a placeholder for C4 to fill.
 - **files edited/created**:
+  - `docs/integrations/OBSERVATIONS_CONTRACT.md` (new)
+  - `docs/EVENT_CONTRACT.md` (reserved-type pointer section)
+  - `docs/prd/INT_01_Event_Enrichment_YAWAMF.md` (status line only)
 
 #### C2: Add the contract to OpenAPI and regenerate projections
 - **depends_on**: [C1]
