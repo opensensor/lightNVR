@@ -1225,6 +1225,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/integrations/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get integration capabilities
+         * @description Requires an authenticated principal and returns only its scope: source identity, contract versions, operations (supported and authorized), limits, history, delivery and the cameras where the principal holds live.view, snapshot.create or observations.annotate (contract §9). Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.
+         */
+        get: operations["getIntegrationCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/investigation-bookmarks": {
         parameters: {
             query?: never;
@@ -1668,6 +1688,86 @@ export interface paths {
          * @description Requires camera.configure on the named stream. Start/stop/pulse report annotation, tag and recording effects independently; tags require an active recording and detection-recording schedules may suppress recording. Pulse is bounded to 600000 ms. Invalid requests may return 400 before principal evaluation.
          */
         post: operations["triggerMotion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List observation history
+         * @description Cursor-paged observation changes, ordered by persistence sequence and bounded by a watermark taken at query start (contract §7). Results are limited to capture cameras where the principal holds live.view; an explicitly requested camera without it returns 403. limit counts observations after in-page dedup. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.
+         */
+        get: operations["listObservations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/observations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get observation
+         * @description One observation with its classifications, authorized by live.view on its immutable capture camera (contract §8.1). Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.
+         */
+        get: operations["getObservation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/observations/{id}/classifications/{namespace}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put observation classification (P2)
+         * @description P2, not yet implemented: always returns 501 until task L14, and capabilities advertise observations.annotate as unsupported. L14 changes the authorization requirement to camera observations.annotate on the capture camera (contract §12.1). The key is two path segments, {namespace}/{name}; namespace must equal the server-derived writer namespace of the authenticated user (contract §10). Identical retries are no-ops. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.
+         */
+        put: operations["putObservationClassification"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/observations/{id}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get observation evidence image
+         * @description The unannotated evidence JPEG that was the inference input or submitted image (contract §8.2). Requires snapshot.create on the capture camera; a caller with live.view but not snapshot.create gets 403 (contract D4). Never substitutes a latest frame or another asset. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.
+         */
+        get: operations["getObservationSnapshot"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5740,6 +5840,85 @@ export interface components {
             /** @constant */
             success: true;
         };
+        /** @description Capability document scoped to the calling principal (contract §9). */
+        IntegrationCapabilities: {
+            cameras: ({
+                actions: ("live.view" | "snapshot.create" | "observations.annotate")[];
+                camera_uuid: components["schemas"]["ObservationUuid"];
+                evidence_enabled: boolean;
+            } & {
+                [key: string]: unknown;
+            })[];
+            contract_versions: {
+                classifications: number;
+                observation_event: string;
+                observations: number;
+            } & {
+                [key: string]: unknown;
+            };
+            delivery: {
+                mqtt_enabled: boolean;
+                /** @description Configured topic with a literal {camera_uuid} placeholder. */
+                topic: string | null;
+            } & {
+                [key: string]: unknown;
+            };
+            history: {
+                oldest_cursor: string | null;
+                oldest_observed_at: components["schemas"]["ObservationTime"] | null;
+                retention_days: number;
+            } & {
+                [key: string]: unknown;
+            };
+            limits: {
+                annotations_per_observation_max: number;
+                history_filter_cameras_max: number;
+                history_filter_labels_max: number;
+                history_page_default: number;
+                history_page_max: number;
+                label_max_bytes: number;
+                max_objects_per_batch: number;
+                snapshot_retry_after_max_seconds: number;
+            } & {
+                [key: string]: unknown;
+            };
+            /** @description Unsupported features are declared explicitly; never infer support from an error. */
+            operations: {
+                event_clip: components["schemas"]["IntegrationCapabilityOperation"];
+                "observations.annotate": components["schemas"]["IntegrationCapabilityOperation"];
+                "observations.history": components["schemas"]["IntegrationCapabilityOperation"];
+                "observations.snapshot": components["schemas"]["IntegrationCapabilityOperation"];
+                range_clip: components["schemas"]["IntegrationCapabilityOperation"];
+                recorded_frame: components["schemas"]["IntegrationCapabilityOperation"];
+                track_lifecycle: components["schemas"]["IntegrationCapabilityOperation"];
+            } & {
+                [key: string]: components["schemas"]["IntegrationCapabilityOperation"];
+            };
+            principal: {
+                writer_namespace: string | null;
+            } & {
+                [key: string]: unknown;
+            };
+            source: {
+                id: string;
+                installation_uuid: components["schemas"]["ObservationUuid"];
+                /** @constant */
+                kind: "lightnvr";
+                product_version: string;
+            } & {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        IntegrationCapabilityOperation: {
+            authorized: boolean;
+            /** @enum {string} */
+            reason?: "not_implemented" | "not_available_in_this_version" | "not_authorized" | "invalid_writer_namespace" | "reserved_writer_namespace";
+            supported: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         LegacyApiKeyCreated: {
             api_key: string;
             /** @constant */
@@ -5959,6 +6138,208 @@ export interface components {
             tags_applied: number;
             warning?: string;
         };
+        /** @description One detected object in one accepted inference result (contract §3). Readers ignore unknown fields. */
+        Observation: {
+            batch_id: components["schemas"]["ObservationUuid"];
+            box: components["schemas"]["ObservationBox"] | null;
+            camera_uuid: components["schemas"]["ObservationUuid"];
+            classifications: components["schemas"]["ObservationClassifications"];
+            confidence: number;
+            created_at: components["schemas"]["ObservationTime"];
+            detector: components["schemas"]["ObservationDetector"];
+            evidence: components["schemas"]["ObservationEvidence"];
+            id: components["schemas"]["ObservationUuid"];
+            /** @description Original detector label (1..31 bytes); never modified by classification. */
+            label: string;
+            object_index: number;
+            observed_at: components["schemas"]["ObservationTime"];
+            recording_reference: components["schemas"]["ObservationRecordingReference"] | null;
+            revision: number;
+            source: string;
+            /** @description Display only. */
+            stream_name_at_capture: string;
+            track: components["schemas"]["ObservationTrack"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Top-left corner and size normalized to the stored evidence image (contract §3.2). Consumers never re-apply transform. */
+        ObservationBox: {
+            /** @constant */
+            format: "xywh_normalized";
+            height: number;
+            width: number;
+            x: number;
+            y: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Data payload of io.lightnvr.detection.observation_changed.v1 (contract §6.3). Consumers skip classification-only changes for re-classification. */
+        ObservationChangeEvent: ({
+            asset_id: components["schemas"]["ObservationUuid"];
+            camera_uuid: components["schemas"]["ObservationUuid"];
+            /** @enum {string} */
+            change_cause: "created" | "evidence" | "classification";
+            evidence_reason: components["schemas"]["ObservationEvidenceReason"] | null;
+            evidence_state: components["schemas"]["ObservationEvidenceState"];
+            label: string;
+            observation_id: components["schemas"]["ObservationUuid"];
+            observed_at: components["schemas"]["ObservationTime"];
+            revision: number;
+            snapshot_url?: string;
+        } & {
+            [key: string]: unknown;
+        }) & (unknown & unknown);
+        /** @description Stored classification annotation (contract §10.3). P2. */
+        ObservationClassification: {
+            annotation_revision: number;
+            classified_at: components["schemas"]["ObservationTime"];
+            classifier: string;
+            confidence: number;
+            created_at: components["schemas"]["ObservationTime"];
+            input_asset_id: components["schemas"]["ObservationUuid"];
+            input_revision: number;
+            key: string;
+            /** @enum {string} */
+            kind: "automated" | "owner_confirmed";
+            label: string;
+            model_version: string | null;
+            taxonomy_id: string | null;
+            updated_at: components["schemas"]["ObservationTime"];
+            writer_namespace: string;
+        } & {
+            [key: string]: unknown;
+        };
+        ObservationClassificationResult: {
+            annotation: components["schemas"]["ObservationClassification"];
+            changed: boolean;
+            observation_revision: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Annotations split by kind, each ordered by updated_at descending. Both lists are empty in P1. */
+        ObservationClassifications: {
+            automated: components["schemas"]["ObservationClassification"][];
+            owner_confirmed: components["schemas"]["ObservationClassification"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description PUT body (contract §10.3). Closed: unknown fields return 400. The writer namespace is derived by the server from the authenticated user, never from this body. */
+        ObservationClassificationWrite: {
+            classified_at: components["schemas"]["ObservationTime"];
+            classifier: string;
+            confidence: number;
+            /** @description 0 or absent means the key must not exist yet. */
+            expected_revision?: number;
+            input_asset_id: components["schemas"]["ObservationUuid"];
+            input_revision: number;
+            /** @enum {string} */
+            kind: "automated" | "owner_confirmed";
+            label: string;
+            model_version?: string | null;
+            taxonomy_id?: string | null;
+            /** @description Same rule as writer_namespace. */
+            writer?: string;
+            /** @description Optional. Accepted and ignored when it names the principal's derived namespace; any other value returns 403 namespace_forbidden. */
+            writer_namespace?: string;
+        };
+        ObservationDetector: {
+            engine_key: string;
+            /** @enum {string} */
+            engine_type: "object" | "api" | "onvif" | "external";
+            /** @description Model basename only, never a path. */
+            model: string | null;
+            model_version: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Coded error (contract §11, D2): a valid ApiError with a string error and a stable code. Clients branch on status and code, never on the message. */
+        ObservationError: {
+            /** @enum {string} */
+            code: "invalid_request" | "invalid_cursor" | "forbidden" | "namespace_forbidden" | "observation_not_found" | "evidence_unavailable" | "evidence_pending" | "evidence_expired" | "cursor_expired" | "revision_conflict" | "owner_decision_locked" | "annotation_limit" | "evidence_mismatch" | "not_implemented" | "service_unavailable" | "internal_error";
+            current?: components["schemas"]["ObservationClassification"];
+            error: string;
+            evidence_state?: components["schemas"]["ObservationEvidenceState"];
+            expired_at?: components["schemas"]["ObservationTime"] | null;
+            field?: string;
+            limit?: number;
+            observation_asset_id?: components["schemas"]["ObservationUuid"];
+            oldest_cursor?: string;
+            oldest_observed_at?: components["schemas"]["ObservationTime"] | null;
+            reason?: components["schemas"]["ObservationEvidenceReason"];
+            retry_after_seconds?: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Evidence asset (contract §4). Every observation has one; siblings in a batch share asset_id. */
+        ObservationEvidence: ({
+            asset_id: components["schemas"]["ObservationUuid"];
+            bytes: number | null;
+            captured_at: components["schemas"]["ObservationTime"] | null;
+            expires_at: components["schemas"]["ObservationTime"] | null;
+            height: number | null;
+            /** @enum {string|null} */
+            media_type: "image/jpeg" | null;
+            /** @enum {string|null} */
+            origin: "inference_input" | "submitted_image" | null;
+            reason: components["schemas"]["ObservationEvidenceReason"] | null;
+            /** @description Present only when state is ready. Relative and authenticated. */
+            snapshot_url?: string;
+            state: components["schemas"]["ObservationEvidenceState"];
+            transform: components["schemas"]["ObservationTransform"] | null;
+            width: number | null;
+        } & {
+            [key: string]: unknown;
+        }) & (unknown & unknown);
+        /**
+         * @description Bounded reason (contract §4.3). Consumers treat an unknown reason by its state.
+         * @enum {string}
+         */
+        ObservationEvidenceReason: "queue_full" | "budget_exhausted" | "encode_failed" | "write_failed" | "interrupted" | "no_matching_media" | "disabled" | "retention_expired" | "deleted";
+        /** @enum {string} */
+        ObservationEvidenceState: "pending" | "ready" | "unavailable" | "expired";
+        /** @description History page (contract §7.2-7.3). Empty items with has_more=true is valid; continue from next_cursor. */
+        ObservationPage: {
+            has_more: boolean;
+            items: components["schemas"]["Observation"][];
+            next_cursor: string;
+        } & {
+            [key: string]: unknown;
+        };
+        ObservationRecordingReference: {
+            recording_id: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * Format: date-time
+         * @description UTC RFC 3339 with millisecond precision and a Z suffix (contract §2).
+         */
+        ObservationTime: string;
+        /** @description Track hint only; compare id, namespace and session together. No lifecycle is implied (contract §3.4). */
+        ObservationTrack: {
+            id: string;
+            namespace: string;
+            session: components["schemas"]["ObservationUuid"];
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Audit record of the inference-to-stored-image mapping: x = (u - pad_x) / scale_x, y = (v - pad_y) / scale_y (contract §4.4). */
+        ObservationTransform: {
+            inference_height: number;
+            inference_width: number;
+            /** @enum {string} */
+            mode: "none" | "resize" | "letterbox";
+            pad_x: number;
+            pad_y: number;
+            scale_x: number;
+            scale_y: number;
+            source_height: number;
+            source_width: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Lowercase canonical UUID (contract §2). */
+        ObservationUuid: string;
         OnvifAddRequest: {
             device_url: string;
             password?: string;
@@ -14331,6 +14712,64 @@ export interface operations {
             };
         };
     };
+    getIntegrationCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Capability document for the calling principal. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationCapabilities"];
+                };
+            };
+            /** @description No usable authenticated credential (existing auth layer body). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal failure (code internal_error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Temporarily unavailable (code service_unavailable). */
+            503: {
+                headers: {
+                    /** @description Seconds before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+        };
+    };
     listEvidenceBookmarks: {
         parameters: {
             query?: never;
@@ -17151,6 +17590,427 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listObservations: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated capture camera UUIDs, at most 10 (contract D1). Default: all cameras where the principal holds live.view. */
+                camera_uuid?: string;
+                /** @description Opaque cursor from next_cursor or oldest_cursor, or the literal head (start live-only). Absent: start of retained history. */
+                cursor?: string;
+                /** @description Comma-separated original detector labels, at most 8 of 1..31 bytes; exact ASCII case-insensitive match (contract D1). */
+                label?: string;
+                /** @description Observations per page. */
+                limit?: number;
+                /** @description Inclusive lower bound on observed_at. */
+                since?: components["schemas"]["ObservationTime"];
+                /** @description Exclusive upper bound on observed_at; must be after since. */
+                until?: components["schemas"]["ObservationTime"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description History page. Items hold current state; dedupe by (source, id, revision). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationPage"];
+                };
+            };
+            /** @description Invalid filter (invalid_request) or malformed cursor (invalid_cursor). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description No usable authenticated credential (existing auth layer body). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description A requested camera_uuid is not authorized for live.view (code forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Cursor older than retained history, from another DB epoch, or ahead of the head (code cursor_expired); resume from oldest_cursor. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Internal failure (code internal_error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Temporarily unavailable (code service_unavailable). */
+            503: {
+                headers: {
+                    /** @description Seconds before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+        };
+    };
+    getObservation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Observation ID. */
+                id: components["schemas"]["ObservationUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current observation state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Observation"];
+                };
+            };
+            /** @description Invalid observation ID (code invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description No usable authenticated credential (existing auth layer body). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unknown observation, no live.view on its capture camera, or the capture camera was deleted; indistinguishable (code observation_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Internal failure (code internal_error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Temporarily unavailable (code service_unavailable). */
+            503: {
+                headers: {
+                    /** @description Seconds before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+        };
+    };
+    putObservationClassification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Observation ID. */
+                id: components["schemas"]["ObservationUuid"];
+                /** @description Annotation name. */
+                name: string;
+                /** @description Writer namespace. */
+                namespace: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObservationClassificationWrite"];
+            };
+        };
+        responses: {
+            /** @description Annotation updated, or identical retry (changed=false). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationClassificationResult"];
+                };
+            };
+            /** @description Annotation created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationClassificationResult"];
+                };
+            };
+            /** @description Invalid or unknown body field (code invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description No usable authenticated credential (existing auth layer body). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description observations.annotate missing (forbidden) or namespace not the caller's (namespace_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Unknown observation, no live.view on its capture camera, or the capture camera was deleted; indistinguishable (code observation_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description revision_conflict, owner_decision_locked or annotation_limit; current carries the stored annotation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description input_asset_id or input_revision does not match the observation evidence (code evidence_mismatch). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Internal failure (code internal_error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Temporarily unavailable (code service_unavailable). */
+            503: {
+                headers: {
+                    /** @description Seconds before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+        };
+    };
+    getObservationSnapshot: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path: {
+                /** @description Observation ID. */
+                id: components["schemas"]["ObservationUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Evidence image bytes; not JSON. */
+            200: {
+                headers: {
+                    /** @description private, max-age=300 */
+                    "Cache-Control"?: string;
+                    /** @description Quoted asset ID. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Evidence is still pending (code evidence_pending). Honour Retry-After and give up polling after 120 s total. */
+            202: {
+                headers: {
+                    /** @description Integer seconds, 1..30. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description If-None-Match matched the ETag. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid observation ID (code invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description No usable authenticated credential (existing auth layer body). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description live.view is held but snapshot.create is not (code forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Evidence unavailable with a reason (evidence_unavailable), or the observation is unknown or not visible (observation_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Evidence media expired (code evidence_expired); metadata remains readable. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Internal failure (code internal_error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
+                };
+            };
+            /** @description Temporarily unavailable (code service_unavailable). */
+            503: {
+                headers: {
+                    /** @description Seconds before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationError"];
                 };
             };
         };

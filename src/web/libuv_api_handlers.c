@@ -67,6 +67,7 @@
 #include "web/api_handlers_operator_floor_plans.h"
 #include "web/api_handlers_lpr.h"
 #include "web/api_handlers_detection_engines.h"
+#include "web/api_handlers_observations.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -301,6 +302,17 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/lpr/reads/#", "DELETE", handle_delete_lpr_read);
     // Detection event snapshots (saved on MQTT publish, see issue #449)
     http_server_register_handler(server, "/api/snapshots/#/#", "GET", handle_get_detection_snapshot);
+
+    // INT_01 observations, evidence snapshots and integration capabilities
+    // (docs/integrations/OBSERVATIONS_CONTRACT.md)
+    http_server_register_handler(server, "/api/integrations/capabilities", "GET",
+                                 handle_get_integration_capabilities);
+    http_server_register_handler(server, "/api/observations", "GET", handle_get_observations);
+    http_server_register_handler(server, "/api/observations/#/snapshot", "GET",
+                                 handle_get_observation_snapshot);
+    http_server_register_handler(server, "/api/observations/#/classifications/#/#", "PUT",
+                                 handle_put_observation_classification);
+    http_server_register_handler(server, "/api/observations/#", "GET", handle_get_observation);
 
     // Storage Management API
     http_server_register_handler(server, "/api/storage/health", "GET", handle_get_storage_health);
