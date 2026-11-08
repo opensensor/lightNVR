@@ -1127,9 +1127,116 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
     the C3 fixtures and rejects missing fields; route suppression (Fleet 03)
     applies and does not delete history.
   - `test_event_router.c` and `test_event_outbox.c` still pass.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - Commit `442ab71b`. Built in `build-int01-L5` (MQTT+SOD, mirrors
+    `build-tls`) and `build-int01-L5-asan` (Debug ASan/UBSan, mirrors
+    `build-tls-asan`).
+  - RED: `test_observation_relay` failed to link (every relay symbol and
+    `event_producer_enqueue_durable` undefined). `test_event_envelope` failed
+    3/13: registry count 13≠14, registry entry missing, and fixtures
+    rejected with "event type is not registered".
+  - GREEN in both builds, ASan clean: `test_observation_relay` 12/12 (stable
+    over 5 runs), `test_event_envelope` 13/13, `test_event_outbox`,
+    `test_event_router`, `test_event_bus`, `test_event_detection_adapter`,
+    `test_mqtt_delivery_worker`, `test_event_route_suppression`,
+    `test_db_event_routes`, `test_db_observations` 15/15 and
+    `test_api_handlers_event_routes` 5/5. Its catalog count was bumped to
+    14. ctest subset
+    `db_|stream|config|migration|uuid|observation|schema|embedded|api_handlers|event_|detection|mqtt`:
+    98/98, excluding the in-progress L3/L8 tests. Node contract tooling:
+    59/59.
+  - Run: `cd build-int01-L5 && make test_observation_relay test_event_envelope && ./bin/test_observation_relay && ./bin/test_event_envelope`.
+  - **API** (`include/core/observation_relay.h`):
+    - `observation_relay_start(const observation_relay_options_t*)` (NULL
+      means defaults). It runs the D9 check, does a bounded synchronous
+      drain (≤5 s), then starts the thread. It is idempotent.
+      `observation_relay_stop()` leaves rows pending.
+    - **Notify hook**: `observation_relay_notify()`. Start registers it
+      through the new `db_observations_set_publication_hook()`, so
+      `db_observation_insert_batch` and `db_observation_asset_transition`
+      wake the relay automatically after commit (L3 and L4 need nothing).
+      **L13** uses `db_observation_bump_revision_locked` inside its own
+      transaction, so it must call `observation_relay_notify()` after its
+      COMMIT. Otherwise the change waits for the 1 s poll.
+    - **Stats for L10**: `observation_relay_get_stats(observation_relay_stats_t*)`.
+      Fields: `running`, `passes`, `relayed`, `duplicates`,
+      `relayed_no_route`, `expired`, `failed`, `enqueue_full`,
+      `enqueue_errors`, `mark_errors`, `read_errors`, `cap_pauses`,
+      `backoffs`, `sidecar_writes`/`_errors`, `epoch_regenerations`,
+      `last_relayed_seq`, `oldest_pending_created_at_ms` (lag =
+      now − this; 0 = none), `last_pass_pending`, `outbox_type_pending`,
+      `consecutive_failures` and `backoff_until_ms`. The counts of pending,
+      failed and expired publication rows are not in the stats; L10 should
+      count them in `observation_publications`.
+    - Also exported: `observation_relay_build_envelope(pub, source, &event, ...)`,
+      `observation_relay_run_once(opts, &pass)` (one pass, no thread),
+      `observation_relay_check_cursor_head()` and
+      `observation_relay_write_cursor_head()`. `OBSERVATION_CHANGED_EVENT_TYPE`
+      and `OBSERVATION_RELAY_OUTBOX_CAP` (2000) are defined there too.
+    - **Wrapper** (`include/core/event_producers.h`):
+      `event_producer_enqueue_durable(const event_envelope_t*, err, size)`
+      returns `event_producer_enqueue_result_t`: `FAILED`(-1), `ENQUEUED`,
+      `DUPLICATE`, `NO_ROUTE`, `MQTT_DISABLED` or `FULL`.
+      `event_producer_enqueue_result_name()` gives the name. The old static
+      `durably_enqueue_event` now wraps it, keeping its 0/-1 mapping
+      (no_route and mqtt_disabled → 0), so the other producers behave
+      identically. With routes, all-duplicate → `DUPLICATE`; only the
+      disabled default broker matched → `MQTT_DISABLED`; any non-FULL
+      failure → `FAILED`.
+    - `db_event_outbox_count_undelivered_type(type, &count)` counts
+      `pending` + `delivering` rows for D8.
+  - **Relay behavior**:
+    - It reads pending rows in seq order, up to 64 per pass.
+    - FULL, an error, a mark error or the cap stops the batch at that row,
+      so later rows never overtake it. FULL and error mark the row
+      `PENDING` with `last_error`, which counts an attempt. A cap pause
+      does not count one.
+    - Backoff is 1 s doubling to 30 s, and notifies are ignored while
+      backing off. A full batch loops immediately.
+    - A row past the 3600 s delivery expiry (measured from the change's
+      `created_at_ms`) → `expired`. An invalid envelope → `failed`, and the
+      batch continues.
+    - `event_bus_publish` runs only after a successful mark. A
+      `CAS_LOST`/`NOT_FOUND` mark is skipped silently.
+    - Envelope `time` = `change_created_at_ms / 1000`. `observed_at` is
+      formatted `YYYY-MM-DDTHH:MM:SS.mmmZ`. Generated envelopes equal all
+      8 C3 fixtures byte for byte (`cJSON_PrintUnformatted`).
+  - **D9 (owned here)**:
+    - The sidecar `<storage>/observations/.cursor_head.json` is
+      `{"epoch","head_seq"}`, written via tmp + fsync + rename + dir fsync.
+      It is written at most once per second, after passes that saw
+      pending rows.
+    - At start, if the sidecar epoch equals the DB epoch and
+      `head_seq > DB head`, the relay calls
+      `db_observation_meta_regenerate_epoch()`. A missing or other-epoch
+      sidecar is rewritten without regenerating.
+    - The in-process `restore_database_from_backup()` call sites in
+      `db_core.c` are still not wired; they remain for L11 or a follow-up.
+  - **Gotchas**:
+    - **L4**: orphan-file deletion must skip `.cursor_head.json` and
+      `.cursor_head.json.tmp` in `<storage>/observations/`, which is not a
+      camera directory.
+    - **Bus publish re-runs routes**: the MQTT compatibility subscriber
+      re-evaluates routes and hits outbox `DUPLICATE`, the same as for
+      system-health transitions. An outbox row pruned in between can
+      therefore redeliver, which at-least-once allows.
+    - **Detection predicates**: route predicates with
+      `detection.labels_any` and similar only match
+      `detection.object.v1`. A route that lists both types with a label
+      predicate never matches observation events, which are then recorded
+      as `relayed_no_route`.
+    - **No `event_type` index**: `event_outbox` has none, so the D8 count
+      scans at most about 10k rows. It runs only in passes that have
+      pending work.
+    - **Validator layering**: the validator uses
+      `observation_reason_is_valid`/`observation_asset_state_parse` from
+      `db_observations.c`, so `event_envelope.c` now includes
+      `database/db_observations.h`. Both are in `lightnvr_lib`.
+    - **Start placement in `main.c`**: right after the L4 reconcile block.
+      L3's worker start must go between them. Relay stop comes before
+      `event_bus_shutdown` on both shutdown paths.
+- **files edited/created**: `include/core/observation_relay.h` (new), `src/core/observation_relay.c` (new), `tests/unit/test_observation_relay.c` (new), `src/core/event_envelope.c`, `include/core/event_producers.h`, `src/core/event_producers.c`, `include/database/db_event_outbox.h`, `src/database/db_event_outbox.c`, `include/database/db_observations.h`, `src/database/db_observations.c` (post-commit hook only), `src/core/main.c`, `tests/unit/test_event_envelope.c`, `tests/unit/test_api_handlers_event_routes.c`, `tests/unit/CMakeLists.txt`, `docs/EVENT_CONTRACT.md`
 
 #### L6: Local detector integration (SOD/TFLite/multi-engine)
 - **depends_on**: [L2, L3]
