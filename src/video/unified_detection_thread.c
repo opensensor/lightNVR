@@ -1288,7 +1288,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->record_audio = detection_should_record_audio(&config, global_cfg);
     ctx->audio_voice_enhancement = config.audio_voice_enhancement;
     ctx->annotation_only = annotation_only;
-    atomic_store(&ctx->observation_evidence_enabled, config.observation_evidence_enabled);
+    atomic_store(&ctx->observation_evidence_enabled, config.observation_evidence_enabled ? 1 : 0);
     safe_strcpy(ctx->observation_labels, config.observation_labels,
                 sizeof(ctx->observation_labels), 0);
     atomic_store(&ctx->external_motion_trigger, 0);  // no pending external trigger
@@ -1686,7 +1686,7 @@ int unified_detection_set_observation_settings(const char *stream_name, bool ena
         safe_strcpy(ctx->observation_labels, labels_csv ? labels_csv : "",
                     sizeof(ctx->observation_labels), 0);
         pthread_mutex_unlock(&ctx->mutex);
-        atomic_store(&ctx->observation_evidence_enabled, enabled);
+        atomic_store(&ctx->observation_evidence_enabled, enabled ? 1 : 0);
     }
     pthread_mutex_unlock(&contexts_mutex);
     return ctx ? 0 : -1;

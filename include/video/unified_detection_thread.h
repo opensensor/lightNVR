@@ -122,7 +122,9 @@ typedef struct {
     // thread start (and refreshed by unified_detection_set_observation_settings)
     // so the inference threads never read the DB for this feature.
     // observation_labels is guarded by mutex; the flag is read lock-free.
-    atomic_bool observation_evidence_enabled;
+    // atomic_int (0/1), not atomic_bool: the C->Rust conversion rejects
+    // atomic loads/stores on bool.
+    atomic_int observation_evidence_enabled;
     char observation_labels[OBSERVATION_LABELS_MAX];
     
     // Connection state
