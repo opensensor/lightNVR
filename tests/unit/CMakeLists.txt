@@ -153,6 +153,9 @@ add_layer2_test(test_sqlite_migration_boundaries CI_UNIT CI_SANITIZER)
 set_tests_properties(test_sqlite_migration_boundaries PROPERTIES TIMEOUT 20)
 add_layer2_test(test_observation_migration CI_UNIT CI_SANITIZER)
 set_tests_properties(test_observation_migration PROPERTIES TIMEOUT 30)
+add_layer2_test(test_observation_codec CI_UNIT CI_SANITIZER)
+add_layer2_test(test_db_observations CI_UNIT CI_SANITIZER)
+set_tests_properties(test_db_observations PROPERTIES TIMEOUT 60)
 add_layer2_test(test_logger CI_UNIT CI_SANITIZER)
 add_layer2_test(test_strings CI_UNIT CI_SANITIZER)
 add_layer2_test(test_interruptible_sleep)
@@ -632,6 +635,9 @@ target_link_options(test_recording_file PRIVATE "-Wl,--wrap=write" "-Wl,--wrap=c
 
 add_layer1_test(test_uuid CI_UNIT CI_SANITIZER)
 target_sources(test_uuid PRIVATE ${CMAKE_SOURCE_DIR}/src/utils/uuid.c)
+# UUIDv5 (observation message IDs) hashes with mbedTLS SHA-1.
+target_include_directories(test_uuid PRIVATE ${SSL_INCLUDE_DIRS})
+target_link_libraries(test_uuid ${SSL_LIBRARIES})
 target_link_options(test_uuid PRIVATE "-Wl,--wrap=getrandom" "-Wl,--wrap=fread")
 
 # Compile the MQTT producer even in the isolated no-MQTT API variant, when the

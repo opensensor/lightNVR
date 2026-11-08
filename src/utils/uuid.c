@@ -15,6 +15,8 @@
 #include <string.h>
 #include <sys/random.h>
 
+#include <mbedtls/md.h>
+
 bool lightnvr_uuid_is_valid(const char *value) {
     if (!value || strnlen(value, LIGHTNVR_UUID_STRING_SIZE) != 36) {
         return false;
@@ -69,6 +71,53 @@ int lightnvr_uuid_generate_v4(char output[LIGHTNVR_UUID_STRING_SIZE]) {
             output[position++] = '-';
         output[position++] = hex_digit((unsigned char)(bytes[index] >> 4));
         output[position++] = hex_digit(bytes[index]);
+    }
+    output[position] = '\0';
+    return 0;
+}
+
+static int hex_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+int lightnvr_uuid_generate_v5(const char *namespace_uuid, const char *name,
+                              size_t name_len,
+                              char output[LIGHTNVR_UUID_STRING_SIZE]) {
+    if (!output || !name || !lightnvr_uuid_is_valid(namespace_uuid)) return -1;
+
+    unsigned char namespace_bytes[16];
+    size_t byte = 0;
+    for (int index = 0; index < 36; ++index) {
+        if (index == 8 || index == 13 || index == 18 || index == 23) continue;
+        int high = hex_value(namespace_uuid[index]);
+        int low = hex_value(namespace_uuid[++index]);
+        namespace_bytes[byte++] = (unsigned char)((high << 4) | low);
+    }
+
+    const mbedtls_md_info_t *sha1 = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
+    if (!sha1) return -1;
+    mbedtls_md_context_t context;
+    mbedtls_md_init(&context);
+    unsigned char digest[20];
+    int rc = mbedtls_md_setup(&context, sha1, 0);
+    if (rc == 0) rc = mbedtls_md_starts(&context);
+    if (rc == 0) rc = mbedtls_md_update(&context, namespace_bytes, sizeof(namespace_bytes));
+    if (rc == 0) rc = mbedtls_md_update(&context, (const unsigned char *)name, name_len);
+    if (rc == 0) rc = mbedtls_md_finish(&context, digest);
+    mbedtls_md_free(&context);
+    if (rc != 0) return -1;
+
+    digest[6] = (unsigned char)((digest[6] & 0x0fU) | 0x50U);
+    digest[8] = (unsigned char)((digest[8] & 0x3fU) | 0x80U);
+    size_t position = 0;
+    for (size_t index = 0; index < 16; ++index) {
+        if (index == 4 || index == 6 || index == 8 || index == 10)
+            output[position++] = '-';
+        output[position++] = hex_digit((unsigned char)(digest[index] >> 4));
+        output[position++] = hex_digit(digest[index]);
     }
     output[position] = '\0';
     return 0;

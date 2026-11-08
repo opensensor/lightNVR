@@ -75,6 +75,38 @@ static const char *normalized_playback_transport(const char *value) {
     return playback_transport_is_valid(value) ? value : "auto";
 }
 
+static int normalized_observation_max_age_days(int value) {
+    return value > 0 ? value : OBSERVATION_DEFAULT_MAX_AGE_DAYS;
+}
+
+static sqlite3_int64 normalized_observation_max_bytes(int64_t value) {
+    return value > 0 ? (sqlite3_int64)value : (sqlite3_int64)OBSERVATION_DEFAULT_MAX_BYTES;
+}
+
+/* Bind the four migration-0095 evidence columns starting at index first. */
+static void bind_observation_settings(sqlite3_stmt *stmt, int first,
+                                      const stream_config_t *stream) {
+    sqlite3_bind_int(stmt, first, stream->observation_evidence_enabled ? 1 : 0);
+    sqlite3_bind_text(stmt, first + 1, stream->observation_labels, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, first + 2,
+                     normalized_observation_max_age_days(stream->observation_max_age_days));
+    sqlite3_bind_int64(stmt, first + 3,
+                       normalized_observation_max_bytes(stream->observation_max_bytes));
+}
+
+/* Load the evidence columns starting at column first. */
+static void load_observation_settings(sqlite3_stmt *stmt, int first,
+                                      stream_config_t *stream) {
+    stream->observation_evidence_enabled = sqlite3_column_int(stmt, first) != 0;
+    const char *labels = (const char *)sqlite3_column_text(stmt, first + 1);
+    safe_strcpy(stream->observation_labels, labels ? labels : "",
+                sizeof(stream->observation_labels), 0);
+    stream->observation_max_age_days =
+        normalized_observation_max_age_days(sqlite3_column_int(stmt, first + 2));
+    stream->observation_max_bytes =
+        (int64_t)normalized_observation_max_bytes(sqlite3_column_int64(stmt, first + 3));
+}
+
 static const char *normalized_go2rtc_source_override(const char *value) {
     return string_has_non_whitespace(value) ? value : "";
 }
@@ -172,7 +204,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "sub_stream_url = ?, audio_voice_enhancement = ?, "
                                 "detection_url = ?, publish_url = ?, "
                                 "detection_record_on_schedule = ?, detection_recording_schedule = ?, "
-                                "playback_transport = ?, eptz_config = ? "
+                                "playback_transport = ?, eptz_config = ?, "
+                                "observation_evidence_enabled = ?, observation_labels = ?, "
+                                "observation_max_age_days = ?, observation_max_bytes = ? "
                                 "WHERE id = ?;";
 
         rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
@@ -270,9 +304,10 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                           normalized_playback_transport(stream->playback_transport),
                           -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 54, stream->eptz_config, -1, SQLITE_STATIC);
+        bind_observation_settings(stmt, 55, stream);
 
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 55, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 59, (sqlite3_int64)existing_id);
 
         bool owns_transaction = false;
         if (!stream_transaction_begin(db, &owns_transaction)) {
@@ -347,8 +382,11 @@ uint64_t add_stream_config(const stream_config_t *stream) {
           "onvif_username, onvif_password, onvif_profile, onvif_port, "
           "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
           "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, "
-          "detection_record_on_schedule, detection_recording_schedule, playback_transport, eptz_config, camera_uuid, location_uuid) "
+          "detection_record_on_schedule, detection_recording_schedule, playback_transport, eptz_config, "
+          "observation_evidence_enabled, observation_labels, observation_max_age_days, observation_max_bytes, "
+          "camera_uuid, location_uuid) "
           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+          "?, ?, ?, ?, "
           "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
           "substr(hex(randomblob(2)), 2) || '-' || "
           "substr('89ab', (abs(random()) % 4) + 1, 1) || "
@@ -451,6 +489,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                       normalized_playback_transport(stream->playback_transport),
                       -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 55, stream->eptz_config, -1, SQLITE_STATIC);
+    bind_observation_settings(stmt, 56, stream);
 
     bool owns_transaction = false;
     if (!stream_transaction_begin(db, &owns_transaction)) {
@@ -585,7 +624,9 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       "sub_stream_url = ?, audio_voice_enhancement = ?, "
                       "detection_url = ?, publish_url = ?, "
                       "detection_record_on_schedule = ?, detection_recording_schedule = ?, "
-                      "playback_transport = ?, eptz_config = ? "
+                      "playback_transport = ?, eptz_config = ?, "
+                      "observation_evidence_enabled = ?, observation_labels = ?, "
+                      "observation_max_age_days = ?, observation_max_bytes = ? "
                       "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -684,9 +725,10 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       normalized_playback_transport(stream->playback_transport),
                       -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 55, stream->eptz_config, -1, SQLITE_STATIC);
+    bind_observation_settings(stmt, 56, stream);
 
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 56, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 60, name, -1, SQLITE_STATIC);
 
     bool owns_transaction = false;
     if (!stream_transaction_begin(db, &owns_transaction)) {
@@ -984,7 +1026,8 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         "onvif_username, onvif_password, onvif_profile, onvif_port, "
         "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
         "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, "
-        "detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid, playback_transport, eptz_config "
+        "detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid, playback_transport, eptz_config, "
+        "observation_evidence_enabled, observation_labels, observation_max_age_days, observation_max_bytes "
         "FROM streams WHERE name = ?;";
 
     // Column index constants for readability
@@ -1003,7 +1046,8 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         COL_MOTION_TRIGGER_SOURCE, COL_GO2RTC_SOURCE_OVERRIDE, COL_SUB_STREAM_URL,
         COL_AUDIO_VOICE_ENHANCEMENT, COL_DETECTION_URL, COL_PUBLISH_URL,
         COL_DETECTION_RECORD_ON_SCHEDULE, COL_DETECTION_RECORDING_SCHEDULE,
-        COL_CAMERA_UUID, COL_LOCATION_UUID, COL_PLAYBACK_TRANSPORT, COL_EPTZ_CONFIG
+        COL_CAMERA_UUID, COL_LOCATION_UUID, COL_PLAYBACK_TRANSPORT, COL_EPTZ_CONFIG,
+        COL_OBSERVATION_EVIDENCE_ENABLED
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1229,6 +1273,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
             (const char *)sqlite3_column_text(stmt, COL_EPTZ_CONFIG);
         safe_strcpy(stream->eptz_config, eptz_config ? eptz_config : "",
                     sizeof(stream->eptz_config), 0);
+        load_observation_settings(stmt, COL_OBSERVATION_EVIDENCE_ENABLED, stream);
 
         result = 0;
     }
@@ -1326,7 +1371,8 @@ static int get_all_stream_configs_on_connection(sqlite3 *db,
         "onvif_username, onvif_password, onvif_profile, onvif_port, "
         "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
         "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, "
-        "detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid, playback_transport, eptz_config "
+        "detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid, playback_transport, eptz_config, "
+        "observation_evidence_enabled, observation_labels, observation_max_age_days, observation_max_bytes "
         "FROM streams ORDER BY name;";
 
     // Column index constants (same as get_stream_config_by_name)
@@ -1345,7 +1391,8 @@ static int get_all_stream_configs_on_connection(sqlite3 *db,
         COL_MOTION_TRIGGER_SOURCE, COL_GO2RTC_SOURCE_OVERRIDE, COL_SUB_STREAM_URL,
         COL_AUDIO_VOICE_ENHANCEMENT, COL_DETECTION_URL, COL_PUBLISH_URL,
         COL_DETECTION_RECORD_ON_SCHEDULE, COL_DETECTION_RECORDING_SCHEDULE,
-        COL_CAMERA_UUID, COL_LOCATION_UUID, COL_PLAYBACK_TRANSPORT, COL_EPTZ_CONFIG
+        COL_CAMERA_UUID, COL_LOCATION_UUID, COL_PLAYBACK_TRANSPORT, COL_EPTZ_CONFIG,
+        COL_OBSERVATION_EVIDENCE_ENABLED
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1569,6 +1616,7 @@ static int get_all_stream_configs_on_connection(sqlite3 *db,
             (const char *)sqlite3_column_text(stmt, COL_EPTZ_CONFIG);
         safe_strcpy(s->eptz_config, eptz_config ? eptz_config : "",
                     sizeof(s->eptz_config), 0);
+        load_observation_settings(stmt, COL_OBSERVATION_EVIDENCE_ENABLED, s);
 
         count++;
     }

@@ -557,6 +557,12 @@ void load_default_config(config_t *config) {
         config->streams[i].tier_important_multiplier = 2.0;
         config->streams[i].tier_ephemeral_multiplier = 0.25;
         config->streams[i].storage_priority = 5;
+
+        // INT_01 observation evidence is off by default (contract section 13)
+        config->streams[i].observation_evidence_enabled = false;
+        config->streams[i].observation_labels[0] = '\0';
+        config->streams[i].observation_max_age_days = OBSERVATION_DEFAULT_MAX_AGE_DAYS;
+        config->streams[i].observation_max_bytes = OBSERVATION_DEFAULT_MAX_BYTES;
     }
 
     // MQTT settings for detection event streaming
