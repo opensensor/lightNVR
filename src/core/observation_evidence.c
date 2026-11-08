@@ -88,7 +88,7 @@ typedef struct {
     char camera_uuid[OBS_UUID_SIZE];  /* immutable once published */
     atomic_int items;
     atomic_llong bytes;
-    atomic_bool budget_exhausted;
+    atomic_int budget_exhausted;  /* 0/1: atomic_bool breaks the C->Rust conversion */
 } camera_slot_t;
 
 /* Per-camera slots are static (no allocation while disabled) and are never
@@ -114,15 +114,15 @@ static struct {
 
     pthread_mutex_t start_lock;
     pthread_t thread;
-    atomic_bool thread_started;
-    atomic_bool worker_running;
+    atomic_int thread_started;
+    atomic_int worker_running;
     int component_id;
 
     _Atomic(evidence_item_t *) head;
     _Atomic(drop_ring_t *) ring;
     atomic_int drop_pending;
     sem_t wake;
-    atomic_bool stop;
+    atomic_int stop;
     _Atomic int64_t drain_deadline_ns;
 
     atomic_int items;
@@ -250,7 +250,7 @@ static int slot_get(const char *camera_uuid) {
             safe_strcpy(s->camera_uuid, camera_uuid, sizeof(s->camera_uuid), 0);
             atomic_store(&s->items, 0);
             atomic_store(&s->bytes, 0);
-            atomic_store(&s->budget_exhausted, false);
+            atomic_store(&s->budget_exhausted, 0);
             atomic_store_explicit(&g_slot_count, count + 1, memory_order_release);
             slot = count;
         }
@@ -267,7 +267,7 @@ void observation_evidence_set_budget_exhausted(const char *camera_uuid, bool exh
                                 camera_uuid);
         return;
     }
-    bool previous = atomic_exchange(&g_slots[slot].budget_exhausted, exhausted);
+    bool previous = atomic_exchange(&g_slots[slot].budget_exhausted, exhausted ? 1 : 0) != 0;
     if (previous != exhausted)
         log_info("Evidence: budget_exhausted %s for camera %s", exhausted ? "set" : "cleared",
                  camera_uuid);
@@ -668,7 +668,7 @@ static void run_items(evidence_item_t *list) {
 static void *evidence_worker(void *arg) {
     (void)arg;
     g.component_id = register_component("observation_evidence", COMPONENT_OTHER, NULL, 20);
-    atomic_store(&g.worker_running, true);
+    atomic_store(&g.worker_running, 1);
     log_info("Observation evidence worker started");
     for (;;) {
         process_drops();
@@ -692,7 +692,7 @@ static void *evidence_worker(void *arg) {
         g.encoder = NULL;
         g.encoder_w = g.encoder_h = 0;
     }
-    atomic_store(&g.worker_running, false);
+    atomic_store(&g.worker_running, 0);
     if (g.component_id >= 0) update_component_state(g.component_id, COMPONENT_STOPPED);
     log_info("Observation evidence worker stopped");
     return NULL;
@@ -707,9 +707,9 @@ static void ensure_started(void) {
         drop_ring_t *ring = ring_create();
         if (ring) {
             atomic_store(&g.ring, ring);
-            atomic_store(&g.stop, false);
+            atomic_store(&g.stop, 0);
             if (pthread_create(&g.thread, NULL, evidence_worker, NULL) == 0) {
-                atomic_store(&g.thread_started, true);
+                atomic_store(&g.thread_started, 1);
                 int expected = LC_READY;
                 atomic_compare_exchange_strong(&g.lifecycle, &expected, LC_RUNNING);
             } else {
@@ -1003,7 +1003,7 @@ int observation_evidence_init(const observation_evidence_config_t *config) {
     atomic_store(&g.items, 0);
     atomic_store(&g.bytes, 0);
     atomic_store(&g.drop_pending, 0);
-    atomic_store(&g.stop, false);
+    atomic_store(&g.stop, 0);
     atomic_store(&g.lifecycle, LC_READY);
     pthread_mutex_unlock(&g.start_lock);
     log_info("Observation evidence initialized (worker starts on first submission; "
@@ -1023,13 +1023,13 @@ void observation_evidence_shutdown(int drain_timeout_ms) {
 
     if (drain_timeout_ms < 0) drain_timeout_ms = OBS_EVIDENCE_DEFAULT_DRAIN_MS;
     atomic_store(&g.drain_deadline_ns, mono_ns() + (int64_t)drain_timeout_ms * 1000000LL);
-    atomic_store(&g.stop, true);
+    atomic_store(&g.stop, 1);
 
     pthread_mutex_lock(&g.start_lock);
     if (atomic_load(&g.thread_started)) {
         sem_post(&g.wake);
         pthread_join(g.thread, NULL);
-        atomic_store(&g.thread_started, false);
+        atomic_store(&g.thread_started, 0);
     }
     pthread_mutex_unlock(&g.start_lock);
 

@@ -51,7 +51,7 @@
 /* ---- module state ------------------------------------------------------ */
 
 static pthread_mutex_t g_run_mutex = PTHREAD_MUTEX_INITIALIZER;   /* startup vs periodic */
-static atomic_bool g_startup_done = false;
+static atomic_int g_startup_done = 0;  /* 0/1: atomic_bool breaks the C->Rust conversion */
 
 static pthread_mutex_t g_status_mutex = PTHREAD_MUTEX_INITIALIZER;
 static observation_retention_camera_status_t *g_status = NULL;
@@ -439,7 +439,7 @@ int observation_retention_startup(const char *storage_path,
         observation_meta_t meta;
         if (db_observation_meta_get(&meta) == DB_OBS_OK)
             (void)observation_cursor_head_write(storage_path, meta.epoch_uuid, meta.head_seq);
-        atomic_store(&g_startup_done, true);
+        atomic_store(&g_startup_done, 1);
     }
     pthread_mutex_unlock(&g_run_mutex);
 
@@ -826,7 +826,7 @@ int observation_retention_camera_status(observation_retention_camera_status_t *o
 
 void observation_retention_reset_for_testing(void) {
     pthread_mutex_lock(&g_run_mutex);
-    atomic_store(&g_startup_done, false);
+    atomic_store(&g_startup_done, 0);
     publish_status(NULL, 0);
     g_last_tick = 0;
     g_more_work = false;
