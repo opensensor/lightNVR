@@ -2033,9 +2033,155 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   snapshot-only provider, a test asserts that zero clip, HQ or
   recording-snapshot jobs run and that no `/api/events/` request is made (A9
   backend half).
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commit `ca1ee246` on `feature/lightnvr-provider`, not pushed)
 - **log**:
+  - RED: `tests/pure/test_no_direct_frigate_calls.py` listed 36 violations
+    (every importer plus 7 `/api/events` builders in `proxy.py`,
+    `media_probe.py` and `notification_orchestrator.py`); its self-test of the
+    scanner passed. `tests/test_snapshot_only_source.py` failed 3/3: fake
+    Frigate received `snapshot.jpg?crop=0`, `POST sub_label` and so on, and
+    `high_quality_snapshot_service.enabled()` was True. GREEN: both pass, as do
+    the new `test_source_media_routes.py` (12) and
+    `pure/test_source_event_keys.py` (14). These two were written alongside the
+    implementation, so they have no RED run.
+  - Gates: W0 is 46/46 green after every service. Full suite: 7727 passed,
+    60 skipped, 0 failed (W2 and W5 had committed by then, so the run is clean).
+    `ruff check .` and `ruff format --check .` are clean repo-wide. OpenAPI
+    and the frontend types were regenerated and `--check` passes. The
+    docs-consistency and changelog checks pass. `npm run check` was not run,
+    because `apps/ui/node_modules` is not installed; only generated types
+    changed there.
+  - New in `app/services/sources/`:
+    - `access.py` is the only way shared code reaches the NVR:
+      - `resolve_event_source(event_key)` returns `(provider, external_id)`,
+        or None when the key's source kind or instance is not the active one;
+      - `fetch_event_snapshot`, `fetch_event_snapshot_bytes` (the old
+        `(bytes, reason)` shape), `fetch_event_thumbnail`,
+        `external_snapshot_url`, `fetch_event_record` (needs `track_lifecycle`),
+        `fetch_event_clip_bytes` and `download_event_clip` (`event_clip`),
+        `fetch_range_clip` (`range_clip`), `fetch_recording_frame`
+        (`recorded_frame`), `write_event_classification` (`annotate`);
+      - `active_frigate_client()` is None unless Frigate is the active
+        source; `configured_frigate_client()` is for owner tools about the
+        configured Frigate itself.
+    - `capability_gate.py`: `source_allows(workflow, *caps)` is true when the
+      source declares any of the caps. Otherwise it records a `CapabilitySkip`
+      (`status="skipped: unsupported by source"`, the source's reason such as
+      `not_implemented`, a count and the time). It also bumps the Prometheus
+      counter `source_capability_skips_total{workflow,capability,source_kind}`
+      and logs at info once, then at debug. Related helpers: `record_skip`,
+      `record_source_not_active`, `recorded_capability_skips()` (for W8
+      health) and `clear_recorded_capability_skips()`. Reason constants are
+      `unsupported_by_source` and `source_not_active`.
+    - `event_keys.py`:
+      - `event_key_for(kind, instance, id)` gives the Frigate id itself, or
+        `lnvr:<inst>:<obs>` for lightNVR; `parse_event_key` reads it back.
+      - `media_cache_key`: a Frigate key keeps its legacy name, byte for
+        byte. A lightNVR key becomes `lnvr.<inst>.<obs>`. It is validated,
+        never stripped, so `lnvr:ab:c` and `lnvr:a:bc` cannot collide. A
+        Frigate id that sanitises to `lnvr.` is refused.
+      - `event_key_from_media_key` inverts it, so `cache_file_event_id`
+        resolves qualified owners.
+      - `media_cache.sanitize_event_id`, which the archive also uses, now
+        delegates to `media_cache_key`.
+  - Protocol additions (W5 already implements them):
+    - required: `fetch_thumbnail` and `external_snapshot_url`;
+    - optional: `fetch_event` (Frigate-shaped event document, needs
+      `track_lifecycle`) and `fetch_clip_bytes` (`event_clip`).
+    - `FrigateProvider()` built without a client resolves the
+      `frigate_client` singleton at call time. Tests can therefore patch
+      `app.services.frigate_client.frigate_client`, and the old per-module
+      `X.frigate_client` patches were rewritten to that.
+    - It has `aclose()`, and `registry.close_active_source_provider()`
+      replaces `frigate_client.close` in `main.py`.
+    - `frigate_event_media_url(id, asset)` is the only builder of Frigate
+      `/api/events` URLs outside the client.
+    - `FrigateEventsFetchError` now subclasses `SourceUnavailableError`.
+    - The duplicated instance derivation was removed: `frigate_source_instance`
+      now calls W2's `app/utils/source_identity.frigate_source_instance` and
+      falls back to `unbound`.
+  - Capability gating, by workflow name:
+    - `high_quality_snapshot`: `enabled()` needs `event_clip` or `range_clip`.
+    - `full_visit` (`range_clip`): both the event-processor trigger and
+      `FullVisitClipService._auto_generation_enabled`.
+    - `video_classification` (`event_clip` or `range_clip`): in
+      `trigger_classification` and `queue_classification`. The latter returns
+      the new `"unsupported"`, which the manual video reclassify maps to HTTP
+      409 (`errors.events.video_analysis_unsupported_by_source`) and batch
+      analysis stops on.
+    - `recording_snapshot` (`recorded_frame`).
+    - `recording_frame_fallback` (`range_clip`).
+    - `write_classification` (`annotate`).
+    - `garden_capture` (`track_lifecycle`), checked at the top of
+      `GardenCaptureService.process`.
+    - `visit_film` (`range_clip` and `track_lifecycle`).
+    - `garden_motion` (`range_clip` plus a Frigate client).
+    - `backfill` (`history`; time-window replay is Frigate-only and is
+      recorded as `time_window_history_is_frigate_only`).
+    - `media_integrity_scan` (Frigate-only, returns `disabled` with a message).
+    - Missing-media purges and batch analysis return `failed` or
+      `unsupported` with plain messages when Frigate is not the source.
+    - The archive and Garden media treat `unsupported_by_source` and
+      `source_not_active` as unavailable or missing, not retryable.
+  - Neutral routes in `routers/proxy.py`, with the same auth, share-link and
+    guest rate-limit rules:
+    - `GET /api/media/{source_kind}/{external_id}/snapshot` and `/thumbnail`.
+    - `frigate` delegates to the bodies of the existing `/frigate/{id}/...`
+      routes, now `_serve_frigate_snapshot` and `_serve_frigate_thumbnail`.
+    - Another kind must be the active source. It is served from the cache
+      (`lnvr.` key), then the archive, then `provider.fetch_snapshot(crop=False)`,
+      cached as `source_snapshot`.
+    - Outcomes: PENDING gives 202 with `Retry-After` (1–30) and
+      `retry_after_seconds`; EXPIRED gives 410; MISSING and UNAVAILABLE give
+      404; TEMPORARILY_UNREACHABLE gives 502.
+    - The thumbnail is derived from the snapshot.
+    - Documented in `docs/api.md`. New i18n keys are added in all nine
+      locales.
+  - Remaining Frigate-only exceptions, all through `active_frigate_client()`
+    or `configured_frigate_client()`, never imports:
+    - The `/frigate/...` streaming proxies (clip, recording clip, HLS,
+      previews, `HEAD` checks) and `full_visit_clip_service`'s streamed
+      recording fetch. They stream Frigate URLs with their own `httpx`
+      clients and Frigate response semantics. W0's swapped-`httpx` harness is
+      untouched.
+    - The clean and alignment snapshot (HQ final frame,
+      `recording_snapshot_input`, Garden crops): only Frigate's
+      `snapshot-clean` fixes native coordinates.
+    - Garden: event metadata, snapshots, clips and motion scanning follow
+      Frigate's lifecycle and keep the original client calls. Garden capture
+      is gated by `track_lifecycle`.
+    - Retention and missing-media checks, timezone repair, the video-sample
+      probe, and the owner tools for Frigate itself (connection test, config,
+      camera status, latest frame, recording-clip capability, version).
+  - Gotchas for W4/W5/W8:
+    - The default Frigate provider resolves the client lazily. Tests that
+      install a provider use `monkeypatch.setattr(registry, "_active_provider", p)`.
+      The suite `conftest.py` now restores `_active_provider` and clears the
+      recorded skips around every test.
+    - The snapshot-only test's fake is Frigate-kind, because events are still
+      Frigate-shaped until W4. W9 should repeat it with a lightNVR-kind
+      provider once W4 routes `lnvr:` keys through the pipeline.
+    - `resolve_event_source` refuses a key whose kind or instance differs from
+      the active source, so W4 must store `lnvr:<inst>:<obs>` exactly as
+      `event_key_for` builds it. W5 has its own identical `lightnvr_event_key`
+      in `lightnvr_provider.py`; collapse it onto `event_keys`.
+    - `notification_orchestrator` sends `snapshot_url=""` when the source has
+      no external link (lightNVR). W7 owns links through the provider.
+    - `enabled()` and the other gates record a skip on every check, including
+      status polls, so the counter measures refusals, not distinct jobs. W8
+      should read `recorded_capability_skips()` for its "unsupported" copy
+      rather than the counter.
+    - `tests/pure/test_auto_video_classifier_pressure.py` fails at `HEAD` when
+      run alone (a pre-existing `derive_archive_state` stub gap). Its module
+      reimport used to leak into later tests; it is now restored at teardown.
 - **files edited/created**:
+  - YA-WAMF `backend/app/services/sources/access.py`, `capability_gate.py`, `event_keys.py` (new)
+  - YA-WAMF `backend/app/services/sources/base.py`, `frigate_provider.py`, `registry.py`, `backend/app/services/frigate_client.py`, `backend/app/main.py`
+  - YA-WAMF routers: `ai.py`, `events.py`, `proxy.py` (neutral media routes), `settings.py`
+  - YA-WAMF services: `archive_service`, `auto_video_classifier_service`, `backfill_service`, `classification_input_provenance`, `event_processor`, `full_visit_clip_service`, `garden_automatic_review`, `garden_capture_service`, `garden_crop_service`, `garden_identification`, `garden_media_cache`, `garden_media_policy`, `garden_motion`, `high_quality_snapshot_service`, `inaturalist_service`, `media_cache`, `media_integrity_scan`, `media_probe`, `notification_orchestrator`, `recording_snapshot_input`, `timezone_repair_service`, `visit_film_service`
+  - YA-WAMF `backend/locales/*.json`, `backend/openapi.json`, `apps/ui/src/lib/api/generated/openapi.ts`, `docs/api.md`, `changelog.d/source-capability-gating.md`
+  - YA-WAMF tests (new): `tests/pure/test_no_direct_frigate_calls.py`, `tests/pure/test_source_event_keys.py`, `tests/test_snapshot_only_source.py`, `tests/test_source_media_routes.py`
+  - YA-WAMF tests (patch targets moved to the shared client): `tests/conftest.py`, `tests/pure/conftest.py` and 40 existing test modules
 
 #### W4: Common ingestion pipeline (provider parsing → shared admission/idempotency)
 - **depends_on**: [W1, W2, W3, C3]
