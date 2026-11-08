@@ -521,9 +521,61 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   `tests/unit/test_db_migrations*.c`, or the existing migration test pattern,
   passes. The embedded header is regenerated and checked in. A fresh DB and an
   upgraded `0094` DB both reach the same schema.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - RED: `tests/unit/test_observation_migration.c` failed 4/4 before the
+    migration existed ("0095 is not embedded", "no such table"). GREEN 4/4
+    after it, in `build-tls` and `build-tls-asan`. The `migration|db_|schema|embedded`
+    ctest subset (36 tests) and the generator pytest pass. The only failures in
+    the full suite are the FFmpeg/SOD tests, which fail locally for unrelated
+    reasons (stale headers, tests that need CLI args).
+  - Run: `cd build-tls && make test_observation_migration && ./bin/test_observation_migration`.
+  - Followed the contract where it says more than the plan:
+    - `observation_changes` has `evidence_state` and `evidence_reason` (D6).
+    - The publication state CHECK allows exactly the five D7 values.
+    - Added `observation_assets.origin` and `media_type` (§4.1).
+  - Exact names for L2:
+    - `object_observations`: `uuid`, `camera_uuid`, `stream_name_at_capture`,
+      `batch_id`, `object_index`, `observed_at_ms`, `created_at_ms`,
+      `engine_key`, `engine_type`, `model`, `model_version`, `label`,
+      `confidence`, `box_x`, `box_y`, `box_width`, `box_height`, `track_id`,
+      `track_namespace`, `track_session`, `recording_id`, `asset_uuid`,
+      `revision`.
+    - `observation_assets`: `uuid`, `camera_uuid`, `state`, `reason`,
+      `origin`, `media_type`, `path`, `bytes`, `width`, `height`,
+      `captured_at_ms`, `transform_json`, `protected`, `expires_at_ms`,
+      `created_at_ms`, `updated_at_ms`.
+    - `observation_changes`: `seq`, `observation_uuid`, `revision`, `cause`,
+      `evidence_state`, `evidence_reason`, `created_at_ms`.
+    - `observation_publications`: `change_seq`, `message_id` (UNIQUE),
+      `state`, `attempts`, `last_error`, `updated_at_ms`.
+    - `observation_meta`: `id` (always 1), `epoch_uuid`, `oldest_seq`
+      (initially 1).
+    - `streams` columns: `observation_evidence_enabled`, `observation_labels`,
+      `observation_max_age_days`, `observation_max_bytes`.
+    - `system_settings` keys: `observation_history_retention_days` = 30 and
+      `observation_global_queue_bytes` = 33554432.
+  - Gotchas for L2/L4/L5:
+    - Revision 1 must have cause `created`, and only revision 1 may have it
+      (CHECK).
+    - `reason` / `evidence_reason` must be NULL exactly when the state is
+      `pending` or `ready`. Reason values are open text (1..32 chars), so
+      callers validate the §4.3 enum.
+    - The box is all four columns or none, and so is the track (all three).
+    - `object_index` must be 0..19. `engine_type` excludes `motion`.
+    - With `foreign_keys = ON` (set by `db_core.c`):
+      - `asset_uuid` references `observation_assets`, so insert the asset
+        before its observations and delete observations before the asset.
+      - Deleting a change cascades to its publication. Deleting an
+        observation cascades to its changes.
+      - Deleting a recording sets `recording_id` to NULL (indexed).
+    - The migration enforces no stream budget bounds beyond `> 0`. The
+      provisional §13 bounds belong in the L9 API.
+    - `migrate:down` drops all observation data and leaves evidence files on
+      disk.
+    - No `db_schema.c` / `db_schema_cache.c` changes were needed, because they
+      enumerate no tables.
+- **files edited/created**: `db/migrations/0095_add_object_observations.sql`, `include/database/db_embedded_migrations.h`, `tests/unit/test_observation_migration.c`, `tests/unit/CMakeLists.txt` (commit `7c2245a5`)
 
 #### L2: Observation DB layer (idempotent writes, transitions, cursor queries)
 - **depends_on**: [L1]
