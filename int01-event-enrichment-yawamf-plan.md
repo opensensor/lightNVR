@@ -3927,9 +3927,127 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
 - **validation**: Tests against the C3 PUT fixtures cover retry idempotency, a
   `409` reconcile, owner precedence, and an outage that creates no
   re-notification (A13).
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF `de28e1e4`)
 - **log**:
-- **files edited/created**:
+  - **Job lifecycle** (`processing_job_state`, `pipeline='lightnvr_writeback'`,
+    keyed by the detection's `frigate_event`; no Alembic revision):
+    - `classification_writeback_service.request(event_key)` enqueues with
+      `force=True` (status `queued`, revision+1). It is a no-op returning
+      False when the toggle is off or the key is not `lnvr:`. Callers:
+      `EventProcessor` after a lightNVR detection is classified (the `elif`
+      keeps Frigate sub-label write-back exactly as before), and
+      `PATCH /api/events/{id}` and bulk manual tag in `routers/events.py`
+      (owner decisions). Queuing never fails the save.
+    - The worker (`start`/`stop` in `main.py` lifespan, a 60 s poll plus a
+      wake on enqueue) runs `run_due`. Nothing is sent while the toggle is
+      off; queued jobs wait.
+    - Jobs carry no payload. Each attempt re-reads the detection, then
+      `GET /api/observations/{id}`, plans with the pure
+      `sources/lightnvr_writeback.plan_write`, and PUTs with
+      `expected_revision`. `record_success` and `record_failure` pass the job
+      revision, so an attempt that finishes after a newer request cannot
+      close it.
+    - Outcomes: `succeeded:{stored|unchanged}`. `dropped:<reason>` goes
+      terminal with no retry: `owner_decision_locked`, `evidence_mismatch`,
+      `namespace_forbidden`, `forbidden`, `observation_not_found`,
+      `annotation_limit`, `invalid_request`, `no_species_result`, `hidden`,
+      `detection_missing` or `source_not_active`.
+      `retry:{source_unreachable|annotate_unavailable|revision_conflict|internal_error}`
+      backs off 30 s → 12 h over 9 attempts (about 2 days), then goes
+      terminal.
+    - `409 revision_conflict` re-reads and replans, at most 3 plans per
+      attempt.
+    - A retry after a lost answer resends lightNVR's stored fields unchanged,
+      so it gets `200 changed:false`.
+    - Owner precedence: `manual_tagged` → `owner_confirmed` at confidence 1
+      with no model version. An automated result is dropped locally when
+      lightNVR already holds `owner_confirmed`, and on a `409
+      owner_decision_locked`.
+    - An automated "Unknown Bird" (or a configured unknown label) is not
+      written.
+    - The worker never saves a detection, records an intent or notifies.
+      Admission still ignores incoming `classification` changes (W4).
+  - **Settings keys**:
+    - `lightnvr.writeback_enabled` (default `false`) and env
+      `LIGHTNVR__WRITEBACK_ENABLED`.
+    - Settings API `lightnvr_writeback_enabled` (GET and POST).
+    - UI switch "Send species to lightNVR" in Settings → Connection.
+  - **Status**:
+    - `GET /api/diagnostics/source` adds
+      `writeback{enabled,pending,synced,not_synced,last_outcome,last_outcome_at}`
+      (null for Frigate-only).
+    - `/health.classification_writeback` gives the outcome counters.
+    - The Health card shows "N results are waiting to sync" as information,
+      not an alert.
+  - **Provider and client**:
+    - `LightNvrProvider.put_classification(external_id, name, body, *, expected_revision)`
+      uses `writer_namespace` from capabilities. It raises
+      `UnsupportedCapabilityError` before any request when annotate or the
+      namespace is missing.
+    - `write_classification` now raises `durable_writeback_only`.
+    - `annotate` is in the consumer-implemented set, so the provider's
+      annotate mask is removed.
+    - The client adds `put_json` and `put_classification`.
+  - **RED→GREEN**:
+    - The tests are 30 integration tests in
+      `test_lightnvr_classification_writeback.py`, driving the real
+      pipeline with an httpx MockTransport answering from the vendored
+      `fixtures/lightnvr/classifications/01–08`, plus 41 pure plan tests.
+      All pass.
+    - The original RED run was lost with the stopped agent, so
+      meaningfulness was shown by 13 temporary mutations. Each failed its
+      target test:
+      - toggle ignored;
+      - owner guard removed;
+      - correction sent as automated;
+      - 409 not replanned;
+      - idempotent resend removed;
+      - 422 or `namespace_forbidden` made retryable;
+      - outage dropped instead of retried;
+      - the worker calling `notify_detection`;
+      - the worker touching the detection row;
+      - namespace hard-coded;
+      - the correction not queued.
+    - Playwright: with the UI hunks reverted, both new
+      `source-selection.spec.ts` cases fail.
+  - **Gates** (exact commit content, isolated worktree):
+    - Full backend suite: 7978 passed, 60 skipped (includes the W0
+      baseline).
+    - Pure lane: 2261 passed.
+    - Clean: `export_openapi.py --check`, `export_openapi_types.py --check`,
+      `dead_modules_check`, `docs_consistency_check`,
+      `assemble_changelog --preview`, `ruff check` and `ruff format --check`.
+    - Frontend: `npm run check` 0/0 and `npm test` 2353 passed.
+    - Playwright `source-selection.spec.ts`: 7/7.
+  - **Gotchas for X3**:
+    - The lightNVR token's user needs `observations.annotate`. Only
+      Administrator has it by default, and a scoped token must list it.
+      Without it, results stay "sync pending" (`retry:annotate_unavailable`)
+      and go terminal after about 2 days.
+    - Turning the toggle on does not backfill detections saved while it was
+      off.
+    - A correction to a detection whose earlier job was dropped re-queues
+      it, because `force=True` is used.
+    - `model_version` is the active model ID, and the comparison ignores it.
+    - lightNVR `classification` change events are ignored, so there is no
+      loop.
+- **files edited/created**: YA-WAMF:
+  - New: `backend/app/services/classification_writeback_service.py`,
+    `backend/app/services/sources/lightnvr_writeback.py`,
+    `backend/tests/test_lightnvr_classification_writeback.py`,
+    `backend/tests/pure/test_lightnvr_writeback_plan.py` and
+    `changelog.d/lightnvr-writeback.md`.
+  - Backend: `config_models.py`, `config_loader.py`, `routers/settings.py`,
+    `services/settings_update.py`, `routers/events.py`,
+    `services/event_processor.py`, `main.py`,
+    `repositories/processing_job_repository.py` (`status_counts`),
+    `services/source_setup_service.py`, `sources/lightnvr_client.py`,
+    `sources/lightnvr_provider.py`, `tests/pure/test_lightnvr_parse.py`,
+    `openapi.json`, `docs/api.md` and
+    `docs/setup/environment-variables.md`.
+  - UI: `apps/ui` `generated/openapi.ts`, `api/settings.ts`,
+    `SourceSettings.svelte`, `SourceHealthCard.svelte`, `Settings.svelte`,
+    9 `settings.json` locales and `browser-tests/source-selection.spec.ts`.
 
 #### X3: P2 end-to-end
 - **depends_on**: [X1, L14, L15, W10]
