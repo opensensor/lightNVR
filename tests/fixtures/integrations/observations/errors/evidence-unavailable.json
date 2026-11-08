@@ -1,0 +1,5 @@
+{
+  "error": "Evidence is unavailable",
+  "code": "evidence_unavailable",
+  "reason": "queue_full"
+}

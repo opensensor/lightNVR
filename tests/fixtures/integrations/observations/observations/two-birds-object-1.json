@@ -1,0 +1,58 @@
+{
+  "id": "cccccccc-cccc-4ccc-8ccc-cccccccccc01",
+  "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+  "camera_uuid": "22222222-2222-4222-8222-222222222222",
+  "stream_name_at_capture": "feeder-east",
+  "batch_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "object_index": 1,
+  "observed_at": "2026-11-08T14:03:13.250Z",
+  "created_at": "2026-11-08T14:03:13.291Z",
+  "detector": {
+    "engine_key": "legacy-primary",
+    "engine_type": "object",
+    "model": "ssd_mobilenet_v2.sod",
+    "model_version": null
+  },
+  "label": "bird",
+  "confidence": 0.78,
+  "box": {
+    "format": "xywh_normalized",
+    "x": 0.6,
+    "y": 0.3,
+    "width": 0.3,
+    "height": 0.5
+  },
+  "evidence": {
+    "asset_id": "99999999-9999-4999-8999-999999999999",
+    "state": "ready",
+    "reason": null,
+    "origin": "inference_input",
+    "media_type": "image/jpeg",
+    "width": 160,
+    "height": 80,
+    "bytes": 1062,
+    "captured_at": "2026-11-08T14:03:13.250Z",
+    "expires_at": "2026-11-15T14:03:13.250Z",
+    "transform": {
+      "mode": "resize",
+      "source_width": 160,
+      "source_height": 80,
+      "inference_width": 320,
+      "inference_height": 320,
+      "scale_x": 2,
+      "scale_y": 4,
+      "pad_x": 0,
+      "pad_y": 0
+    },
+    "snapshot_url": "/api/observations/cccccccc-cccc-4ccc-8ccc-cccccccccc01/snapshot"
+  },
+  "track": null,
+  "recording_reference": {
+    "recording_id": 81235
+  },
+  "revision": 2,
+  "classifications": {
+    "automated": [],
+    "owner_confirmed": []
+  }
+}

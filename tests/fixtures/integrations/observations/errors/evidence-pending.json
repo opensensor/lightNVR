@@ -1,0 +1,5 @@
+{
+  "error": "Evidence is not ready yet",
+  "code": "evidence_pending",
+  "retry_after_seconds": 2
+}

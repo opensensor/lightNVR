@@ -1,0 +1,6 @@
+{
+  "error": "Evidence media has expired",
+  "code": "evidence_expired",
+  "reason": "retention_expired",
+  "expired_at": "2026-11-15T14:03:13.004Z"
+}

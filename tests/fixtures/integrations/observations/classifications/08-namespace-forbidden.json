@@ -1,0 +1,31 @@
+{
+  "description": "Key namespace is not the principal's derived namespace: 403.",
+  "observation_file": "observations/single-ready.json",
+  "request": {
+    "method": "PUT",
+    "path": "/api/observations/55555555-5555-4555-8555-555555555555/classifications/frigate-bridge/species",
+    "principal": {
+      "username": "yawamf",
+      "writer_namespace": "yawamf"
+    },
+    "body": {
+      "classifier": "yawamf",
+      "model_version": "convnext-v2-2026.10",
+      "label": "Black-capped Chickadee",
+      "taxonomy_id": "inat:144815",
+      "confidence": 0.93,
+      "classified_at": "2026-11-08T14:03:15.002Z",
+      "input_asset_id": "88888888-8888-4888-8888-888888888888",
+      "input_revision": 2,
+      "kind": "automated",
+      "expected_revision": 0
+    }
+  },
+  "response": {
+    "status": 403,
+    "body": {
+      "error": "Writer namespace not permitted",
+      "code": "namespace_forbidden"
+    }
+  }
+}

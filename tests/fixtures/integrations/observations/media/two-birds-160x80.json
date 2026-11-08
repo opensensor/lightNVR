@@ -1,0 +1,59 @@
+{
+  "description": "Unannotated evidence image shared by two-birds-object-0/1. Solid-color boxes on 8-pixel block boundaries; pixel coordinates are exact, colors are within JPEG tolerance (±12 per channel).",
+  "asset_id": "99999999-9999-4999-8999-999999999999",
+  "file": "media/two-birds-160x80.jpg",
+  "media_type": "image/jpeg",
+  "width": 160,
+  "height": 80,
+  "bytes": 1062,
+  "sha256": "f61a66623142b62ae0fc518130669dcca555d2ba5b7a83a2cd1b8c28d0d390ce",
+  "background_rgb": [
+    198,
+    204,
+    188
+  ],
+  "boxes": [
+    {
+      "observation_file": "observations/two-birds-object-0.json",
+      "observation_id": "cccccccc-cccc-4ccc-8ccc-cccccccccc00",
+      "rgb": [
+        196,
+        52,
+        40
+      ],
+      "pixels": {
+        "x": 16,
+        "y": 16,
+        "width": 32,
+        "height": 32
+      },
+      "normalized": {
+        "x": 0.1,
+        "y": 0.2,
+        "width": 0.2,
+        "height": 0.4
+      }
+    },
+    {
+      "observation_file": "observations/two-birds-object-1.json",
+      "observation_id": "cccccccc-cccc-4ccc-8ccc-cccccccccc01",
+      "rgb": [
+        40,
+        84,
+        196
+      ],
+      "pixels": {
+        "x": 96,
+        "y": 24,
+        "width": 48,
+        "height": 40
+      },
+      "normalized": {
+        "x": 0.6,
+        "y": 0.3,
+        "width": 0.3,
+        "height": 0.5
+      }
+    }
+  ]
+}

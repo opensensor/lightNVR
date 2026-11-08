@@ -1,0 +1,80 @@
+{
+  "contract_versions": {
+    "observations": 1,
+    "classifications": 1,
+    "observation_event": "io.lightnvr.detection.observation_changed.v1"
+  },
+  "source": {
+    "id": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+    "kind": "lightnvr",
+    "installation_uuid": "11111111-1111-4111-8111-111111111111",
+    "product_version": "0.48.0"
+  },
+  "principal": {
+    "writer_namespace": "yawamf"
+  },
+  "operations": {
+    "observations.history": {
+      "supported": true,
+      "authorized": true
+    },
+    "observations.snapshot": {
+      "supported": true,
+      "authorized": true
+    },
+    "observations.annotate": {
+      "supported": false,
+      "authorized": false,
+      "reason": "not_available_in_this_version"
+    },
+    "track_lifecycle": {
+      "supported": false,
+      "authorized": false,
+      "reason": "not_implemented"
+    },
+    "recorded_frame": {
+      "supported": false,
+      "authorized": false,
+      "reason": "not_implemented"
+    },
+    "event_clip": {
+      "supported": false,
+      "authorized": false,
+      "reason": "not_implemented"
+    },
+    "range_clip": {
+      "supported": false,
+      "authorized": false,
+      "reason": "not_implemented"
+    }
+  },
+  "limits": {
+    "history_page_default": 100,
+    "history_page_max": 500,
+    "history_filter_cameras_max": 10,
+    "history_filter_labels_max": 8,
+    "max_objects_per_batch": 20,
+    "label_max_bytes": 31,
+    "snapshot_retry_after_max_seconds": 30,
+    "annotations_per_observation_max": 8
+  },
+  "history": {
+    "retention_days": 30,
+    "oldest_cursor": "eyJ2IjoxLCJzZXEiOjEwMDAsImVwb2NoIjoiNjY2NjY2NjYtNjY2Ni00NjY2LTg2NjYtNjY2NjY2NjY2NjY2In0",
+    "oldest_observed_at": "2026-11-08T14:03:12.481Z"
+  },
+  "delivery": {
+    "mqtt_enabled": true,
+    "topic": "lightnvr/v1/events/io.lightnvr.detection.observation_changed.v1/{camera_uuid}"
+  },
+  "cameras": [
+    {
+      "camera_uuid": "22222222-2222-4222-8222-222222222222",
+      "evidence_enabled": true,
+      "actions": [
+        "live.view",
+        "snapshot.create"
+      ]
+    }
+  ]
+}

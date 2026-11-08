@@ -1,0 +1,47 @@
+{
+  "description": "Automated re-run after an owner decision: 409 owner_decision_locked with current. Drop the automated write.",
+  "observation_file": "observations/single-owner-confirmed.json",
+  "request": {
+    "method": "PUT",
+    "path": "/api/observations/55555555-5555-4555-8555-555555555555/classifications/yawamf/species",
+    "principal": {
+      "username": "yawamf",
+      "writer_namespace": "yawamf"
+    },
+    "body": {
+      "classifier": "yawamf",
+      "model_version": "convnext-v2-2026.11",
+      "label": "Black-capped Chickadee",
+      "taxonomy_id": "inat:144815",
+      "confidence": 0.95,
+      "classified_at": "2026-11-09T02:00:00.000Z",
+      "input_asset_id": "88888888-8888-4888-8888-888888888888",
+      "input_revision": 4,
+      "kind": "automated",
+      "expected_revision": 2
+    }
+  },
+  "response": {
+    "status": 409,
+    "body": {
+      "error": "An owner-confirmed annotation cannot be replaced by an automated one",
+      "code": "owner_decision_locked",
+      "current": {
+        "key": "yawamf/species",
+        "writer_namespace": "yawamf",
+        "classifier": "yawamf",
+        "model_version": null,
+        "label": "Carolina Chickadee",
+        "taxonomy_id": null,
+        "confidence": 1,
+        "classified_at": "2026-11-08T18:20:41.100Z",
+        "input_asset_id": "88888888-8888-4888-8888-888888888888",
+        "input_revision": 3,
+        "kind": "owner_confirmed",
+        "annotation_revision": 2,
+        "created_at": "2026-11-08T14:03:15.120Z",
+        "updated_at": "2026-11-08T18:20:41.300Z"
+      }
+    }
+  }
+}

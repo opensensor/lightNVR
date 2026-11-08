@@ -1,0 +1,22 @@
+{
+  "specversion": "1.0",
+  "id": "a977c786-3b49-5f9b-a6e4-dc078b44086a",
+  "type": "io.lightnvr.detection.observation_changed.v1",
+  "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+  "subject": "camera/22222222-2222-4222-8222-222222222222",
+  "time": "2026-11-08T15:30:02Z",
+  "datacontenttype": "application/json",
+  "severity": "info",
+  "sensitivity": "operational",
+  "data": {
+    "observation_id": "e0e0e0e0-e0e0-4e0e-8e0e-e0e0e0e0e0e0",
+    "revision": 1,
+    "camera_uuid": "22222222-2222-4222-8222-222222222222",
+    "label": "animal",
+    "observed_at": "2026-11-08T15:30:01.900Z",
+    "change_cause": "created",
+    "evidence_state": "unavailable",
+    "evidence_reason": "no_matching_media",
+    "asset_id": "e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2"
+  }
+}
