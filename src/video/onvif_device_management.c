@@ -179,6 +179,10 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
             "</SOAP-ENV:Envelope>",
             security_header, request_body);
 
+        // The previous envelope was freed: point curl at the new one before
+        // retrying, or it would send freed memory.
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, soap_envelope);
+
         // Retry the request
         res = curl_easy_perform(curl);
         if (res != CURLE_OK) {
