@@ -1,4 +1,9 @@
 unsafe extern "C" {
+    unsafe fn inet_pton(
+        __af: ::core::ffi::c_int,
+        __cp: *const ::core::ffi::c_char,
+        __buf: *mut ::core::ffi::c_void,
+    ) -> ::core::ffi::c_int;
     unsafe fn snprintf(
         __s: *mut ::core::ffi::c_char,
         __maxlen: size_t,
@@ -11,6 +16,11 @@ unsafe extern "C" {
         dst_size: size_t,
         src_size: size_t,
     ) -> ::core::ffi::c_int;
+    unsafe fn memcpy(
+        __dest: *mut ::core::ffi::c_void,
+        __src: *const ::core::ffi::c_void,
+        __n: size_t,
+    ) -> *mut ::core::ffi::c_void;
     unsafe fn memchr(
         __s: *const ::core::ffi::c_void,
         __c: ::core::ffi::c_int,
@@ -27,7 +37,24 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
 }
 pub type size_t = usize;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct in6_addr {
+    pub __in6_u: C2Rust_Unnamed,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub union C2Rust_Unnamed {
+    pub __u6_addr8: [uint8_t; 16],
+    pub __u6_addr16: [uint16_t; 8],
+    pub __u6_addr32: [uint32_t; 4],
+}
+pub type uint32_t = u32;
+pub type uint16_t = u16;
+pub type uint8_t = u8;
 pub const GO2RTC_CANDIDATE_SIZE: ::core::ffi::c_int = 128 as ::core::ffi::c_int;
+pub const PF_INET6: ::core::ffi::c_int = 10 as ::core::ffi::c_int;
+pub const AF_INET6: ::core::ffi::c_int = PF_INET6;
 unsafe extern "C" fn candidate_port_ok(mut p: *const ::core::ffi::c_char, mut n: size_t) -> bool {
     if n == 0 as size_t || n > 5 as size_t {
         return r#false != 0;
@@ -88,35 +115,31 @@ unsafe extern "C" fn candidate_host_ok(mut h: *const ::core::ffi::c_char, mut n:
             != '-' as ::core::ffi::c_int;
 }
 unsafe extern "C" fn candidate_ipv6_ok(mut h: *const ::core::ffi::c_char, mut n: size_t) -> bool {
-    if n < 2 as size_t || n > 45 as size_t {
+    let mut text: [::core::ffi::c_char; 46] = [0; 46];
+    let mut address: in6_addr = in6_addr {
+        __in6_u: C2Rust_Unnamed {
+            __u6_addr8: [0; 16],
+        },
+    };
+    if n == 0 as size_t || n >= ::core::mem::size_of::<[::core::ffi::c_char; 46]>() {
         return r#false != 0;
     }
-    let mut colons: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    let mut i: size_t = 0 as size_t;
-    while i < n {
-        let mut c: ::core::ffi::c_char = *h.offset(i as isize);
-        if c as ::core::ffi::c_int == ':' as ::core::ffi::c_int {
-            colons += 1;
-        } else {
-            let mut hex: bool = c as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
-                && c as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
-                || c as ::core::ffi::c_int >= 'a' as ::core::ffi::c_int
-                    && c as ::core::ffi::c_int <= 'f' as ::core::ffi::c_int
-                || c as ::core::ffi::c_int >= 'A' as ::core::ffi::c_int
-                    && c as ::core::ffi::c_int <= 'F' as ::core::ffi::c_int;
-            if !hex && c as ::core::ffi::c_int != '.' as ::core::ffi::c_int {
-                return r#false != 0;
-            }
-        }
-        i = i.wrapping_add(1);
-    }
-    return colons >= 2 as ::core::ffi::c_int;
+    memcpy(
+        &raw mut text as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void,
+        h as *const ::core::ffi::c_void,
+        n,
+    );
+    text[n] = '\0' as ::core::ffi::c_char;
+    return inet_pton(
+        AF_INET6,
+        &raw mut text as *mut ::core::ffi::c_char,
+        &raw mut address as *mut ::core::ffi::c_void,
+    ) == 1 as ::core::ffi::c_int;
 }
 unsafe extern "C" fn candidate_address(
     mut e: *const ::core::ffi::c_char,
     mut n: size_t,
     mut default_port: ::core::ffi::c_int,
-    mut port_optional_out: bool,
     mut out: *mut ::core::ffi::c_char,
     mut out_size: size_t,
 ) -> bool {
@@ -206,18 +229,6 @@ unsafe extern "C" fn candidate_address(
             port_len as ::core::ffi::c_int,
             port,
         );
-    } else if port_optional_out {
-        w = snprintf(
-            out,
-            out_size,
-            if v6 as ::core::ffi::c_int != 0 {
-                b"[%.*s]\0".as_ptr() as *const ::core::ffi::c_char
-            } else {
-                b"%.*s\0".as_ptr() as *const ::core::ffi::c_char
-            },
-            host_len as ::core::ffi::c_int,
-            host,
-        );
     } else {
         w = snprintf(
             out,
@@ -291,6 +302,19 @@ pub unsafe extern "C" fn go2rtc_parse_external_candidates(
                 b"*:%d\0".as_ptr() as *const ::core::ffi::c_char,
                 port,
             ) > 0 as ::core::ffi::c_int;
+        } else if n == 4 as size_t
+            && strncasecmp(
+                start,
+                b"stun\0".as_ptr() as *const ::core::ffi::c_char,
+                4 as size_t,
+            ) == 0 as ::core::ffi::c_int
+        {
+            ok = snprintf(
+                &raw mut candidate as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
+                b"stun:%d\0".as_ptr() as *const ::core::ffi::c_char,
+                port,
+            ) > 0 as ::core::ffi::c_int;
         } else if n > 5 as size_t
             && strncasecmp(
                 start,
@@ -298,29 +322,23 @@ pub unsafe extern "C" fn go2rtc_parse_external_candidates(
                 5 as size_t,
             ) == 0 as ::core::ffi::c_int
         {
-            let mut addr: [::core::ffi::c_char; 128] = [0; 128];
-            ok = candidate_address(
+            ok = candidate_port_ok(
                 start.offset(5 as ::core::ffi::c_int as isize),
                 n.wrapping_sub(5 as size_t),
-                port,
-                r#true != 0,
-                &raw mut addr as *mut ::core::ffi::c_char,
-                ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
             ) as ::core::ffi::c_int
                 != 0
-                && addr[0usize] as ::core::ffi::c_int != '*' as ::core::ffi::c_int
                 && snprintf(
                     &raw mut candidate as *mut ::core::ffi::c_char,
                     ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
-                    b"stun:%s\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut addr as *mut ::core::ffi::c_char,
+                    b"stun:%.*s\0".as_ptr() as *const ::core::ffi::c_char,
+                    n as ::core::ffi::c_int - 5 as ::core::ffi::c_int,
+                    start.offset(5 as ::core::ffi::c_int as isize),
                 ) < ::core::mem::size_of::<[::core::ffi::c_char; 128]>() as ::core::ffi::c_int;
         } else {
             ok = candidate_address(
                 start,
                 n,
                 port,
-                r#false != 0,
                 &raw mut candidate as *mut ::core::ffi::c_char,
                 ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
             );

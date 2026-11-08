@@ -891,7 +891,10 @@ unsafe extern "C" fn remove_asset_file(
     mut root: *const ::core::ffi::c_char,
     mut stored: *const ::core::ffi::c_char,
     mut deleted: *mut ::core::ffi::c_int,
-) {
+) -> ::core::ffi::c_int {
+    if stored.is_null() || *stored == 0 {
+        return 0 as ::core::ffi::c_int;
+    }
     let mut path: [::core::ffi::c_char; 1024] = [0; 1024];
     if resolve_asset_path(
         root,
@@ -909,9 +912,9 @@ unsafe extern "C" fn remove_asset_file(
                     as *const ::core::ffi::c_char,
             );
         }
-        return;
+        return 0 as ::core::ffi::c_int;
     }
-    remove_file(&raw mut path as *mut ::core::ffi::c_char, deleted);
+    return remove_file(&raw mut path as *mut ::core::ffi::c_char, deleted);
 }
 unsafe extern "C" fn fsync_dir(mut dir: *const ::core::ffi::c_char) -> ::core::ffi::c_int {
     let mut fd: ::core::ffi::c_int = open(dir, O_RDONLY | O_DIRECTORY);
@@ -1820,7 +1823,7 @@ unsafe extern "C" fn delete_asset_row(mut uuid: *const ::core::ffi::c_char) -> :
         let mut stmt: *mut sqlite3_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
         if sqlite3_prepare_v2(
             db,
-            b"DELETE FROM observation_assets WHERE uuid = ?1 AND protected = 0 AND state IN ('unavailable', 'expired') AND NOT EXISTS (SELECT 1 FROM object_observations WHERE asset_uuid = ?1);\0"
+            b"DELETE FROM observation_assets WHERE uuid = ?1 AND protected = 0 AND (path IS NULL OR path = '') AND state IN ('unavailable', 'expired') AND NOT EXISTS (SELECT 1 FROM object_observations WHERE asset_uuid = ?1);\0"
                 .as_ptr() as *const ::core::ffi::c_char,
             -1 as ::core::ffi::c_int,
             &raw mut stmt,
@@ -1839,6 +1842,72 @@ unsafe extern "C" fn delete_asset_row(mut uuid: *const ::core::ffi::c_char) -> :
             );
             if sqlite3_step(stmt) == SQLITE_DONE {
                 rc = sqlite3_changes(db);
+            }
+        }
+        sqlite3_finalize(stmt);
+        sqlite3_mutex_leave(connection);
+    }
+    pthread_mutex_unlock(mutex);
+    return rc;
+}
+unsafe extern "C" fn cleanup_asset_file(
+    mut root: *const ::core::ffi::c_char,
+    mut row: *const asset_row_t,
+    mut deleted: *mut ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    if (*row).path[0usize] == 0 {
+        return 0 as ::core::ffi::c_int;
+    }
+    if remove_asset_file(
+        root,
+        &raw const (*row).path as *const ::core::ffi::c_char,
+        deleted,
+    ) != 0 as ::core::ffi::c_int
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut mutex: *mut pthread_mutex_t = get_db_mutex();
+    if mutex.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    pthread_mutex_lock(mutex);
+    let mut db: *mut sqlite3 = get_db_handle();
+    let mut rc: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    if !db.is_null() {
+        let mut connection: *mut sqlite3_mutex = sqlite3_db_mutex(db);
+        sqlite3_mutex_enter(connection);
+        let mut stmt: *mut sqlite3_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+        if sqlite3_prepare_v2(
+            db,
+            b"UPDATE observation_assets SET path = NULL WHERE uuid = ?1 AND path = ?2 AND state IN ('unavailable', 'expired');\0"
+                .as_ptr() as *const ::core::ffi::c_char,
+            -1 as ::core::ffi::c_int,
+            &raw mut stmt,
+            ::core::ptr::null_mut::<*const ::core::ffi::c_char>(),
+        ) == SQLITE_OK
+        {
+            sqlite3_bind_text(
+                stmt,
+                1 as ::core::ffi::c_int,
+                &raw const (*row).uuid as *const ::core::ffi::c_char,
+                -1 as ::core::ffi::c_int,
+                ::core::mem::transmute::<
+                    ::libc::intptr_t,
+                    Option<unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()>,
+                >(-1 as ::core::ffi::c_int as ::libc::intptr_t),
+            );
+            sqlite3_bind_text(
+                stmt,
+                2 as ::core::ffi::c_int,
+                &raw const (*row).path as *const ::core::ffi::c_char,
+                -1 as ::core::ffi::c_int,
+                ::core::mem::transmute::<
+                    ::libc::intptr_t,
+                    Option<unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()>,
+                >(-1 as ::core::ffi::c_int as ::libc::intptr_t),
+            );
+            if sqlite3_step(stmt) == SQLITE_DONE {
+                rc = 0 as ::core::ffi::c_int;
             }
         }
         sqlite3_finalize(stmt);
@@ -1867,11 +1936,9 @@ unsafe extern "C" fn expire_asset(
         return -1 as ::core::ffi::c_int;
     }
     (*result).assets_expired += 1;
-    remove_asset_file(
-        root,
-        &raw const (*row).path as *const ::core::ffi::c_char,
-        &raw mut (*result).files_deleted,
-    );
+    if cleanup_asset_file(root, row, &raw mut (*result).files_deleted) != 0 as ::core::ffi::c_int {
+        return -1 as ::core::ffi::c_int;
+    }
     return 1 as ::core::ffi::c_int;
 }
 unsafe extern "C" fn query_rows(
@@ -1957,6 +2024,49 @@ unsafe extern "C" fn query_rows(
     db_close_readonly_connection(db);
     return count;
 }
+unsafe extern "C" fn retry_terminal_files(
+    mut root: *const ::core::ffi::c_char,
+    mut budget: *mut ::core::ffi::c_int,
+    mut result: *mut observation_retention_result_t,
+    mut rows: *mut asset_row_t,
+) -> ::core::ffi::c_int {
+    let mut want: ::core::ffi::c_int = if *budget < OBS_PAGE {
+        *budget
+    } else {
+        OBS_PAGE
+    };
+    if want <= 0 as ::core::ffi::c_int {
+        return 0 as ::core::ffi::c_int;
+    }
+    let mut n: ::core::ffi::c_int = query_rows(
+        b"SELECT uuid, path, COALESCE(bytes, 0), 0, state FROM observation_assets WHERE state IN ('expired', 'unavailable') AND path IS NOT NULL AND path <> '' AND ?1 > 0 ORDER BY uuid LIMIT ?2;\0"
+            .as_ptr() as *const ::core::ffi::c_char,
+        ::core::ptr::null::<::core::ffi::c_char>(),
+        1 as int64_t,
+        want,
+        rows,
+    );
+    if n < 0 as ::core::ffi::c_int {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < n {
+        *budget -= 1;
+        if cleanup_asset_file(
+            root,
+            rows.offset(i as isize),
+            &raw mut (*result).files_deleted,
+        ) != 0 as ::core::ffi::c_int
+        {
+            return -1 as ::core::ffi::c_int;
+        }
+        i += 1;
+    }
+    if n == want {
+        (*result).more_work = r#true != 0;
+    }
+    return 0 as ::core::ffi::c_int;
+}
 unsafe extern "C" fn reclaim_unreferenced(
     mut root: *const ::core::ffi::c_char,
     mut budget: *mut ::core::ffi::c_int,
@@ -1988,12 +2098,13 @@ unsafe extern "C" fn reclaim_unreferenced(
             if expire_asset(root, rows.offset(i as isize), result) < 0 as ::core::ffi::c_int {
                 return -1 as ::core::ffi::c_int;
             }
-        } else {
-            remove_asset_file(
-                root,
-                &raw mut (*rows.offset(i as isize)).path as *mut ::core::ffi::c_char,
-                &raw mut (*result).files_deleted,
-            );
+        } else if cleanup_asset_file(
+            root,
+            rows.offset(i as isize),
+            &raw mut (*result).files_deleted,
+        ) != 0 as ::core::ffi::c_int
+        {
+            return -1 as ::core::ffi::c_int;
         }
         let mut deleted: ::core::ffi::c_int =
             delete_asset_row(&raw mut (*rows.offset(i as isize)).uuid as *mut ::core::ffi::c_char);
@@ -2376,6 +2487,14 @@ pub unsafe extern "C" fn observation_retention_run(
     pthread_mutex_lock(&raw mut g_run_mutex);
     let mut budget: ::core::ffi::c_int = OBS_RETENTION_MAX_EVICTIONS;
     let mut rc: ::core::ffi::c_int = prune_history(now_ms, result);
+    if rc == 0 as ::core::ffi::c_int {
+        rc = retry_terminal_files(
+            &raw mut root as *mut ::core::ffi::c_char,
+            &raw mut budget,
+            result,
+            rows,
+        );
+    }
     if rc == 0 as ::core::ffi::c_int {
         rc = reclaim_unreferenced(
             &raw mut root as *mut ::core::ffi::c_char,

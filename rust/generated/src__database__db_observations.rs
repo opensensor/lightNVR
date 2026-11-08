@@ -3803,7 +3803,7 @@ pub unsafe extern "C" fn db_observations_prune(
         if rc == C2Rust_Unnamed::DB_OBS_OK.0 {
             rc = delete_each(
                 tx.db,
-                b"DELETE FROM observation_assets WHERE uuid = ?1 AND state IN ('unavailable', 'expired') AND NOT EXISTS (SELECT 1 FROM object_observations WHERE asset_uuid = ?1);\0"
+                b"DELETE FROM observation_assets WHERE uuid = ?1 AND protected = 0 AND (path IS NULL OR path = '') AND state IN ('unavailable', 'expired') AND NOT EXISTS (SELECT 1 FROM object_observations WHERE asset_uuid = ?1);\0"
                     .as_ptr() as *const ::core::ffi::c_char,
                 assets,
                 asset_count,

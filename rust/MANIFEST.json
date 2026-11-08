@@ -171,9 +171,9 @@
     },
     {
       "c": "src/core/observation_retention.c",
-      "c_sha256": "8e31957087aff3961646bcdc7e32f5f8ff8ecfbf8f70154dae2ab3bb66b0d7fd",
+      "c_sha256": "3fedd57071758c46bce550dffd1e51ecc4699fd0e677422510c7dc879bd55c9a",
       "rust": "generated/src__core__observation_retention.rs",
-      "rust_sha256": "321033efcb475e2f8b273181fa3d684dd4a9267d3bca824ceb71794731fbf263",
+      "rust_sha256": "82b1b6793249c1e34090a3f4ac79946a40528d13deb6a6f003fa84cdc363511c",
       "adapted": false
     },
     {
@@ -416,9 +416,9 @@
     },
     {
       "c": "src/database/db_observations.c",
-      "c_sha256": "8596e2ca284aaf629289e450b14ff20fd3e21fd1849f96b570de166709e604d9",
+      "c_sha256": "03fd7795dfe498c65557a73387ea16e8532092cdbe73915a252b31642f586098",
       "rust": "generated/src__database__db_observations.rs",
-      "rust_sha256": "875e2d9a31005f426e5da551f4c7bc783093b22defc34888a58894ec60b27015",
+      "rust_sha256": "f78189cd9344039341fde41f7cfbb038cb5656fb133d9ede997e70b2f537c869",
       "adapted": false
     },
     {
@@ -850,9 +850,9 @@
     },
     {
       "c": "src/utils/webrtc_candidates.c",
-      "c_sha256": "961c8789cdf82f307d0b2eee249cc5c21c7c4449bf01fc74dcbfb53ffb9d1b12",
+      "c_sha256": "6214c6a856ab0b5a569527e9a1f5014583e4801b936f0fd9acc5963aafe21726",
       "rust": "generated/src__utils__webrtc_candidates.rs",
-      "rust_sha256": "ab4d35cb737d0f5a66833ac0687cf57a532ce14d802d443aec4224db5283a9cc",
+      "rust_sha256": "4585f1efcf3438ad75ab3f71f0b7ab5732e04801d1111ccd2e7121a1bf313b5a",
       "adapted": false
     },
     {
@@ -990,9 +990,9 @@
     },
     {
       "c": "src/video/go2rtc/go2rtc_process.c",
-      "c_sha256": "344729f507e07ef96a241c8792d42983cf25754e045d3ebf72ca85d77437de2f",
+      "c_sha256": "d72bae07e428f1d517be3564141b6ba44e5ebbc6453dc1452395c709a5a7eeff",
       "rust": "generated/src__video__go2rtc__go2rtc_process.rs",
-      "rust_sha256": "0567802515d0a74aa9db498f01d49e2ef6e8575e2259445076bbc10be748c3ac",
+      "rust_sha256": "8af4336ab4e1bcabd6f4329b6f35f55a3ef33d17d5035a5eb4b61e639b84682a",
       "adapted": false
     },
     {
@@ -1648,9 +1648,9 @@
     },
     {
       "c": "src/web/api_handlers_settings.c",
-      "c_sha256": "c17256f8cf3da99eb081d920e66002ee5ae893fa1d2e883189e8b46a115ca273",
+      "c_sha256": "e3cf615ced23b06f47797bdff8b71b8b9e7bb50fd44f6bb5f732b1711d3850d8",
       "rust": "generated/src__web__api_handlers_settings.rs",
-      "rust_sha256": "30a31236bdc7f12f226801221897627007f93ddd5065f9d6b120059105613818",
+      "rust_sha256": "a71cf84ccb20b6eb3e255594b2f748fe20faaaca3ef917413eac6e994d869be6",
       "adapted": false
     },
     {

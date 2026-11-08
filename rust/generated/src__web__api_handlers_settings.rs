@@ -4412,7 +4412,7 @@ pub unsafe extern "C" fn handle_post_settings(
             http_response_set_json_error(
                 res,
                 400 as ::core::ffi::c_int,
-                b"Invalid go2rtc_external_ip: expected up to 8 comma-separated IPs or hostnames (optionally :port), '*' for auto-detect, or stun:host[:port]\0"
+                b"Invalid go2rtc_external_ip: expected up to 8 comma-separated IPs or hostnames (optionally :port), '*' for auto-detect, or stun[:port]; configure STUN servers in the STUN/ICE server settings\0"
                     .as_ptr() as *const ::core::ffi::c_char,
             );
             return;

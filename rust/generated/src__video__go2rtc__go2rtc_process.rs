@@ -12251,8 +12251,8 @@ unsafe extern "C" fn go2rtc_process_generate_config_locked(
         if (*global_config).go2rtc_stun_enabled {
             fprintf(
                 config_file,
-                b"    - \"stun:%s\"\n\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut (*global_config).go2rtc_stun_server as *mut ::core::ffi::c_char,
+                b"    - \"stun:%d\"\n\0".as_ptr() as *const ::core::ffi::c_char,
+                webrtc_port,
             );
         }
         fprintf(config_file, b"\n\0".as_ptr() as *const ::core::ffi::c_char);
