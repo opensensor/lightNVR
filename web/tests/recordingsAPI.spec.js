@@ -119,6 +119,7 @@ describe('recordingsAPI', () => {
     };
 
     await expect(recordingsAPI.checkRecordingHasDetections(recording)).resolves.toBe(false);
+    expect(enhancedFetch).not.toHaveBeenCalled();
   });
 
   test('checkRecordingHasDetections returns false when enhancedFetch throws an error', async () => {
