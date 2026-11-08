@@ -1,8 +1,9 @@
-# INT_01 X1: lightNVR + YA-WAMF end-to-end suite
+# INT_01 X1/X3: lightNVR + YA-WAMF end-to-end suite
 
 This suite runs the deployment recipe
 [`docs/integrations/YA_WAMF.md`](../../../docs/integrations/YA_WAMF.md)
-against real processes, then checks PRD INT_01 acceptance A1–A6 and A8 across
+against real processes, then checks PRD INT_01 acceptance A1–A6 and A8 (X1,
+P1) and A12, A13 and A7-annotate (X3, P2 classification write-back) across
 both applications. A14, the operator pilot on a real camera, is a manual
 checklist: [`A14_PILOT_CHECKLIST.md`](A14_PILOT_CHECKLIST.md).
 
@@ -75,6 +76,9 @@ Both remain pending in the
 | A5 | Broker stopped; 100 observations (50 two-bird frames); both apps stopped; broker, lightNVR and YA-WAMF started again | All 100 observations appear exactly once in YA-WAMF. The outbox also delivers all 200 revisions once the broker returns. |
 | A6 | SIGKILL lightNVR mid-burst, then restart. Separately, SIGKILL YA-WAMF mid-burst, then restart | lightNVR: startup order (reconcile → evidence → relay drain → relay), no pending asset, no `.jpg.tmp`, every ready row has its file. YA-WAMF converges to exactly the ready observations, with no duplicates and nothing admitted for evidence that is not ready. |
 | A8 | Temporary: lightNVR frozen (SIGSTOP) while YA-WAMF starts with missed history, then resumed. Expired: observations backdated 8 days while lightNVR is stopped, so the first retention pass expires them. Unavailable: ready files deleted while stopped, so startup reconciliation marks them `unavailable(write_failed)`. Expired cursor: file-level DB restore, so lightNVR regenerates the epoch | Nothing is admitted while lightNVR is unreachable, and everything is admitted after it resumes. Snapshots answer `410 evidence_expired` and `404 evidence_unavailable`. YA-WAMF admits none of those and reports the reasons (`evidence_expired`, `evidence_unavailable`) in recovery and backfill. The old cursor answers `410 cursor_expired`, and YA-WAMF shows `recovery_required` until it is acknowledged. |
+| A12 | One bird on `feeder-wb`; YA-WAMF runs with `LIGHTNVR__WRITEBACK_ENABLED=true` (the recipe's optional P2 step). Then: every captured message for it republished 10×, 5 identical annotation PUTs, a stale (`expected_revision: 0`) and a future revision; an owner correction (`PATCH /api/events/{id}`); an automated PUT over the owner decision; YA-WAMF's detection reverted to an automated result with its write-back job re-queued | The species is on YA-WAMF's row, in lightNVR's `observation_classifications` (`yawamf/species`, `automated`), in `GET /api/observations/{id}` and on `GET /api/detection/results/{stream}` (`observation.classification`), while the detector's `bird` label and confidence are unchanged. The classification change is published once (revision 3, deterministic ID) and causes no classifier call, no new row, no intent change and no new write-back job. Replays and retries are `200 changed:false`, stale and future revisions `409 revision_conflict`; one row per key stays at annotation revision 1. The correction arrives as `owner_confirmed` (revision 2, confidence 1). A later automated result is refused (`409 owner_decision_locked`) and YA-WAMF's job ends terminal with `dropped:owner_decision_locked`. |
+| A13 | One bird on `feeder-wb-outage`, written back; lightNVR stopped; owner correction in YA-WAMF while it is down; lightNVR started again | The correction is saved and served by YA-WAMF while lightNVR is down, and the write-back job is `retryable` with `retry:source_unreachable` ("sync pending"). After lightNVR returns, the job succeeds and lightNVR shows `owner_confirmed` with the corrected species. No classifier call, duplicate row or notification-intent change. |
+| A7-annotate | Two more tokens for the same user: one without `observations.annotate`, one with it but scoped to another camera | Without the action: `403 forbidden` on an existing and on a new key. Another camera's scope: `404 observation_not_found`. Neither writes a row or bumps the revision. The recipe token creates `yawamf/x3probe` (`201`) and its retry is `200 changed:false`; `yawamf/species` is untouched. |
 
 ## Running it
 
@@ -87,13 +91,20 @@ created from its requirements (it provides Pillow and numpy).
 ```bash
 ../YetAnother-WhosAtMyFeeder/backend/.venv/bin/python tests/integration/yawamf_e2e/run_e2e.py \
   --lightnvr-bin build/bin/lightnvr --yawamf ../YetAnother-WhosAtMyFeeder \
-  [--scenarios A1,A3] [--workdir /path/to/keep] [--run-name NAME] \
+  [--scenarios A1,A3] [--workdir /path/to/keep] [--run-name NAME] [--no-writeback] \
   [--sod-model /path/to/tiny20.sod --bird-image /path/to/cardinal.jpg]
 ```
 
 - A full run takes about 5 minutes. The exit status is 0 only when every
   selected scenario passed.
 - A4 replays the messages A1 and A3 captured, so run A1 and A3 with it.
+- YA-WAMF starts with `LIGHTNVR__WRITEBACK_ENABLED=true`, so the P1
+  scenarios also run with write-back on. `--no-writeback` starts it without
+  (the P1 recipe only); A12, A13 and A7-annotate then fail, which is how X3
+  recorded its RED run.
+- A12's automated-after-owner step waits for YA-WAMF's write-back worker,
+  which polls every 60 s. A13 waits for the first retry, 30 s after the
+  failed attempt.
 - `results/<run>.json` holds versions, recipe-step outcomes and per-scenario
   evidence. Next to it are the MQTT capture, the detector log and the
   classifier log.
@@ -143,5 +154,15 @@ run in the matrix.
   it starts with lightNVR unreachable, recovery catches up later.
 - MQTT reconnect backoff reaches about 35 s on both sides after a broker
   outage or a SIGKILL. Keep timeouts generous.
+- (X3) An owner correction is `PATCH /api/events/{event}` with
+  `{"display_name": ...}`. YA-WAMF has no `GET /api/events/{event}`; use
+  `GET /api/events?event_id=`.
+- (X3) A token's camera selector must equal one of its user's grants, not a
+  subset of it (`403 API token scope exceeds live.view authority`). The
+  other-camera A7 probe is therefore a second user, `yawamf-east`, holding the
+  same role on one camera.
+- (X3) YA-WAMF writes back only after a new detection and after an owner
+  correction. **Reclassify** and video classification change the species
+  without queuing a write-back.
 - Wait for `recordings/observations/.cursor_head.json` to reach the head
   before taking a file-level backup (it is written at most once a second).

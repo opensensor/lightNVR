@@ -361,6 +361,12 @@ stay visible ([contract §10](OBSERVATIONS_CONTRACT.md#10-classification-annotat
 Without `observations.annotate`, results stay "sync pending" and are given up
 after about two days of retries.
 
+X3 ran this end to end (A12, A13 and A7-annotate; see the
+[matrix](#supported-version-matrix)). Known gap: only a new detection and an
+owner correction (**Edit species**, single or bulk) are sent. A species
+changed later by **Reclassify** or by video classification stays local until
+the owner corrects or confirms it.
+
 ## Retention and budgets
 
 ([contract §14](OBSERVATIONS_CONTRACT.md#14-retention-and-storage))
@@ -454,8 +460,8 @@ Neither branch is released or pushed.
 
 | Component | Version | Contract |
 | --- | --- | --- |
-| lightNVR | branch `feat/int01-event-evidence`; X1 ran a binary built from `e294f956` (version string 0.47.3; the last behaviour change is `ddea7404`, later commits are docs, tests and plan updates) | `observations` 1, `classifications` 1, event `io.lightnvr.detection.observation_changed.v1` |
-| YA-WAMF | branch `feature/lightnvr-provider` at `1cbbae74`, on v2.23.1 (`53540f48`). It needs `b89846d0` or later to start with `LIGHTNVR__CAMERA_UUIDS` set | `observations` 1, `classifications` 1 |
+| lightNVR | branch `feat/int01-event-evidence`; X1 ran a binary built from `e294f956` and X3 one built from `bcf5290f` (version string 0.47.3; the last behaviour change is `ddea7404`, later commits are docs, tests and plan updates) | `observations` 1, `classifications` 1, event `io.lightnvr.detection.observation_changed.v1` |
+| YA-WAMF | branch `feature/lightnvr-provider` at `1cbbae74`, on v2.23.1 (`53540f48`), for both X1 and X3. It needs `b89846d0` or later to start with `LIGHTNVR__CAMERA_UUIDS` set, and `de28e1e4` or later for write-back (P2) | `observations` 1, `classifications` 1 |
 | MQTT broker | Mosquitto 2.0.22 (X1) | n/a |
 | Frigate (YA-WAMF source) | as supported by YA-WAMF v2.23.1 | n/a, unchanged |
 
@@ -475,6 +481,6 @@ What has been tested, and how:
 | HTTP bird detector | tested with a pinned stand-in: the loopback `x1-colour-detector 1.0` in the light-object-detect wire format, which finds synthetic red and blue birds by colour. A real HTTP bird model (light-object-detect or DOODS2) is **pending** | X1 |
 | Local bird detector | tested once: SOD VOC `tiny20.sod` (classes include `bird`) on a real bird photo crossing the frame (X1 `A2-local`; optional, because the photo is not committed). LiteRT/TFLite end to end is **pending** | X1 |
 | YA-WAMF classifier | tested with a pinned stand-in: `x1-colour-rule-v1`, which replaces `classify_async_live` only and names a crop by its saturated red or blue pixels. YA-WAMF's real bird model is **pending** | X1 |
-| P2 end to end (A12, A13) | **pending** | X3 |
+| P2 end to end (A12, A13, A7-annotate) with `LIGHTNVR__WRITEBACK_ENABLED=true` | tested, in the same host-process mode (X3). The species shows in YA-WAMF, in lightNVR's annotation, `GET /api/observations/{id}` and the detection results. Replays and stale revisions keep one annotation. An owner correction arrives as `owner_confirmed`, and a later automated result is refused. The classification change causes no classifier call or notification-intent change. A 47 s lightNVR outage leaves the YA-WAMF detection intact, and the write-back completes 14 s after lightNVR returns. A token without `observations.annotate` gets `403`. The X1 scenarios pass in the same run with write-back on | `tests/integration/yawamf_e2e/run_e2e.py` (`p2_scenarios.py`); results in `tests/integration/yawamf_e2e/results/x3-host-20261108.json`, RED run without write-back in `x3-host-20261108-red-nowriteback.json` |
 | Saturation and performance gate (A11), final budget defaults | **pending** | X2 |
 | Real-camera operator pilot (A14) | **pending**; checklist ready | [`A14_PILOT_CHECKLIST.md`](../../tests/integration/yawamf_e2e/A14_PILOT_CHECKLIST.md) |

@@ -1049,8 +1049,8 @@ below stay the release targets.
 | Component | Version | Contract | Status |
 | --- | --- | --- | --- |
 | lightNVR | first release containing L1–L11 (≥ 0.48.0, TBD) | observations 1, event v1 | not yet released |
-| lightNVR (P2) | first release containing L13–L15 (TBD) | classifications 1 | not yet released |
-| YA-WAMF | fork branch `feature/lightnvr-provider` on v2.23.1 (`53540f48`) | observations 1 | prototype; upstream acceptance or a named maintainer required (PRD §7) |
+| lightNVR (P2) | first release containing L13–L15 (TBD) | classifications 1 | not yet released; X3: A12, A13 and A7-annotate pass end to end with YA-WAMF write-back |
+| YA-WAMF | fork branch `feature/lightnvr-provider` on v2.23.1 (`53540f48`); write-back needs `de28e1e4` or later | observations 1, classifications 1 | prototype; upstream acceptance or a named maintainer required (PRD §7) |
 | Frigate (YA-WAMF source) | as supported by YA-WAMF v2.23.1 | n/a | unchanged |
 | MQTT broker | Mosquitto 2.x | | X1: tested with 2.0.22 |
 | Bird-capable detector / model | X1 pinned a loopback HTTP colour detector, plus SOD VOC `tiny20.sod` on a real photo | | real HTTP and LiteRT bird models pending (A14) |

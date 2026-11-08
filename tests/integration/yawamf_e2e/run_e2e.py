@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""INT_01 X1: lightNVR <-> YA-WAMF end-to-end P1 suite (host-process mode).
+"""INT_01 X1/X3: lightNVR <-> YA-WAMF end-to-end suite (host-process mode).
 
 Runs docs/integrations/YA_WAMF.md verbatim against real processes:
 Mosquitto 2.x, the lightNVR binary under test, the YA-WAMF backend from its
 branch (pinned colour classifier, see harness/yawamf_launcher.py), an HTTP
 MPEG-TS feeder source and a loopback HTTP detector. Then it runs A1-A6 and A8
-and writes results/<run>.json.
+(X1, P1) and A12, A13 and A7-annotate (X3, P2 write-back; p2_scenarios.py) and
+writes results/<run>.json.
 
 Usage (from the lightNVR repo root; YA-WAMF's venv provides Pillow/numpy):
     ../YetAnother-WhosAtMyFeeder/backend/.venv/bin/python tests/integration/yawamf_e2e/run_e2e.py \
@@ -40,6 +41,7 @@ from PIL import Image, ImageStat  # noqa: E402
 from components import (  # noqa: E402
     Detector, FeederServer, LightNvr, Mosquitto, MqttCapture, YaWamf, free_port, http, render_image_scene, render_scene, wait_for,
 )
+from p2_scenarios import P2Scenarios  # noqa: E402
 
 OBSERVATION_EVENT = "io.lightnvr.detection.observation_changed.v1"
 MESSAGE_NS = uuid.UUID("0bc01005-a431-522b-9124-a114f67d187a")
@@ -55,6 +57,8 @@ CAMERAS = {
     "feeder-bulk": ("two_birds", "a5"),
     "feeder-kill": ("two_birds", "a6"),
     "feeder-outcomes": ("red_static", "a8"),
+    "feeder-wb": ("red_static", "a12"),
+    "feeder-wb-outage": ("red_static", "a13"),
 }
 
 
@@ -86,7 +90,7 @@ def expect(condition: bool, message: str) -> None:
         raise Check(message)
 
 
-class Suite:
+class Suite(P2Scenarios):
     def __init__(self, args: argparse.Namespace):
         self.args = args
         self.work = Path(args.workdir or tempfile.mkdtemp(prefix="x1-yawamf-e2e-"))
@@ -264,6 +268,7 @@ class Suite:
             role = json.loads(body)
             self.note("step 4.2: create role (recipe body)", "ok")
         role_uuid = role["role"]["uuid"]
+        self.role_uuid = role_uuid
         scope = {"type": "selector", "selector": {"version": 1, "expression": {"op": "camera_uuid", "values": list(self.cameras.values())}}}
         policy = self.lnvr.api("GET", f"/api/authorization/users/{user_id}")
         grant = {"mode": "policy", "grants": [{"role_uuid": role_uuid, "scope": scope}]}
@@ -293,10 +298,14 @@ class Suite:
             "LIGHTNVR__ENABLED": "true", "LIGHTNVR__API_URL": self.lnvr.base, "LIGHTNVR__TOKEN": self.token,
             "LIGHTNVR__MQTT_TOPIC_PREFIX": TOPIC_PREFIX, "LIGHTNVR__CAMERA_UUIDS": ",".join(self.cameras.values()),
             "LIGHTNVR__REQUEST_TIMEOUT_SECONDS": "5",
+            # The recipe's optional P2 step (X3). --no-writeback runs the P1 recipe only.
+            "LIGHTNVR__WRITEBACK_ENABLED": "false" if a.no_writeback else "true",
             "FRIGATE__MQTT_SERVER": "127.0.0.1", "FRIGATE__MQTT_PORT": str(mqtt_port), "FRIGATE__MQTT_AUTH": "false",
         }, HERE / "harness" / "yawamf_launcher.py")
         self.ya.start()
-        self.note("step 5: YA-WAMF started (MQTT subscribed)", "ok", {"health_version": self.ya.api("GET", "/health").get("version")})
+        health = self.ya.api("GET", "/health")
+        self.note("step 5: YA-WAMF started (MQTT subscribed)", "ok", {"health_version": health.get("version"),
+                                                                       "classification_writeback": health.get("classification_writeback")})
 
         # Step 6.1: the connection test.
         # What the Settings page sends for the saved values: the address, and no token (keeps the saved one).
@@ -746,11 +755,14 @@ class Suite:
                 self.scenario("A2-local", "moving-bird alignment (local SOD detector, real bird photo)", self.a2_local)
             self.scenario("A3", "two birds in one frame", self.a3)
             self.scenario("A4", "replay x10 with overlapping API recovery", self.a4)
+            self.scenario("A12", "write-back: species in both products, replays and stale revisions, owner precedence, no loop", self.a12)
+            self.scenario("A13", "write-back survives a lightNVR outage; the YA-WAMF detection stays intact", self.a13)
+            self.scenario("A7-annotate", "annotate needs observations.annotate on the capture camera", self.a7_annotate)
             self.scenario("A5", "broker down for 100 observations, both apps restarted", self.a5)
             self.scenario("A6", "kill points end to end", self.a6)
             self.scenario("A8", "expired, unavailable, temporary and expired-cursor outcomes", self.a8)
         summary = {
-            "suite": "INT_01 X1 lightNVR <-> YA-WAMF E2E", "mode": "host-process", "started_at": started,
+            "suite": "INT_01 X1/X3 lightNVR <-> YA-WAMF E2E", "writeback_enabled": not self.args.no_writeback, "mode": "host-process", "started_at": started,
             "finished_at": time.time(), "seconds": round(time.time() - started, 1), "versions": self.versions(),
             "recipe": self.recipe, "deploy_error": deploy_error, "scenarios": self.results, "workdir": str(self.work),
             "counts": {"detector_requests": getattr(self.detector, "requests", None) if hasattr(self, "detector") else None,
@@ -799,6 +811,7 @@ def main() -> int:
     parser.add_argument("--run-name", default=None)
     parser.add_argument("--sod-model", default=None, help="optional: a bird-capable .sod model (e.g. VOC tiny20.sod) for the A2 local variant")
     parser.add_argument("--bird-image", default=None, help="optional: a real bird photo for the A2 local variant (not committed; see README)")
+    parser.add_argument("--no-writeback", action="store_true", help="start YA-WAMF without LIGHTNVR__WRITEBACK_ENABLED (P1 recipe only)")
     parser.add_argument("--scenarios", type=lambda s: set(s.split(",")), default=None, help="comma-separated subset, e.g. A1,A3")
     return Suite(parser.parse_args()).run()
 
