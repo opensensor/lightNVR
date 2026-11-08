@@ -469,9 +469,68 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   - Script it so X2 can rerun it with the feature enabled.
 - **validation**: The script runs twice on the same host with p95 variance
   under 2%. Results are committed as JSON with the host description.
-- **status**: Not Completed
+- **status**: Completed (partial validation: the DB-probe series failed the
+  2% repeatability check, see the log)
 - **log**:
-- **files edited/created**:
+  - **Harness.** `run-workload.mjs` sets up the workload:
+    - a standalone go2rtc with one always-on ffmpeg publisher per stream,
+      using a deterministic `testsrc2` clip;
+    - an isolated lightNVR from `fixture-server.mjs` on ext4/NVMe, never
+      tmpfs;
+    - continuous recording with 10 s segments;
+    - the SOD detector `tiny20.sod` every 1 s on each stream.
+    It then samples a 300 s window after 30 s of warm-up and writes the
+    results JSON (host, build, workload, latency, gaps, resources, raw
+    samples).
+  - **Recording-path latency proxies.** No packet-write latency metric
+    exists, so the harness uses two black-box proxies:
+    - `segment_interval_ms`, from segment-file creation intervals seen by
+      inotify;
+    - `db_probe_ms`, timing `GET /api/recordings?limit=1` with a session
+      cookie, which takes the global DB mutex.
+  - **Gaps** come from three sources: the `lightnvr_recording_gaps_total`
+    delta, the catalog-row gaps, and interval gaps.
+  - **Pure helpers** are in `metrics.mjs`, covered by 10 node:test cases
+    (all passing). `compare.mjs repeat|gate` implements the C4 and X2
+    checks.
+  - **Baseline**, run twice (feature disabled, 4×720p at 15 fps):
+    - 0 gaps in every source.
+    - 120/120 segments.
+    - Detector at 1.003 inferences per stream per second.
+    - CPU about 145% of one core.
+    - RSS high-water about 875 MB.
+    - Disk writes 2.33 MB/s.
+  - **Repeatability:**
+    - `segment_interval_ms` p95 was 10035.3 / 10037.9 ms (0.03%, pass).
+    - `db_probe_ms` p95 was 11.95 / 12.32 ms (**3.02%, fail**). The host was
+      shared with parallel agents, and the load average reached 9.25 during
+      run 2.
+- **gotchas / handoff to X2**:
+  - Synthetic content produces no VOC detections, so no observations would
+    be created. X2 must use a detection-producing clip (`--source`), and must
+    rerun disabled mode on that same clip and the same binary before running
+    `compare.mjs gate`.
+  - Enable the feature only through `--stream-extra` and `--config-extra`
+    (the new `fixture-server` `extraConfig` option). Scrape the L10
+    queue/drop/enqueue histograms into `results.feature_metrics`.
+  - Re-check DB-probe variance on a quiet host with a 600 s or longer window.
+    If it stays above 2%, gate only on segment interval plus gaps and record
+    that in C1.
+  - The go2rtc `exec:` lazy sources raced the first recorder/detector
+    connect, which is why the harness uses always-on publishers.
+  - Basic auth runs PBKDF2 per request, which is why the harness uses a
+    session cookie.
+  - The local build needs `PKG_CONFIG_LIBDIR` to point at the system FFmpeg
+    because of the stale `/usr/local` headers.
+  - The binary was built from `c46bff1c`. The `build.revision` field reads
+    `3c61e235` because docs-only commits landed between the build and the
+    run.
+  - C1 should link `tests/performance/observations/README.md` from
+    §Performance. C4 did not edit `OBSERVATIONS_CONTRACT.md`.
+- **files edited/created**: `tests/performance/observations/{run-workload.mjs,metrics.mjs,compare.mjs,workload.json,README.md}`,
+  `tests/performance/observations/results/2026-11-08-disabled-{run1,run2,repeatability}.json`,
+  `tests/contracts/tooling/observation-perf-metrics.test.mjs`,
+  `tests/contracts/fixture-server.mjs` (optional `extraConfig`)
 
 #### W0: Capture the YA-WAMF Frigate regression baseline
 - **depends_on**: []
