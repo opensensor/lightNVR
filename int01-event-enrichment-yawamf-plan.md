@@ -2281,9 +2281,166 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
 - **validation**: Pure tests cover admission (duplicate, stale revision,
   pending, classification-only) and per-object crop math against the C3
   fixture. W0 is green.
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commit `710de873` on `feature/lightnvr-provider`, not pushed)
 - **log**:
-- **files edited/created**:
+  - **RED→GREEN**: all three new test modules failed at collection
+    (`ModuleNotFoundError: app.services.sources.evidence_crop`, then
+    `observation_admission`, and `ImportError: mqtt_topic_matches`). After the
+    change they give 141 passed together with `test_lightnvr_parse.py`. One test
+    bug was fixed on the way: a fake watchdog recorded its topic only when the
+    coroutine ran, and the task was cancelled before that.
+  - **Gates**: W0, `pure/test_mqtt_service.py`,
+    `test_live_notification_integration.py`, `test_dead_modules.py` and
+    `pure/test_no_direct_frigate_calls.py` give 126 passed. Pure lane: 2165
+    passed, 4 skipped. Rest of the suite (`--ignore=tests/pure`): 5651 passed,
+    56 skipped, 0 failed, run with W8's in-flight hunks in the tree.
+    `dead_modules_check.py`, `docs_consistency_check.py`, the changelog check,
+    and `ruff check`/`ruff format` on every W4 file are clean. No Alembic
+    revision was added; W2's `d4e1a7c93b52` is still the single head.
+  - **Entry points (W6/W7 call these)**:
+    - `EventProcessor.process_live_message(topic, payload)`: the MQTT service
+      calls this for a non-Frigate source. It parses with the active provider,
+      then admits each observation with `origin="live"`.
+    - `EventProcessor.process_source_observation(obs, *, origin="live"|"recovery") -> AdmissionDecision`.
+      This is the one admission path for live and recovery. W6 passes history
+      items straight in: `change_cause=None` means the item already is the
+      authoritative state, so it is not fetched again.
+    - `AdmissionDecision(action, reason, detail)`, in
+      `app/services/sources/observation_admission.py`:
+      - `action` is `classify|wait|skip|retry`;
+      - `.settled` is False only for `retry`. **W6 advances the cursor only
+        past settled decisions.**
+      - Reasons: `classified`, `duplicate_message`, `classification_only`,
+        `stale_revision`, `already_admitted`, `evidence_pending`,
+        `evidence_unavailable` / `evidence_expired` (`detail` = the lightNVR
+        reason), `observation_missing`, `source_unreachable`, `source_refused`
+        (a permanent `LightNvrApiError`), `source_not_active`,
+        `label_not_ingested`, `classification_unavailable`, `filtered`
+        (`detail` = the filter reason), `not_saved`.
+    - Pure helpers: `ObservationLedger.screen/settle` and
+      `decide_evidence(current, *, already_admitted)`. In
+      `sources/evidence_crop.py`: `parse_normalized_box`,
+      `parse_evidence_transform`, `inference_point_to_stored`, `pixel_box`,
+      `classification_crop_region` and `evidence_regions`.
+    - Orchestration lives in `app/services/source_ingestion.py`
+      (`SourceIngestion`, `SourceObservationEvent`).
+      `DetectionService.save_detection` gained the optional keyword arguments
+      `source_kind`, `source_instance`, `external_observation_id` and
+      `source_camera_id`. `_save_detection` forwards
+      `event.detection_save_options` (which also carries
+      `report_to_birdweather=False` for recovery). A Frigate save passes
+      nothing new, so its call is identical.
+  - **Dedupe storage**: there is no new table and no revision.
+    `processing_job_state.event_id` has a foreign key to
+    `detections.frigate_event`, so it cannot hold anything before a detection
+    exists. The **`detections` row is the durable admission record**:
+    - The row is unique on `frigate_event` and on W2's source tuple, and it is
+      checked under a per-observation lock before any fetch.
+    - Once a row exists, any later message, revision or recovery item is
+      `already_admitted`, even after a restart.
+    - Pending, unavailable and expired evidence writes nothing durable, as
+      contract §16.2 requires.
+    - `ObservationLedger` is a bounded in-process LRU of 4096 entries. It holds
+      settled `(source, message_id)` pairs and the highest settled revision per
+      observation, so a replay costs no request. Losing it only costs a refetch.
+  - **Pipeline behaviour**:
+    - A live trigger is followed by `fetch_observation`, which supplies the box,
+      the transform, `stream_name_at_capture` and the current state.
+    - Evidence goes through `access.fetch_event_snapshot(crop=False, workflow="source_ingest")`,
+      so it is capability-gated. Images are cached per
+      `(instance, asset_id)` (16 entries), which means siblings fetch once.
+    - A `202` after the observation already said `ready` is a **retry**, not a
+      wait, because no later ready change will arrive.
+    - The crop is a square of the box's longer side × 1.1, centred and kept
+      inside the image. Frigate's 300 px floor is dropped, because on a small
+      frame it would swallow the sibling.
+    - C3 crops: bird 0 is `(14,14,50,50)` and bird 1 is `(93,17,146,70)` on the
+      160×80 JPEG. The letterbox box maps to `(512,90,768,234)` and its crop is
+      `(499,21,781,303)`. The transform is audited but never re-applied. A null
+      box classifies the whole image (`lightnvr_evidence`, `is_cropped=False`).
+    - Classifier input: `input_source="lightnvr_evidence_crop"`,
+      `is_cropped=True`, `source_image_sha256` = the evidence image. The stored
+      `classification_input` carries the crop box, frame size and frame time,
+      and a `frame_sha256` shared by siblings, which records the shared asset.
+    - The cached snapshot (media key `lnvr.<inst>.<obs>`) is the crop. The
+      notification attachment is the same crop.
+    - `frigate_score` holds lightNVR's detector confidence. The event `type` is
+      `new`. `camera_name` is `stream_name_at_capture`, and
+      `source_camera_id` is the camera UUID.
+    - Skips, waits and retries appear in `recent_outcomes` as
+      `"skipped: <reason>"`, `"waiting: …"` or `"retry: …"`, with `detail`.
+  - **Not run for lightNVR**: the Frigate lifecycle (`new/update/end`), end
+    refinement, `_handle_terminal_event_enrichment`, recording waits, the
+    staleness drop, Garden capture and domestic-bird routing. The last two are
+    Frigate- and lifecycle-only Garden features. No `end` is synthesized.
+  - **MQTT**:
+    - With a non-Frigate provider the service subscribes only to
+      `live_topics()` (plus BirdNET).
+    - It does not subscribe to `frigate/events` or `frigate/available`, starts
+      no watchdog and runs no stall reconnects.
+    - Messages are matched with `mqtt_topic_matches` (`+` and `#`) and
+      dispatched as `_schedule_source_message`, under the shared semaphore and
+      the 90 s timeout.
+    - `_refresh_source_capabilities()` runs at `start()` (also when no broker is
+      configured) and before every reconnect. It is bounded at 30 s, and a
+      failure is logged without blocking.
+    - The Frigate path is byte-identical. Frigate's `parse_live_message` stays
+      off the hot path, because per-event serialization and pending-payload
+      merging need the raw payload.
+  - **Multi-bird (verified by test)**: two same-species siblings give
+    2 detections, 1 visit with `capture_count` 2, and a leaderboard window with
+    `window_count` 2 and `window_visit_count` 1. Visits and leaderboard visits
+    do not double count.
+    - **Intended difference** (contract §16.3): a Frigate two-bird event is
+      1 detection, while lightNVR yields 2.
+    - **Deviation from decision 8**: no `bird_observations` row is written.
+      Those rows need bird-scan candidate media (`candidate_id`,
+      `clip_variant`, `frame_index`), and synthetic rows would feed the HQ and
+      bird-scan machinery. A lightNVR detection therefore counts like a
+      Frigate detection that has never been bird-scanned: `counted_birds` and
+      `counted_captures` in the daily summary exclude it. W9 should check the
+      multi-bird display, and decide whether to add index-0 rows with a real
+      candidate.
+  - **Other changes**:
+    - `lightnvr_provider.lightnvr_event_key` is now `event_keys.lightnvr_event_key`
+      (re-exported).
+    - **Bug fixed**: `LightNvrSettings.source_instance` allowed `.` and `_`,
+      which `event_keys` rejects (and `.` is the media-key separator). It is now
+      `^[A-Za-z0-9][A-Za-z0-9-]{0,63}$`. The docs and a test case were updated.
+  - **Gotchas**:
+    - **W6**: a live `retry` is not retried by itself. Recovery must replay it,
+      so only advance the cursor past settled decisions. A detection the owner
+      hard-deletes would be admitted again if the cursor is reset. Hidden rows
+      still count as admitted. History items have no `message_id` collision
+      with live items for the same revision (W5 recomputes the ID), so the
+      ledger dedupes the overlap.
+    - **W7**:
+      - Live admission enqueues `_enqueue_notification_flow` with
+        `type="new"`, `changed=True` and `was_inserted=True`. `standard` and
+        default modes therefore notify, but `final` does not yet, because it
+        still waits for an `end` (W7 owns that).
+      - Recovery (`origin="recovery"`) enqueues **no** notification; W7
+        records `suppressed_recovery`.
+      - Siblings notify separately, subject to cooldown.
+    - **W8**: the UI or validation for `lightnvr_source_instance` must match
+      the new regex.
+    - **W9**: repeat the snapshot-only test with this pipeline.
+      `write_frigate_sublabel` makes `write_event_classification` record an
+      `annotate` capability skip on every save.
+    - **W10**: replace the `annotate` skip through
+      `access.write_event_classification`, which is already called after save.
+- **files edited/created** (YA-WAMF):
+  - `backend/app/services/source_ingestion.py` (new),
+    `backend/app/services/sources/observation_admission.py` (new),
+    `backend/app/services/sources/evidence_crop.py` (new)
+  - `backend/app/services/mqtt_service.py`, `event_processor.py`,
+    `detection_service.py`, `sources/lightnvr_provider.py`,
+    `backend/app/config_models.py`
+  - `backend/tests/pure/test_observation_admission.py` (new),
+    `backend/tests/pure/test_source_live_dispatch.py` (new),
+    `backend/tests/test_lightnvr_ingestion.py` (new),
+    `backend/tests/pure/test_lightnvr_parse.py`
+  - `docs/setup/environment-variables.md`, `changelog.d/lightnvr-ingestion.md` (new)
 
 #### W5: lightNVR client and provider
 - **depends_on**: [W1, C3]
