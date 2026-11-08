@@ -451,9 +451,83 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
 - **validation**: A new `tests/contracts/tooling/observation-fixtures.test.mjs`
   validates every fixture against `docs/api/openapi.json`. A YA-WAMF pure test
   loads the vendored copies (added in W5).
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - lightNVR commit `d968b4d5`; YA-WAMF commit `466d5a28` (vendored copy,
+    `SOURCE.md` names `d968b4d5` and lists SHA-256 sums).
+  - **Inventory** (46 files, all listed in `manifest.json` with kind,
+    schema, request/status/headers or MQTT topic):
+    - One scenario, one change log (`manifest.changes`, seq 1001–1013).
+    - `observations/` (10): single bird A at revisions 1–5
+      (pending, ready (= contract §3.6), ready + automated annotation,
+      owner-confirmed, expired); B `unavailable(queue_full)`; two birds
+      C0/C1 sharing asset `9999…`; D, an HTTP letterbox (1280x720 → 640x640,
+      scale 0.5, pad_y 140, with the inference-space box in the manifest);
+      E, ONVIF `no_matching_media` with a null box.
+    - `events/` (8): complete envelopes in `event_envelope.c` key order for
+      `created`, `evidence` (ready and expired) and `classification`. IDs are
+      UUIDv5 per §5.4. A r2 is the contract test vector
+      `43ebdf02-…`.
+    - `message-ids.json`: the namespace derivation and every vector.
+    - `pages/` (4): three chained `limit=2` pages at watermark 1010
+      (A reappears at r3; `next_cursor` is the last *scanned* change), plus
+      `cursor=head`.
+    - `errors/` (9): `cursor_expired`, `invalid_cursor`, `evidence_pending`
+      (202 + `Retry-After`), `evidence_unavailable`, `evidence_expired`,
+      `observation_not_found`, `forbidden` (D4), `not_implemented`,
+      `service_unavailable`.
+    - `capabilities/` p1 and p2.
+    - `classifications/` (8 exchanges, each with `observation_file` = the
+      precondition): 201 create, 200 no-op retry, 409 `revision_conflict`,
+      200 owner confirm, 409 `owner_decision_locked`, 422
+      `evidence_mismatch` (wrong asset; pending), 403
+      `namespace_forbidden`.
+    - `media/two-birds-160x80.jpg` + box manifest (pixel coords, colors,
+      sha256).
+  - **Generator**: `scripts/contracts/observation-fixtures.mjs`
+    (`--check`, `--jpeg`, `--vendor <ya-wamf>`, `--check-vendor <ya-wamf>`).
+    Its helpers `uuidv5`, `messageId` and `encodeCursor` are exported.
+  - **RED→GREEN**: `observation-fixtures.test.mjs` failed 9/10 with 1 skip
+    before the fixtures existed. After adding them it passes 9/9 with the
+    vendor check skipped, and 10/10 once vendored. Negative cases: reason on
+    ready, `snapshot_url` on pending, ready without `snapshot_url`, expired
+    without reason, a 32-byte label, `object_index` 20, a closed PUT body
+    and an event reason on ready are all rejected. Tampering with an event
+    revision fails the message-ID and generator checks.
+    `node --test tests/contracts/tooling/*.test.mjs`: 59 tests, 58 pass,
+    1 skip (the vendor check, before vendoring).
+  - **Re-sync**: after committing fixture changes in lightNVR, run
+    `node scripts/contracts/observation-fixtures.mjs --vendor ../YetAnother-WhosAtMyFeeder`.
+    It refuses if the fixtures are dirty, unless `--allow-dirty`. Then
+    commit in YA-WAMF. The lightNVR tooling test compares the copy byte for
+    byte when the sibling checkout exists or `LIGHTNVR_YAWAMF_DIR` is set,
+    and skips otherwise.
+  - **Gotchas for later tasks**:
+    - **JPEG bytes**: they are canonical and are re-encoded only with
+      `--jpeg`, because sharp/libjpeg output can drift. The JSON `bytes` and
+      `sha256` derive from the file on disk.
+    - **Envelope**: OpenAPI has no envelope schema. The test checks envelope
+      shape locally, and validates `data` against `ObservationChangeEvent`.
+    - **Two fixture-level conventions** not stated in the contract:
+      - pending evidence keeps `origin`, `media_type`, `captured_at` and
+        `transform`, and leaves `width`, `height`, `bytes` and `expires_at`
+        null;
+      - evidence that never had media has every media field null.
+
+      L2 and L8 should match them or amend the contract.
+    - **Fixture vs. contract wording**: the expired fixture keeps
+      `expires_at` at its estimate, and the `evidence_expired` error carries
+      the actual `expired_at`.
+    - **W10**: the PUT fixtures use user `yawamf`. Read the namespace from
+      `capabilities.principal.writer_namespace`; the test asserts that each
+      exchange's namespace is advertised.
+    - **W5**: the vendored `README.md` links to
+      `../../../../docs/...`, which resolves only in lightNVR.
 - **files edited/created**:
+  - `tests/fixtures/integrations/observations/**` (new: 46 files plus `README.md`)
+  - `scripts/contracts/observation-fixtures.mjs` (new)
+  - `tests/contracts/tooling/observation-fixtures.test.mjs` (new)
+  - YA-WAMF: `backend/tests/fixtures/lightnvr/**` (new, with `SOURCE.md`)
 
 #### C4: Declare the performance fixture and capture a disabled baseline
 - **depends_on**: []
