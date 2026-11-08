@@ -272,6 +272,60 @@ static void test_startup_reconciles_interrupted_missing_and_orphan_files(void) {
                              result.pending_interrupted + result.ready_missing);
 }
 
+/* The sweep never follows a symlink below the evidence root: neither a
+ * symlinked directory nor a symlinked file. Files outside the root survive. */
+static void test_startup_sweep_does_not_follow_symlinks_below_root(void) {
+    char outside[512], out_tmp[512], out_final[512], uuid[OBS_UUID_SIZE];
+    snprintf(outside, sizeof(outside), "%s/outside-evidence", storage);
+    rm_tree(outside);
+    TEST_ASSERT_EQUAL_INT(0, lightnvr_uuid_generate_v4(uuid));
+    snprintf(out_tmp, sizeof(out_tmp), "%s/%s.jpg.tmp", outside, uuid);
+    snprintf(out_final, sizeof(out_final), "%s/%s.jpg", outside, uuid);
+    write_file(out_tmp, 10);
+    write_file(out_final, 10);
+
+    char cam_dir[512], dir_link[512], file_link[512];
+    snprintf(cam_dir, sizeof(cam_dir), "%s/observations/%s/2026-11-08", storage, cam_a);
+    TEST_ASSERT_EQUAL_INT(0, mkdir_recursive(cam_dir));
+    snprintf(dir_link, sizeof(dir_link), "%s/observations/%s/2026-11-09", storage, cam_a);
+    TEST_ASSERT_EQUAL_INT(0, symlink(outside, dir_link));
+    char other[OBS_UUID_SIZE];
+    TEST_ASSERT_EQUAL_INT(0, lightnvr_uuid_generate_v4(other));
+    snprintf(file_link, sizeof(file_link), "%s/%s.jpg.tmp", cam_dir, other);
+    TEST_ASSERT_EQUAL_INT(0, symlink(out_tmp, file_link));
+
+    observation_reconcile_result_t result;
+    startup(&result);
+    TEST_ASSERT_EQUAL_INT(0, result.tmp_files_deleted);
+    TEST_ASSERT_EQUAL_INT(0, result.stale_files_deleted);
+    TEST_ASSERT_TRUE(exists(out_tmp));
+    TEST_ASSERT_TRUE(exists(out_final));
+    TEST_ASSERT_TRUE(exists(dir_link));
+    TEST_ASSERT_TRUE(exists(file_link));
+    rm_tree(outside);
+}
+
+/* The evidence root itself may be a symlink (a mounted storage path); it is
+ * still swept. */
+static void test_startup_sweep_follows_a_symlinked_evidence_root(void) {
+    char real[512], root[512], tmp[512], uuid[OBS_UUID_SIZE];
+    snprintf(real, sizeof(real), "%s/observations-real", storage);
+    snprintf(root, sizeof(root), "%s/observations", storage);
+    rm_tree(real);
+    rm_tree(root);
+    TEST_ASSERT_EQUAL_INT(0, lightnvr_uuid_generate_v4(uuid));
+    snprintf(tmp, sizeof(tmp), "%s/%s/2026-11-08/%s.jpg.tmp", real, cam_a, uuid);
+    write_file(tmp, 10);
+    TEST_ASSERT_EQUAL_INT(0, symlink(real, root));
+
+    observation_reconcile_result_t result;
+    startup(&result);
+    TEST_ASSERT_EQUAL_INT(1, result.tmp_files_deleted);
+    TEST_ASSERT_FALSE(exists(tmp));
+    TEST_ASSERT_EQUAL_INT(0, unlink(root));
+    rm_tree(real);
+}
+
 static void test_periodic_run_waits_for_startup_reconciliation(void) {
     ready_asset_t old = make_ready(cam_a, now_ms - 30 * DAY_MS, 100, 1);
     observation_retention_result_t result;
@@ -542,6 +596,8 @@ int main(void) {
     make_camera("cam_a", cam_a);
     make_camera("cam_b", cam_b);
     RUN_TEST(test_startup_reconciles_interrupted_missing_and_orphan_files);
+    RUN_TEST(test_startup_sweep_does_not_follow_symlinks_below_root);
+    RUN_TEST(test_startup_sweep_follows_a_symlinked_evidence_root);
     RUN_TEST(test_periodic_run_waits_for_startup_reconciliation);
     RUN_TEST(test_age_budget_expires_media_and_keeps_metadata);
     RUN_TEST(test_shared_asset_survives_until_last_reference_expires);

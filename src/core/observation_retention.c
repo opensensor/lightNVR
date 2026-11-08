@@ -240,9 +240,20 @@ typedef struct {
     int errors;
 } sweep_t;
 
+/* Remove dir_fd/name, counting it. dir_fd-relative so a renamed or swapped
+ * parent directory cannot redirect the delete outside the evidence root. */
+static void remove_at(int dir_fd, const char *name, const char *path, int *deleted) {
+    if (unlinkat(dir_fd, name, 0) == 0) {
+        if (deleted) ++*deleted;
+        return;
+    }
+    if (errno == ENOENT || errno == ENOTDIR) return;
+    log_warn("Failed to delete observation evidence file %s: %s", path, strerror(errno));
+}
+
 /* <uuid>.jpg: keep only the file a ready asset row points at. No worker runs
  * yet, so a final file of a pending asset is an unfinished write. */
-static void sweep_final(sweep_t *s, const char *path, const char *name) {
+static void sweep_final(sweep_t *s, int dir_fd, const char *path, const char *name) {
     char uuid[OBS_UUID_SIZE];
     size_t len = strlen(name) - 4;  /* ".jpg" */
     if (len != OBS_UUID_SIZE - 1) return;
@@ -265,15 +276,21 @@ static void sweep_final(sweep_t *s, const char *path, const char *name) {
         ++s->errors;
         return;
     }
-    (void)remove_file(path, &s->result->stale_files_deleted);
+    remove_at(dir_fd, name, path, &s->result->stale_files_deleted);
 }
 
-static void sweep_dir(sweep_t *s, const char *dir, int depth) {
-    DIR *d = opendir(dir);
+/* Walk an already-open directory. Every check and action is relative to the
+ * directory's fd and never follows symlinks, so an entry swapped for a
+ * symlink between the check and the action cannot escape the evidence root.
+ * Takes ownership of dir_fd. `dir` is used for logging and path comparison. */
+static void sweep_dir_fd(sweep_t *s, int dir_fd, const char *dir, int depth) {
+    DIR *d = fdopendir(dir_fd);
     if (!d) {
-        if (errno != ENOENT) log_warn("Cannot scan evidence directory %s: %s", dir, strerror(errno));
+        log_warn("Cannot scan evidence directory %s: %s", dir, strerror(errno));
+        close(dir_fd);
         return;
     }
+    int fd = dirfd(d);
     struct dirent *entry;
     while ((entry = readdir(d)) != NULL) {
         const char *name = entry->d_name;
@@ -281,22 +298,36 @@ static void sweep_dir(sweep_t *s, const char *dir, int depth) {
         char path[OBS_PATH_SIZE];
         if (snprintf(path, sizeof(path), "%s/%s", dir, name) >= (int)sizeof(path)) continue;
         struct stat st;
-        if (lstat(path, &st) != 0) continue;
+        if (fstatat(fd, name, &st, AT_SYMLINK_NOFOLLOW) != 0) continue;
         if (S_ISDIR(st.st_mode)) {
             if (depth < OBS_WALK_MAX_DEPTH) {
-                sweep_dir(s, path, depth + 1);
-                if (depth > 1) (void)rmdir(path);  /* only succeeds when empty */
+                int child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+                if (child < 0) continue;
+                sweep_dir_fd(s, child, path, depth + 1);
+                if (depth > 1) (void)unlinkat(fd, name, AT_REMOVEDIR);  /* only succeeds when empty */
             }
             continue;
         }
         if (!S_ISREG(st.st_mode)) continue;  /* symlinks and specials are left alone */
         if (has_suffix(name, ".jpg.tmp")) {
-            (void)remove_file(path, &s->result->tmp_files_deleted);
+            remove_at(fd, name, path, &s->result->tmp_files_deleted);
         } else if (has_suffix(name, ".jpg")) {
-            sweep_final(s, path, name);
+            sweep_final(s, fd, path, name);
         }
     }
     closedir(d);
+}
+
+/* The evidence root comes from trusted configuration and may itself be a
+ * symlink (for example a mounted storage path), so it is followed; nothing
+ * below it is. */
+static void sweep_dir(sweep_t *s, const char *dir, int depth) {
+    int fd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) {
+        if (errno != ENOENT) log_warn("Cannot scan evidence directory %s: %s", dir, strerror(errno));
+        return;
+    }
+    sweep_dir_fd(s, fd, dir, depth);
 }
 
 static int sweep_files(const char *root, observation_reconcile_result_t *result) {
