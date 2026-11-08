@@ -3437,7 +3437,7 @@ var __contract_AdminSimulation = validate200, schema205 = {
   },
   required: [ "allowed", "action", "source", "policy_version", "explanation", "grant_uuid", "role_uuid", "role", "principal", "resource" ],
   additionalProperties: !1
-}, func5 = Object.prototype.hasOwnProperty;
+}, func7 = Object.prototype.hasOwnProperty;
 
 function validate200(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
   let vErrors = [], errors = 0, evaluated0 = validate200.evaluated;
@@ -3533,7 +3533,7 @@ function validate200(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema205.properties, key0)) return validate200.errors = [ {
+      for (let key0 in data) if (!func7.call(schema205.properties, key0)) return validate200.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -4462,7 +4462,7 @@ function validate174(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema181.properties, key0)) return validate174.errors = [ {
+    for (let key0 in data) if (!func7.call(schema181.properties, key0)) return validate174.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -5542,7 +5542,7 @@ function validate175(data, {instancePath: instancePath = "", parentData: parentD
           } ], !1;
           {
             let _errs7 = 0;
-            for (let key1 in data1) if (!func5.call(schema181.properties, key1)) return validate175.errors = [ {
+            for (let key1 in data1) if (!func7.call(schema181.properties, key1)) return validate175.errors = [ {
               instancePath: instancePath + "/users/" + i0,
               schemaPath: "#/$defs/AdminUser/additionalProperties",
               keyword: "additionalProperties",
@@ -7002,7 +7002,7 @@ function validate201(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema207.properties, key0)) return validate201.errors = [ {
+    for (let key0 in data) if (!func7.call(schema207.properties, key0)) return validate201.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -7488,7 +7488,7 @@ function validate202(data, {instancePath: instancePath = "", parentData: parentD
                   } ], !1;
                   {
                     let _errs15 = 0;
-                    for (let key1 in data5) if (!func5.call(schema207.properties, key1)) return validate202.errors = [ {
+                    for (let key1 in data5) if (!func7.call(schema207.properties, key1)) return validate202.errors = [ {
                       instancePath: instancePath + "/events/" + i0,
                       schemaPath: "#/$defs/AuditEvent/additionalProperties",
                       keyword: "additionalProperties",
@@ -9752,7 +9752,7 @@ function validate168(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema177.properties, key0)) return validate168.errors = [ {
+      for (let key0 in data) if (!func7.call(schema177.properties, key0)) return validate168.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -12021,7 +12021,7 @@ function validate80(data, {instancePath: instancePath = "", parentData: parentDa
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema88.properties, key0)) return validate80.errors = [ {
+    for (let key0 in data) if (!func7.call(schema88.properties, key0)) return validate80.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -14478,7 +14478,7 @@ function validate303(data, {instancePath: instancePath = "", parentData: parentD
                 } ], !1;
                 {
                   let _errs10 = 0;
-                  for (let key1 in data3) if (!func5.call(schema331.properties.event_types.items.properties, key1)) return validate303.errors = [ {
+                  for (let key1 in data3) if (!func7.call(schema331.properties.event_types.items.properties, key1)) return validate303.errors = [ {
                     instancePath: instancePath + "/event_types/" + i0,
                     schemaPath: "#/properties/event_types/items/additionalProperties",
                     keyword: "additionalProperties",
@@ -14963,7 +14963,7 @@ function validate285(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema310.properties, key0)) return validate285.errors = [ {
+    for (let key0 in data) if (!func7.call(schema310.properties, key0)) return validate285.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -17483,7 +17483,7 @@ function validate286(data, {instancePath: instancePath = "", parentData: parentD
               } ], !1;
               {
                 let _errs20 = 0;
-                for (let key2 in data7) if (!func5.call(schema310.properties, key2)) return validate286.errors = [ {
+                for (let key2 in data7) if (!func7.call(schema310.properties, key2)) return validate286.errors = [ {
                   instancePath: instancePath + "/destinations/" + i0,
                   schemaPath: "#/$defs/EventDestination/additionalProperties",
                   keyword: "additionalProperties",
@@ -19019,7 +19019,7 @@ function validate293(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema318.properties, key0)) return validate293.errors = [ {
+      for (let key0 in data) if (!func7.call(schema318.properties, key0)) return validate293.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -20349,7 +20349,7 @@ function validate297(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema322.properties, key0)) return validate297.errors = [ {
+      for (let key0 in data) if (!func7.call(schema322.properties, key0)) return validate297.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -22112,7 +22112,7 @@ function validate301(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema328.properties, key0)) return validate301.errors = [ {
+      for (let key0 in data) if (!func7.call(schema328.properties, key0)) return validate301.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -23303,7 +23303,7 @@ function validate299(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema325.properties, key0)) return validate299.errors = [ {
+      for (let key0 in data) if (!func7.call(schema325.properties, key0)) return validate299.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -25172,7 +25172,7 @@ function validate390(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema452.properties, key0)) return validate390.errors = [ {
+      for (let key0 in data) if (!func7.call(schema452.properties, key0)) return validate390.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -25415,7 +25415,7 @@ function validate390(data, {instancePath: instancePath = "", parentData: parentD
                           } ], !1;
                           {
                             let _errs21 = errors;
-                            for (let key1 in data8) if (!func5.call(schema450.properties, key1)) return validate390.errors = [ {
+                            for (let key1 in data8) if (!func7.call(schema450.properties, key1)) return validate390.errors = [ {
                               instancePath: instancePath + "/filters",
                               schemaPath: "#/$defs/EvidenceBookmarkFilters/additionalProperties",
                               keyword: "additionalProperties",
@@ -26536,7 +26536,7 @@ function validate393(data, {instancePath: instancePath = "", parentData: parentD
                       } ], !1;
                       {
                         let _errs21 = errors;
-                        for (let key0 in data8) if (!func5.call(schema450.properties, key0)) return validate393.errors = [ {
+                        for (let key0 in data8) if (!func7.call(schema450.properties, key0)) return validate393.errors = [ {
                           instancePath: instancePath + "/filters",
                           schemaPath: "#/$defs/EvidenceBookmarkFilters/additionalProperties",
                           keyword: "additionalProperties",
@@ -27379,7 +27379,7 @@ function validate388(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema450.properties, key0)) return validate388.errors = [ {
+    for (let key0 in data) if (!func7.call(schema450.properties, key0)) return validate388.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -29624,7 +29624,7 @@ function validate396(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema461.properties, key0)) return validate396.errors = [ {
+      for (let key0 in data) if (!func7.call(schema461.properties, key0)) return validate396.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -29991,7 +29991,7 @@ function validate396(data, {instancePath: instancePath = "", parentData: parentD
                               } ], !1;
                               {
                                 let _errs31 = errors;
-                                for (let key1 in data10) if (!func5.call(schema461.properties.attributes.properties, key1)) return validate396.errors = [ {
+                                for (let key1 in data10) if (!func7.call(schema461.properties.attributes.properties, key1)) return validate396.errors = [ {
                                   instancePath: instancePath + "/attributes",
                                   schemaPath: "#/properties/attributes/additionalProperties",
                                   keyword: "additionalProperties",
@@ -30483,7 +30483,7 @@ function validate397(data, {instancePath: instancePath = "", parentData: parentD
                   } ], !1;
                   {
                     let _errs7 = errors;
-                    for (let key1 in data1) if (!func5.call(schema461.properties, key1)) return validate397.errors = [ {
+                    for (let key1 in data1) if (!func7.call(schema461.properties, key1)) return validate397.errors = [ {
                       instancePath: instancePath + "/reads/" + i0,
                       schemaPath: "#/$defs/EvidenceLprRead/additionalProperties",
                       keyword: "additionalProperties",
@@ -30850,7 +30850,7 @@ function validate397(data, {instancePath: instancePath = "", parentData: parentD
                                             } ], !1;
                                             {
                                               let _errs37 = errors;
-                                              for (let key2 in data12) if (!func5.call(schema461.properties.attributes.properties, key2)) return validate397.errors = [ {
+                                              for (let key2 in data12) if (!func7.call(schema461.properties.attributes.properties, key2)) return validate397.errors = [ {
                                                 instancePath: instancePath + "/reads/" + i0 + "/attributes",
                                                 schemaPath: "#/$defs/EvidenceLprRead/properties/attributes/additionalProperties",
                                                 keyword: "additionalProperties",
@@ -32143,7 +32143,7 @@ function validate381(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema441.properties, key0)) return validate381.errors = [ {
+    for (let key0 in data) if (!func7.call(schema441.properties, key0)) return validate381.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -32419,7 +32419,7 @@ function validate381(data, {instancePath: instancePath = "", parentData: parentD
                             } ], !1;
                             {
                               let _errs21 = 0;
-                              for (let key1 in data8) if (!func5.call(schema440.properties, key1)) return validate381.errors = [ {
+                              for (let key1 in data8) if (!func7.call(schema440.properties, key1)) return validate381.errors = [ {
                                 instancePath: instancePath + "/recordings/" + i0,
                                 schemaPath: "#/$defs/EvidencePreviewRecording/additionalProperties",
                                 keyword: "additionalProperties",
@@ -32964,7 +32964,7 @@ function validate380(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema440.properties, key0)) return validate380.errors = [ {
+    for (let key0 in data) if (!func7.call(schema440.properties, key0)) return validate380.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -34173,7 +34173,7 @@ function validate385(data, {instancePath: instancePath = "", parentData: parentD
                         } ], !1;
                         {
                           let _errs13 = errors;
-                          for (let key1 in data4) if (!func5.call(schema446.properties, key1)) return validate385.errors = [ {
+                          for (let key1 in data4) if (!func7.call(schema446.properties, key1)) return validate385.errors = [ {
                             instancePath: instancePath + "/results/" + i0,
                             schemaPath: "#/$defs/EvidenceSearchResult/additionalProperties",
                             keyword: "additionalProperties",
@@ -35359,7 +35359,7 @@ function validate385(data, {instancePath: instancePath = "", parentData: parentD
                       } ], !1;
                       {
                         let _errs119 = errors;
-                        for (let key9 in data44) if (!func5.call(schema447.properties.facets.properties, key9)) return validate385.errors = [ {
+                        for (let key9 in data44) if (!func7.call(schema447.properties.facets.properties, key9)) return validate385.errors = [ {
                           instancePath: instancePath + "/facets",
                           schemaPath: "#/properties/facets/additionalProperties",
                           keyword: "additionalProperties",
@@ -36868,7 +36868,7 @@ function validate385(data, {instancePath: instancePath = "", parentData: parentD
                                           vErrors.push(err48), errors++;
                                         } else {
                                           let _errs258 = errors;
-                                          for (let key23 in data104) if (!func5.call(schema447.properties.coverage.properties.spatial_metadata.oneOf[1].properties, key23)) {
+                                          for (let key23 in data104) if (!func7.call(schema447.properties.coverage.properties.spatial_metadata.oneOf[1].properties, key23)) {
                                             let err49 = {
                                               instancePath: instancePath + "/coverage/spatial_metadata",
                                               schemaPath: "#/properties/coverage/properties/spatial_metadata/oneOf/1/additionalProperties",
@@ -40255,7 +40255,7 @@ function validate384(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema446.properties, key0)) return validate384.errors = [ {
+      for (let key0 in data) if (!func7.call(schema446.properties, key0)) return validate384.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -41372,7 +41372,7 @@ function validate372(data, {instancePath: instancePath = "", parentData: parentD
     vErrors.push(err8), errors++;
   } else {
     let _errs3 = errors;
-    for (let key0 in data) if (!func5.call(schema431.oneOf[0].properties, key0)) {
+    for (let key0 in data) if (!func7.call(schema431.oneOf[0].properties, key0)) {
       let err9 = {
         instancePath: instancePath,
         schemaPath: "#/oneOf/0/additionalProperties",
@@ -41673,7 +41673,7 @@ function validate372(data, {instancePath: instancePath = "", parentData: parentD
     vErrors.push(err31), errors++;
   } else {
     let _errs23 = errors;
-    for (let key1 in data) if (!func5.call(schema431.oneOf[1].properties, key1)) {
+    for (let key1 in data) if (!func7.call(schema431.oneOf[1].properties, key1)) {
       let err32 = {
         instancePath: instancePath,
         schemaPath: "#/oneOf/1/additionalProperties",
@@ -42044,7 +42044,7 @@ function validate376(data, {instancePath: instancePath = "", parentData: parentD
           vErrors.push(err8), errors++;
         } else {
           let _errs9 = errors;
-          for (let key1 in data0) if (!func5.call(schema431.oneOf[0].properties, key1)) {
+          for (let key1 in data0) if (!func7.call(schema431.oneOf[0].properties, key1)) {
             let err9 = {
               instancePath: instancePath + "/segment",
               schemaPath: "#/$defs/EvidenceSegment/oneOf/0/additionalProperties",
@@ -42342,7 +42342,7 @@ function validate376(data, {instancePath: instancePath = "", parentData: parentD
           vErrors.push(err31), errors++;
         } else {
           let _errs29 = errors;
-          for (let key2 in data0) if (!func5.call(schema431.oneOf[1].properties, key2)) {
+          for (let key2 in data0) if (!func7.call(schema431.oneOf[1].properties, key2)) {
             let err32 = {
               instancePath: instancePath + "/segment",
               schemaPath: "#/$defs/EvidenceSegment/oneOf/1/additionalProperties",
@@ -44718,7 +44718,7 @@ function validate373(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema432.properties, key0)) return validate373.errors = [ {
+      for (let key0 in data) if (!func7.call(schema432.properties, key0)) return validate373.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -45081,7 +45081,7 @@ function validate373(data, {instancePath: instancePath = "", parentData: parentD
                                   vErrors.push(err8), errors++;
                                 } else {
                                   let _errs32 = errors;
-                                  for (let key2 in data13) if (!func5.call(schema431.oneOf[0].properties, key2)) {
+                                  for (let key2 in data13) if (!func7.call(schema431.oneOf[0].properties, key2)) {
                                     let err9 = {
                                       instancePath: instancePath + "/segments/" + i0,
                                       schemaPath: "#/$defs/EvidenceSegment/oneOf/0/additionalProperties",
@@ -45379,7 +45379,7 @@ function validate373(data, {instancePath: instancePath = "", parentData: parentD
                                   vErrors.push(err31), errors++;
                                 } else {
                                   let _errs52 = errors;
-                                  for (let key3 in data13) if (!func5.call(schema431.oneOf[1].properties, key3)) {
+                                  for (let key3 in data13) if (!func7.call(schema431.oneOf[1].properties, key3)) {
                                     let err32 = {
                                       instancePath: instancePath + "/segments/" + i0,
                                       schemaPath: "#/$defs/EvidenceSegment/oneOf/1/additionalProperties",
@@ -45974,7 +45974,7 @@ function validate163(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema169.properties, key0)) return validate163.errors = [ {
+      for (let key0 in data) if (!func7.call(schema169.properties, key0)) return validate163.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -46746,7 +46746,7 @@ function validate164(data, {instancePath: instancePath = "", parentData: parentD
                   } ], !1;
                   {
                     let _errs7 = errors;
-                    for (let key1 in data1) if (!func5.call(schema169.properties, key1)) return validate164.errors = [ {
+                    for (let key1 in data1) if (!func7.call(schema169.properties, key1)) return validate164.errors = [ {
                       instancePath: instancePath + "/locations/" + i0,
                       schemaPath: "#/$defs/FleetLocation/additionalProperties",
                       keyword: "additionalProperties",
@@ -47177,7 +47177,7 @@ function validate146(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema156.properties, key0)) return validate146.errors = [ {
+      for (let key0 in data) if (!func7.call(schema156.properties, key0)) return validate146.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -48652,7 +48652,7 @@ function validate156(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema165.properties, key0)) return validate156.errors = [ {
+      for (let key0 in data) if (!func7.call(schema165.properties, key0)) return validate156.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -49034,7 +49034,7 @@ function validate156(data, {instancePath: instancePath = "", parentData: parentD
                                       } ], !1;
                                       {
                                         let _errs22 = errors;
-                                        for (let key1 in data11) if (!func5.call(schema157.properties, key1)) return validate156.errors = [ {
+                                        for (let key1 in data11) if (!func7.call(schema157.properties, key1)) return validate156.errors = [ {
                                           instancePath: instancePath + "/cameras/" + i0,
                                           schemaPath: "#/$defs/FleetCamera/additionalProperties",
                                           keyword: "additionalProperties",
@@ -49683,7 +49683,7 @@ function validate144(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema155.properties, key0)) return validate144.errors = [ {
+      for (let key0 in data) if (!func7.call(schema155.properties, key0)) return validate144.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -50084,7 +50084,7 @@ function validate153(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema163.properties, key0)) return validate153.errors = [ {
+      for (let key0 in data) if (!func7.call(schema163.properties, key0)) return validate153.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -50466,7 +50466,7 @@ function validate153(data, {instancePath: instancePath = "", parentData: parentD
                                       } ], !1;
                                       {
                                         let _errs23 = errors;
-                                        for (let key1 in data11) if (!func5.call(schema157.properties, key1)) return validate153.errors = [ {
+                                        for (let key1 in data11) if (!func7.call(schema157.properties, key1)) return validate153.errors = [ {
                                           instancePath: instancePath + "/cameras/" + i0,
                                           schemaPath: "#/$defs/FleetCamera/additionalProperties",
                                           keyword: "additionalProperties",
@@ -51286,7 +51286,7 @@ function validate159(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema167.properties, key0)) return validate159.errors = [ {
+      for (let key0 in data) if (!func7.call(schema167.properties, key0)) return validate159.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -52922,7 +52922,7 @@ function validate224(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema240.properties, key0)) return validate224.errors = [ {
+      for (let key0 in data) if (!func7.call(schema240.properties, key0)) return validate224.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -53489,7 +53489,7 @@ function validate244(data, {instancePath: instancePath = "", parentData: parentD
                   vErrors.push(err5), errors++;
                 } else {
                   let _errs11 = errors;
-                  for (let key1 in data2) if (!func5.call(schema256.properties, key1)) {
+                  for (let key1 in data2) if (!func7.call(schema256.properties, key1)) {
                     let err6 = {
                       instancePath: instancePath + "/shapes/" + i0,
                       schemaPath: "#/$defs/FloorSketchRect/additionalProperties",
@@ -55189,7 +55189,7 @@ function validate253(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema275.properties, key0)) return validate253.errors = [ {
+      for (let key0 in data) if (!func7.call(schema275.properties, key0)) return validate253.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -57279,7 +57279,7 @@ function validate240(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema256.properties, key0)) return validate240.errors = [ {
+    for (let key0 in data) if (!func7.call(schema256.properties, key0)) return validate240.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -62506,7 +62506,7 @@ function validate418(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema491.properties, key0)) return validate418.errors = [ {
+      for (let key0 in data) if (!func7.call(schema491.properties, key0)) return validate418.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -63093,7 +63093,7 @@ function validate414(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema483.properties, key0)) return validate414.errors = [ {
+    for (let key0 in data) if (!func7.call(schema483.properties, key0)) return validate414.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -65452,7 +65452,7 @@ function validate425(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs130 = errors;
-      for (let key8 in data) if (!func5.call(schema498.properties, key8)) return validate425.errors = [ {
+      for (let key8 in data) if (!func7.call(schema498.properties, key8)) return validate425.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -69353,7 +69353,7 @@ function validate232(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema248.properties, key0)) return validate232.errors = [ {
+      for (let key0 in data) if (!func7.call(schema248.properties, key0)) return validate232.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -72071,7 +72071,7 @@ function validate75(data, {instancePath: instancePath = "", parentData: parentDa
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema80.properties, key0)) return validate75.errors = [ {
+    for (let key0 in data) if (!func7.call(schema80.properties, key0)) return validate75.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -77934,7 +77934,7 @@ function validate478(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema584.properties, key0)) return validate478.errors = [ {
+    for (let key0 in data) if (!func7.call(schema584.properties, key0)) return validate478.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -79725,7 +79725,7 @@ function validate430(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema519.properties, key0)) return validate430.errors = [ {
+    for (let key0 in data) if (!func7.call(schema519.properties, key0)) return validate430.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -80294,7 +80294,7 @@ function validate431(data, {instancePath: instancePath = "", parentData: parentD
           } ], !1;
           {
             let _errs7 = 0;
-            for (let key1 in data1) if (!func5.call(schema519.properties, key1)) return validate431.errors = [ {
+            for (let key1 in data1) if (!func7.call(schema519.properties, key1)) return validate431.errors = [ {
               instancePath: instancePath + "/devices/" + i0,
               schemaPath: "#/$defs/OnvifDevice/additionalProperties",
               keyword: "additionalProperties",
@@ -80938,7 +80938,7 @@ function validate433(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema523.properties, key0)) return validate433.errors = [ {
+    for (let key0 in data) if (!func7.call(schema523.properties, key0)) return validate433.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -81277,7 +81277,7 @@ function validate434(data, {instancePath: instancePath = "", parentData: parentD
           } ], !1;
           {
             let _errs7 = 0;
-            for (let key1 in data1) if (!func5.call(schema523.properties, key1)) return validate434.errors = [ {
+            for (let key1 in data1) if (!func7.call(schema523.properties, key1)) return validate434.errors = [ {
               instancePath: instancePath + "/profiles/" + i0,
               schemaPath: "#/$defs/OnvifProfile/additionalProperties",
               keyword: "additionalProperties",
@@ -82908,7 +82908,7 @@ function validate411(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema477.properties, key0)) return validate411.errors = [ {
+    for (let key0 in data) if (!func7.call(schema477.properties, key0)) return validate411.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -84163,7 +84163,7 @@ function validate120(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema127.properties, key0) && !pattern20.test(key0)) return validate120.errors = [ {
+    for (let key0 in data) if (!func7.call(schema127.properties, key0) && !pattern20.test(key0)) return validate120.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -84995,7 +84995,7 @@ function validate121(data, {instancePath: instancePath = "", parentData: parentD
       let data1 = data.filter, _errs9 = errors;
       if (errors == errors) if (data1 && "object" == typeof data1 && !Array.isArray(data1)) {
         let _errs12 = errors;
-        for (let key0 in data1) if (!func5.call(schema127.properties, key0) && !pattern20.test(key0)) {
+        for (let key0 in data1) if (!func7.call(schema127.properties, key0) && !pattern20.test(key0)) {
           let err5 = {
             instancePath: instancePath + "/filter",
             schemaPath: "#/$defs/RecordingDeletionFilter/additionalProperties",
@@ -90533,7 +90533,7 @@ function validate358(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema414.properties, key0)) return validate358.errors = [ {
+      for (let key0 in data) if (!func7.call(schema414.properties, key0)) return validate358.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -91036,7 +91036,7 @@ function validate357(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema412.properties, key0)) return validate357.errors = [ {
+      for (let key0 in data) if (!func7.call(schema412.properties, key0)) return validate357.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -91974,7 +91974,7 @@ function validate354(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema409.properties, key0)) return validate354.errors = [ {
+    for (let key0 in data) if (!func7.call(schema409.properties, key0)) return validate354.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -92621,7 +92621,7 @@ function validate345(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema396.properties, key0)) return validate345.errors = [ {
+      for (let key0 in data) if (!func7.call(schema396.properties, key0)) return validate345.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -93953,7 +93953,7 @@ function validate324(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema352.properties, key0)) return validate324.errors = [ {
+      for (let key0 in data) if (!func7.call(schema352.properties, key0)) return validate324.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -95555,7 +95555,7 @@ function validate328(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs14 = errors;
-      for (let key0 in data) if (!func5.call(schema360.properties, key0)) return validate328.errors = [ {
+      for (let key0 in data) if (!func7.call(schema360.properties, key0)) return validate328.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -96894,7 +96894,7 @@ function validate340(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema393.properties, key0)) return validate340.errors = [ {
+      for (let key0 in data) if (!func7.call(schema393.properties, key0)) return validate340.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -97642,7 +97642,7 @@ function validate332(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs26 = errors;
-      for (let key0 in data) if (!func5.call(schema374.properties, key0)) return validate332.errors = [ {
+      for (let key0 in data) if (!func7.call(schema374.properties, key0)) return validate332.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -98499,7 +98499,7 @@ function validate330(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema368.properties, key0)) return validate330.errors = [ {
+      for (let key0 in data) if (!func7.call(schema368.properties, key0)) return validate330.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -100733,7 +100733,7 @@ function validate309(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema337.properties, key0)) return validate309.errors = [ {
+      for (let key0 in data) if (!func7.call(schema337.properties, key0)) return validate309.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -101416,7 +101416,7 @@ function validate309(data, {instancePath: instancePath = "", parentData: parentD
                                                                   } ], !1;
                                                                   {
                                                                     let _errs66 = errors;
-                                                                    for (let key1 in data28) if (!func5.call(schema336.properties, key1)) return validate309.errors = [ {
+                                                                    for (let key1 in data28) if (!func7.call(schema336.properties, key1)) return validate309.errors = [ {
                                                                       instancePath: instancePath + "/health",
                                                                       schemaPath: "#/$defs/StorageTargetHealth/additionalProperties",
                                                                       keyword: "additionalProperties",
@@ -101883,7 +101883,7 @@ function validate312(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema341.properties, key0)) return validate312.errors = [ {
+    for (let key0 in data) if (!func7.call(schema341.properties, key0)) return validate312.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -102408,7 +102408,7 @@ function validate308(data, {instancePath: instancePath = "", parentData: parentD
     } ], !1;
     {
       let _errs1 = errors;
-      for (let key0 in data) if (!func5.call(schema336.properties, key0)) return validate308.errors = [ {
+      for (let key0 in data) if (!func7.call(schema336.properties, key0)) return validate308.errors = [ {
         instancePath: instancePath,
         schemaPath: "#/additionalProperties",
         keyword: "additionalProperties",
@@ -102841,7 +102841,7 @@ function validate313(data, {instancePath: instancePath = "", parentData: parentD
   } ], !1;
   {
     let _errs1 = 0;
-    for (let key0 in data) if (!func5.call(schema342.properties, key0)) return validate313.errors = [ {
+    for (let key0 in data) if (!func7.call(schema342.properties, key0)) return validate313.errors = [ {
       instancePath: instancePath,
       schemaPath: "#/additionalProperties",
       keyword: "additionalProperties",
@@ -104580,14 +104580,123 @@ function validate24(data, {instancePath: instancePath = "", parentData: parentDa
                                                                                                           } ], !1;
                                                                                                           var valid56 = 0 === _errs111;
                                                                                                         } else valid56 = !0;
-                                                                                                        if (valid56 && void 0 !== data.error_message && "string" != typeof data.error_message) return validate24.errors = [ {
-                                                                                                          instancePath: instancePath + "/error_message",
-                                                                                                          schemaPath: "#/properties/error_message/type",
-                                                                                                          keyword: "type",
-                                                                                                          params: {
-                                                                                                            type: "string"
+                                                                                                        if (valid56) {
+                                                                                                          if (void 0 !== data.error_message) {
+                                                                                                            let _errs114 = 0;
+                                                                                                            if ("string" != typeof data.error_message) return validate24.errors = [ {
+                                                                                                              instancePath: instancePath + "/error_message",
+                                                                                                              schemaPath: "#/properties/error_message/type",
+                                                                                                              keyword: "type",
+                                                                                                              params: {
+                                                                                                                type: "string"
+                                                                                                              }
+                                                                                                            } ], !1;
+                                                                                                            var valid58 = 0 === _errs114;
+                                                                                                          } else valid58 = !0;
+                                                                                                          if (valid58) {
+                                                                                                            if (void 0 !== data.observation_evidence_enabled) {
+                                                                                                              let _errs116 = 0;
+                                                                                                              if ("boolean" != typeof data.observation_evidence_enabled) return validate24.errors = [ {
+                                                                                                                instancePath: instancePath + "/observation_evidence_enabled",
+                                                                                                                schemaPath: "#/properties/observation_evidence_enabled/type",
+                                                                                                                keyword: "type",
+                                                                                                                params: {
+                                                                                                                  type: "boolean"
+                                                                                                                }
+                                                                                                              } ], !1;
+                                                                                                              var valid59 = 0 === _errs116;
+                                                                                                            } else valid59 = !0;
+                                                                                                            if (valid59) {
+                                                                                                              if (void 0 !== data.observation_labels) {
+                                                                                                                let data56 = data.observation_labels, _errs118 = 0;
+                                                                                                                if (0 === _errs118) {
+                                                                                                                  if ("string" != typeof data56) return validate24.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_labels",
+                                                                                                                    schemaPath: "#/properties/observation_labels/type",
+                                                                                                                    keyword: "type",
+                                                                                                                    params: {
+                                                                                                                      type: "string"
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                  if (func1(data56) > 511) return validate24.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_labels",
+                                                                                                                    schemaPath: "#/properties/observation_labels/maxLength",
+                                                                                                                    keyword: "maxLength",
+                                                                                                                    params: {
+                                                                                                                      limit: 511
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                }
+                                                                                                                var valid60 = 0 === _errs118;
+                                                                                                              } else valid60 = !0;
+                                                                                                              if (valid60) {
+                                                                                                                if (void 0 !== data.observation_max_age_days) {
+                                                                                                                  let data57 = data.observation_max_age_days, _errs120 = 0;
+                                                                                                                  if ("number" != typeof data57 || data57 % 1 || isNaN(data57) || !isFinite(data57)) return validate24.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_max_age_days",
+                                                                                                                    schemaPath: "#/properties/observation_max_age_days/type",
+                                                                                                                    keyword: "type",
+                                                                                                                    params: {
+                                                                                                                      type: "integer"
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                  if (0 === _errs120 && "number" == typeof data57 && isFinite(data57)) {
+                                                                                                                    if (data57 > 90 || isNaN(data57)) return validate24.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_age_days",
+                                                                                                                      schemaPath: "#/properties/observation_max_age_days/maximum",
+                                                                                                                      keyword: "maximum",
+                                                                                                                      params: {
+                                                                                                                        comparison: "<=",
+                                                                                                                        limit: 90
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                    if (data57 < 1 || isNaN(data57)) return validate24.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_age_days",
+                                                                                                                      schemaPath: "#/properties/observation_max_age_days/minimum",
+                                                                                                                      keyword: "minimum",
+                                                                                                                      params: {
+                                                                                                                        comparison: ">=",
+                                                                                                                        limit: 1
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                  }
+                                                                                                                  var valid61 = 0 === _errs120;
+                                                                                                                } else valid61 = !0;
+                                                                                                                if (valid61 && void 0 !== data.observation_max_bytes) {
+                                                                                                                  let data58 = data.observation_max_bytes, _errs122 = 0;
+                                                                                                                  if ("number" != typeof data58 || data58 % 1 || isNaN(data58) || !isFinite(data58)) return validate24.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_max_bytes",
+                                                                                                                    schemaPath: "#/properties/observation_max_bytes/type",
+                                                                                                                    keyword: "type",
+                                                                                                                    params: {
+                                                                                                                      type: "integer"
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                  if (0 === _errs122 && "number" == typeof data58 && isFinite(data58)) {
+                                                                                                                    if (data58 > 1099511627776 || isNaN(data58)) return validate24.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_bytes",
+                                                                                                                      schemaPath: "#/properties/observation_max_bytes/maximum",
+                                                                                                                      keyword: "maximum",
+                                                                                                                      params: {
+                                                                                                                        comparison: "<=",
+                                                                                                                        limit: 1099511627776
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                    if (data58 < 67108864 || isNaN(data58)) return validate24.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_bytes",
+                                                                                                                      schemaPath: "#/properties/observation_max_bytes/minimum",
+                                                                                                                      keyword: "minimum",
+                                                                                                                      params: {
+                                                                                                                        comparison: ">=",
+                                                                                                                        limit: 67108864
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                  }
+                                                                                                                }
+                                                                                                              }
+                                                                                                            }
                                                                                                           }
-                                                                                                        } ], !1;
+                                                                                                        }
                                                                                                       }
                                                                                                     }
                                                                                                   }
@@ -105393,6 +105502,27 @@ var __contract_StreamCreateRequest = validate442, schema531 = {
     set_privacy_mode: {
       type: "null",
       description: "A boolean selects the separate privacy-only form; null is ignored in the ordinary-update form."
+    },
+    observation_evidence_enabled: {
+      type: "boolean",
+      description: "INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations. Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+    },
+    observation_labels: {
+      type: "string",
+      maxLength: 511,
+      description: "Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+    },
+    observation_max_age_days: {
+      type: "integer",
+      minimum: 1,
+      maximum: 90,
+      description: "Evidence media maximum age in days; must be an integer 1..90 (default 7). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+    },
+    observation_max_bytes: {
+      type: "integer",
+      minimum: 67108864,
+      maximum: 1099511627776,
+      description: "Evidence media byte budget; must be an integer 67108864 (64 MiB)..1099511627776 (1 TiB) (default 2 GiB). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
     }
   },
   required: [ "name", "url" ],
@@ -106353,14 +106483,123 @@ function validate442(data, {instancePath: instancePath = "", parentData: parentD
                                                                                                           }
                                                                                                           var valid60 = _errs122 === errors;
                                                                                                         } else valid60 = !0;
-                                                                                                        if (valid60 && void 0 !== data.set_privacy_mode && null !== data.set_privacy_mode) return validate442.errors = [ {
-                                                                                                          instancePath: instancePath + "/set_privacy_mode",
-                                                                                                          schemaPath: "#/properties/set_privacy_mode/type",
-                                                                                                          keyword: "type",
-                                                                                                          params: {
-                                                                                                            type: "null"
+                                                                                                        if (valid60) {
+                                                                                                          if (void 0 !== data.set_privacy_mode) {
+                                                                                                            let _errs124 = errors;
+                                                                                                            if (null !== data.set_privacy_mode) return validate442.errors = [ {
+                                                                                                              instancePath: instancePath + "/set_privacy_mode",
+                                                                                                              schemaPath: "#/properties/set_privacy_mode/type",
+                                                                                                              keyword: "type",
+                                                                                                              params: {
+                                                                                                                type: "null"
+                                                                                                              }
+                                                                                                            } ], !1;
+                                                                                                            var valid61 = _errs124 === errors;
+                                                                                                          } else valid61 = !0;
+                                                                                                          if (valid61) {
+                                                                                                            if (void 0 !== data.observation_evidence_enabled) {
+                                                                                                              let _errs126 = errors;
+                                                                                                              if ("boolean" != typeof data.observation_evidence_enabled) return validate442.errors = [ {
+                                                                                                                instancePath: instancePath + "/observation_evidence_enabled",
+                                                                                                                schemaPath: "#/properties/observation_evidence_enabled/type",
+                                                                                                                keyword: "type",
+                                                                                                                params: {
+                                                                                                                  type: "boolean"
+                                                                                                                }
+                                                                                                              } ], !1;
+                                                                                                              var valid62 = _errs126 === errors;
+                                                                                                            } else valid62 = !0;
+                                                                                                            if (valid62) {
+                                                                                                              if (void 0 !== data.observation_labels) {
+                                                                                                                let data57 = data.observation_labels, _errs128 = errors;
+                                                                                                                if (errors === _errs128) {
+                                                                                                                  if ("string" != typeof data57) return validate442.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_labels",
+                                                                                                                    schemaPath: "#/properties/observation_labels/type",
+                                                                                                                    keyword: "type",
+                                                                                                                    params: {
+                                                                                                                      type: "string"
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                  if (func1(data57) > 511) return validate442.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_labels",
+                                                                                                                    schemaPath: "#/properties/observation_labels/maxLength",
+                                                                                                                    keyword: "maxLength",
+                                                                                                                    params: {
+                                                                                                                      limit: 511
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                }
+                                                                                                                var valid63 = _errs128 === errors;
+                                                                                                              } else valid63 = !0;
+                                                                                                              if (valid63) {
+                                                                                                                if (void 0 !== data.observation_max_age_days) {
+                                                                                                                  let data58 = data.observation_max_age_days, _errs130 = errors;
+                                                                                                                  if ("number" != typeof data58 || data58 % 1 || isNaN(data58) || !isFinite(data58)) return validate442.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_max_age_days",
+                                                                                                                    schemaPath: "#/properties/observation_max_age_days/type",
+                                                                                                                    keyword: "type",
+                                                                                                                    params: {
+                                                                                                                      type: "integer"
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                  if (errors === _errs130 && "number" == typeof data58 && isFinite(data58)) {
+                                                                                                                    if (data58 > 90 || isNaN(data58)) return validate442.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_age_days",
+                                                                                                                      schemaPath: "#/properties/observation_max_age_days/maximum",
+                                                                                                                      keyword: "maximum",
+                                                                                                                      params: {
+                                                                                                                        comparison: "<=",
+                                                                                                                        limit: 90
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                    if (data58 < 1 || isNaN(data58)) return validate442.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_age_days",
+                                                                                                                      schemaPath: "#/properties/observation_max_age_days/minimum",
+                                                                                                                      keyword: "minimum",
+                                                                                                                      params: {
+                                                                                                                        comparison: ">=",
+                                                                                                                        limit: 1
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                  }
+                                                                                                                  var valid64 = _errs130 === errors;
+                                                                                                                } else valid64 = !0;
+                                                                                                                if (valid64 && void 0 !== data.observation_max_bytes) {
+                                                                                                                  let data59 = data.observation_max_bytes, _errs132 = errors;
+                                                                                                                  if ("number" != typeof data59 || data59 % 1 || isNaN(data59) || !isFinite(data59)) return validate442.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_max_bytes",
+                                                                                                                    schemaPath: "#/properties/observation_max_bytes/type",
+                                                                                                                    keyword: "type",
+                                                                                                                    params: {
+                                                                                                                      type: "integer"
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                  if (errors === _errs132 && "number" == typeof data59 && isFinite(data59)) {
+                                                                                                                    if (data59 > 1099511627776 || isNaN(data59)) return validate442.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_bytes",
+                                                                                                                      schemaPath: "#/properties/observation_max_bytes/maximum",
+                                                                                                                      keyword: "maximum",
+                                                                                                                      params: {
+                                                                                                                        comparison: "<=",
+                                                                                                                        limit: 1099511627776
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                    if (data59 < 67108864 || isNaN(data59)) return validate442.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_bytes",
+                                                                                                                      schemaPath: "#/properties/observation_max_bytes/minimum",
+                                                                                                                      keyword: "minimum",
+                                                                                                                      params: {
+                                                                                                                        comparison: ">=",
+                                                                                                                        limit: 67108864
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                  }
+                                                                                                                }
+                                                                                                              }
+                                                                                                            }
                                                                                                           }
-                                                                                                        } ], !1;
+                                                                                                        }
                                                                                                       }
                                                                                                     }
                                                                                                   }
@@ -111393,6 +111632,27 @@ var __contract_StreamUpdateRequest = validate63, schema60 = {
     set_privacy_mode: {
       type: "null",
       description: "A boolean selects the separate privacy-only form; null is ignored in the ordinary-update form."
+    },
+    observation_evidence_enabled: {
+      type: "boolean",
+      description: "INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations. Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+    },
+    observation_labels: {
+      type: "string",
+      maxLength: 511,
+      description: "Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+    },
+    observation_max_age_days: {
+      type: "integer",
+      minimum: 1,
+      maximum: 90,
+      description: "Evidence media maximum age in days; must be an integer 1..90 (default 7). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+    },
+    observation_max_bytes: {
+      type: "integer",
+      minimum: 67108864,
+      maximum: 1099511627776,
+      description: "Evidence media byte budget; must be an integer 67108864 (64 MiB)..1099511627776 (1 TiB) (default 2 GiB). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
     }
   },
   required: [],
@@ -112302,14 +112562,123 @@ function validate61(data, {instancePath: instancePath = "", parentData: parentDa
                                                                                                           } ], !1;
                                                                                                           var valid60 = _errs122 === errors;
                                                                                                         } else valid60 = !0;
-                                                                                                        if (valid60 && void 0 !== data.set_privacy_mode && null !== data.set_privacy_mode) return validate61.errors = [ {
-                                                                                                          instancePath: instancePath + "/set_privacy_mode",
-                                                                                                          schemaPath: "#/properties/set_privacy_mode/type",
-                                                                                                          keyword: "type",
-                                                                                                          params: {
-                                                                                                            type: "null"
+                                                                                                        if (valid60) {
+                                                                                                          if (void 0 !== data.set_privacy_mode) {
+                                                                                                            let _errs124 = errors;
+                                                                                                            if (null !== data.set_privacy_mode) return validate61.errors = [ {
+                                                                                                              instancePath: instancePath + "/set_privacy_mode",
+                                                                                                              schemaPath: "#/properties/set_privacy_mode/type",
+                                                                                                              keyword: "type",
+                                                                                                              params: {
+                                                                                                                type: "null"
+                                                                                                              }
+                                                                                                            } ], !1;
+                                                                                                            var valid61 = _errs124 === errors;
+                                                                                                          } else valid61 = !0;
+                                                                                                          if (valid61) {
+                                                                                                            if (void 0 !== data.observation_evidence_enabled) {
+                                                                                                              let _errs126 = errors;
+                                                                                                              if ("boolean" != typeof data.observation_evidence_enabled) return validate61.errors = [ {
+                                                                                                                instancePath: instancePath + "/observation_evidence_enabled",
+                                                                                                                schemaPath: "#/properties/observation_evidence_enabled/type",
+                                                                                                                keyword: "type",
+                                                                                                                params: {
+                                                                                                                  type: "boolean"
+                                                                                                                }
+                                                                                                              } ], !1;
+                                                                                                              var valid62 = _errs126 === errors;
+                                                                                                            } else valid62 = !0;
+                                                                                                            if (valid62) {
+                                                                                                              if (void 0 !== data.observation_labels) {
+                                                                                                                let data57 = data.observation_labels, _errs128 = errors;
+                                                                                                                if (errors === _errs128) {
+                                                                                                                  if ("string" != typeof data57) return validate61.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_labels",
+                                                                                                                    schemaPath: "#/properties/observation_labels/type",
+                                                                                                                    keyword: "type",
+                                                                                                                    params: {
+                                                                                                                      type: "string"
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                  if (func1(data57) > 511) return validate61.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_labels",
+                                                                                                                    schemaPath: "#/properties/observation_labels/maxLength",
+                                                                                                                    keyword: "maxLength",
+                                                                                                                    params: {
+                                                                                                                      limit: 511
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                }
+                                                                                                                var valid63 = _errs128 === errors;
+                                                                                                              } else valid63 = !0;
+                                                                                                              if (valid63) {
+                                                                                                                if (void 0 !== data.observation_max_age_days) {
+                                                                                                                  let data58 = data.observation_max_age_days, _errs130 = errors;
+                                                                                                                  if ("number" != typeof data58 || data58 % 1 || isNaN(data58) || !isFinite(data58)) return validate61.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_max_age_days",
+                                                                                                                    schemaPath: "#/properties/observation_max_age_days/type",
+                                                                                                                    keyword: "type",
+                                                                                                                    params: {
+                                                                                                                      type: "integer"
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                  if (errors === _errs130 && "number" == typeof data58 && isFinite(data58)) {
+                                                                                                                    if (data58 > 90 || isNaN(data58)) return validate61.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_age_days",
+                                                                                                                      schemaPath: "#/properties/observation_max_age_days/maximum",
+                                                                                                                      keyword: "maximum",
+                                                                                                                      params: {
+                                                                                                                        comparison: "<=",
+                                                                                                                        limit: 90
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                    if (data58 < 1 || isNaN(data58)) return validate61.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_age_days",
+                                                                                                                      schemaPath: "#/properties/observation_max_age_days/minimum",
+                                                                                                                      keyword: "minimum",
+                                                                                                                      params: {
+                                                                                                                        comparison: ">=",
+                                                                                                                        limit: 1
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                  }
+                                                                                                                  var valid64 = _errs130 === errors;
+                                                                                                                } else valid64 = !0;
+                                                                                                                if (valid64 && void 0 !== data.observation_max_bytes) {
+                                                                                                                  let data59 = data.observation_max_bytes, _errs132 = errors;
+                                                                                                                  if ("number" != typeof data59 || data59 % 1 || isNaN(data59) || !isFinite(data59)) return validate61.errors = [ {
+                                                                                                                    instancePath: instancePath + "/observation_max_bytes",
+                                                                                                                    schemaPath: "#/properties/observation_max_bytes/type",
+                                                                                                                    keyword: "type",
+                                                                                                                    params: {
+                                                                                                                      type: "integer"
+                                                                                                                    }
+                                                                                                                  } ], !1;
+                                                                                                                  if (errors === _errs132 && "number" == typeof data59 && isFinite(data59)) {
+                                                                                                                    if (data59 > 1099511627776 || isNaN(data59)) return validate61.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_bytes",
+                                                                                                                      schemaPath: "#/properties/observation_max_bytes/maximum",
+                                                                                                                      keyword: "maximum",
+                                                                                                                      params: {
+                                                                                                                        comparison: "<=",
+                                                                                                                        limit: 1099511627776
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                    if (data59 < 67108864 || isNaN(data59)) return validate61.errors = [ {
+                                                                                                                      instancePath: instancePath + "/observation_max_bytes",
+                                                                                                                      schemaPath: "#/properties/observation_max_bytes/minimum",
+                                                                                                                      keyword: "minimum",
+                                                                                                                      params: {
+                                                                                                                        comparison: ">=",
+                                                                                                                        limit: 67108864
+                                                                                                                      }
+                                                                                                                    } ], !1;
+                                                                                                                  }
+                                                                                                                }
+                                                                                                              }
+                                                                                                            }
                                                                                                           }
-                                                                                                        } ], !1;
+                                                                                                        }
                                                                                                       }
                                                                                                     }
                                                                                                   }

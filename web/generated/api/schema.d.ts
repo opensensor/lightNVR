@@ -7366,6 +7366,14 @@ export interface components {
             motion_trigger_source?: string | null;
             /** @description Optional identifying metadata; ignored. This operation does not rename the stream. */
             name?: string;
+            /** @description INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations. Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart. */
+            observation_evidence_enabled?: boolean;
+            /** @description Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart. */
+            observation_labels?: string;
+            /** @description Evidence media maximum age in days; must be an integer 1..90 (default 7). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart. */
+            observation_max_age_days?: number;
+            /** @description Evidence media byte budget; must be an integer 67108864 (64 MiB)..1099511627776 (1 TiB) (default 2 GiB). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart. */
+            observation_max_bytes?: number;
             /** @description Omission preserves the current value. Null is ignored by this typed field handler. Processed only when the resulting isOnvif value is true; empty string clears this field. ONVIF probing may precede the 202 response. */
             onvif_password?: string | null;
             /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
@@ -7483,6 +7491,14 @@ export interface components {
             /** @description Null or empty string clears this override; omission preserves the current value. */
             motion_trigger_source?: string | null;
             name: string;
+            /** @description INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations. Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart. */
+            observation_evidence_enabled?: boolean;
+            /** @description Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart. */
+            observation_labels?: string;
+            /** @description Evidence media maximum age in days; must be an integer 1..90 (default 7). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart. */
+            observation_max_age_days?: number;
+            /** @description Evidence media byte budget; must be an integer 67108864 (64 MiB)..1099511627776 (1 TiB) (default 2 GiB). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart. */
+            observation_max_bytes?: number;
             /** @description Omission preserves the current value. Null is ignored by this typed field handler. Processed only when the resulting isOnvif value is true; empty string clears this field. ONVIF probing may precede the 202 response. */
             onvif_password?: string | null;
             /** @description Omission or null preserves the current value. Integer-backed fields truncate numeric input toward zero. */
@@ -7590,6 +7606,26 @@ export interface components {
             motion_trigger_source: string;
             /** @description Current stream name; lookup is by name, not camera_uuid. */
             name: string;
+            /**
+             * @description INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations.
+             * @default false
+             */
+            observation_evidence_enabled?: boolean;
+            /**
+             * @description Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13).
+             * @default
+             */
+            observation_labels?: string;
+            /**
+             * @description Evidence media maximum age in days (contract section 13).
+             * @default 7
+             */
+            observation_max_age_days?: number;
+            /**
+             * @description Evidence media byte budget for this camera, 64 MiB..1 TiB (contract section 13).
+             * @default 2147483648
+             */
+            observation_max_bytes?: number;
             /** @description Zero requests automatic port detection. */
             onvif_port: number;
             onvif_profile: string;

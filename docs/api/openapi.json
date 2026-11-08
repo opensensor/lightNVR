@@ -30071,6 +30071,31 @@
           "error_message": {
             "type": "string",
             "description": "Present only when an Error state has a recorded reason."
+          },
+          "observation_evidence_enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations."
+          },
+          "observation_labels": {
+            "type": "string",
+            "maxLength": 511,
+            "default": "",
+            "description": "Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13)."
+          },
+          "observation_max_age_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "default": 7,
+            "description": "Evidence media maximum age in days (contract section 13)."
+          },
+          "observation_max_bytes": {
+            "type": "integer",
+            "minimum": 67108864,
+            "maximum": 1099511627776,
+            "default": 2147483648,
+            "description": "Evidence media byte budget for this camera, 64 MiB..1 TiB (contract section 13)."
           }
         },
         "required": [
@@ -31153,6 +31178,27 @@
           "set_privacy_mode": {
             "type": "null",
             "description": "A boolean selects the separate privacy-only form; null is ignored in the ordinary-update form."
+          },
+          "observation_evidence_enabled": {
+            "type": "boolean",
+            "description": "INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations. Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_labels": {
+            "type": "string",
+            "maxLength": 511,
+            "description": "Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_max_age_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Evidence media maximum age in days; must be an integer 1..90 (default 7). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_max_bytes": {
+            "type": "integer",
+            "minimum": 67108864,
+            "maximum": 1099511627776,
+            "description": "Evidence media byte budget; must be an integer 67108864 (64 MiB)..1099511627776 (1 TiB) (default 2 GiB). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
           }
         },
         "required": [],
@@ -47658,6 +47704,27 @@
           "set_privacy_mode": {
             "type": "null",
             "description": "A boolean selects the separate privacy-only form; null is ignored in the ordinary-update form."
+          },
+          "observation_evidence_enabled": {
+            "type": "boolean",
+            "description": "INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations. Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_labels": {
+            "type": "string",
+            "maxLength": 511,
+            "description": "Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_max_age_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Evidence media maximum age in days; must be an integer 1..90 (default 7). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_max_bytes": {
+            "type": "integer",
+            "minimum": 67108864,
+            "maximum": 1099511627776,
+            "description": "Evidence media byte budget; must be an integer 67108864 (64 MiB)..1099511627776 (1 TiB) (default 2 GiB). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
           }
         },
         "required": [
