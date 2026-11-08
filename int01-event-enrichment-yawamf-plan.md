@@ -1471,9 +1471,94 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
     maps boxes correctly (C3 fixture); ONVIF produces `unavailable` with the
     reason.
   - The A2 HTTP variant passes.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - RED: against the pre-L7 sources, `test_api_detection`,
+    `test_api_detection_observation_evidence` and
+    `test_detection_current_frame` failed to compile (every new type and
+    function undeclared). Mutation check: with the evidence hand-off and
+    geometry mapping disabled, the new integration test failed 3/7 ("no
+    ready asset", "Expected 1 Was 0", "Expected 0.4 Was 256"). GREEN:
+    `test_api_detection` 27/27 and `test_api_detection_observation_evidence`
+    7/7 (stable over 3 runs) in `build-int01-L7` (LiteRT on) and
+    `build-int01-L7-asan` (ASan/UBSan clean). `test_detection_current_frame`,
+    `test_detection_observation_evidence`, `test_detection_evidence`,
+    `test_udt_recording`, `test_detection_system_onvif`,
+    `test_onvif_poll_recovery`, `test_observation_evidence`,
+    `test_db_detections`, `test_event_detection_adapter`,
+    `test_detection_io_recovery` and `tests/test_stream_detection` pass in both.
+  - Run: `cd build-int01-L7 && make test_api_detection_observation_evidence && ./bin/test_api_detection_observation_evidence`.
+    The test runs a real loopback HTTP detector (multipart and DOODS2), a
+    real migrated DB and the real L3 worker. Build the targets one at a
+    time: a single multi-target `make -jN` races in this generator.
+  - Signatures (`include/video/api_detection.h`):
+    - `detect_objects_api_with_evidence(…, options, const api_detection_evidence_t *)`
+      and `detect_objects_api_snapshot_with_evidence(…)`. The old
+      `*_with_options` functions wrap them with NULL, so
+      `detection.c`/`api_handlers` callers are unchanged.
+      `api_detection_evidence_t` = `{camera_uuid, engine_key,
+      evidence_enabled, labels_csv, observed_at_ms}`, built by the caller
+      from the ctx cache. `observed_at_ms` 0 = stamped at call start, before
+      the request, never after.
+    - `finalize_detections` (static) now takes threshold, options, evidence,
+      response meta and an owned `submitted_image_t`. With a `camera_uuid`
+      it uses `store_detections_in_db_for_camera` and
+      `event_producer_publish_detection`; without one it keeps the legacy
+      stream-name calls.
+    - `api_detection_parse_response_meta()` (the old
+      `api_detection_parse_response` wraps it),
+      `api_detection_apply_response_geometry()` and
+      `api_detection_jpeg_dimensions()` (SOFn parse for go2rtc snapshots).
+    - `include/video/detection_evidence.h`:
+      `detection_evidence_capture_jpeg()` (engine_type `api`; takes the
+      JPEG on every return), `detection_evidence_record_no_media()`
+      (`onvif`/`external`; skips the `motion` label; `keep_boxes=false`
+      means box null) and `detection_evidence_is_motion_label()`.
+  - Letterbox extension (contract §4.4, "unless the response declares a
+    server-side letterbox"). No existing server sends it; it is opt-in and
+    documented in the header. The optional top-level `"letterbox":{width,
+    height, scale | scale_x/scale_y, pad_x, pad_y, box_units:"normalized"|"pixels"}`
+    sits next to `"model"` and `"model_version"`. Missing scale means the
+    uniform min ratio; missing pads mean centred. Boxes are mapped onto the
+    submitted image **before** zone filtering, so the detections table and
+    MQTT also get stored-image boxes. Without the declaration nothing
+    changes (mode `none`, inference = JPEG size). The C3 fixture D test
+    reads `manifest.json`'s `inference_box` and
+    `observations/http-letterbox.json`.
+  - Evidence objects are the zone/object-filtered survivors with
+    `confidence >= threshold`, the same set the detection thread keeps.
+    Model: response `model`, else the DOODS2 `detector_name` unless it is
+    `"default"`, else null (the URL is never used as a model). The
+    transform source is the decoded frame for the frame path; for a go2rtc
+    snapshot the JPEG is its own source.
+  - ONVIF: `udt_record_onvif_observations()` is called from
+    `onvif_detection_thread_func` after a successful poll. `observed_at` is
+    the wall time before `PullMessages`, matching `detect_motion_onvif`'s
+    event stamp. The engine key is the first `onvif` engine, else
+    `legacy-primary`. Settings come from the ctx cache and the record goes
+    through the drop ring, so the ONVIF thread never touches the DB mutex.
+    `onvif_detection.c` already classifies object events (person, vehicle,
+    bicycle, face, animal, else `motion`), so no change was needed there.
+  - Gaps:
+    - Multi-engine API engines are still isolated in
+      `detect_with_runtime_engines`: they never run, so they produce no
+      evidence. A comment there records this.
+    - No external-event producer exists. `store_detection_result` has no
+      callers, so `detection_evidence_record_no_media` with `external` is
+      ready but not wired.
+    - The ONVIF tests call `udt_record_onvif_observations` directly rather
+      than through the polling thread.
+  - For L11/X1/X2:
+    - The A2 HTTP check is in place: the asset bytes equal the request body
+      image, and the server sees exactly one request.
+    - A server-declared letterbox changes the boxes on legacy detection rows
+      too.
+    - The fake server sniffs `Content-Type: application/json`, not just
+      `application/json`, because lightNVR sends `accept: application/json`.
+    - The API path holds the JPEG for the whole request, up to the 10 s
+      timeout. That adds one JPEG of memory per in-flight API call. It is
+      not counted against the L3 bounds until it is submitted.
+- **files edited/created**: `include/video/api_detection.h`, `src/video/api_detection.c`, `include/video/detection_evidence.h`, `src/video/detection_evidence.c`, `src/video/unified_detection_thread.c`, `tests/unit/test_api_detection.c`, `tests/unit/test_api_detection_observation_evidence.c` (new), `tests/unit/test_detection_current_frame.c`, `tests/unit/CMakeLists.txt` (commit `9830adb6`)
 
 #### L8: Observation and capability API handlers
 - **depends_on**: [L2, C2]
