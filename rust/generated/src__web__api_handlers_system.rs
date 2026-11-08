@@ -147,6 +147,14 @@ unsafe extern "C" {
         format: *const ::core::ffi::c_char,
         ...
     );
+    unsafe fn observation_diagnostics_collect(
+        out: *mut observation_diagnostics_t,
+        now_ms: int64_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn observation_diagnostics_free(diagnostics: *mut observation_diagnostics_t);
+    unsafe fn observation_diagnostics_to_json(
+        diagnostics: *const observation_diagnostics_t,
+    ) -> *mut cJSON;
     unsafe fn ensure_dir(path: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn initiate_shutdown();
     unsafe fn request_background_abort();
@@ -157,6 +165,18 @@ unsafe extern "C" {
         src_size: size_t,
     ) -> ::core::ffi::c_int;
     unsafe fn get_enabled_stream_count() -> ::core::ffi::c_int;
+    unsafe fn add_cached_stream_storage_usage_to_json(
+        json_obj: *mut cJSON,
+        force_refresh: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
+    unsafe fn system_health_snapshot_copy(snapshot: *mut system_health_snapshot_t) -> bool;
+    unsafe fn go2rtc_api_get_application_info(
+        rtsp_port: *mut ::core::ffi::c_int,
+        version: *mut ::core::ffi::c_char,
+        version_size: size_t,
+        revision: *mut ::core::ffi::c_char,
+        revision_size: size_t,
+    ) -> bool;
     unsafe fn get_recording_count(
         start_time: time_t,
         end_time: time_t,
@@ -171,18 +191,6 @@ unsafe extern "C" {
         include_in_progress: bool,
     ) -> ::core::ffi::c_int;
     unsafe fn get_stream_storage_bytes(stream_name: *const ::core::ffi::c_char) -> int64_t;
-    unsafe fn add_cached_stream_storage_usage_to_json(
-        json_obj: *mut cJSON,
-        force_refresh: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_int;
-    unsafe fn system_health_snapshot_copy(snapshot: *mut system_health_snapshot_t) -> bool;
-    unsafe fn go2rtc_api_get_application_info(
-        rtsp_port: *mut ::core::ffi::c_int,
-        version: *mut ::core::ffi::c_char,
-        version_size: size_t,
-        revision: *mut ::core::ffi::c_char,
-        revision_size: size_t,
-    ) -> bool;
     unsafe fn memcpy(
         __dest: *mut ::core::ffi::c_void,
         __src: *const ::core::ffi::c_void,
@@ -887,6 +895,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -992,7 +1004,7 @@ pub struct config_t {
     pub go2rtc_webrtc_listen_port: ::core::ffi::c_int,
     pub go2rtc_stun_enabled: bool,
     pub go2rtc_stun_server: [::core::ffi::c_char; 256],
-    pub go2rtc_external_ip: [::core::ffi::c_char; 64],
+    pub go2rtc_external_ip: [::core::ffi::c_char; 256],
     pub go2rtc_ice_servers: [::core::ffi::c_char; 512],
     pub webrtc_connection_timeout_ms: ::core::ffi::c_int,
     pub webrtc_ice_recovery_timeout_ms: ::core::ffi::c_int,
@@ -1089,6 +1101,112 @@ impl log_level_t {
     pub const LOG_LEVEL_INFO: Self = Self(2);
     pub const LOG_LEVEL_DEBUG: Self = Self(3);
 }
+pub type observation_diagnostics_t = observation_diagnostics_snapshot;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_diagnostics_snapshot {
+    pub collected_at_ms: int64_t,
+    pub evidence: observation_evidence_stats_t,
+    pub relay: observation_relay_stats_t,
+    pub db_available: bool,
+    pub db: observation_db_diagnostics_t,
+    pub cameras: *mut observation_retention_camera_status_t,
+    pub camera_count: ::core::ffi::c_int,
+    pub budget_exhausted_cameras: ::core::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_retention_camera_status_t {
+    pub camera_uuid: [::core::ffi::c_char; 37],
+    pub retained_bytes: int64_t,
+    pub max_bytes: int64_t,
+    pub max_age_days: ::core::ffi::c_int,
+    pub budget_exhausted: bool,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_db_diagnostics_t {
+    pub meta: observation_meta_t,
+    pub has_oldest_observed_at: bool,
+    pub oldest_observed_at_ms: int64_t,
+    pub observations: int64_t,
+    pub publications_pending: int64_t,
+    pub publications_failed: int64_t,
+    pub publications_expired: int64_t,
+    pub oldest_pending_created_at_ms: int64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_meta_t {
+    pub epoch_uuid: [::core::ffi::c_char; 37],
+    pub oldest_seq: int64_t,
+    pub head_seq: int64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_relay_stats_t {
+    pub running: bool,
+    pub passes: uint64_t,
+    pub relayed: uint64_t,
+    pub duplicates: uint64_t,
+    pub relayed_no_route: uint64_t,
+    pub expired: uint64_t,
+    pub failed: uint64_t,
+    pub enqueue_full: uint64_t,
+    pub enqueue_errors: uint64_t,
+    pub mark_errors: uint64_t,
+    pub read_errors: uint64_t,
+    pub cap_pauses: uint64_t,
+    pub backoffs: uint64_t,
+    pub sidecar_writes: uint64_t,
+    pub sidecar_errors: uint64_t,
+    pub epoch_regenerations: uint64_t,
+    pub last_relayed_seq: int64_t,
+    pub oldest_pending_created_at_ms: int64_t,
+    pub last_pass_pending: ::core::ffi::c_int,
+    pub outbox_type_pending: int64_t,
+    pub consecutive_failures: ::core::ffi::c_int,
+    pub backoff_until_ms: int64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_evidence_stats_t {
+    pub initialized: bool,
+    pub worker_running: bool,
+    pub allocated: bool,
+    pub accepted: uint64_t,
+    pub dropped_queue_full: uint64_t,
+    pub dropped_budget: uint64_t,
+    pub dropped_disabled: uint64_t,
+    pub dropped_untracked: uint64_t,
+    pub unavailable_submitted: uint64_t,
+    pub ready: uint64_t,
+    pub failed_encode: uint64_t,
+    pub failed_write: uint64_t,
+    pub failed_db: uint64_t,
+    pub disabled_at_encode: uint64_t,
+    pub interrupted: uint64_t,
+    pub bytes_written: uint64_t,
+    pub backlog_items: uint32_t,
+    pub backlog_bytes: uint64_t,
+    pub drop_ring_depth: uint32_t,
+    pub high_water_items: uint32_t,
+    pub high_water_bytes: uint64_t,
+    pub budget_exhausted_cameras: uint32_t,
+    pub limit_items: uint32_t,
+    pub limit_camera_items: uint32_t,
+    pub limit_bytes: uint64_t,
+    pub limit_camera_bytes: uint64_t,
+    pub camera_high_water_items: uint32_t,
+    pub submit_latency_count: uint64_t,
+    pub submit_latency_sum_ns: uint64_t,
+    pub submit_latency_max_ns: uint64_t,
+    pub submit_latency_bucket: [uint64_t; 10],
+    pub discard_deferred: uint64_t,
+    pub discard_inline: uint64_t,
+    pub discard_pending_bytes: uint64_t,
+    pub limit_discard_bytes: uint64_t,
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct system_info_interface_t {
@@ -1131,7 +1249,8 @@ impl authorization_action_t {
     pub const AUTHZ_LPR_SEARCH: Self = Self(16);
     pub const AUTHZ_LPR_EXPORT: Self = Self(17);
     pub const AUTHZ_LPR_DELETE: Self = Self(18);
-    pub const AUTHZ_ACTION_COUNT: Self = Self(19);
+    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
+    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -4218,6 +4337,102 @@ pub unsafe extern "C" fn handle_get_system_info(
         );
     }
     add_cached_stream_storage_usage_to_json(info, 0 as ::core::ffi::c_int);
+    let mut observation_diagnostics: observation_diagnostics_t = observation_diagnostics_t {
+        collected_at_ms: 0,
+        evidence: observation_evidence_stats_t {
+            initialized: false,
+            worker_running: false,
+            allocated: false,
+            accepted: 0,
+            dropped_queue_full: 0,
+            dropped_budget: 0,
+            dropped_disabled: 0,
+            dropped_untracked: 0,
+            unavailable_submitted: 0,
+            ready: 0,
+            failed_encode: 0,
+            failed_write: 0,
+            failed_db: 0,
+            disabled_at_encode: 0,
+            interrupted: 0,
+            bytes_written: 0,
+            backlog_items: 0,
+            backlog_bytes: 0,
+            drop_ring_depth: 0,
+            high_water_items: 0,
+            high_water_bytes: 0,
+            budget_exhausted_cameras: 0,
+            limit_items: 0,
+            limit_camera_items: 0,
+            limit_bytes: 0,
+            limit_camera_bytes: 0,
+            camera_high_water_items: 0,
+            submit_latency_count: 0,
+            submit_latency_sum_ns: 0,
+            submit_latency_max_ns: 0,
+            submit_latency_bucket: [0; 10],
+            discard_deferred: 0,
+            discard_inline: 0,
+            discard_pending_bytes: 0,
+            limit_discard_bytes: 0,
+        },
+        relay: observation_relay_stats_t {
+            running: false,
+            passes: 0,
+            relayed: 0,
+            duplicates: 0,
+            relayed_no_route: 0,
+            expired: 0,
+            failed: 0,
+            enqueue_full: 0,
+            enqueue_errors: 0,
+            mark_errors: 0,
+            read_errors: 0,
+            cap_pauses: 0,
+            backoffs: 0,
+            sidecar_writes: 0,
+            sidecar_errors: 0,
+            epoch_regenerations: 0,
+            last_relayed_seq: 0,
+            oldest_pending_created_at_ms: 0,
+            last_pass_pending: 0,
+            outbox_type_pending: 0,
+            consecutive_failures: 0,
+            backoff_until_ms: 0,
+        },
+        db_available: false,
+        db: observation_db_diagnostics_t {
+            meta: observation_meta_t {
+                epoch_uuid: [0; 37],
+                oldest_seq: 0,
+                head_seq: 0,
+            },
+            has_oldest_observed_at: false,
+            oldest_observed_at_ms: 0,
+            observations: 0,
+            publications_pending: 0,
+            publications_failed: 0,
+            publications_expired: 0,
+            oldest_pending_created_at_ms: 0,
+        },
+        cameras: ::core::ptr::null_mut::<observation_retention_camera_status_t>(),
+        camera_count: 0,
+        budget_exhausted_cameras: 0,
+    };
+    if observation_diagnostics_collect(&raw mut observation_diagnostics, 0 as int64_t)
+        == 0 as ::core::ffi::c_int
+    {
+        let mut pipeline: *mut cJSON =
+            observation_diagnostics_to_json(&raw mut observation_diagnostics);
+        if !pipeline.is_null() {
+            cJSON_AddItemToObject(
+                info,
+                b"observation_pipeline\0".as_ptr() as *const ::core::ffi::c_char,
+                pipeline,
+            );
+        }
+        observation_diagnostics_free(&raw mut observation_diagnostics);
+    }
     let mut json_str: *mut ::core::ffi::c_char = cJSON_PrintUnformatted(info);
     if json_str.is_null() {
         _log_message_ctx(

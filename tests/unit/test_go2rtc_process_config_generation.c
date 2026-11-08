@@ -163,6 +163,87 @@ void test_generate_startup_config_uses_saved_webrtc_settings(void) {
     rmdir(config_dir);
 }
 
+/* External IP accepts a list: one WebRTC candidate per entry, so clients on
+ * different paths (LAN, Tailscale, public) can each reach go2rtc. */
+void test_generate_startup_config_writes_one_candidate_per_external_ip(void) {
+    load_default_config(&g_config);
+    g_config.go2rtc_api_port = 31984;
+    g_config.go2rtc_rtsp_port = 31554;
+    g_config.go2rtc_webrtc_listen_port = 31555;
+    g_config.go2rtc_stun_enabled = true;
+    snprintf(g_config.go2rtc_stun_server, sizeof(g_config.go2rtc_stun_server),
+             "stun.example.org:3478");
+    snprintf(g_config.go2rtc_external_ip, sizeof(g_config.go2rtc_external_ip),
+             "100.101.102.103, 192.168.101.112 *");
+    g_config.go2rtc_ice_servers[0] = '\0';
+
+    char dir_template[] = "/tmp/lightnvr-go2rtc-config-XXXXXX";
+    char *config_dir = mkdtemp(dir_template);
+    TEST_ASSERT_NOT_NULL(config_dir);
+    char config_path[PATH_MAX];
+    snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", config_dir);
+
+    TEST_ASSERT_TRUE(go2rtc_process_generate_startup_config("/bin/true", config_dir,
+                                                            g_config.go2rtc_api_port));
+    char *contents = read_text_file(config_path);
+    TEST_ASSERT_NOT_NULL(contents);
+    TEST_ASSERT_NOT_NULL(strstr(contents, "    - \"100.101.102.103:31555\"\n"
+                                          "    - \"192.168.101.112:31555\"\n"
+                                          "    - \"*:31555\"\n"));
+    TEST_ASSERT_NULL(strstr(contents, "103, 192"));
+    TEST_ASSERT_NOT_NULL(strstr(contents, "      - \"stun:stun.example.org:3478\"\n"));
+    TEST_ASSERT_NOT_NULL(strstr(contents, "    - \"stun:31555\"\n"));
+    TEST_ASSERT_NULL(strstr(strstr(contents, "  candidates:"), "stun:stun.example.org"));
+
+    free(contents);
+    unlink(config_path);
+    rmdir(config_dir);
+}
+
+void test_external_candidates_parse_valid_and_reject_invalid(void) {
+    char out[GO2RTC_MAX_EXTERNAL_CANDIDATES][GO2RTC_CANDIDATE_SIZE];
+
+    TEST_ASSERT_EQUAL_INT(0, go2rtc_parse_external_candidates("", 8555, out, GO2RTC_MAX_EXTERNAL_CANDIDATES));
+    TEST_ASSERT_EQUAL_INT(0, go2rtc_parse_external_candidates(" , ", 8555, out, GO2RTC_MAX_EXTERNAL_CANDIDATES));
+    TEST_ASSERT_EQUAL_INT(0, go2rtc_parse_external_candidates(NULL, 8555, out, GO2RTC_MAX_EXTERNAL_CANDIDATES));
+
+    TEST_ASSERT_EQUAL_INT(1, go2rtc_parse_external_candidates("203.0.113.7", 8555, out, GO2RTC_MAX_EXTERNAL_CANDIDATES));
+    TEST_ASSERT_EQUAL_STRING("203.0.113.7:8555", out[0]);
+    TEST_ASSERT_EQUAL_INT(1, go2rtc_parse_external_candidates("stun", 9000, out,
+                                                              GO2RTC_MAX_EXTERNAL_CANDIDATES));
+    TEST_ASSERT_EQUAL_STRING("stun:9000", out[0]);
+    TEST_ASSERT_EQUAL_INT(1, go2rtc_parse_external_candidates("[::ffff:192.0.2.1]", 8555, out,
+                                                              GO2RTC_MAX_EXTERNAL_CANDIDATES));
+    TEST_ASSERT_EQUAL_STRING("[::ffff:192.0.2.1]:8555", out[0]);
+
+    TEST_ASSERT_EQUAL_INT(6, go2rtc_parse_external_candidates(
+        "auto,\nnvr.example.com:9000; [fd7a:115c::1]:8556 fd7a:115c::2 stun:9001 203.0.113.7",
+        8555, out, GO2RTC_MAX_EXTERNAL_CANDIDATES));
+    TEST_ASSERT_EQUAL_STRING("*:8555", out[0]);
+    TEST_ASSERT_EQUAL_STRING("nvr.example.com:9000", out[1]);
+    TEST_ASSERT_EQUAL_STRING("[fd7a:115c::1]:8556", out[2]);
+    TEST_ASSERT_EQUAL_STRING("[fd7a:115c::2]:8555", out[3]);
+    TEST_ASSERT_EQUAL_STRING("stun:9001", out[4]);
+    TEST_ASSERT_EQUAL_STRING("203.0.113.7:8555", out[5]);
+
+    /* Duplicates collapse. */
+    TEST_ASSERT_EQUAL_INT(1, go2rtc_parse_external_candidates("10.0.0.1, 10.0.0.1:8555", 8555, out,
+                                                              GO2RTC_MAX_EXTERNAL_CANDIDATES));
+
+    /* Anything that could break the YAML or is not a host is rejected. */
+    const char *invalid[] = {
+        "10.0.0.1\"", "10.0.0.1:0", "10.0.0.1:70000", "10.0.0.1:port", "host/name",
+        "a\\b", "[fd00::1", "fd00::1]:80", "stun:", "*:x", "-bad.example", "10.0.0.1:",
+        "1,2,3,4,5,6,7,8,9", "[:::]", "1:2:3", "[12345::1]", "[::ffff:999.1.1.1]",
+        "stun:stun.example.org", "stun:stun.example.org:3478", "stun:0", "stun:65536",
+    };
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(-1, go2rtc_parse_external_candidates(invalid[i], 8555, out,
+                                                                          GO2RTC_MAX_EXTERNAL_CANDIDATES),
+                                      invalid[i]);
+    }
+}
+
 void test_generate_startup_config_writes_db_override_file(void) {
     load_default_config(&g_config);
     g_config.go2rtc_api_port = 31984;
@@ -537,6 +618,8 @@ int main(int argc, char **argv) {
 
     UNITY_BEGIN();
     RUN_TEST(test_generate_startup_config_uses_saved_webrtc_settings);
+    RUN_TEST(test_generate_startup_config_writes_one_candidate_per_external_ip);
+    RUN_TEST(test_external_candidates_parse_valid_and_reject_invalid);
     RUN_TEST(test_generate_startup_config_writes_db_override_file);
     RUN_TEST(test_override_publication_preserves_old_file_on_io_failure_and_recovers);
     RUN_TEST(test_audio_policy_keeps_db_override_dormant);

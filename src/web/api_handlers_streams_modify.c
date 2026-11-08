@@ -21,6 +21,7 @@
 #include "web/api_handlers.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/stream_observation_settings.h"
 #define LOG_COMPONENT "StreamsAPI"
 #include "core/logger.h"
 #include "core/config.h"
@@ -223,6 +224,12 @@ static void put_stream_worker_locked(put_stream_task_t *task) {
         put_stream_task_free(task);
         return;
     }
+
+    // INT_01 L6: a running detector caches the evidence settings; refresh them
+    // so the change applies without a restart. -1 = no detector running.
+    (void)unified_detection_set_observation_settings(task->stream_id,
+                                                     updated_config.observation_evidence_enabled,
+                                                     updated_config.observation_labels);
 
     if (set_stream_detection_params(stream,
                                    task->config.detection_interval,
@@ -801,6 +808,16 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
             http_response_set_json_error(res, 400, eptz_error);
             return;
         }
+    }
+
+    /* INT_01 L9: per-camera observation evidence opt-in and budgets. */
+    char observation_error[160];
+    if (stream_observation_settings_apply_json(stream_json, &config, NULL,
+                                               observation_error,
+                                               sizeof(observation_error)) != 0) {
+        cJSON_Delete(stream_json);
+        http_response_set_json_error(res, 400, observation_error);
+        return;
     }
 
     // Note: width, height, fps, and codec are auto-detected from the stream
@@ -1588,6 +1605,22 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             config_changed = true;
         }
     }
+
+    /* INT_01 L9: observation evidence settings never restart the stream or
+     * detector. The worker persists them; the evidence encoder re-reads the
+     * flag from the database, and a running detection thread's cached copy
+     * is refreshed by the INT_01 L6 hook (unified_detection_set_observation_settings). */
+    char observation_error[160];
+    bool observation_changed = false;
+    if (stream_observation_settings_apply_json(stream_json, &config,
+                                               &observation_changed,
+                                               observation_error,
+                                               sizeof(observation_error)) != 0) {
+        cJSON_Delete(stream_json);
+        http_response_set_json_error(res, 400, observation_error);
+        return;
+    }
+    if (observation_changed) config_changed = true;
 
     // Note: width, height, fps, and codec are auto-detected from the stream
     // and are not accepted from API input on update either.

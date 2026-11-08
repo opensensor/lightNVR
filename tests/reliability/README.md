@@ -277,3 +277,27 @@ preparer/upgrade evidence is recorded in `docs/api/contracts/upgrade-evidence.md
 The [2026-11-07 qualification](../../docs/validation/recovery-qualification-2026-11-07.md)
 repeats all four scenarios on one current Release binary and extends lifecycle
 to ten cycles per phase. Named hardware and long-duration acceptance remain open.
+
+## Observation evidence crash boundaries (INT_01 L11, A6)
+
+`tests/unit/test_observation_crash_boundaries.c` forks a process that runs the
+real evidence worker, relay, router and outbox on a migrated database, SIGKILLs
+it at one persistence boundary (after the batch insert, after the tmp write,
+after rename before commit, after commit before relay, after the outbox step
+before the publication mark, and after the mark before delivery), restarts the
+`main.c` sequence (reconcile -> evidence -> relay) in a second process and
+asserts that no ready asset points at an unfinished file and that every
+committed change reaches the outbox exactly once. The kill points are stage
+hooks (`observation_evidence_set_stage_hook`, `observation_relay_set_stage_hook`)
+that only linked test code can install; no configuration, environment variable
+or API reaches them.
+
+```sh
+make -C <build> test_observation_crash_boundaries && <build>/bin/test_observation_crash_boundaries
+```
+
+Binary-level restarts (SIGKILL with committed-but-unrelayed changes, relayed but
+unacknowledged MQTT delivery, DB restore, broker outage with 100 observations)
+are Playwright contracts in `tests/contracts/observationsReliability.api.spec.ts`;
+`tests/contracts/observationsPipeline.api.spec.ts` drives a real detection
+stream into evidence and MQTT. Both need `LIGHTNVR_CONTRACT_MQTT=1`.

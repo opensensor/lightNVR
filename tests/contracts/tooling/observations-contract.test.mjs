@@ -1,0 +1,190 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+
+// INT_01 C2: the observations contract (docs/integrations/OBSERVATIONS_CONTRACT.md)
+// is present in canonical OpenAPI with the frozen authorization mapping (§12.1),
+// and every operation maps to a registered native route.
+const root = new URL('../../../', import.meta.url);
+const read = file => readFile(new URL(file, root), 'utf8');
+
+const camera = action => ({version: 1, kind: 'camera', requirements: [{action, resource: 'raw'}]});
+const expected = [
+  {id: 'getIntegrationCapabilities', method: 'get', path: '/api/integrations/capabilities',
+    route: '/api/integrations/capabilities', handler: 'handle_get_integration_capabilities',
+    auth: {version: 1, kind: 'authenticated'}},
+  {id: 'listObservations', method: 'get', path: '/api/observations',
+    route: '/api/observations', handler: 'handle_get_observations', auth: camera('live.view')},
+  {id: 'getObservation', method: 'get', path: '/api/observations/{id}',
+    route: '/api/observations/#', handler: 'handle_get_observation', auth: camera('live.view')},
+  {id: 'getObservationSnapshot', method: 'get', path: '/api/observations/{id}/snapshot',
+    route: '/api/observations/#/snapshot', handler: 'handle_get_observation_snapshot',
+    auth: camera('snapshot.create')},
+  // P2 (L14): authorized on the capture camera with observations.annotate.
+  {id: 'putObservationClassification', method: 'put',
+    path: '/api/observations/{id}/classifications/{namespace}/{name}',
+    route: '/api/observations/#/classifications/#/#', handler: 'handle_put_observation_classification',
+    auth: camera('observations.annotate')},
+];
+const schemas = ['Observation', 'ObservationEvidence', 'ObservationTransform', 'ObservationPage',
+  'ObservationChangeEvent', 'ObservationClassification', 'IntegrationCapabilities', 'ObservationError'];
+
+test('observation operations carry the frozen authorization mapping', async () => {
+  const doc = JSON.parse(await read('docs/api/openapi.json'));
+  for (const op of expected) {
+    const operation = doc.paths[op.path]?.[op.method];
+    assert.ok(operation, `missing ${op.method.toUpperCase()} ${op.path}`);
+    assert.equal(operation.operationId, op.id);
+    assert.doesNotMatch(operation.operationId, /Evidence/);
+    assert.deepEqual(operation['x-lightnvr-authorization'], op.auth, `authorization: ${op.id}`);
+    // L8 implemented the GET operations and L14 the PUT: none answers 501.
+    assert.equal(operation.responses['501'], undefined, `${op.id} no longer returns 501`);
+    assert.doesNotMatch(operation.description ?? '', /not yet implemented|until (task )?L14/,
+      `${op.id} carries no stub note`);
+    assert.ok(doc['x-lightnvr-coverage'].covered_operations.includes(op.id), `coverage: ${op.id}`);
+  }
+  for (const name of schemas) assert.ok(doc.components.schemas[name], `missing schema ${name}`);
+});
+
+test('observation operations map to registered native routes', async () => {
+  const [coverageText, source, stubs] = await Promise.all([read('docs/api/contracts/coverage.json'),
+    read('src/web/libuv_api_handlers.c'), read('src/web/api_handlers_observations.c')]);
+  const coverage = JSON.parse(coverageText);
+  for (const op of expected) {
+    const entry = coverage.operations.find(e => e.operation_id === op.id);
+    assert.ok(entry, `coverage entry: ${op.id}`);
+    assert.equal(entry.method, op.method.toUpperCase());
+    assert.equal(entry.route_pattern, op.route);
+    assert.equal(entry.canonical_path, op.path);
+    assert.equal(entry.handler, op.handler);
+    assert.ok(source.includes(`"${op.route}", "${op.method.toUpperCase()}"`), `registration: ${op.id}`);
+    assert.match(stubs, new RegExp(`void ${op.handler}\\(`), `handler definition: ${op.handler}`);
+  }
+});
+
+test('the observation schemas accept the contract examples', async () => {
+  const validators = await import(new URL('web/generated/api/validators.js', root));
+  const observation = {
+    id: '55555555-5555-4555-8555-555555555555',
+    source: 'urn:lightnvr:11111111-1111-4111-8111-111111111111',
+    camera_uuid: '22222222-2222-4222-8222-222222222222',
+    stream_name_at_capture: 'feeder-east',
+    batch_id: '77777777-7777-4777-8777-777777777777',
+    object_index: 0,
+    observed_at: '2026-11-08T14:03:12.481Z',
+    created_at: '2026-11-08T14:03:12.530Z',
+    detector: {engine_key: 'legacy-primary', engine_type: 'object', model: 'ssd_mobilenet_v2.sod', model_version: null},
+    label: 'bird', confidence: 0.87,
+    box: {format: 'xywh_normalized', x: 0.412, y: 0.288, width: 0.12, height: 0.165},
+    evidence: {
+      asset_id: '88888888-8888-4888-8888-888888888888', state: 'ready', reason: null,
+      origin: 'inference_input', media_type: 'image/jpeg', width: 640, height: 360, bytes: 48211,
+      captured_at: '2026-11-08T14:03:12.481Z', expires_at: '2026-11-15T14:03:12.481Z',
+      transform: {mode: 'none', source_width: 640, source_height: 360, inference_width: 640,
+        inference_height: 360, scale_x: 1.0, scale_y: 1.0, pad_x: 0, pad_y: 0},
+      snapshot_url: '/api/observations/55555555-5555-4555-8555-555555555555/snapshot',
+    },
+    track: null, recording_reference: {recording_id: 81234}, revision: 2,
+    classifications: {automated: [], owner_confirmed: []},
+  };
+  assert.equal(validators.validateObservation(observation), true);
+  assert.equal(validators.validateObservationPage({items: [observation], next_cursor: 'eyJ2IjoxfQ', has_more: false}), true);
+  assert.equal(validators.validateObservation({...observation, evidence: {...observation.evidence, state: 'done'}}), false);
+  assert.equal(validators.validateObservationChangeEvent({
+    observation_id: observation.id, revision: 2, camera_uuid: observation.camera_uuid, label: 'bird',
+    observed_at: observation.observed_at, change_cause: 'evidence', evidence_state: 'ready',
+    evidence_reason: null, asset_id: observation.evidence.asset_id, snapshot_url: observation.evidence.snapshot_url,
+  }), true);
+  assert.equal(validators.validateObservationError({error: 'Not implemented', code: 'not_implemented'}), true);
+  assert.equal(validators.validateObservationError({
+    error: 'Cursor is older than retained observation history', code: 'cursor_expired',
+    oldest_cursor: 'eyJ2IjoxfQ', oldest_observed_at: null,
+  }), true);
+  assert.equal(validators.validateApiError({error: 'Not implemented', code: 'not_implemented'}), true);
+  // P2 (L14): the closed PUT body and the 409 body with current.
+  const write = {classifier: 'yawamf', model_version: null, label: 'Black-capped Chickadee',
+    taxonomy_id: null, confidence: 0.93, classified_at: '2026-11-08T14:03:15.002Z',
+    input_asset_id: observation.evidence.asset_id, input_revision: 2, kind: 'automated'};
+  assert.equal(validators.validateObservationClassificationWrite(write), true);
+  assert.equal(validators.validateObservationClassificationWrite({...write, extra: 1}), false);
+});
+
+// P2 (L15): detection results gain an optional, closed observation summary.
+test('detection results accept the additive observation summary', async () => {
+  const validators = await import(new URL('web/generated/api/validators.js', root));
+  const detection = {label: 'bird', confidence: 0.82, x: 0.1, y: 0.2, width: 0.3, height: 0.4,
+    timestamp: 1794000195, end_timestamp: 1794000195};
+  const classification = {key: 'yawamf/species', writer_namespace: 'yawamf', classifier: 'yawamf',
+    model_version: null, label: 'Carolina Chickadee', taxonomy_id: null, confidence: 1,
+    classified_at: '2026-11-08T14:03:15.002Z', input_asset_id: '55555555-5555-4555-8555-555555555555',
+    input_revision: 3, kind: 'owner_confirmed', annotation_revision: 2,
+    created_at: '2026-11-08T14:03:15.100Z', updated_at: '2026-11-08T18:20:41.200Z'};
+  const id = '44444444-4444-4444-8444-444444444444';
+  const page = detections => ({detections, timestamp: '2026-11-08 14:03:15', stream_status: 'Running'});
+  assert.equal(validators.validateEvidenceDetections(page([detection])), true, 'unlinked is unchanged');
+  assert.equal(validators.validateEvidenceDetections(page([{...detection,
+    observation: {id, owner_confirmed: false, classification: null}}])), true);
+  assert.equal(validators.validateEvidenceDetections(page([{...detection,
+    observation: {id, owner_confirmed: true, classification}}])), true);
+  assert.equal(validators.validateEvidenceDetection({...detection,
+    observation: {id, owner_confirmed: true, classification, extra: 1}}), false);
+  assert.equal(validators.validateEvidenceDetection({...detection,
+    observation: {id, classification: null}}), false);
+  assert.equal(validators.validateEvidenceDetection({...detection, observation: null}), false);
+});
+
+// L10 follow-up (L12): /api/system/info documents the optional observation_pipeline
+// member, mirroring observation_diagnostics_to_json() (src/core/observation_diagnostics.c).
+test('system information documents the optional observation pipeline diagnostics', async () => {
+  const [docText, source] = await Promise.all([read('docs/api/openapi.json'),
+    read('src/core/observation_diagnostics.c')]);
+  const schemas = JSON.parse(docText).components.schemas;
+  const info = schemas.SystemInformation;
+  assert.deepEqual(info.properties.observation_pipeline,
+    {$ref: '#/components/schemas/ObservationPipelineDiagnostics'});
+  assert.ok(!info.required.includes('observation_pipeline'), 'optional: older payloads omit it');
+  const pipeline = schemas.ObservationPipelineDiagnostics;
+  assert.ok(pipeline, 'missing schema ObservationPipelineDiagnostics');
+
+  // Every key the C serializer emits is documented, and the schema names no other key.
+  const body = source.slice(source.indexOf('cJSON *observation_diagnostics_to_json('));
+  const emitted = new Set([...body.matchAll(/(?:cJSON_Add\w+ToObject|add_u64)\(\s*\w+,\s*"([a-z_]+)"/g)].map(m => m[1]));
+  const documented = new Set();
+  const walk = node => {
+    if (!node || typeof node !== 'object') return;
+    for (const [key, value] of Object.entries(node.properties ?? {})) { documented.add(key); walk(value); }
+    walk(node.items);
+  };
+  walk(pipeline);
+  assert.ok(emitted.size > 30, `parsed ${emitted.size} serializer keys`);
+  assert.deepEqual([...documented].sort(), [...emitted].sort());
+
+  const validators = await import(new URL('web/generated/api/validators.js', root));
+  const inactive = {
+    active: false, accepted: 0,
+    dropped: {queue_full: 0, budget_exhausted: 0, disabled: 0, untracked: 0},
+    evidence: {queue_allocated: false, worker_running: false, backlog_items: 0, backlog_bytes: 0,
+      high_water_items: 0, high_water_bytes: 0, drop_ring_depth: 0, ready: 0,
+      unavailable_submitted: 0, bytes_written: 0,
+      failures: {encode_failed: 0, write_failed: 0, db_error: 0, disabled: 0, interrupted: 0}},
+    history: {available: true, observations: 0, oldest_seq: 1, head_seq: 0, oldest_observed_at: null,
+      epoch_regenerations: 0},
+    publications: {pending: 0, failed: 0, expired: 0, relay_lag_seconds: 0, relay_running: false,
+      relayed: 0, relayed_no_route: 0},
+    budget_exhausted_cameras: 0, cameras: [],
+  };
+  const active = {...inactive, active: true, accepted: 12,
+    history: {...inactive.history, observations: 12, head_seq: 24, oldest_observed_at: '2026-11-08T14:03:12.481Z'},
+    publications: {...inactive.publications, relay_lag_seconds: 1.25, relay_running: true, relayed: 24},
+    cameras: [{camera_uuid: '22222222-2222-4222-8222-222222222222', retained_bytes: 48211,
+      max_bytes: 2147483648, max_age_days: 7, budget_exhausted: false}]};
+  assert.equal(validators.validateObservationPipelineDiagnostics(inactive), true);
+  assert.equal(validators.validateObservationPipelineDiagnostics(active), true);
+  assert.equal(validators.validateObservationPipelineDiagnostics({...inactive, active: 'no'}), false);
+  assert.equal(validators.validateObservationPipelineDiagnostics({...inactive, accepted: -1}), false);
+  const {evidence, ...withoutEvidence} = inactive;
+  assert.ok(evidence);
+  assert.equal(validators.validateObservationPipelineDiagnostics(withoutEvidence), false);
+  assert.equal(validators.validateObservationPipelineDiagnostics({...active,
+    cameras: [{...active.cameras[0], camera_uuid: 'not-a-uuid'}]}), false);
+});

@@ -1,6 +1,6 @@
 import type { APIRequest, APIRequestContext, Browser, BrowserContext } from '@playwright/test';
 export interface FixtureCredentials { username: string; password: string }
-export interface FixtureOptions { lprMasterKeyHex?: string; binary?: string; webRoot?: string; maxStreams?: number; port?: number; startupTimeoutMs?: number; seed?: boolean; retain?: boolean }
+export interface FixtureOptions { lprMasterKeyHex?: string; extraConfig?: string; binary?: string; webRoot?: string; maxStreams?: number; port?: number; startupTimeoutMs?: number; seed?: boolean; retain?: boolean }
 export interface FixtureRequestOptions extends Omit<RequestInit, 'body' | 'headers' | 'method'> {
   principal?: string; method?: string; body?: unknown; headers?: Record<string, string>;
 }
@@ -15,6 +15,10 @@ export interface ContractFixture {
   json<T = unknown>(route: string, options?: FixtureRequestOptions): Promise<T>;
   apiContext(request: APIRequest, principal?: string): Promise<APIRequestContext>;
   browserContext(browser: Browser, principal?: string): Promise<BrowserContext>;
+  /** Test-only: end the current process (default SIGKILL), keeping the directory. */
+  kill(signal?: 'SIGKILL' | 'SIGTERM'): Promise<void>;
+  /** Test-only: start the next process generation on the same directory, config and port. */
+  relaunch(): Promise<void>;
   stop(options?: {failed?: boolean}): Promise<void>;
 }
 export declare const credentials: Readonly<Record<'admin' | 'viewer', FixtureCredentials>>;

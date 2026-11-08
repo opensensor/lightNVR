@@ -1,0 +1,6 @@
+{
+  "error": "Cursor is older than retained observation history",
+  "code": "cursor_expired",
+  "oldest_cursor": "eyJ2IjoxLCJzZXEiOjEwMDAsImVwb2NoIjoiNjY2NjY2NjYtNjY2Ni00NjY2LTg2NjYtNjY2NjY2NjY2NjY2In0",
+  "oldest_observed_at": "2026-11-08T14:03:12.481Z"
+}

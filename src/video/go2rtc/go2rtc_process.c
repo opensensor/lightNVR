@@ -1095,21 +1095,27 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
         // Candidates configuration for NAT traversal
         fprintf(config_file, "  candidates:\n");
 
-        // If external IP is specified, use it
-        if (global_config->go2rtc_external_ip[0] != '\0') {
-            fprintf(config_file, "    - \"%s:%d\"\n",
-                    global_config->go2rtc_external_ip,
-                    global_config->go2rtc_webrtc_listen_port > 0 ? global_config->go2rtc_webrtc_listen_port : 8555);
-        } else {
-            // Auto-detect external IP using wildcard
-            // Use separate entries for IPv4 and IPv6 to handle both
-            fprintf(config_file, "    - \"*:%d\"\n",
-                    global_config->go2rtc_webrtc_listen_port > 0 ? global_config->go2rtc_webrtc_listen_port : 8555);
+        // External IP is a list: one candidate per entry, so LAN, VPN and
+        // public clients can each reach go2rtc. Empty (or invalid, which the
+        // settings API refuses to save) falls back to auto-detect.
+        int webrtc_port = global_config->go2rtc_webrtc_listen_port > 0 ? global_config->go2rtc_webrtc_listen_port : 8555;
+        char candidates[GO2RTC_MAX_EXTERNAL_CANDIDATES][GO2RTC_CANDIDATE_SIZE];
+        int candidate_count = go2rtc_parse_external_candidates(global_config->go2rtc_external_ip, webrtc_port,
+                                                               candidates, GO2RTC_MAX_EXTERNAL_CANDIDATES);
+        if (candidate_count < 0) {
+            log_warn("go2rtc config: ignoring invalid external_ip list; using auto-detect");
+        }
+        if (candidate_count <= 0) {
+            fprintf(config_file, "    - \"*:%d\"\n", webrtc_port);
+        }
+        for (int i = 0; i < candidate_count; i++) {
+            fprintf(config_file, "    - \"%s\"\n", candidates[i]);
         }
 
-        // Add STUN server as candidate for ICE gathering
+        // go2rtc discovers the public host through ice_servers, then advertises
+        // our WebRTC listening port. A STUN server URL is not a candidate.
         if (global_config->go2rtc_stun_enabled) {
-            fprintf(config_file, "    - \"stun:%s\"\n", global_config->go2rtc_stun_server);
+            fprintf(config_file, "    - \"stun:%d\"\n", webrtc_port);
         }
 
         fprintf(config_file, "\n");

@@ -1,0 +1,25 @@
+# INT_01 X1 lightNVR <-> YA-WAMF E2E suite, container mode (CI/nightly path).
+#
+#   YAWAMF_SRC=../../../../YetAnother-WhosAtMyFeeder \
+#     docker compose -f tests/integration/yawamf_e2e/compose/docker-compose.yml run --rm e2e
+#
+# Results land in tests/integration/yawamf_e2e/results/. Pass scenario subsets
+# after the service name, e.g. `run --rm e2e --scenarios A1,A3`.
+#
+# NOT EXECUTED IN X1 (see ../README.md): the committed results are from the
+# host-process mode, which runs the same run_e2e.py against the same kinds of
+# processes on the host.
+services:
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      additional_contexts:
+        lightnvr: ../../../..
+        yawamf: ${YAWAMF_SRC:?set YAWAMF_SRC to a YA-WAMF checkout on feature/lightnvr-provider}
+    image: lightnvr-x1-e2e:local
+    volumes:
+      - ../results:/results
+    # Everything binds to 127.0.0.1 inside the one container.
+    network_mode: none
+    init: true

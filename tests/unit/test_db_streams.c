@@ -779,6 +779,66 @@ void test_eptz_config_round_trip_update_and_get_all(void) {
 }
 
 /* ================================================================
+ * INT_01 per-camera observation evidence settings (migration 0095)
+ * ================================================================ */
+
+void test_observation_evidence_settings_default_from_zeroed_config(void) {
+    stream_config_t s = make_stream("cam_obs_default", true);
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_obs_default", &got));
+    TEST_ASSERT_FALSE(got.observation_evidence_enabled);
+    TEST_ASSERT_EQUAL_STRING("", got.observation_labels);
+    TEST_ASSERT_EQUAL_INT(7, got.observation_max_age_days);
+    TEST_ASSERT_EQUAL_INT64(2147483648LL, got.observation_max_bytes);
+
+    /* An update from a config that never loaded the fields keeps valid values. */
+    stream_config_t zeroed = make_stream("cam_obs_default", true);
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config("cam_obs_default", &zeroed));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_obs_default", &got));
+    TEST_ASSERT_EQUAL_INT(7, got.observation_max_age_days);
+    TEST_ASSERT_EQUAL_INT64(2147483648LL, got.observation_max_bytes);
+}
+
+void test_observation_evidence_settings_round_trip_update_and_get_all(void) {
+    stream_config_t s = make_stream("cam_obs", true);
+    s.observation_evidence_enabled = true;
+    safe_strcpy(s.observation_labels, "bird,cat", sizeof(s.observation_labels), 0);
+    s.observation_max_age_days = 14;
+    s.observation_max_bytes = 3LL * 1024 * 1024 * 1024;
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_obs", &got));
+    TEST_ASSERT_TRUE(got.observation_evidence_enabled);
+    TEST_ASSERT_EQUAL_STRING("bird,cat", got.observation_labels);
+    TEST_ASSERT_EQUAL_INT(14, got.observation_max_age_days);
+    TEST_ASSERT_EQUAL_INT64(3LL * 1024 * 1024 * 1024, got.observation_max_bytes);
+
+    got.observation_evidence_enabled = false;
+    safe_strcpy(got.observation_labels, "bird", sizeof(got.observation_labels), 0);
+    got.observation_max_age_days = 30;
+    got.observation_max_bytes = 64LL * 1024 * 1024;
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config("cam_obs", &got));
+
+    stream_config_t out[2];
+    TEST_ASSERT_EQUAL_INT(1, get_all_stream_configs(out, 2));
+    TEST_ASSERT_FALSE(out[0].observation_evidence_enabled);
+    TEST_ASSERT_EQUAL_STRING("bird", out[0].observation_labels);
+    TEST_ASSERT_EQUAL_INT(30, out[0].observation_max_age_days);
+    TEST_ASSERT_EQUAL_INT64(64LL * 1024 * 1024, out[0].observation_max_bytes);
+
+    /* Reactivating a soft-deleted stream writes the evidence settings too. */
+    TEST_ASSERT_EQUAL_INT(0, delete_stream_config("cam_obs"));
+    s.observation_max_age_days = 21;
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_obs", &got));
+    TEST_ASSERT_TRUE(got.observation_evidence_enabled);
+    TEST_ASSERT_EQUAL_INT(21, got.observation_max_age_days);
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -830,6 +890,8 @@ int main(void) {
     RUN_TEST(test_playback_transport_round_trip_and_update);
     RUN_TEST(test_playback_transport_is_returned_by_get_all);
     RUN_TEST(test_eptz_config_round_trip_update_and_get_all);
+    RUN_TEST(test_observation_evidence_settings_default_from_zeroed_config);
+    RUN_TEST(test_observation_evidence_settings_round_trip_update_and_get_all);
 
     int result = UNITY_END();
     shutdown_database();

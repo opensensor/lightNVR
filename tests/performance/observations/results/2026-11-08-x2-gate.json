@@ -1,0 +1,900 @@
+{
+  "schema_version": 1,
+  "task": "INT_01 X2 (A11)",
+  "generated_at": "2026-11-08T20:13:56.366Z",
+  "binary": "build-int01-X2/bin/lightnvr from 9ed02bb4 (Release, LiteRT on, apt FFmpeg 8.0.1 headers)",
+  "rule": "Gating: segment_interval_ms p95 +<=5%, no additional gaps (3 sources), same workload and binary, and the evidence checks (metrics.mjs evidenceGate). db_probe_ms p95 is advisory under the C4 rule because it fails its own 2% repeatability (disabled runs below); it is reported both per pair and pooled.",
+  "gates": [
+    {
+      "baseline": "disabled-run1",
+      "candidate": "enabled-defaults",
+      "args": [
+        "--advisory",
+        "latency.db_probe_ms.p95"
+      ],
+      "exit": 0,
+      "result": {
+        "max_increase_pct": 5,
+        "pass": true,
+        "checks": [
+          {
+            "key": "latency.segment_interval_ms.p95",
+            "baseline": 10008.926,
+            "candidate": 10008.535,
+            "increase_pct": -0.004,
+            "pass": true
+          },
+          {
+            "key": "gaps.metrics_recording_gaps_total",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          },
+          {
+            "key": "gaps.catalog_gaps_total",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          },
+          {
+            "key": "gaps.segment_interval_gaps",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          }
+        ],
+        "advisory": [
+          {
+            "key": "latency.db_probe_ms.p95",
+            "baseline": 13.081,
+            "candidate": 14.834,
+            "increase_pct": 13.401,
+            "pass": false,
+            "gating": false
+          }
+        ],
+        "same_workload": true,
+        "same_binary": true,
+        "evidence": {
+          "require_saturation": false,
+          "max_submit_seconds": 0.001,
+          "pass": true,
+          "checks": [
+            {
+              "key": "baseline.feature_inactive",
+              "value": {
+                "accepted": 0,
+                "queue_allocated": 0
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.detections",
+              "value": 2408,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.ready",
+              "value": {
+                "accepted": 2408,
+                "ready": 2408
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.db_observations",
+              "value": 2524,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "limits.items",
+              "value": {
+                "high_water": 4,
+                "backlog_max": 3
+              },
+              "limit": 64,
+              "pass": true
+            },
+            {
+              "key": "limits.bytes",
+              "value": {
+                "high_water": 11086848,
+                "backlog_max": 8315136
+              },
+              "limit": 33554432,
+              "pass": true
+            },
+            {
+              "key": "limits.camera_items",
+              "value": 1,
+              "limit": 8,
+              "pass": true
+            },
+            {
+              "key": "drops.untracked",
+              "value": 0,
+              "limit": 0,
+              "pass": true
+            },
+            {
+              "key": "drops.reasons_recorded",
+              "value": {
+                "window_drops": {
+                  "queue_full": 0,
+                  "budget_exhausted": 0,
+                  "disabled": 0,
+                  "untracked": 0
+                },
+                "db": {
+                  "ready": 2524
+                },
+                "without_reason": 0,
+                "unknown": []
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.failures",
+              "value": {
+                "encode_failed": 0,
+                "write_failed": 0,
+                "db_error": 0,
+                "disabled": 0,
+                "interrupted": 0
+              },
+              "limit": 0,
+              "pass": true
+            },
+            {
+              "key": "submit.count",
+              "value": 2408,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "submit.max_seconds",
+              "value": 0.000340905,
+              "limit": 0.001,
+              "pass": true
+            }
+          ]
+        },
+        "verdict": "pass"
+      }
+    },
+    {
+      "baseline": "disabled-run1",
+      "candidate": "enabled-saturated",
+      "args": [
+        "--advisory",
+        "latency.db_probe_ms.p95",
+        "--require-saturation"
+      ],
+      "exit": 0,
+      "result": {
+        "max_increase_pct": 5,
+        "pass": true,
+        "checks": [
+          {
+            "key": "latency.segment_interval_ms.p95",
+            "baseline": 10008.926,
+            "candidate": 10012.879,
+            "increase_pct": 0.039,
+            "pass": true
+          },
+          {
+            "key": "gaps.metrics_recording_gaps_total",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          },
+          {
+            "key": "gaps.catalog_gaps_total",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          },
+          {
+            "key": "gaps.segment_interval_gaps",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          }
+        ],
+        "advisory": [
+          {
+            "key": "latency.db_probe_ms.p95",
+            "baseline": 13.081,
+            "candidate": 14.23,
+            "increase_pct": 8.784,
+            "pass": false,
+            "gating": false
+          }
+        ],
+        "same_workload": true,
+        "same_binary": true,
+        "evidence": {
+          "require_saturation": true,
+          "max_submit_seconds": 0.001,
+          "pass": true,
+          "checks": [
+            {
+              "key": "baseline.feature_inactive",
+              "value": {
+                "accepted": 0,
+                "queue_allocated": 0
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.detections",
+              "value": 2404,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.ready",
+              "value": {
+                "accepted": 1063,
+                "ready": 1063
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.db_observations",
+              "value": 2532,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "limits.items",
+              "value": {
+                "high_water": 1,
+                "backlog_max": 1
+              },
+              "limit": 64,
+              "pass": true
+            },
+            {
+              "key": "limits.bytes",
+              "value": {
+                "high_water": 2771712,
+                "backlog_max": 2771712
+              },
+              "limit": 4194304,
+              "pass": true
+            },
+            {
+              "key": "limits.camera_items",
+              "value": 1,
+              "limit": 8,
+              "pass": true
+            },
+            {
+              "key": "drops.untracked",
+              "value": 0,
+              "limit": 0,
+              "pass": true
+            },
+            {
+              "key": "drops.reasons_recorded",
+              "value": {
+                "window_drops": {
+                  "queue_full": 1341,
+                  "budget_exhausted": 0,
+                  "disabled": 0,
+                  "untracked": 0
+                },
+                "db": {
+                  "ready": 1124,
+                  "unavailable:queue_full": 1408
+                },
+                "without_reason": 0,
+                "unknown": []
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.failures",
+              "value": {
+                "encode_failed": 0,
+                "write_failed": 0,
+                "db_error": 0,
+                "disabled": 0,
+                "interrupted": 0
+              },
+              "limit": 0,
+              "pass": true
+            },
+            {
+              "key": "submit.count",
+              "value": 2404,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "submit.max_seconds",
+              "value": 0.000404625,
+              "limit": 0.001,
+              "pass": true
+            },
+            {
+              "key": "saturation.queue_full_drops",
+              "value": 1341,
+              "limit": null,
+              "pass": true
+            }
+          ]
+        },
+        "verdict": "pass"
+      }
+    },
+    {
+      "baseline": "disabled-run3",
+      "candidate": "enabled-defaults2",
+      "args": [
+        "--advisory",
+        "latency.db_probe_ms.p95"
+      ],
+      "exit": 0,
+      "result": {
+        "max_increase_pct": 5,
+        "pass": true,
+        "checks": [
+          {
+            "key": "latency.segment_interval_ms.p95",
+            "baseline": 10016.068,
+            "candidate": 10013.473,
+            "increase_pct": -0.026,
+            "pass": true
+          },
+          {
+            "key": "gaps.metrics_recording_gaps_total",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          },
+          {
+            "key": "gaps.catalog_gaps_total",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          },
+          {
+            "key": "gaps.segment_interval_gaps",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          }
+        ],
+        "advisory": [
+          {
+            "key": "latency.db_probe_ms.p95",
+            "baseline": 13.401,
+            "candidate": 13.991,
+            "increase_pct": 4.403,
+            "pass": true,
+            "gating": false
+          }
+        ],
+        "same_workload": true,
+        "same_binary": true,
+        "evidence": {
+          "require_saturation": false,
+          "max_submit_seconds": 0.001,
+          "pass": true,
+          "checks": [
+            {
+              "key": "baseline.feature_inactive",
+              "value": {
+                "accepted": 0,
+                "queue_allocated": 0
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.detections",
+              "value": 2407,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.ready",
+              "value": {
+                "accepted": 2407,
+                "ready": 2408
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.db_observations",
+              "value": 2532,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "limits.items",
+              "value": {
+                "high_water": 4,
+                "backlog_max": 3
+              },
+              "limit": 64,
+              "pass": true
+            },
+            {
+              "key": "limits.bytes",
+              "value": {
+                "high_water": 11086848,
+                "backlog_max": 8315136
+              },
+              "limit": 33554432,
+              "pass": true
+            },
+            {
+              "key": "limits.camera_items",
+              "value": 1,
+              "limit": 8,
+              "pass": true
+            },
+            {
+              "key": "drops.untracked",
+              "value": 0,
+              "limit": 0,
+              "pass": true
+            },
+            {
+              "key": "drops.reasons_recorded",
+              "value": {
+                "window_drops": {
+                  "queue_full": 0,
+                  "budget_exhausted": 0,
+                  "disabled": 0,
+                  "untracked": 0
+                },
+                "db": {
+                  "ready": 2532
+                },
+                "without_reason": 0,
+                "unknown": []
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.failures",
+              "value": {
+                "encode_failed": 0,
+                "write_failed": 0,
+                "db_error": 0,
+                "disabled": 0,
+                "interrupted": 0
+              },
+              "limit": 0,
+              "pass": true
+            },
+            {
+              "key": "submit.count",
+              "value": 2407,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "submit.max_seconds",
+              "value": 0.000396048,
+              "limit": 0.001,
+              "pass": true
+            }
+          ]
+        },
+        "verdict": "pass"
+      }
+    },
+    {
+      "baseline": "disabled-run3",
+      "candidate": "enabled-saturated2",
+      "args": [
+        "--advisory",
+        "latency.db_probe_ms.p95",
+        "--require-saturation"
+      ],
+      "exit": 0,
+      "result": {
+        "max_increase_pct": 5,
+        "pass": true,
+        "checks": [
+          {
+            "key": "latency.segment_interval_ms.p95",
+            "baseline": 10016.068,
+            "candidate": 10009.342,
+            "increase_pct": -0.067,
+            "pass": true
+          },
+          {
+            "key": "gaps.metrics_recording_gaps_total",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          },
+          {
+            "key": "gaps.catalog_gaps_total",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          },
+          {
+            "key": "gaps.segment_interval_gaps",
+            "baseline": 0,
+            "candidate": 0,
+            "pass": true
+          }
+        ],
+        "advisory": [
+          {
+            "key": "latency.db_probe_ms.p95",
+            "baseline": 13.401,
+            "candidate": 13.702,
+            "increase_pct": 2.246,
+            "pass": true,
+            "gating": false
+          }
+        ],
+        "same_workload": true,
+        "same_binary": true,
+        "evidence": {
+          "require_saturation": true,
+          "max_submit_seconds": 0.001,
+          "pass": true,
+          "checks": [
+            {
+              "key": "baseline.feature_inactive",
+              "value": {
+                "accepted": 0,
+                "queue_allocated": 0
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.detections",
+              "value": 2404,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.ready",
+              "value": {
+                "accepted": 1073,
+                "ready": 1073
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.db_observations",
+              "value": 2529,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "limits.items",
+              "value": {
+                "high_water": 1,
+                "backlog_max": 1
+              },
+              "limit": 64,
+              "pass": true
+            },
+            {
+              "key": "limits.bytes",
+              "value": {
+                "high_water": 2771712,
+                "backlog_max": 2771712
+              },
+              "limit": 4194304,
+              "pass": true
+            },
+            {
+              "key": "limits.camera_items",
+              "value": 1,
+              "limit": 8,
+              "pass": true
+            },
+            {
+              "key": "drops.untracked",
+              "value": 0,
+              "limit": 0,
+              "pass": true
+            },
+            {
+              "key": "drops.reasons_recorded",
+              "value": {
+                "window_drops": {
+                  "queue_full": 1331,
+                  "budget_exhausted": 0,
+                  "disabled": 0,
+                  "untracked": 0
+                },
+                "db": {
+                  "ready": 1134,
+                  "unavailable:queue_full": 1395
+                },
+                "without_reason": 0,
+                "unknown": []
+              },
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "evidence.failures",
+              "value": {
+                "encode_failed": 0,
+                "write_failed": 0,
+                "db_error": 0,
+                "disabled": 0,
+                "interrupted": 0
+              },
+              "limit": 0,
+              "pass": true
+            },
+            {
+              "key": "submit.count",
+              "value": 2404,
+              "limit": null,
+              "pass": true
+            },
+            {
+              "key": "submit.max_seconds",
+              "value": 0.00036462,
+              "limit": 0.001,
+              "pass": true
+            },
+            {
+              "key": "saturation.queue_full_drops",
+              "value": 1331,
+              "limit": null,
+              "pass": true
+            }
+          ]
+        },
+        "verdict": "pass"
+      }
+    }
+  ],
+  "strict_gates_without_advisory": [
+    {
+      "baseline": "disabled-run1",
+      "candidate": "enabled-defaults",
+      "exit": 1,
+      "db_probe": {
+        "key": "latency.db_probe_ms.p95",
+        "baseline": 13.081,
+        "candidate": 14.834,
+        "increase_pct": 13.401,
+        "pass": false
+      }
+    },
+    {
+      "baseline": "disabled-run1",
+      "candidate": "enabled-saturated",
+      "exit": 1,
+      "db_probe": {
+        "key": "latency.db_probe_ms.p95",
+        "baseline": 13.081,
+        "candidate": 14.23,
+        "increase_pct": 8.784,
+        "pass": false
+      }
+    },
+    {
+      "baseline": "disabled-run3",
+      "candidate": "enabled-defaults2",
+      "exit": 0,
+      "db_probe": {
+        "key": "latency.db_probe_ms.p95",
+        "baseline": 13.401,
+        "candidate": 13.991,
+        "increase_pct": 4.403,
+        "pass": true
+      }
+    },
+    {
+      "baseline": "disabled-run3",
+      "candidate": "enabled-saturated2",
+      "exit": 0,
+      "db_probe": {
+        "key": "latency.db_probe_ms.p95",
+        "baseline": 13.401,
+        "candidate": 13.702,
+        "increase_pct": 2.246,
+        "pass": true
+      }
+    }
+  ],
+  "pooled_db_probe_p95": {
+    "defaults": {
+      "exit": 1,
+      "series": "db_probe_ms",
+      "percentile": 95,
+      "max_increase_pct": 5,
+      "baseline": {
+        "runs": 3,
+        "count": 6955,
+        "min": 6.803,
+        "p50": 8.17,
+        "p95": 13.131,
+        "p99": 17.032,
+        "max": 38.949,
+        "mean": 8.867
+      },
+      "candidate": {
+        "runs": 2,
+        "count": 4630,
+        "min": 6.885,
+        "p50": 8.275,
+        "p95": 14.432,
+        "p99": 19.815,
+        "max": 36.451,
+        "mean": 9.194
+      },
+      "baseline_p95": 13.130799999999995,
+      "candidate_p95": 14.43155,
+      "increase_pct": 9.906,
+      "pass": false,
+      "baseline_files": [
+        "tests/performance/observations/results/2026-11-08-x2-disabled-run1.json",
+        "tests/performance/observations/results/2026-11-08-x2-disabled-run2.json",
+        "tests/performance/observations/results/2026-11-08-x2-disabled-run3.json"
+      ],
+      "candidate_files": [
+        "tests/performance/observations/results/2026-11-08-x2-enabled-defaults.json",
+        "tests/performance/observations/results/2026-11-08-x2-enabled-defaults2.json"
+      ],
+      "same_workload": true,
+      "same_binary": true
+    },
+    "saturated": {
+      "exit": 1,
+      "series": "db_probe_ms",
+      "percentile": 95,
+      "max_increase_pct": 5,
+      "baseline": {
+        "runs": 3,
+        "count": 6955,
+        "min": 6.803,
+        "p50": 8.17,
+        "p95": 13.131,
+        "p99": 17.032,
+        "max": 38.949,
+        "mean": 8.867
+      },
+      "candidate": {
+        "runs": 2,
+        "count": 4635,
+        "min": 6.97,
+        "p50": 8.143,
+        "p95": 13.984,
+        "p99": 18.798,
+        "max": 32.759,
+        "mean": 8.96
+      },
+      "baseline_p95": 13.130799999999995,
+      "candidate_p95": 13.983700000000002,
+      "increase_pct": 6.495,
+      "pass": false,
+      "baseline_files": [
+        "tests/performance/observations/results/2026-11-08-x2-disabled-run1.json",
+        "tests/performance/observations/results/2026-11-08-x2-disabled-run2.json",
+        "tests/performance/observations/results/2026-11-08-x2-disabled-run3.json"
+      ],
+      "candidate_files": [
+        "tests/performance/observations/results/2026-11-08-x2-enabled-saturated.json",
+        "tests/performance/observations/results/2026-11-08-x2-enabled-saturated2.json"
+      ],
+      "same_workload": true,
+      "same_binary": true
+    }
+  },
+  "disabled_repeatability": [
+    {
+      "a": "disabled-run1",
+      "b": "disabled-run2",
+      "exit": 1,
+      "checks": [
+        {
+          "key": "latency.segment_interval_ms.p95",
+          "a": 10008.926,
+          "b": 10009.659,
+          "variance_pct": 0.007,
+          "pass": true
+        },
+        {
+          "key": "latency.db_probe_ms.p95",
+          "a": 13.081,
+          "b": 12.744,
+          "variance_pct": 2.61,
+          "pass": false
+        }
+      ]
+    },
+    {
+      "a": "disabled-run2",
+      "b": "disabled-run3",
+      "exit": 1,
+      "checks": [
+        {
+          "key": "latency.segment_interval_ms.p95",
+          "a": 10009.659,
+          "b": 10016.068,
+          "variance_pct": 0.064,
+          "pass": true
+        },
+        {
+          "key": "latency.db_probe_ms.p95",
+          "a": 12.744,
+          "b": 13.401,
+          "variance_pct": 5.026,
+          "pass": false
+        }
+      ]
+    },
+    {
+      "a": "disabled-run1",
+      "b": "disabled-run3",
+      "exit": 1,
+      "checks": [
+        {
+          "key": "latency.segment_interval_ms.p95",
+          "a": 10008.926,
+          "b": 10016.068,
+          "variance_pct": 0.071,
+          "pass": true
+        },
+        {
+          "key": "latency.db_probe_ms.p95",
+          "a": 13.081,
+          "b": 13.401,
+          "variance_pct": 2.417,
+          "pass": false
+        }
+      ]
+    }
+  ],
+  "gate_can_fail": {
+    "args": [
+      "gate",
+      "disabled-run3",
+      "enabled-defaults2",
+      "--max-pct",
+      "-1"
+    ],
+    "exit": 1,
+    "verdict": "fail"
+  },
+  "evidence_gate_can_fail": {
+    "args": [
+      "gate",
+      "disabled-run3",
+      "enabled-defaults2",
+      "--advisory",
+      "latency.db_probe_ms.p95",
+      "--require-saturation",
+      "--max-submit-seconds",
+      "0.00001"
+    ],
+    "exit": 1,
+    "failing": [
+      "submit.max_seconds",
+      "saturation.queue_full_drops"
+    ]
+  }
+}

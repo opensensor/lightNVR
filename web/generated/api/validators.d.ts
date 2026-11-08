@@ -156,6 +156,7 @@ export declare const validateImagingOptionsResponse: ContractValidator<component
 export declare const validateImagingSettings: ContractValidator<components["schemas"]["ImagingSettings"]>;
 export declare const validateImagingSettingsRequest: ContractValidator<components["schemas"]["ImagingSettingsRequest"]>;
 export declare const validateImagingSettingsResponse: ContractValidator<components["schemas"]["ImagingSettingsResponse"]>;
+export declare const validateIntegrationCapabilities: ContractValidator<components["schemas"]["IntegrationCapabilities"]>;
 export declare const validateLegacyApiKeyCreated: ContractValidator<components["schemas"]["LegacyApiKeyCreated"]>;
 export declare const validateLiveCameraSlot: ContractValidator<components["schemas"]["LiveCameraSlot"]>;
 export declare const validateLiveLayout: ContractValidator<components["schemas"]["LiveLayout"]>;
@@ -173,6 +174,16 @@ export declare const validateLogoutResponse: ContractValidator<components["schem
 export declare const validateLprStreamSummaryPage: ContractValidator<components["schemas"]["LprStreamSummaryPage"]>;
 export declare const validateMotionTrigger: ContractValidator<components["schemas"]["MotionTrigger"]>;
 export declare const validateMotionTriggered: ContractValidator<components["schemas"]["MotionTriggered"]>;
+export declare const validateObservation: ContractValidator<components["schemas"]["Observation"]>;
+export declare const validateObservationChangeEvent: ContractValidator<components["schemas"]["ObservationChangeEvent"]>;
+export declare const validateObservationClassification: ContractValidator<components["schemas"]["ObservationClassification"]>;
+export declare const validateObservationClassificationResult: ContractValidator<components["schemas"]["ObservationClassificationResult"]>;
+export declare const validateObservationClassificationWrite: ContractValidator<components["schemas"]["ObservationClassificationWrite"]>;
+export declare const validateObservationError: ContractValidator<components["schemas"]["ObservationError"]>;
+export declare const validateObservationEvidence: ContractValidator<components["schemas"]["ObservationEvidence"]>;
+export declare const validateObservationPage: ContractValidator<components["schemas"]["ObservationPage"]>;
+export declare const validateObservationPipelineDiagnostics: ContractValidator<components["schemas"]["ObservationPipelineDiagnostics"]>;
+export declare const validateObservationTransform: ContractValidator<components["schemas"]["ObservationTransform"]>;
 export declare const validateOnvifAddRequest: ContractValidator<components["schemas"]["OnvifAddRequest"]>;
 export declare const validateOnvifAddResult: ContractValidator<components["schemas"]["OnvifAddResult"]>;
 export declare const validateOnvifClaimRequest: ContractValidator<components["schemas"]["OnvifClaimRequest"]>;

@@ -458,6 +458,170 @@ void test_unrelated_change_does_not_restart_go2rtc(void) {
     TEST_ASSERT_EQUAL_UINT(0, run_captured_update("{\"priority\":7}"));
 }
 
+
+/* ---- INT_01 L9: per-camera observation evidence settings ---- */
+
+static cJSON *get_stream_json(const char *name) {
+    http_request_t get_request;
+    http_response_t get_response;
+    http_request_init(&get_request);
+    http_response_init(&get_response);
+    snprintf(get_request.path, sizeof(get_request.path), "/api/streams/%s", name);
+    strcpy(get_request.method_str, "GET");
+    handle_get_stream(&get_request, &get_response);
+    TEST_ASSERT_EQUAL_INT(200, get_response.status_code);
+    cJSON *json = cJSON_Parse((const char *)get_response.body);
+    http_response_free(&get_response);
+    TEST_ASSERT_NOT_NULL(json);
+    return json;
+}
+
+static void assert_observation_json(cJSON *json, bool enabled, const char *labels,
+                                    int max_age_days, double max_bytes) {
+    cJSON *value = cJSON_GetObjectItemCaseSensitive(json, "observation_evidence_enabled");
+    TEST_ASSERT_TRUE_MESSAGE(cJSON_IsBool(value), "observation_evidence_enabled missing");
+    TEST_ASSERT_EQUAL(enabled, cJSON_IsTrue(value));
+    value = cJSON_GetObjectItemCaseSensitive(json, "observation_labels");
+    TEST_ASSERT_TRUE_MESSAGE(cJSON_IsString(value), "observation_labels missing");
+    TEST_ASSERT_EQUAL_STRING(labels, value->valuestring);
+    value = cJSON_GetObjectItemCaseSensitive(json, "observation_max_age_days");
+    TEST_ASSERT_TRUE_MESSAGE(cJSON_IsNumber(value), "observation_max_age_days missing");
+    TEST_ASSERT_EQUAL_INT(max_age_days, value->valueint);
+    value = cJSON_GetObjectItemCaseSensitive(json, "observation_max_bytes");
+    TEST_ASSERT_TRUE_MESSAGE(cJSON_IsNumber(value), "observation_max_bytes missing");
+    TEST_ASSERT_TRUE_MESSAGE(value->valuedouble == max_bytes, "observation_max_bytes mismatch");
+}
+
+void test_observation_settings_default_off_in_get(void) {
+    cJSON *json = get_stream_json(original_config.name);
+    assert_observation_json(json, false, "", 7, 2147483648.0);
+    cJSON_Delete(json);
+}
+
+void test_observation_settings_put_round_trip(void) {
+    TEST_ASSERT_EQUAL_UINT(0, run_captured_update(
+        "{\"observation_evidence_enabled\":true,"
+        "\"observation_labels\":\" bird , Squirrel \","
+        "\"observation_max_age_days\":14,"
+        "\"observation_max_bytes\":134217728}"));
+    stream_config_t persisted = {0};
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(original_config.name, &persisted));
+    TEST_ASSERT_TRUE(persisted.observation_evidence_enabled);
+    TEST_ASSERT_EQUAL_STRING("bird,Squirrel", persisted.observation_labels);
+    TEST_ASSERT_EQUAL_INT(14, persisted.observation_max_age_days);
+    TEST_ASSERT_TRUE(persisted.observation_max_bytes == 134217728LL);
+    cJSON *json = get_stream_json(original_config.name);
+    assert_observation_json(json, true, "bird,Squirrel", 14, 134217728.0);
+    cJSON_Delete(json);
+
+    /* Inclusive bounds are accepted; an empty list means every label. */
+    run_captured_update(
+        "{\"observation_labels\":\"\",\"observation_max_age_days\":90,"
+        "\"observation_max_bytes\":1099511627776}");
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(original_config.name, &persisted));
+    TEST_ASSERT_TRUE(persisted.observation_evidence_enabled);
+    TEST_ASSERT_EQUAL_STRING("", persisted.observation_labels);
+    TEST_ASSERT_EQUAL_INT(90, persisted.observation_max_age_days);
+    TEST_ASSERT_TRUE(persisted.observation_max_bytes == 1099511627776LL);
+    run_captured_update(
+        "{\"observation_evidence_enabled\":false,\"observation_max_age_days\":1,"
+        "\"observation_max_bytes\":67108864}");
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(original_config.name, &persisted));
+    TEST_ASSERT_FALSE(persisted.observation_evidence_enabled);
+    TEST_ASSERT_EQUAL_INT(1, persisted.observation_max_age_days);
+    TEST_ASSERT_TRUE(persisted.observation_max_bytes == 67108864LL);
+}
+
+static const char *const invalid_observation_bodies[] = {
+    "{\"observation_evidence_enabled\":\"yes\"}",
+    "{\"observation_evidence_enabled\":1}",
+    "{\"observation_max_age_days\":0}",
+    "{\"observation_max_age_days\":91}",
+    "{\"observation_max_age_days\":7.5}",
+    "{\"observation_max_age_days\":\"7\"}",
+    "{\"observation_max_bytes\":67108863}",
+    "{\"observation_max_bytes\":1099511627777}",
+    "{\"observation_max_bytes\":134217728.5}",
+    "{\"observation_max_bytes\":null}",
+    "{\"observation_labels\":5}",
+    "{\"observation_labels\":\"bird,,cat\"}",
+    "{\"observation_labels\":\"a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q\"}",
+    "{\"observation_labels\":\"abcdefghijklmnopqrstuvwxyz012345\"}",
+    "{\"observation_labels\":\"bird\\u0001\"}",
+    "{\"observation_evidence_enabled\":true,\"observation_max_age_days\":0}",
+};
+
+void test_observation_settings_put_bounds_rejected(void) {
+    for (size_t i = 0; i < sizeof(invalid_observation_bodies) / sizeof(invalid_observation_bodies[0]); i++) {
+        http_response_free(&response);
+        http_response_init(&response);
+        set_body(invalid_observation_bodies[i]);
+        capture_success = true;
+        handle_put_stream(&request, &response);
+        capture_success = false;
+        TEST_ASSERT_EQUAL_INT_MESSAGE(400, response.status_code, invalid_observation_bodies[i]);
+        TEST_ASSERT_EQUAL_UINT_MESSAGE(0, launch_attempts, invalid_observation_bodies[i]);
+        cJSON *json = cJSON_Parse((const char *)response.body);
+        TEST_ASSERT_NOT_NULL(json);
+        cJSON *error = cJSON_GetObjectItemCaseSensitive(json, "error");
+        TEST_ASSERT_TRUE(cJSON_IsString(error));
+        TEST_ASSERT_NOT_NULL_MESSAGE(strstr(error->valuestring, "observation_"), error->valuestring);
+        cJSON_Delete(json);
+    }
+    assert_unchanged();
+}
+
+void test_observation_settings_put_sixteen_labels_accepted(void) {
+    run_captured_update(
+        "{\"observation_labels\":\"a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,abcdefghijklmnopqrstuvwxyz01234\"}");
+    stream_config_t persisted = {0};
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(original_config.name, &persisted));
+    TEST_ASSERT_EQUAL_STRING("a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,abcdefghijklmnopqrstuvwxyz01234",
+                             persisted.observation_labels);
+    TEST_ASSERT_FALSE(persisted.observation_evidence_enabled);
+}
+
+static void post_body(const char *body) {
+    http_response_free(&response);
+    http_response_init(&response);
+    strcpy(request.path, "/api/streams");
+    strcpy(request.method_str, "POST");
+    set_body(body);
+    capture_success = true;
+    handle_post_stream(&request, &response);
+    capture_success = false;
+}
+
+void test_observation_settings_post_round_trip_and_bounds(void) {
+    post_body("{\"name\":\"obs_post_camera\",\"url\":\"rtsp://127.0.0.1:1/obs\","
+              "\"enabled\":false,\"observation_max_age_days\":91}");
+    TEST_ASSERT_EQUAL_INT(400, response.status_code);
+    stream_config_t persisted = {0};
+    TEST_ASSERT_NOT_EQUAL_INT(0, get_stream_config_by_name("obs_post_camera", &persisted));
+
+    post_body("{\"name\":\"obs_post_camera\",\"url\":\"rtsp://127.0.0.1:1/obs\","
+              "\"enabled\":false,\"observation_evidence_enabled\":true,"
+              "\"observation_labels\":\"bird\",\"observation_max_age_days\":3,"
+              "\"observation_max_bytes\":268435456}");
+    TEST_ASSERT_TRUE_MESSAGE(response.status_code == 200 || response.status_code == 201,
+                             (const char *)response.body);
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("obs_post_camera", &persisted));
+    TEST_ASSERT_TRUE(persisted.observation_evidence_enabled);
+    TEST_ASSERT_EQUAL_STRING("bird", persisted.observation_labels);
+    TEST_ASSERT_EQUAL_INT(3, persisted.observation_max_age_days);
+    TEST_ASSERT_TRUE(persisted.observation_max_bytes == 268435456LL);
+    cJSON *json = get_stream_json("obs_post_camera");
+    assert_observation_json(json, true, "bird", 3, 268435456.0);
+    cJSON_Delete(json);
+
+    /* Omitted settings take the contract defaults (off, all labels, 7 d, 2 GiB). */
+    post_body("{\"name\":\"obs_post_default\",\"url\":\"rtsp://127.0.0.1:1/obs2\",\"enabled\":false}");
+    TEST_ASSERT_TRUE(response.status_code == 200 || response.status_code == 201);
+    json = get_stream_json("obs_post_default");
+    assert_observation_json(json, false, "", 7, 2147483648.0);
+    cJSON_Delete(json);
+}
+
 int main(void) {
     char directory[] = "/tmp/lightnvr-put-launch-XXXXXX";
     if (!mkdtemp(directory)) return 1;
@@ -488,6 +652,11 @@ int main(void) {
     RUN_TEST(test_privacy_toggle_does_not_restart_go2rtc_for_api_streams);
     RUN_TEST(test_publish_change_restarts_go2rtc_without_running_stream);
     RUN_TEST(test_unrelated_change_does_not_restart_go2rtc);
+    RUN_TEST(test_observation_settings_default_off_in_get);
+    RUN_TEST(test_observation_settings_put_round_trip);
+    RUN_TEST(test_observation_settings_put_bounds_rejected);
+    RUN_TEST(test_observation_settings_put_sixteen_labels_accepted);
+    RUN_TEST(test_observation_settings_post_round_trip_and_bounds);
     int result = UNITY_END();
     shutdown_database();
     unlink(path);

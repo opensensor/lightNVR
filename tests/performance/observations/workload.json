@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "name": "int01-observations-v1",
+  "description": "INT_01 performance fixture (plan task C4). N looped H.264 RTSP streams served by a standalone go2rtc, continuous recording plus a local SOD detector at a fixed interval on every stream. X2 reruns the same workload with evidence enabled.",
+  "streams": 4,
+  "width": 1280,
+  "height": 720,
+  "fps": 15,
+  "gop": 15,
+  "codec": "H.264 (libx264 ultrafast, yuv420p, no B-frames)",
+  "source": "synthetic: ffmpeg lavfi testsrc2, 30 s clip, published into go2rtc by one always-on ffmpeg -re -stream_loop -1 -c copy per stream",
+  "source_clip_seconds": 30,
+  "transport": "RTSP over TCP from standalone go2rtc on 127.0.0.1 (lightNVR's own go2rtc integration disabled, as in the contract fixture)",
+  "segment_seconds": 10,
+  "warmup_seconds": 30,
+  "duration_seconds": 300,
+  "detector": {
+    "kind": "local SOD CNN (unified detection thread, annotation-only because continuous recording is on)",
+    "model_file": "tiny20.sod",
+    "model_note": "SOD tiny YOLO VOC-20 model; not vendored (63 MB). Pass --model; its sha256 is recorded.",
+    "interval_seconds": 1,
+    "threshold_percent": 50
+  },
+  "sampling": {
+    "proc_interval_ms": 1000,
+    "db_probe_interval_ms": 250,
+    "prometheus_interval_ms": 5000
+  },
+  "retention": {
+    "storage_max_size": 0,
+    "note": "Recording retention/quota is unlimited in the fixture (storage.max_size = 0) so retention sweeps do not perturb the window. Evidence byte/queue budgets do not exist in disabled mode; X2 records the C1 budgets it runs with in results.feature."
+  },
+  "live_viewers": 0,
+  "audio": "none (record_audio = false)"
+}

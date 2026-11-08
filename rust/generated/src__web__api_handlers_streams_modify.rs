@@ -105,6 +105,13 @@ unsafe extern "C" {
         camera: *mut fleet_camera_t,
         evaluation: *mut authorization_evaluation_t,
     ) -> ::core::ffi::c_int;
+    unsafe fn stream_observation_settings_apply_json(
+        body: *const cJSON,
+        config: *mut stream_config_t,
+        changed: *mut bool,
+        error: *mut ::core::ffi::c_char,
+        error_size: size_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn _log_message_ctx(
         level: log_level_t,
         component: *const ::core::ffi::c_char,
@@ -195,6 +202,11 @@ unsafe extern "C" {
         stream_name: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
     unsafe fn is_unified_detection_running(stream_name: *const ::core::ffi::c_char) -> bool;
+    unsafe fn unified_detection_set_observation_settings(
+        stream_name: *const ::core::ffi::c_char,
+        enabled: bool,
+        labels_csv: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
     unsafe fn add_stream_config(stream: *const stream_config_t) -> uint64_t;
     unsafe fn update_stream_config(
         name: *const ::core::ffi::c_char,
@@ -453,6 +465,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -558,7 +574,7 @@ pub struct config_t {
     pub go2rtc_webrtc_listen_port: ::core::ffi::c_int,
     pub go2rtc_stun_enabled: bool,
     pub go2rtc_stun_server: [::core::ffi::c_char; 256],
-    pub go2rtc_external_ip: [::core::ffi::c_char; 64],
+    pub go2rtc_external_ip: [::core::ffi::c_char; 256],
     pub go2rtc_ice_servers: [::core::ffi::c_char; 512],
     pub webrtc_connection_timeout_ms: ::core::ffi::c_int,
     pub webrtc_ice_recovery_timeout_ms: ::core::ffi::c_int,
@@ -796,7 +812,8 @@ impl authorization_action_t {
     pub const AUTHZ_LPR_SEARCH: Self = Self(16);
     pub const AUTHZ_LPR_EXPORT: Self = Self(17);
     pub const AUTHZ_LPR_DELETE: Self = Self(18);
-    pub const AUTHZ_ACTION_COUNT: Self = Self(19);
+    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
+    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -1418,6 +1435,10 @@ unsafe extern "C" fn put_stream_worker_locked(mut task: *mut put_stream_task_t) 
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut updated_config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -1431,6 +1452,11 @@ unsafe extern "C" fn put_stream_worker_locked(mut task: *mut put_stream_task_t) 
         put_stream_task_free(task);
         return;
     }
+    unified_detection_set_observation_settings(
+        &raw mut (*task).stream_id as *mut ::core::ffi::c_char,
+        updated_config.observation_evidence_enabled,
+        &raw mut updated_config.observation_labels as *mut ::core::ffi::c_char,
+    );
     if set_stream_detection_params(
         stream,
         (*task).config.detection_interval,
@@ -2726,6 +2752,10 @@ pub unsafe extern "C" fn handle_post_stream(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     memset(
         &raw mut config as *mut ::core::ffi::c_void,
@@ -2915,6 +2945,23 @@ pub unsafe extern "C" fn handle_post_stream(
             );
             return;
         }
+    }
+    let mut observation_error: [::core::ffi::c_char; 160] = [0; 160];
+    if stream_observation_settings_apply_json(
+        stream_json,
+        &raw mut config,
+        ::core::ptr::null_mut::<bool>(),
+        &raw mut observation_error as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 160]>(),
+    ) != 0 as ::core::ffi::c_int
+    {
+        cJSON_Delete(stream_json);
+        http_response_set_json_error(
+            res,
+            400 as ::core::ffi::c_int,
+            &raw mut observation_error as *mut ::core::ffi::c_char,
+        );
+        return;
     }
     let mut priority: *mut cJSON = cJSON_GetObjectItem(
         stream_json,
@@ -3942,6 +3989,10 @@ pub unsafe extern "C" fn handle_put_stream(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -4370,6 +4421,27 @@ pub unsafe extern "C" fn handle_put_stream(
             );
             config_changed = r#true != 0;
         }
+    }
+    let mut observation_error: [::core::ffi::c_char; 160] = [0; 160];
+    let mut observation_changed: bool = r#false != 0;
+    if stream_observation_settings_apply_json(
+        stream_json,
+        &raw mut config,
+        &raw mut observation_changed,
+        &raw mut observation_error as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 160]>(),
+    ) != 0 as ::core::ffi::c_int
+    {
+        cJSON_Delete(stream_json);
+        http_response_set_json_error(
+            res,
+            400 as ::core::ffi::c_int,
+            &raw mut observation_error as *mut ::core::ffi::c_char,
+        );
+        return;
+    }
+    if observation_changed {
+        config_changed = r#true != 0;
     }
     let mut priority: *mut cJSON = cJSON_GetObjectItem(
         stream_json,
@@ -6140,6 +6212,10 @@ pub unsafe extern "C" fn handle_delete_stream(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         http_response_set_json_error(
@@ -6671,6 +6747,10 @@ unsafe extern "C" fn refresh_stream_worker(
             publish_url: [0; 512],
             playback_transport: [0; 24],
             eptz_config: [0; 1024],
+            observation_evidence_enabled: false,
+            observation_labels: [0; 512],
+            observation_max_age_days: 0,
+            observation_max_bytes: 0,
         };
         if !stream.is_null()
             && get_stream_config(stream, &raw mut config) == 0 as ::core::ffi::c_int

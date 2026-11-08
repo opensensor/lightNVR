@@ -30,6 +30,11 @@ unsafe extern "C" {
     unsafe fn curl_easy_perform(curl: *mut ::core::ffi::c_void) -> CURLcode;
     unsafe fn curl_easy_cleanup(curl: *mut ::core::ffi::c_void);
     unsafe fn curl_easy_getinfo(curl: *mut ::core::ffi::c_void, info: CURLINFO, ...) -> CURLcode;
+    unsafe fn av_strerror(
+        errnum: ::core::ffi::c_int,
+        errbuf: *mut ::core::ffi::c_char,
+        errbuf_size: size_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn avformat_close_input(s: *mut *mut AVFormatContext);
     unsafe fn ezxml_parse_str(s: *mut ::core::ffi::c_char, len: size_t) -> ezxml_t;
     unsafe fn ezxml_child(xml: ezxml_t, name: *const ::core::ffi::c_char) -> ezxml_t;
@@ -98,6 +103,11 @@ unsafe extern "C" {
         __c: ::core::ffi::c_int,
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
+    unsafe fn memchr(
+        __s: *const ::core::ffi::c_void,
+        __c: ::core::ffi::c_int,
+        __n: size_t,
+    ) -> *mut ::core::ffi::c_void;
     unsafe fn strcmp(
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
@@ -107,6 +117,10 @@ unsafe extern "C" {
         __s: *const ::core::ffi::c_char,
         __c: ::core::ffi::c_int,
     ) -> *mut ::core::ffi::c_char;
+    unsafe fn strcspn(
+        __s: *const ::core::ffi::c_char,
+        __reject: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_ulong;
     unsafe fn strstr(
         __haystack: *const ::core::ffi::c_char,
         __needle: *const ::core::ffi::c_char,
@@ -115,6 +129,11 @@ unsafe extern "C" {
     unsafe fn strcasecmp(
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+    unsafe fn strncasecmp(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+        __n: size_t,
     ) -> ::core::ffi::c_int;
     unsafe fn strtol(
         __nptr: *const ::core::ffi::c_char,
@@ -2048,6 +2067,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -2105,6 +2128,25 @@ impl log_level_t {
     pub const LOG_LEVEL_DEBUG: Self = Self(3);
 }
 pub type stream_handle_t = *mut stream_handle_s;
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct C2Rust_Unnamed_3(pub ::core::ffi::c_int);
+impl C2Rust_Unnamed_3 {
+    pub const ONVIF_TEST_OK: Self = Self(0);
+    pub const ONVIF_TEST_DEVICE_ERROR: Self = Self(-1);
+    pub const ONVIF_TEST_UNREACHABLE: Self = Self(-2);
+    pub const ONVIF_TEST_AUTH_FAILED: Self = Self(-3);
+    pub const ONVIF_TEST_STREAM_FAILED: Self = Self(-4);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct C2Rust_Unnamed_4(pub ::core::ffi::c_uint);
+impl C2Rust_Unnamed_4 {
+    pub const SOAP_FAIL_NONE: Self = Self(0);
+    pub const SOAP_FAIL_TRANSPORT: Self = Self(1);
+    pub const SOAP_FAIL_AUTH: Self = Self(2);
+    pub const SOAP_FAIL_OTHER: Self = Self(3);
+}
 pub const MAX_STREAM_NAME: ::core::ffi::c_int = 256 as ::core::ffi::c_int;
 pub const MAX_URL_LENGTH: ::core::ffi::c_int = 512 as ::core::ffi::c_int;
 unsafe extern "C" fn write_callback(
@@ -2138,6 +2180,8 @@ unsafe extern "C" fn write_callback(
     *(*mem).memory.offset((*mem).size as isize) = 0 as ::core::ffi::c_char;
     return realsize;
 }
+#[thread_local]
+static mut g_soap_failure: ::core::ffi::c_int = 0;
 unsafe extern "C" fn send_soap_request(
     mut device_url: *const ::core::ffi::c_char,
     mut soap_action: *const ::core::ffi::c_char,
@@ -2335,6 +2379,7 @@ unsafe extern "C" fn send_soap_request(
                             security_header,
                             request_body,
                         );
+                        curl_easy_setopt(curl, CURLoption::CURLOPT_POSTFIELDS, soap_envelope);
                         res = curl_easy_perform(curl);
                         if res.0 != CURLcode::CURLE_OK.0 {
                             _log_message_ctx(
@@ -2363,10 +2408,28 @@ unsafe extern "C" fn send_soap_request(
                         b"First SOAP format succeeded\0".as_ptr() as *const ::core::ffi::c_char,
                     );
                 }
+                g_soap_failure = if res.0 == CURLcode::CURLE_OK.0 {
+                    C2Rust_Unnamed_4::SOAP_FAIL_NONE.0 as ::core::ffi::c_int
+                } else {
+                    C2Rust_Unnamed_4::SOAP_FAIL_TRANSPORT.0 as ::core::ffi::c_int
+                };
                 if res.0 == CURLcode::CURLE_OK.0 {
                     let mut http_code: ::core::ffi::c_long = 0 as ::core::ffi::c_long;
                     curl_easy_getinfo(curl, CURLINFO::CURLINFO_RESPONSE_CODE, &raw mut http_code);
                     if http_code != 200 as ::core::ffi::c_long {
+                        let mut not_authorized: bool = http_code == 401 as ::core::ffi::c_long
+                            || http_code == 403 as ::core::ffi::c_long
+                            || chunk.size > 0 as size_t
+                                && !strstr(
+                                    chunk.memory,
+                                    b"NotAuthorized\0".as_ptr() as *const ::core::ffi::c_char,
+                                )
+                                .is_null();
+                        g_soap_failure = if not_authorized as ::core::ffi::c_int != 0 {
+                            C2Rust_Unnamed_4::SOAP_FAIL_AUTH.0 as ::core::ffi::c_int
+                        } else {
+                            C2Rust_Unnamed_4::SOAP_FAIL_OTHER.0 as ::core::ffi::c_int
+                        };
                         _log_message_ctx(
                             log_level_t::LOG_LEVEL_ERROR,
                             LOG_COMPONENT,
@@ -3420,6 +3483,10 @@ pub unsafe extern "C" fn add_onvif_device_as_stream(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if device_info.is_null() || profile.is_null() || stream_name.is_null() {
         _log_message_ctx(
@@ -3638,11 +3705,208 @@ pub unsafe extern "C" fn add_onvif_device_as_stream(
     return 0 as ::core::ffi::c_int;
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn test_onvif_connection(
+pub unsafe extern "C" fn onvif_plain_rtsp_fallback_url(
+    mut uri: *const ::core::ffi::c_char,
+    mut out: *mut ::core::ffi::c_char,
+    mut out_size: size_t,
+) -> ::core::ffi::c_int {
+    if uri.is_null()
+        || out.is_null()
+        || out_size == 0 as size_t
+        || strncasecmp(
+            uri,
+            b"rtsps://\0".as_ptr() as *const ::core::ffi::c_char,
+            8 as size_t,
+        ) != 0 as ::core::ffi::c_int
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut authority: *const ::core::ffi::c_char = uri.offset(8 as ::core::ffi::c_int as isize);
+    let mut path: *const ::core::ffi::c_char = authority
+        .offset(strcspn(authority, b"/?#\0".as_ptr() as *const ::core::ffi::c_char) as isize);
+    let mut host: *const ::core::ffi::c_char = authority;
+    let mut p: *const ::core::ffi::c_char = authority;
+    while p < path {
+        if *p as ::core::ffi::c_int == '@' as ::core::ffi::c_int {
+            host = p.offset(1 as ::core::ffi::c_int as isize);
+        }
+        p = p.offset(1);
+    }
+    let mut host_end: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    if *host as ::core::ffi::c_int == '[' as ::core::ffi::c_int {
+        let mut close: *const ::core::ffi::c_char = memchr(
+            host as *const ::core::ffi::c_void,
+            ']' as ::core::ffi::c_int,
+            path.offset_from(host) as size_t,
+        ) as *const ::core::ffi::c_char;
+        if close.is_null() {
+            return -1 as ::core::ffi::c_int;
+        }
+        host_end = close.offset(1 as ::core::ffi::c_int as isize);
+    } else {
+        let mut colon: *const ::core::ffi::c_char = memchr(
+            host as *const ::core::ffi::c_void,
+            ':' as ::core::ffi::c_int,
+            path.offset_from(host) as size_t,
+        ) as *const ::core::ffi::c_char;
+        host_end = if !colon.is_null() { colon } else { path };
+    }
+    if host_end == host {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut written: ::core::ffi::c_int = snprintf(
+        out,
+        out_size,
+        b"rtsp://%.*s:554%s\0".as_ptr() as *const ::core::ffi::c_char,
+        host_end.offset_from(authority) as ::core::ffi::c_int,
+        authority,
+        path,
+    );
+    return if written > 0 as ::core::ffi::c_int && (written as size_t) < out_size {
+        0 as ::core::ffi::c_int
+    } else {
+        -1 as ::core::ffi::c_int
+    };
+}
+unsafe extern "C" fn probe_stream(
+    mut stream_url: *const ::core::ffi::c_char,
+    mut safe_url: *const ::core::ffi::c_char,
+    mut error: *mut ::core::ffi::c_char,
+    mut error_size: size_t,
+) -> bool {
+    static mut protocols: [::core::ffi::c_int; 2] = [
+        stream_protocol_t::STREAM_PROTOCOL_TCP.0 as ::core::ffi::c_int,
+        stream_protocol_t::STREAM_PROTOCOL_UDP.0 as ::core::ffi::c_int,
+    ];
+    let mut ret: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut i: size_t = 0 as size_t;
+    while i < ::core::mem::size_of::<[::core::ffi::c_int; 2]>()
+        .wrapping_div(::core::mem::size_of::<::core::ffi::c_int>())
+    {
+        let mut input_ctx: *mut AVFormatContext = ::core::ptr::null_mut::<AVFormatContext>();
+        ret = open_input_stream(&raw mut input_ctx, stream_url, protocols[i]);
+        if ret >= 0 as ::core::ffi::c_int {
+            avformat_close_input(&raw mut input_ctx);
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_INFO,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Successfully connected to stream: %s\0".as_ptr() as *const ::core::ffi::c_char,
+                safe_url,
+            );
+            return r#true != 0;
+        }
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to open stream %s over %s\0".as_ptr() as *const ::core::ffi::c_char,
+            safe_url,
+            if protocols[i] == stream_protocol_t::STREAM_PROTOCOL_TCP.0 as ::core::ffi::c_int {
+                b"TCP\0".as_ptr() as *const ::core::ffi::c_char
+            } else {
+                b"UDP\0".as_ptr() as *const ::core::ffi::c_char
+            },
+        );
+        i = i.wrapping_add(1);
+    }
+    let mut reason: [::core::ffi::c_char; 64] = [
+        0 as ::core::ffi::c_char,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ];
+    av_strerror(
+        ret,
+        &raw mut reason as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+    );
+    snprintf(
+        error,
+        error_size,
+        b"%s\0".as_ptr() as *const ::core::ffi::c_char,
+        if reason[0usize] as ::core::ffi::c_int != 0 {
+            &raw mut reason as *mut ::core::ffi::c_char
+        } else {
+            b"could not open stream\0".as_ptr() as *const ::core::ffi::c_char
+        },
+    );
+    return r#false != 0;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_onvif_connection_detail(
     mut url: *const ::core::ffi::c_char,
     mut username: *const ::core::ffi::c_char,
     mut password: *const ::core::ffi::c_char,
+    mut detail: *mut ::core::ffi::c_char,
+    mut detail_size: size_t,
 ) -> ::core::ffi::c_int {
+    let mut scratch: [::core::ffi::c_char; 1] = [0; 1];
+    if detail.is_null() || detail_size == 0 as size_t {
+        detail = &raw mut scratch as *mut ::core::ffi::c_char;
+        detail_size = ::core::mem::size_of::<[::core::ffi::c_char; 1]>() as size_t;
+    }
+    *detail.offset(0isize) = '\0' as ::core::ffi::c_char;
     let mut safe_device_url: [::core::ffi::c_char; 512] = [0; 512];
     if url_redact_for_logging(
         url,
@@ -3664,6 +3928,7 @@ pub unsafe extern "C" fn test_onvif_connection(
         b"Testing connection to ONVIF device: %s\0".as_ptr() as *const ::core::ffi::c_char,
         &raw mut safe_device_url as *mut ::core::ffi::c_char,
     );
+    g_soap_failure = C2Rust_Unnamed_4::SOAP_FAIL_NONE.0 as ::core::ffi::c_int;
     let mut profiles: [onvif_profile_t; 1] = [onvif_profile_t {
         token: [0; 64],
         name: [0; 64],
@@ -3692,7 +3957,37 @@ pub unsafe extern "C" fn test_onvif_connection(
             b"Failed to connect to ONVIF device: %s\0".as_ptr() as *const ::core::ffi::c_char,
             &raw mut safe_device_url as *mut ::core::ffi::c_char,
         );
-        return -1 as ::core::ffi::c_int;
+        match g_soap_failure {
+            2 => {
+                snprintf(
+                    detail,
+                    detail_size,
+                    b"The camera rejected the ONVIF credentials. Check the username and password, that this ONVIF user may read media profiles, and that the camera's clock is correct.\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
+                );
+                return C2Rust_Unnamed_3::ONVIF_TEST_AUTH_FAILED.0;
+            }
+            1 => {
+                snprintf(
+                    detail,
+                    detail_size,
+                    b"Could not reach the camera's ONVIF service at %s.\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    &raw mut safe_device_url as *mut ::core::ffi::c_char,
+                );
+                return C2Rust_Unnamed_3::ONVIF_TEST_UNREACHABLE.0;
+            }
+            _ => {
+                snprintf(
+                    detail,
+                    detail_size,
+                    b"The camera's ONVIF service at %s answered, but did not return a usable media profile.\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
+                    &raw mut safe_device_url as *mut ::core::ffi::c_char,
+                );
+                return C2Rust_Unnamed_3::ONVIF_TEST_DEVICE_ERROR.0;
+            }
+        }
     }
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
@@ -3701,46 +3996,100 @@ pub unsafe extern "C" fn test_onvif_connection(
         b"Successfully connected to ONVIF device: %s\0".as_ptr() as *const ::core::ffi::c_char,
         &raw mut safe_device_url as *mut ::core::ffi::c_char,
     );
-    if strlen(
+    if profiles[0usize].stream_uri[0usize] as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
+        snprintf(
+            detail,
+            detail_size,
+            b"Connected to the camera's ONVIF service.\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return C2Rust_Unnamed_3::ONVIF_TEST_OK.0;
+    }
+    let mut user: *const ::core::ffi::c_char =
+        if !username.is_null() && *username.offset(0isize) as ::core::ffi::c_int != 0 {
+            username
+        } else {
+            ::core::ptr::null::<::core::ffi::c_char>()
+        };
+    let mut pass: *const ::core::ffi::c_char =
+        if !password.is_null() && *password.offset(0isize) as ::core::ffi::c_int != 0 {
+            password
+        } else {
+            ::core::ptr::null::<::core::ffi::c_char>()
+        };
+    let mut stream_url: [::core::ffi::c_char; 512] = [0; 512];
+    let mut safe_stream_url: [::core::ffi::c_char; 512] = [0; 512];
+    if url_apply_credentials(
         &raw mut (*(&raw mut profiles as *mut onvif_profile_t).offset(0isize)).stream_uri
             as *mut ::core::ffi::c_char,
-    ) > 0 as size_t
+        user,
+        pass,
+        &raw mut stream_url as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+    ) != 0 as ::core::ffi::c_int
     {
-        let mut stream_url: [::core::ffi::c_char; 512] = [0; 512];
-        let mut safe_stream_url: [::core::ffi::c_char; 512] = [0; 512];
-        if url_apply_credentials(
+        safe_strcpy(
+            &raw mut stream_url as *mut ::core::ffi::c_char,
             &raw mut (*(&raw mut profiles as *mut onvif_profile_t).offset(0isize)).stream_uri
                 as *mut ::core::ffi::c_char,
-            if !username.is_null() && strlen(username) > 0 as size_t {
-                username
-            } else {
-                ::core::ptr::null::<::core::ffi::c_char>()
-            },
-            if !password.is_null() && strlen(password) > 0 as size_t {
-                password
-            } else {
-                ::core::ptr::null::<::core::ffi::c_char>()
-            },
-            &raw mut stream_url as *mut ::core::ffi::c_char,
             ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
-        ) != 0 as ::core::ffi::c_int
-        {
-            safe_strcpy(
-                &raw mut stream_url as *mut ::core::ffi::c_char,
-                &raw mut (*(&raw mut profiles as *mut onvif_profile_t).offset(0isize)).stream_uri
-                    as *mut ::core::ffi::c_char,
-                ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
-                0 as size_t,
-            );
-        }
-        if url_redact_for_logging(
-            &raw mut stream_url as *mut ::core::ffi::c_char,
+            0 as size_t,
+        );
+    }
+    if url_redact_for_logging(
+        &raw mut stream_url as *mut ::core::ffi::c_char,
+        &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+    ) != 0 as ::core::ffi::c_int
+    {
+        safe_strcpy(
             &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+            b"[invalid-url]\0".as_ptr() as *const ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+            0 as size_t,
+        );
+    }
+    _log_message_ctx(
+        log_level_t::LOG_LEVEL_INFO,
+        LOG_COMPONENT,
+        _log_stream_name,
+        b"Testing stream connection for profile: %s, URI: %s\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        &raw mut (*(&raw mut profiles as *mut onvif_profile_t).offset(0isize)).token
+            as *mut ::core::ffi::c_char,
+        &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+    );
+    let mut error: [::core::ffi::c_char; 96] = [0; 96];
+    if probe_stream(
+        &raw mut stream_url as *mut ::core::ffi::c_char,
+        &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+        &raw mut error as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 96]>(),
+    ) {
+        snprintf(
+            detail,
+            detail_size,
+            b"Connected to the camera and opened its stream at %s.\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+        );
+        return C2Rust_Unnamed_3::ONVIF_TEST_OK.0;
+    }
+    let mut fallback_url: [::core::ffi::c_char; 512] = [0; 512];
+    if onvif_plain_rtsp_fallback_url(
+        &raw mut stream_url as *mut ::core::ffi::c_char,
+        &raw mut fallback_url as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+    ) == 0 as ::core::ffi::c_int
+    {
+        let mut safe_fallback: [::core::ffi::c_char; 512] = [0; 512];
+        if url_redact_for_logging(
+            &raw mut fallback_url as *mut ::core::ffi::c_char,
+            &raw mut safe_fallback as *mut ::core::ffi::c_char,
             ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
         ) != 0 as ::core::ffi::c_int
         {
             safe_strcpy(
-                &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+                &raw mut safe_fallback as *mut ::core::ffi::c_char,
                 b"[invalid-url]\0".as_ptr() as *const ::core::ffi::c_char,
                 ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
                 0 as size_t,
@@ -3750,77 +4099,73 @@ pub unsafe extern "C" fn test_onvif_connection(
             log_level_t::LOG_LEVEL_INFO,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Testing stream connection for profile: %s, URI: %s\0".as_ptr()
+            b"Advertised secure stream failed; trying plain RTSP: %s\0".as_ptr()
                 as *const ::core::ffi::c_char,
-            &raw mut (*(&raw mut profiles as *mut onvif_profile_t).offset(0isize)).token
-                as *mut ::core::ffi::c_char,
-            &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+            &raw mut safe_fallback as *mut ::core::ffi::c_char,
         );
-        let mut input_ctx: *mut AVFormatContext = ::core::ptr::null_mut::<AVFormatContext>();
-        let mut ret: ::core::ffi::c_int = open_input_stream(
-            &raw mut input_ctx,
-            &raw mut stream_url as *mut ::core::ffi::c_char,
-            stream_protocol_t::STREAM_PROTOCOL_TCP.0 as ::core::ffi::c_int,
-        );
-        if ret < 0 as ::core::ffi::c_int {
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_WARN,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"Failed to connect to stream with TCP protocol, trying UDP: %s\0".as_ptr()
-                    as *const ::core::ffi::c_char,
+        let mut fallback_error: [::core::ffi::c_char; 96] = [0; 96];
+        if probe_stream(
+            &raw mut fallback_url as *mut ::core::ffi::c_char,
+            &raw mut safe_fallback as *mut ::core::ffi::c_char,
+            &raw mut fallback_error as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 96]>(),
+        ) {
+            snprintf(
+                detail,
+                detail_size,
+                b"Connected to the camera. Its advertised stream %s failed (%s), but plain RTSP at %s works.\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
                 &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+                &raw mut error as *mut ::core::ffi::c_char,
+                &raw mut safe_fallback as *mut ::core::ffi::c_char,
             );
-            ret = open_input_stream(
-                &raw mut input_ctx,
-                &raw mut stream_url as *mut ::core::ffi::c_char,
-                stream_protocol_t::STREAM_PROTOCOL_UDP.0 as ::core::ffi::c_int,
-            );
-            if ret < 0 as ::core::ffi::c_int {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_WARN,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Failed with UDP protocol too, trying direct RTSP connection\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                );
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_INFO,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Trying direct RTSP URL: %s\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut safe_stream_url as *mut ::core::ffi::c_char,
-                );
-                ret = open_input_stream(
-                    &raw mut input_ctx,
-                    &raw mut stream_url as *mut ::core::ffi::c_char,
-                    stream_protocol_t::STREAM_PROTOCOL_TCP.0 as ::core::ffi::c_int,
-                );
-                if ret < 0 as ::core::ffi::c_int {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_ERROR,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"All connection attempts failed for stream: %s\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                        &raw mut safe_stream_url as *mut ::core::ffi::c_char,
-                    );
-                    return -1 as ::core::ffi::c_int;
-                }
-            }
+            return C2Rust_Unnamed_3::ONVIF_TEST_OK.0;
         }
-        avformat_close_input(&raw mut input_ctx);
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Successfully connected to stream: %s\0".as_ptr() as *const ::core::ffi::c_char,
+        snprintf(
+            detail,
+            detail_size,
+            b"ONVIF works, but the camera's stream could not be opened: %s (%s); also tried %s (%s).\0"
+                .as_ptr() as *const ::core::ffi::c_char,
             &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+            &raw mut error as *mut ::core::ffi::c_char,
+            &raw mut safe_fallback as *mut ::core::ffi::c_char,
+            &raw mut fallback_error as *mut ::core::ffi::c_char,
+        );
+    } else {
+        snprintf(
+            detail,
+            detail_size,
+            b"ONVIF works, but the camera's stream could not be opened: %s (%s).\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+            &raw mut error as *mut ::core::ffi::c_char,
         );
     }
-    return 0 as ::core::ffi::c_int;
+    _log_message_ctx(
+        log_level_t::LOG_LEVEL_ERROR,
+        LOG_COMPONENT,
+        _log_stream_name,
+        b"All connection attempts failed for stream: %s\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut safe_stream_url as *mut ::core::ffi::c_char,
+    );
+    return C2Rust_Unnamed_3::ONVIF_TEST_STREAM_FAILED.0;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_onvif_connection(
+    mut url: *const ::core::ffi::c_char,
+    mut username: *const ::core::ffi::c_char,
+    mut password: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    return test_onvif_connection_detail(
+        url,
+        username,
+        password,
+        ::core::ptr::null_mut::<::core::ffi::c_char>(),
+        0 as size_t,
+    );
 }
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;

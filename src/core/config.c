@@ -164,7 +164,7 @@ static const env_config_mapping_t env_config_mappings[] = {
     {"GO2RTC_WEBRTC_ENABLED",  CONFIG_TYPE_BOOL,   CONFIG_OFFSET(go2rtc_webrtc_enabled),    0,   NULL, 0, true},
     {"GO2RTC_STUN_ENABLED",    CONFIG_TYPE_BOOL,   CONFIG_OFFSET(go2rtc_stun_enabled),      0,   NULL, 0, true},
     {"GO2RTC_STUN_SERVER",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_stun_server),       256, "stun.l.google.com:19302", 0, false},
-    {"GO2RTC_EXTERNAL_IP",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_external_ip),       64,  "",   0, false},
+    {"GO2RTC_EXTERNAL_IP",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_external_ip),       256,  "",   0, false},
     {"GO2RTC_ICE_SERVERS",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_ice_servers),       512, "",   0, false},
     {"GO2RTC_WEBRTC_LISTEN_PORT", CONFIG_TYPE_INT, CONFIG_OFFSET(go2rtc_webrtc_listen_port), 0,  NULL, 8555, false},
     {"WEBRTC_CONNECTION_TIMEOUT_MS", CONFIG_TYPE_INT, CONFIG_OFFSET(webrtc_connection_timeout_ms),   0, NULL, 30000, false},
@@ -557,6 +557,12 @@ void load_default_config(config_t *config) {
         config->streams[i].tier_important_multiplier = 2.0;
         config->streams[i].tier_ephemeral_multiplier = 0.25;
         config->streams[i].storage_priority = 5;
+
+        // INT_01 observation evidence is off by default (contract section 13)
+        config->streams[i].observation_evidence_enabled = false;
+        config->streams[i].observation_labels[0] = '\0';
+        config->streams[i].observation_max_age_days = OBSERVATION_DEFAULT_MAX_AGE_DAYS;
+        config->streams[i].observation_max_bytes = OBSERVATION_DEFAULT_MAX_BYTES;
     }
 
     // MQTT settings for detection event streaming

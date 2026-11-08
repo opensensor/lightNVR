@@ -15,6 +15,7 @@
 #include "unity.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "core/observation_evidence.h"
 #include "video/api_detection.h"
 
 void setUp(void) {
@@ -357,6 +358,171 @@ void test_parse_response_caps_at_max_detections(void) {
     TEST_ASSERT_EQUAL_INT(MAX_DETECTIONS, result.count);
 }
 
+/* ---- INT_01 L7: response geometry and the submitted image -------------- */
+
+#ifndef OBS_FIXTURE_DIR
+#define OBS_FIXTURE_DIR "tests/fixtures/integrations/observations"
+#endif
+
+static char *read_text(const char *path, size_t *size_out) {
+    FILE *f = fopen(path, "rb");
+    TEST_ASSERT_NOT_NULL_MESSAGE(f, path);
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buf = malloc((size_t)n + 1);
+    TEST_ASSERT_NOT_NULL(buf);
+    TEST_ASSERT_EQUAL_size_t((size_t)n, fread(buf, 1, (size_t)n, f));
+    buf[n] = '\0';
+    fclose(f);
+    if (size_out) *size_out = (size_t)n;
+    return buf;
+}
+
+static cJSON *load_json(const char *relative) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s", OBS_FIXTURE_DIR, relative);
+    char *text = read_text(path, NULL);
+    cJSON *root = cJSON_Parse(text);
+    free(text);
+    TEST_ASSERT_NOT_NULL_MESSAGE(root, relative);
+    return root;
+}
+
+static double jnum(const cJSON *object, const char *key) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
+    TEST_ASSERT_TRUE_MESSAGE(cJSON_IsNumber(item), key);
+    return item->valuedouble;
+}
+
+/* C3 fixture D: the raw inference-space box from manifest.json, sent the way a
+ * letterboxing server reports it, lands on the box stored in
+ * observations/http-letterbox.json with the same transform. */
+static void assert_letterbox_fixture(bool pixel_units, bool declare_scale_and_pad) {
+    cJSON *manifest = load_json("manifest.json");
+    const cJSON *ibox = NULL;
+    const cJSON *file;
+    cJSON_ArrayForEach(file, cJSON_GetObjectItemCaseSensitive(manifest, "fixtures")) {
+        const cJSON *name = cJSON_GetObjectItemCaseSensitive(file, "file");
+        if (cJSON_IsString(name) && strcmp(name->valuestring, "observations/http-letterbox.json") == 0)
+            ibox = cJSON_GetObjectItemCaseSensitive(file, "inference_box");
+    }
+    TEST_ASSERT_NOT_NULL_MESSAGE(ibox, "manifest inference_box for fixture D");
+    cJSON *obs = load_json("observations/http-letterbox.json");
+    const cJSON *evidence = cJSON_GetObjectItemCaseSensitive(obs, "evidence");
+    const cJSON *tf = cJSON_GetObjectItemCaseSensitive(evidence, "transform");
+    const cJSON *box = cJSON_GetObjectItemCaseSensitive(obs, "box");
+    const int iw = (int)jnum(tf, "inference_width"), ih = (int)jnum(tf, "inference_height");
+    const int sw = (int)jnum(evidence, "width"), sh = (int)jnum(evidence, "height");
+
+    double u = jnum(ibox, "u"), v = jnum(ibox, "v");
+    double bw = jnum(ibox, "width"), bh = jnum(ibox, "height");
+    if (!pixel_units) { u /= iw; bw /= iw; v /= ih; bh /= ih; }
+    char lb[256];
+    if (declare_scale_and_pad) {
+        snprintf(lb, sizeof(lb), "{\"width\":%d,\"height\":%d,\"scale\":%.6f,\"pad_x\":%.1f,"
+                 "\"pad_y\":%.1f,\"box_units\":\"%s\"}", iw, ih, jnum(tf, "scale_x"),
+                 jnum(tf, "pad_x"), jnum(tf, "pad_y"), pixel_units ? "pixels" : "normalized");
+    } else {
+        snprintf(lb, sizeof(lb), "{\"width\":%d,\"height\":%d%s}", iw, ih,
+                 pixel_units ? ",\"box_units\":\"pixels\"" : "");
+    }
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"letterbox\":%s,\"model\":\"yolov8n\",\"model_version\":\"8.3.0\","
+             "\"detections\":[{\"label\":\"bird\",\"confidence\":0.84,\"track_id\":17,"
+             "\"x_min\":%.9f,\"y_min\":%.9f,\"x_max\":%.9f,\"y_max\":%.9f}]}",
+             lb, u, v, u + bw, v + bh);
+
+    api_detection_options_t options = make_options(API_DETECTION_FORMAT_LIGHT_OBJECT_DETECT, "onnx", NULL);
+    detection_result_t result;
+    api_detection_response_meta_t meta;
+    TEST_ASSERT_EQUAL_INT(0, api_detection_parse_response_meta(json, &options, &result, &meta));
+    TEST_ASSERT_EQUAL_INT(1, result.count);
+    TEST_ASSERT_TRUE(meta.letterbox);
+    TEST_ASSERT_EQUAL_STRING("yolov8n", meta.model);
+    TEST_ASSERT_EQUAL_STRING("8.3.0", meta.model_version);
+
+    observation_evidence_transform_t t;
+    TEST_ASSERT_EQUAL_INT(0, api_detection_apply_response_geometry(
+        &meta, sw, sh, (int)jnum(tf, "source_width"), (int)jnum(tf, "source_height"), &result, &t));
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, (float)jnum(box, "x"), result.detections[0].x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, (float)jnum(box, "y"), result.detections[0].y);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, (float)jnum(box, "width"), result.detections[0].width);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, (float)jnum(box, "height"), result.detections[0].height);
+    TEST_ASSERT_EQUAL_INT(OBS_TRANSFORM_LETTERBOX, t.mode);
+    TEST_ASSERT_EQUAL_INT((int)jnum(tf, "source_width"), t.source_width);
+    TEST_ASSERT_EQUAL_INT((int)jnum(tf, "source_height"), t.source_height);
+    TEST_ASSERT_EQUAL_INT(iw, t.inference_width);
+    TEST_ASSERT_EQUAL_INT(ih, t.inference_height);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, (float)jnum(tf, "scale_x"), (float)t.scale_x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, (float)jnum(tf, "scale_y"), (float)t.scale_y);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, (float)jnum(tf, "pad_x"), (float)t.pad_x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, (float)jnum(tf, "pad_y"), (float)t.pad_y);
+
+    /* The serialized transform is the fixture's (contract section 4.4). */
+    char tjson[512];
+    TEST_ASSERT_EQUAL_INT(0, observation_evidence_transform_json(&t, sw, sh, tjson, sizeof(tjson)));
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(tjson, "\"mode\":\"letterbox\""), tjson);
+    cJSON_Delete(obs);
+    cJSON_Delete(manifest);
+}
+
+void test_letterbox_fixture_pixel_box_maps_to_stored_image(void) {
+    assert_letterbox_fixture(true, true);
+}
+
+void test_letterbox_fixture_normalized_box_maps_to_stored_image(void) {
+    assert_letterbox_fixture(false, true);
+}
+
+void test_letterbox_scale_and_padding_are_derived_when_omitted(void) {
+    assert_letterbox_fixture(true, false);
+    assert_letterbox_fixture(false, false);
+}
+
+void test_no_letterbox_leaves_boxes_and_records_mode_none(void) {
+    const char *json = "{\"detections\":[{\"label\":\"bird\",\"confidence\":0.9,"
+                       "\"x_min\":0.1,\"y_min\":0.2,\"x_max\":0.4,\"y_max\":0.8}],"
+                       "\"letterbox\":{\"width\":0}}";
+    api_detection_options_t options = make_options(API_DETECTION_FORMAT_LIGHT_OBJECT_DETECT, "onnx", NULL);
+    detection_result_t result;
+    api_detection_response_meta_t meta;
+    TEST_ASSERT_EQUAL_INT(0, api_detection_parse_response_meta(json, &options, &result, &meta));
+    TEST_ASSERT_FALSE(meta.letterbox);  /* invalid declaration is ignored */
+    TEST_ASSERT_EQUAL_STRING("", meta.model);
+
+    observation_evidence_transform_t t;
+    TEST_ASSERT_EQUAL_INT(0, api_detection_apply_response_geometry(&meta, 640, 480, 0, 0, &result, &t));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.1f, result.detections[0].x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.6f, result.detections[0].height);
+    TEST_ASSERT_EQUAL_INT(OBS_TRANSFORM_NONE, t.mode);
+    TEST_ASSERT_EQUAL_INT(640, t.source_width);   /* the JPEG is its own source */
+    TEST_ASSERT_EQUAL_INT(640, t.inference_width);
+    TEST_ASSERT_EQUAL_INT(480, t.inference_height);
+    TEST_ASSERT_EQUAL_INT(-1, api_detection_apply_response_geometry(&meta, 0, 480, 0, 0, &result, &t));
+    TEST_ASSERT_EQUAL_INT(0, api_detection_apply_response_geometry(NULL, 64, 48, 320, 240, &result, &t));
+    TEST_ASSERT_EQUAL_INT(320, t.source_width);
+    TEST_ASSERT_EQUAL_INT(64, t.inference_width);
+}
+
+void test_jpeg_dimensions_reads_sof_and_rejects_garbage(void) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/media/two-birds-160x80.jpg", OBS_FIXTURE_DIR);
+    size_t size = 0;
+    char *jpeg = read_text(path, &size);
+    int w = 0, h = 0;
+    TEST_ASSERT_EQUAL_INT(0, api_detection_jpeg_dimensions((const uint8_t *)jpeg, size, &w, &h));
+    TEST_ASSERT_EQUAL_INT(160, w);
+    TEST_ASSERT_EQUAL_INT(80, h);
+    TEST_ASSERT_EQUAL_INT(-1, api_detection_jpeg_dimensions((const uint8_t *)jpeg, 64, &w, &h));
+    free(jpeg);
+
+    const uint8_t not_jpeg[] = {0x89, 'P', 'N', 'G', 0, 0, 0, 0};
+    TEST_ASSERT_EQUAL_INT(-1, api_detection_jpeg_dimensions(not_jpeg, sizeof(not_jpeg), &w, &h));
+    TEST_ASSERT_EQUAL_INT(-1, api_detection_jpeg_dimensions(NULL, 0, &w, &h));
+}
+
 int main(void) {
     init_logger();
     UNITY_BEGIN();
@@ -382,5 +548,10 @@ int main(void) {
     RUN_TEST(test_parse_response_doods2_error_field_fails_request);
     RUN_TEST(test_parse_response_handles_null_missing_and_garbage);
     RUN_TEST(test_parse_response_caps_at_max_detections);
+    RUN_TEST(test_letterbox_fixture_pixel_box_maps_to_stored_image);
+    RUN_TEST(test_letterbox_fixture_normalized_box_maps_to_stored_image);
+    RUN_TEST(test_letterbox_scale_and_padding_are_derived_when_omitted);
+    RUN_TEST(test_no_letterbox_leaves_boxes_and_records_mode_none);
+    RUN_TEST(test_jpeg_dimensions_reads_sof_and_rejects_garbage);
     return UNITY_END();
 }

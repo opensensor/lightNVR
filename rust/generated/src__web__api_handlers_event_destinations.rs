@@ -391,7 +391,8 @@ impl authorization_action_t {
     pub const AUTHZ_LPR_SEARCH: Self = Self(16);
     pub const AUTHZ_LPR_EXPORT: Self = Self(17);
     pub const AUTHZ_LPR_DELETE: Self = Self(18);
-    pub const AUTHZ_ACTION_COUNT: Self = Self(19);
+    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
+    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
 }
 pub const EVENT_DESTINATION_UUID_MAX: ::core::ffi::c_int = 37 as ::core::ffi::c_int;
 pub const EVENT_DESTINATION_PASSWORD_MAX: ::core::ffi::c_int = 256 as ::core::ffi::c_int;

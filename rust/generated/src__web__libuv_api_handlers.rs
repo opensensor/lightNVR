@@ -409,6 +409,20 @@ unsafe extern "C" {
     unsafe fn handle_delete_lpr_read(req: *const http_request_t, res: *mut http_response_t);
     unsafe fn handle_get_detection_engines(req: *const http_request_t, res: *mut http_response_t);
     unsafe fn handle_put_detection_engines(req: *const http_request_t, res: *mut http_response_t);
+    unsafe fn handle_get_integration_capabilities(
+        req: *const http_request_t,
+        res: *mut http_response_t,
+    );
+    unsafe fn handle_get_observations(req: *const http_request_t, res: *mut http_response_t);
+    unsafe fn handle_get_observation(req: *const http_request_t, res: *mut http_response_t);
+    unsafe fn handle_get_observation_snapshot(
+        req: *const http_request_t,
+        res: *mut http_response_t,
+    );
+    unsafe fn handle_put_observation_classification(
+        req: *const http_request_t,
+        res: *mut http_response_t,
+    );
     unsafe fn _log_message_ctx(
         level: log_level_t,
         component: *const ::core::ffi::c_char,
@@ -1520,6 +1534,51 @@ pub unsafe extern "C" fn register_all_libuv_handlers(
         b"GET\0".as_ptr() as *const ::core::ffi::c_char,
         Some(
             handle_get_detection_snapshot
+                as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
+        ),
+    );
+    http_server_register_handler(
+        server,
+        b"/api/integrations/capabilities\0".as_ptr() as *const ::core::ffi::c_char,
+        b"GET\0".as_ptr() as *const ::core::ffi::c_char,
+        Some(
+            handle_get_integration_capabilities
+                as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
+        ),
+    );
+    http_server_register_handler(
+        server,
+        b"/api/observations\0".as_ptr() as *const ::core::ffi::c_char,
+        b"GET\0".as_ptr() as *const ::core::ffi::c_char,
+        Some(
+            handle_get_observations
+                as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
+        ),
+    );
+    http_server_register_handler(
+        server,
+        b"/api/observations/#/snapshot\0".as_ptr() as *const ::core::ffi::c_char,
+        b"GET\0".as_ptr() as *const ::core::ffi::c_char,
+        Some(
+            handle_get_observation_snapshot
+                as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
+        ),
+    );
+    http_server_register_handler(
+        server,
+        b"/api/observations/#/classifications/#/#\0".as_ptr() as *const ::core::ffi::c_char,
+        b"PUT\0".as_ptr() as *const ::core::ffi::c_char,
+        Some(
+            handle_put_observation_classification
+                as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
+        ),
+    );
+    http_server_register_handler(
+        server,
+        b"/api/observations/#\0".as_ptr() as *const ::core::ffi::c_char,
+        b"GET\0".as_ptr() as *const ::core::ffi::c_char,
+        Some(
+            handle_get_observation
                 as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
         ),
     );

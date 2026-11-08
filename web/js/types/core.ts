@@ -354,6 +354,14 @@ export interface WorkspacesResponse {
 // Detections: api_handlers_detection.c
 // ---------------------------------------------------------------------------
 
+/**
+ * INT_01 L15: optional observation linked to a detection by the server
+ * (same camera, same second ±1, same label). `classification` is the
+ * annotation to display (owner decision first) or null.
+ */
+export type DetectionObservation = components['schemas']['EvidenceDetectionObservation'];
+export type ObservationClassification = components['schemas']['ObservationClassification'];
+
 export interface Detection {
   label: string;
   confidence: number;
@@ -363,6 +371,7 @@ export interface Detection {
   height: number;
   timestamp?: number;
   end_timestamp?: number;
+  observation?: DetectionObservation;
 }
 
 /** GET /api/detection/results/:stream. */

@@ -60,6 +60,12 @@ import type {
   StreamTestResponse,
 } from '../../types/streams.ts';
 import { normalizePlaybackTransport } from '../../utils/playback-transport.ts';
+import {
+  DEFAULT_OBSERVATION_FORM_FIELDS,
+  observationFormFields,
+  observationPayloadFields,
+  validateObservationForm,
+} from '../../utils/observation-evidence.ts';
 import { getStreamFull, listStreamSummaries, updateStream } from '../../api/streams.ts';
 import { createStream, probeStream, deleteStream as requestDeleteStream } from '../../api/mediaLifecycle.ts';
 import type { StreamSummaryQuery, StreamUpdateResult } from '../../api/streams.ts';
@@ -172,7 +178,9 @@ export function streamSavePayloadFromForm(currentStream: StreamFormState, isEdit
     // Secondary stream used only for detection (e.g. MJPEG sub-stream)
     detection_url: currentStream.detectionUrl || '',
     // Client-side fisheye calibration; recording remains the raw source.
-    eptz_config: serializeEptzConfig(eptzConfigFromForm(currentStream))
+    eptz_config: serializeEptzConfig(eptzConfigFromForm(currentStream)),
+    // INT_01 per-camera observation evidence for integrations (off by default)
+    ...observationPayloadFields(currentStream)
   };
 
   // When editing, set is_deleted to false to allow undeleting soft-deleted streams
@@ -225,6 +233,7 @@ export function streamFormFromFull(stream: StreamFull): StreamFormState {
     go2rtcSourceOverride: stream.go2rtc_source_override, publishUrl: stream.publish_url,
     subStreamUrl: stream.sub_stream_url, detectionUrl: stream.detection_url,
     ...eptzFormFields(stream.eptz_config),
+    ...observationFormFields(stream),
   };
 }
 
@@ -392,6 +401,7 @@ export function StreamsView() {
     eptz: false,
     ptz: false,
     advanced: false,
+    observation: false,
     go2rtcOverride: false,
     restream: false
   });
@@ -506,6 +516,7 @@ export function StreamsView() {
     retentionDays: -1,
     detectionRetentionDays: -1,
     maxStorageMb: 0,
+    ...DEFAULT_OBSERVATION_FORM_FIELDS,
     // Recording schedule
     recordOnSchedule: false,
     recordingSchedule: Array(168).fill(true),
@@ -756,6 +767,12 @@ export function StreamsView() {
   const handleSubmit = (e?: Event) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
+    const observationError = validateObservationForm(currentStream);
+    if (observationError) {
+      showStatusMessage(t(observationError), 'error', 5000);
+      return Promise.resolve(undefined);
+    }
+
     const streamData = streamSavePayloadFromForm(currentStream, isEditing);
 
     // Use mutation to save stream. We return mutateAsync's promise so
@@ -834,6 +851,7 @@ export function StreamsView() {
       retentionDays: -1,
       detectionRetentionDays: -1,
       maxStorageMb: 0,
+      ...DEFAULT_OBSERVATION_FORM_FIELDS,
       // Recording schedule
       recordOnSchedule: false,
       recordingSchedule: Array(168).fill(true),

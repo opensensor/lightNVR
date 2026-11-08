@@ -278,6 +278,30 @@ void test_handle_get_system_info_includes_empty_stream_storage_array(void) {
     http_response_free(&res);
 }
 
+/* INT_01 L10: observation diagnostics ride along with system info. With
+ * evidence unused the pipeline is inactive and no evidence queue exists. */
+void test_handle_get_system_info_includes_inactive_observation_pipeline(void) {
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    handle_get_system_info(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *root = parse_response_json(&res);
+    cJSON *pipeline = cJSON_GetObjectItemCaseSensitive(root, "observation_pipeline");
+    TEST_ASSERT_TRUE(cJSON_IsObject(pipeline));
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(pipeline, "active")));
+    cJSON *evidence = cJSON_GetObjectItemCaseSensitive(pipeline, "evidence");
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(evidence, "queue_allocated")));
+    TEST_ASSERT_EQUAL_INT(0, cJSON_GetObjectItemCaseSensitive(pipeline, "accepted")->valueint);
+    TEST_ASSERT_TRUE(cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(pipeline, "cameras")));
+
+    cJSON_Delete(root);
+    http_response_free(&res);
+}
+
 // Regression test: linux_process.c's real collector stamps process.rss_bytes
 // and process.threads observations with resource_id "lightnvr" (see its
 // prepare_observation()), but handle_get_system_info() looked them up with a
@@ -1527,6 +1551,7 @@ int main(void) {
 
     UNITY_BEGIN();
     RUN_TEST(test_handle_get_system_info_includes_versions_summary);
+    RUN_TEST(test_handle_get_system_info_includes_inactive_observation_pipeline);
     RUN_TEST(test_handle_get_system_info_does_not_wait_for_go2rtc_lifecycle);
     RUN_TEST(test_handle_get_system_info_includes_empty_stream_storage_array);
     RUN_TEST(test_handle_get_system_info_reports_process_memory_and_threads);

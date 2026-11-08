@@ -74,9 +74,19 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
     unsafe fn get_stream_by_name(name: *const ::core::ffi::c_char) -> stream_handle_t;
     unsafe fn go2rtc_integration_is_initialized() -> bool;
+    unsafe fn lightnvr_uuid_is_valid(value: *const ::core::ffi::c_char) -> bool;
     unsafe fn get_unified_detection_effective_status(
         stream_name: *const ::core::ffi::c_char,
     ) -> stream_status_t;
+    unsafe fn db_observation_link_detections(
+        camera_uuid: *const ::core::ffi::c_char,
+        refs: *const observation_detection_ref_t,
+        count: size_t,
+        out: *mut observation_detection_link_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn observation_detection_link_to_json(
+        link: *const observation_detection_link_t,
+    ) -> *mut cJSON;
     unsafe fn get_detection_results_for_camera_readonly(
         camera_uuid: *const ::core::ffi::c_char,
         legacy_stream_name: *const ::core::ffi::c_char,
@@ -97,6 +107,7 @@ unsafe extern "C" {
         __endptr: *mut *mut ::core::ffi::c_char,
         __base: ::core::ffi::c_int,
     ) -> ::core::ffi::c_longlong;
+    unsafe fn calloc(__nmemb: size_t, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
 }
 pub type size_t = usize;
@@ -197,6 +208,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -288,19 +303,55 @@ impl log_level_t {
     pub const LOG_LEVEL_INFO: Self = Self(2);
     pub const LOG_LEVEL_DEBUG: Self = Self(3);
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_detection_link_t {
+    pub linked: bool,
+    pub observation_uuid: [::core::ffi::c_char; 37],
+    pub has_classification: bool,
+    pub owner_confirmed: bool,
+    pub classification: observation_classification_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_classification_t {
+    pub key: [::core::ffi::c_char; 66],
+    pub writer_namespace: [::core::ffi::c_char; 33],
+    pub writer_user_id: int64_t,
+    pub classifier: [::core::ffi::c_char; 65],
+    pub model_version: [::core::ffi::c_char; 65],
+    pub label: [::core::ffi::c_char; 129],
+    pub taxonomy_id: [::core::ffi::c_char; 65],
+    pub confidence: ::core::ffi::c_double,
+    pub classified_at_ms: int64_t,
+    pub input_asset_uuid: [::core::ffi::c_char; 37],
+    pub input_revision: ::core::ffi::c_int,
+    pub kind: observation_classification_kind_t,
+    pub annotation_revision: ::core::ffi::c_int,
+    pub created_at_ms: int64_t,
+    pub updated_at_ms: int64_t,
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct stream_status_t(pub ::core::ffi::c_uint);
-impl stream_status_t {
-    pub const STREAM_STATUS_UNKNOWN: Self = Self(0);
-    pub const STREAM_STATUS_STOPPED: Self = Self(1);
-    pub const STREAM_STATUS_STARTING: Self = Self(2);
-    pub const STREAM_STATUS_RUNNING: Self = Self(3);
-    pub const STREAM_STATUS_STOPPING: Self = Self(4);
-    pub const STREAM_STATUS_ERROR: Self = Self(5);
-    pub const STREAM_STATUS_RECONNECTING: Self = Self(6);
+pub struct observation_classification_kind_t(pub ::core::ffi::c_uint);
+impl observation_classification_kind_t {
+    pub const OBS_CLS_KIND_AUTOMATED: Self = Self(0);
+    pub const OBS_CLS_KIND_OWNER_CONFIRMED: Self = Self(1);
 }
-pub type stream_handle_t = *mut stream_handle_s;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct api_phase_timer_t {
+    pub started: timespec,
+    pub request: *const http_request_t,
+    pub phase: *const ::core::ffi::c_char,
+    pub valid: bool,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_detection_ref_t {
+    pub label: *const ::core::ffi::c_char,
+    pub timestamp: int64_t,
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct fleet_camera_t {
@@ -359,14 +410,19 @@ pub struct fleet_camera_tag_t {
     pub uuid: [::core::ffi::c_char; 37],
     pub label: [::core::ffi::c_char; 256],
 }
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct api_phase_timer_t {
-    pub started: timespec,
-    pub request: *const http_request_t,
-    pub phase: *const ::core::ffi::c_char,
-    pub valid: bool,
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct stream_status_t(pub ::core::ffi::c_uint);
+impl stream_status_t {
+    pub const STREAM_STATUS_UNKNOWN: Self = Self(0);
+    pub const STREAM_STATUS_STOPPED: Self = Self(1);
+    pub const STREAM_STATUS_STARTING: Self = Self(2);
+    pub const STREAM_STATUS_RUNNING: Self = Self(3);
+    pub const STREAM_STATUS_STOPPING: Self = Self(4);
+    pub const STREAM_STATUS_ERROR: Self = Self(5);
+    pub const STREAM_STATUS_RECONNECTING: Self = Self(6);
 }
+pub type stream_handle_t = *mut stream_handle_s;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct authorization_evaluation_t {
@@ -449,7 +505,22 @@ impl authorization_action_t {
     pub const AUTHZ_LPR_SEARCH: Self = Self(16);
     pub const AUTHZ_LPR_EXPORT: Self = Self(17);
     pub const AUTHZ_LPR_DELETE: Self = Self(18);
-    pub const AUTHZ_ACTION_COUNT: Self = Self(19);
+    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
+    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct C2Rust_Unnamed(pub ::core::ffi::c_int);
+impl C2Rust_Unnamed {
+    pub const DB_OBS_OK: Self = Self(0);
+    pub const DB_OBS_DUPLICATE: Self = Self(1);
+    pub const DB_OBS_CAS_LOST: Self = Self(2);
+    pub const DB_OBS_ERROR: Self = Self(-1);
+    pub const DB_OBS_INVALID: Self = Self(-2);
+    pub const DB_OBS_NOT_FOUND: Self = Self(-3);
+    pub const DB_OBS_INVALID_CURSOR: Self = Self(-4);
+    pub const DB_OBS_CURSOR_EXPIRED: Self = Self(-5);
+    pub const DB_OBS_CONFLICT: Self = Self(-6);
 }
 pub const LOG_COMPONENT: [::core::ffi::c_char; 13] =
     unsafe { ::core::mem::transmute::<[u8; 13], [::core::ffi::c_char; 13]>(*b"DetectionAPI\0") };
@@ -826,6 +897,10 @@ pub unsafe extern "C" fn handle_get_detection_results(
             publish_url: [0; 512],
             playback_transport: [0; 24],
             eptz_config: [0; 1024],
+            observation_evidence_enabled: false,
+            observation_labels: [0; 512],
+            observation_max_age_days: 0,
+            observation_max_bytes: 0,
         };
         if get_stream_config(stream, &raw mut stream_cfg) == 0 as ::core::ffi::c_int
             && stream_cfg.detection_interval > 0 as ::core::ffi::c_int
@@ -1025,6 +1100,10 @@ pub unsafe extern "C" fn handle_get_detection_results(
             publish_url: [0; 512],
             playback_transport: [0; 24],
             eptz_config: [0; 1024],
+            observation_evidence_enabled: false,
+            observation_labels: [0; 512],
+            observation_max_age_days: 0,
+            observation_max_bytes: 0,
         };
         memset(
             &raw mut scfg as *mut ::core::ffi::c_void,
@@ -1076,8 +1155,55 @@ pub unsafe extern "C" fn handle_get_detection_results(
         b"stream_status\0".as_ptr() as *const ::core::ffi::c_char,
         status_str,
     );
-    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while i < result.count {
+    let mut links: *mut observation_detection_link_t =
+        ::core::ptr::null_mut::<observation_detection_link_t>();
+    if result.count > 0 as ::core::ffi::c_int
+        && lightnvr_uuid_is_valid(&raw mut camera.camera_uuid as *mut ::core::ffi::c_char)
+            as ::core::ffi::c_int
+            != 0
+    {
+        links = calloc(
+            result.count as size_t,
+            ::core::mem::size_of::<observation_detection_link_t>(),
+        ) as *mut observation_detection_link_t;
+    }
+    if !links.is_null() {
+        let mut refs: [observation_detection_ref_t; 20] = [observation_detection_ref_t {
+            label: ::core::ptr::null::<::core::ffi::c_char>(),
+            timestamp: 0,
+        }; 20];
+        let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while i < result.count {
+            refs[i as usize].label = &raw mut (*(&raw mut result.detections as *mut detection_t)
+                .offset(i as isize))
+            .label as *mut ::core::ffi::c_char;
+            refs[i as usize].timestamp = timestamps[i as usize] as int64_t;
+            i += 1;
+        }
+        phase = api_phase_begin(
+            req,
+            b"detection observation link\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        if db_observation_link_detections(
+            &raw mut camera.camera_uuid as *mut ::core::ffi::c_char,
+            &raw mut refs as *mut observation_detection_ref_t,
+            result.count as size_t,
+            links,
+        ) != C2Rust_Unnamed::DB_OBS_OK.0
+        {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT.as_ptr(),
+                _log_stream_name,
+                b"Observation links unavailable for stream %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                &raw mut stream_name as *mut ::core::ffi::c_char,
+            );
+        }
+        api_phase_end(&raw mut phase);
+    }
+    let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_0 < result.count {
         let mut detection: *mut cJSON = cJSON_CreateObject();
         if detection.is_null() {
             _log_message_ctx(
@@ -1090,48 +1216,61 @@ pub unsafe extern "C" fn handle_get_detection_results(
             cJSON_AddStringToObject(
                 detection,
                 b"label\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut (*(&raw mut result.detections as *mut detection_t).offset(i as isize))
+                &raw mut (*(&raw mut result.detections as *mut detection_t).offset(i_0 as isize))
                     .label as *mut ::core::ffi::c_char,
             );
             cJSON_AddNumberToObject(
                 detection,
                 b"confidence\0".as_ptr() as *const ::core::ffi::c_char,
-                result.detections[i as usize].confidence as ::core::ffi::c_double,
+                result.detections[i_0 as usize].confidence as ::core::ffi::c_double,
             );
             cJSON_AddNumberToObject(
                 detection,
                 b"x\0".as_ptr() as *const ::core::ffi::c_char,
-                result.detections[i as usize].x as ::core::ffi::c_double,
+                result.detections[i_0 as usize].x as ::core::ffi::c_double,
             );
             cJSON_AddNumberToObject(
                 detection,
                 b"y\0".as_ptr() as *const ::core::ffi::c_char,
-                result.detections[i as usize].y as ::core::ffi::c_double,
+                result.detections[i_0 as usize].y as ::core::ffi::c_double,
             );
             cJSON_AddNumberToObject(
                 detection,
                 b"width\0".as_ptr() as *const ::core::ffi::c_char,
-                result.detections[i as usize].width as ::core::ffi::c_double,
+                result.detections[i_0 as usize].width as ::core::ffi::c_double,
             );
             cJSON_AddNumberToObject(
                 detection,
                 b"height\0".as_ptr() as *const ::core::ffi::c_char,
-                result.detections[i as usize].height as ::core::ffi::c_double,
+                result.detections[i_0 as usize].height as ::core::ffi::c_double,
             );
             cJSON_AddNumberToObject(
                 detection,
                 b"timestamp\0".as_ptr() as *const ::core::ffi::c_char,
-                timestamps[i as usize] as ::core::ffi::c_double,
+                timestamps[i_0 as usize] as ::core::ffi::c_double,
             );
             cJSON_AddNumberToObject(
                 detection,
                 b"end_timestamp\0".as_ptr() as *const ::core::ffi::c_char,
-                end_timestamps[i as usize] as ::core::ffi::c_double,
+                end_timestamps[i_0 as usize] as ::core::ffi::c_double,
             );
+            let mut observation: *mut cJSON = if !links.is_null() {
+                observation_detection_link_to_json(links.offset(i_0 as isize))
+            } else {
+                ::core::ptr::null_mut::<cJSON>()
+            };
+            if !observation.is_null() {
+                cJSON_AddItemToObject(
+                    detection,
+                    b"observation\0".as_ptr() as *const ::core::ffi::c_char,
+                    observation,
+                );
+            }
             cJSON_AddItemToArray(detections_array, detection);
         }
-        i += 1;
+        i_0 += 1;
     }
+    free(links as *mut ::core::ffi::c_void);
     let mut json_str: *mut ::core::ffi::c_char = cJSON_PrintUnformatted(response);
     if json_str.is_null() {
         _log_message_ctx(

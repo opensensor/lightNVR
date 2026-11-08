@@ -365,7 +365,8 @@ impl authorization_action_t {
     pub const AUTHZ_LPR_SEARCH: Self = Self(16);
     pub const AUTHZ_LPR_EXPORT: Self = Self(17);
     pub const AUTHZ_LPR_DELETE: Self = Self(18);
-    pub const AUTHZ_ACTION_COUNT: Self = Self(19);
+    pub const AUTHZ_OBSERVATIONS_ANNOTATE: Self = Self(19);
+    pub const AUTHZ_ACTION_COUNT: Self = Self(20);
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -1366,10 +1367,10 @@ pub unsafe extern "C" fn handle_put_audit_settings(
     pthread_mutex_lock(&raw mut audit_settings_put_mutex);
     let mut changes: *mut cJSON = ::core::ptr::null_mut::<cJSON>();
     let mut deleted_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    let mut previous: [audit_decision_mode_t; 19] =
-        [audit_decision_mode_t::AUDIT_DECISION_MODE_RECORD; 19];
-    let mut next: [audit_decision_mode_t; 19] =
-        [audit_decision_mode_t::AUDIT_DECISION_MODE_RECORD; 19];
+    let mut previous: [audit_decision_mode_t; 20] =
+        [audit_decision_mode_t::AUDIT_DECISION_MODE_RECORD; 20];
+    let mut next: [audit_decision_mode_t; 20] =
+        [audit_decision_mode_t::AUDIT_DECISION_MODE_RECORD; 20];
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < authorization_action_t::AUTHZ_ACTION_COUNT.0 {
         next[i as usize] = audit_log_get_decision_mode(authorization_action_t(i));

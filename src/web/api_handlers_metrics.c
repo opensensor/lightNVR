@@ -35,6 +35,7 @@
 #include "core/mqtt_delivery_worker.h"
 #include "core/mqtt_destination_client.h"
 #include "core/mqtt_presence.h"
+#include "core/observation_diagnostics.h"
 #include "database/db_event_destinations.h"
 #include "database/db_event_outbox.h"
 #include "video/stream_manager.h"
@@ -1056,6 +1057,214 @@ char *api_metrics_render_system_health(
 }
 
 /* ------------------------------------------------------------------ */
+/*  INT_01 L10: observation pipeline (contract section 15)              */
+/* ------------------------------------------------------------------ */
+
+static void prom_family(prom_buf_t *b, const char *name, const char *type,
+                        const char *help) {
+    prom_buf_append(b, "# HELP %s %s\n", name, help);
+    prom_buf_append(b, "# TYPE %s %s\n", name, type);
+}
+
+static void prom_u64(prom_buf_t *b, const char *name, const char *type,
+                     const char *help, uint64_t value) {
+    prom_family(b, name, type, help);
+    prom_buf_append(b, "%s %llu\n", name, (unsigned long long)value);
+}
+
+char *api_metrics_render_observations(const observation_diagnostics_t *d) {
+    if (!d) return NULL;
+    const observation_evidence_stats_t *e = &d->evidence;
+    const observation_relay_stats_t *r = &d->relay;
+    prom_buf_t b;
+    prom_buf_init(&b, 8192U);
+    if (!b.data) return NULL;
+
+    prom_u64(&b, "lightnvr_observation_accepted_total", "counter",
+             "Observation batches whose evidence frame was queued", e->accepted);
+    prom_family(&b, "lightnvr_observation_dropped_total", "counter",
+                "Observation evidence submissions dropped, by reason");
+    const struct { const char *reason; uint64_t value; } drops[] = {
+        {"queue_full", e->dropped_queue_full},
+        {"budget_exhausted", e->dropped_budget},
+        {"disabled", e->dropped_disabled},
+        {"untracked", e->dropped_untracked},
+    };
+    for (size_t i = 0; i < sizeof(drops) / sizeof(drops[0]); ++i)
+        prom_buf_append(&b, "lightnvr_observation_dropped_total{reason=\"%s\"} %llu\n",
+                        drops[i].reason, (unsigned long long)drops[i].value);
+
+    prom_u64(&b, "lightnvr_observation_evidence_unavailable_total", "counter",
+             "Observation batches recorded without media (no_matching_media)",
+             e->unavailable_submitted);
+    prom_u64(&b, "lightnvr_observation_evidence_ready_total", "counter",
+             "Evidence assets committed as ready", e->ready);
+    prom_family(&b, "lightnvr_observation_evidence_failures_total", "counter",
+                "Evidence assets that became unavailable after admission, by reason");
+    const struct { const char *reason; uint64_t value; } failures[] = {
+        {"encode_failed", e->failed_encode},
+        {"write_failed", e->failed_write},
+        {"db_error", e->failed_db},
+        {"disabled", e->disabled_at_encode},
+        {"interrupted", e->interrupted},
+    };
+    for (size_t i = 0; i < sizeof(failures) / sizeof(failures[0]); ++i)
+        prom_buf_append(&b,
+            "lightnvr_observation_evidence_failures_total{reason=\"%s\"} %llu\n",
+            failures[i].reason, (unsigned long long)failures[i].value);
+    prom_u64(&b, "lightnvr_observation_evidence_bytes_written_total", "counter",
+             "Evidence JPEG bytes written", e->bytes_written);
+    prom_u64(&b, "lightnvr_observation_evidence_backlog_items", "gauge",
+             "Evidence frames queued for encoding", e->backlog_items);
+    prom_u64(&b, "lightnvr_observation_evidence_backlog_bytes", "gauge",
+             "Bytes held by queued evidence frames", e->backlog_bytes);
+    prom_u64(&b, "lightnvr_observation_evidence_drop_ring_depth", "gauge",
+             "Drop records waiting to be written", e->drop_ring_depth);
+    prom_u64(&b, "lightnvr_observation_evidence_high_water_items", "gauge",
+             "Highest evidence backlog in items this process run", e->high_water_items);
+    prom_u64(&b, "lightnvr_observation_evidence_high_water_bytes", "gauge",
+             "Highest evidence backlog in bytes this process run", e->high_water_bytes);
+    prom_u64(&b, "lightnvr_observation_evidence_queue_allocated", "gauge",
+             "Whether the evidence queue or worker exists (0 while evidence is unused)",
+             e->allocated ? 1U : 0U);
+    prom_u64(&b, "lightnvr_observation_evidence_worker_running", "gauge",
+             "Whether the evidence encoder worker is running", e->worker_running ? 1U : 0U);
+    prom_u64(&b, "lightnvr_observation_evidence_camera_high_water_items", "gauge",
+             "Highest evidence backlog held by one camera this process run",
+             e->camera_high_water_items);
+    prom_family(&b, "lightnvr_observation_evidence_limit_items", "gauge",
+                "Configured evidence queue depth bound, global and per camera");
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_items{scope=\"global\"} %u\n",
+                    (unsigned)e->limit_items);
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_items{scope=\"camera\"} %u\n",
+                    (unsigned)e->limit_camera_items);
+    prom_family(&b, "lightnvr_observation_evidence_limit_bytes", "gauge",
+                "Configured evidence queue byte bound, global and per camera");
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_bytes{scope=\"global\"} %llu\n",
+                    (unsigned long long)e->limit_bytes);
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_bytes{scope=\"camera\"} %llu\n",
+                    (unsigned long long)e->limit_camera_bytes);
+    prom_buf_append(&b, "lightnvr_observation_evidence_limit_bytes{scope=\"discard\"} %llu\n",
+                    (unsigned long long)e->limit_discard_bytes);
+    prom_family(&b, "lightnvr_observation_evidence_discards_total", "counter",
+                "Rejected evidence frames released by the worker (deferred) or by the producer (inline)");
+    prom_buf_append(&b, "lightnvr_observation_evidence_discards_total{mode=\"deferred\"} %llu\n",
+                    (unsigned long long)e->discard_deferred);
+    prom_buf_append(&b, "lightnvr_observation_evidence_discards_total{mode=\"inline\"} %llu\n",
+                    (unsigned long long)e->discard_inline);
+    prom_u64(&b, "lightnvr_observation_evidence_discard_pending_bytes", "gauge",
+             "Rejected evidence frame bytes waiting for the worker to release them",
+             e->discard_pending_bytes);
+
+    /* Producer submit latency (X2, A11: admission never waits on I/O). The
+     * bucket strings mirror observation_evidence_submit_latency_bounds_ns. */
+    static const char *const submit_le[OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS] = {
+        "0.000001", "0.000005", "0.00001", "0.00005", "0.0001",
+        "0.00025", "0.0005", "0.001", "0.01", "+Inf",
+    };
+    prom_family(&b, "lightnvr_observation_submit_latency_seconds", "histogram",
+                "Producer time inside evidence admission this process run");
+    unsigned long long cumulative = 0;
+    for (int i = 0; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS; ++i) {
+        cumulative += (unsigned long long)e->submit_latency_bucket[i];
+        prom_buf_append(&b, "lightnvr_observation_submit_latency_seconds_bucket{le=\"%s\"} %llu\n",
+                        submit_le[i], cumulative);
+    }
+    prom_buf_append(&b, "lightnvr_observation_submit_latency_seconds_sum %.9f\n",
+                    (double)e->submit_latency_sum_ns / 1e9);
+    prom_buf_append(&b, "lightnvr_observation_submit_latency_seconds_count %llu\n",
+                    (unsigned long long)e->submit_latency_count);
+    prom_family(&b, "lightnvr_observation_submit_latency_max_seconds", "gauge",
+                "Slowest producer evidence admission this process run");
+    prom_buf_append(&b, "lightnvr_observation_submit_latency_max_seconds %.9f\n",
+                    (double)e->submit_latency_max_ns / 1e9);
+
+    prom_family(&b, "lightnvr_observation_evidence_retained_bytes", "gauge",
+                "Ready evidence bytes retained per camera as of the last retention pass");
+    for (int i = 0; i < d->camera_count; ++i) {
+        char uuid[2U * sizeof(d->cameras[i].camera_uuid) + 1U];
+        prom_label_escape(d->cameras[i].camera_uuid, uuid, sizeof(uuid));
+        prom_buf_append(&b, "lightnvr_observation_evidence_retained_bytes{camera_uuid=\"%s\"} %lld\n",
+                        uuid, (long long)d->cameras[i].retained_bytes);
+    }
+    prom_family(&b, "lightnvr_observation_evidence_budget_bytes", "gauge",
+                "Per-camera evidence byte budget");
+    for (int i = 0; i < d->camera_count; ++i) {
+        char uuid[2U * sizeof(d->cameras[i].camera_uuid) + 1U];
+        prom_label_escape(d->cameras[i].camera_uuid, uuid, sizeof(uuid));
+        prom_buf_append(&b, "lightnvr_observation_evidence_budget_bytes{camera_uuid=\"%s\"} %lld\n",
+                        uuid, (long long)d->cameras[i].max_bytes);
+    }
+    prom_family(&b, "lightnvr_observation_evidence_budget_exhausted", "gauge",
+                "Whether a camera is over budget with only protected evidence left");
+    for (int i = 0; i < d->camera_count; ++i) {
+        char uuid[2U * sizeof(d->cameras[i].camera_uuid) + 1U];
+        prom_label_escape(d->cameras[i].camera_uuid, uuid, sizeof(uuid));
+        prom_buf_append(&b, "lightnvr_observation_evidence_budget_exhausted{camera_uuid=\"%s\"} %d\n",
+                        uuid, d->cameras[i].budget_exhausted ? 1 : 0);
+    }
+    prom_u64(&b, "lightnvr_observation_evidence_budget_exhausted_cameras", "gauge",
+             "Cameras whose evidence admission is paused by the byte budget",
+             d->budget_exhausted_cameras > 0 ? (uint64_t)d->budget_exhausted_cameras : 0U);
+
+    if (d->db_available) {
+        prom_u64(&b, "lightnvr_observation_history_observations", "gauge",
+                 "Retained observation rows", (uint64_t)d->db.observations);
+        prom_family(&b, "lightnvr_observation_history_oldest_seq", "gauge",
+                    "Oldest retained change seq (oldest recoverable cursor is seq - 1)");
+        prom_buf_append(&b, "lightnvr_observation_history_oldest_seq %lld\n",
+                        (long long)d->db.meta.oldest_seq);
+        prom_family(&b, "lightnvr_observation_history_head_seq", "gauge",
+                    "Newest change seq");
+        prom_buf_append(&b, "lightnvr_observation_history_head_seq %lld\n",
+                        (long long)d->db.meta.head_seq);
+        prom_family(&b, "lightnvr_observation_history_oldest_observed_timestamp_seconds", "gauge",
+                    "observed_at of the oldest retained observation (Unix seconds)");
+        if (d->db.has_oldest_observed_at)
+            prom_buf_append(&b,
+                "lightnvr_observation_history_oldest_observed_timestamp_seconds %.3f\n",
+                (double)d->db.oldest_observed_at_ms / 1000.0);
+        prom_family(&b, "lightnvr_observation_publications", "gauge",
+                    "Observation change publications by state");
+        prom_buf_append(&b, "lightnvr_observation_publications{state=\"pending\"} %lld\n",
+                        (long long)d->db.publications_pending);
+        prom_buf_append(&b, "lightnvr_observation_publications{state=\"failed\"} %lld\n",
+                        (long long)d->db.publications_failed);
+        prom_buf_append(&b, "lightnvr_observation_publications{state=\"expired\"} %lld\n",
+                        (long long)d->db.publications_expired);
+    }
+    prom_family(&b, "lightnvr_observation_relay_lag_seconds", "gauge",
+                "Age of the oldest pending observation publication");
+    prom_buf_append(&b, "lightnvr_observation_relay_lag_seconds %.3f\n",
+                    observation_diagnostics_relay_lag_seconds(d));
+    prom_u64(&b, "lightnvr_observation_relay_running", "gauge",
+             "Whether the observation publication relay is running", r->running ? 1U : 0U);
+    prom_family(&b, "lightnvr_observation_relay_events_total", "counter",
+                "Observation publication relay outcomes this process run");
+    const struct { const char *outcome; uint64_t value; } relay[] = {
+        {"relayed", r->relayed},
+        {"duplicate", r->duplicates},
+        {"no_route", r->relayed_no_route},
+        {"expired", r->expired},
+        {"failed", r->failed},
+        {"outbox_full", r->enqueue_full},
+        {"enqueue_error", r->enqueue_errors},
+        {"mark_error", r->mark_errors},
+        {"read_error", r->read_errors},
+        {"cap_pause", r->cap_pauses},
+        {"backoff", r->backoffs},
+        {"sidecar_error", r->sidecar_errors},
+    };
+    for (size_t i = 0; i < sizeof(relay) / sizeof(relay[0]); ++i)
+        prom_buf_append(&b, "lightnvr_observation_relay_events_total{outcome=\"%s\"} %llu\n",
+                        relay[i].outcome, (unsigned long long)relay[i].value);
+    prom_u64(&b, "lightnvr_observation_history_epoch_regenerations_total", "counter",
+             "Cursor epoch regenerations after a detected database rewind",
+             r->epoch_regenerations);
+    return b.data;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Instance-level helpers                                              */
 /* ------------------------------------------------------------------ */
 
@@ -1241,6 +1450,16 @@ void handle_get_metrics(const http_request_t *req, http_response_t *res) {
             prom_buf_append(&buf, "%s", health_metrics);
             free(health_metrics);
         }
+    }
+
+    observation_diagnostics_t observations;
+    if (observation_diagnostics_collect(&observations, 0) == 0) {
+        char *observation_metrics = api_metrics_render_observations(&observations);
+        if (observation_metrics) {
+            prom_buf_append(&buf, "%s", observation_metrics);
+            free(observation_metrics);
+        }
+        observation_diagnostics_free(&observations);
     }
 
     char *self_metrics = api_metrics_render_self_observability();

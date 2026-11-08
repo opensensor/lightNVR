@@ -171,8 +171,10 @@ void tearDown(void) {
 void test_catalog_and_route_crud_are_versioned_and_audited(void) {
     cJSON *json = call(handle_get_event_catalog, HTTP_METHOD_GET,
                        "/api/events/catalog", NULL, NULL, NULL, 200);
-    TEST_ASSERT_EQUAL_INT(13,
+    TEST_ASSERT_EQUAL_INT(14,
         cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
+    TEST_ASSERT_NOT_NULL(catalog_type(
+        json, "io.lightnvr.detection.observation_changed.v1"));
     cJSON *health = catalog_type(json, HEALTH_ALERT_TYPE);
     TEST_ASSERT_NOT_NULL(health);
     TEST_ASSERT_TRUE(cJSON_IsTrue(

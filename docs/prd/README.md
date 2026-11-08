@@ -37,6 +37,7 @@ The other roadmap entries below retain their separately dated status reviews.
 | --- | --- |
 | [Recording Retention Policies](PRD_Recording_Retention_Policies.md) | Per-stream retention and deletion policies (implemented — see [the summary](../internal/SUMMARY_Recording_Retention.md) and [the API quick reference](../QUICKREF_Retention_API.md)) |
 | [Storage 02 — Hot Storage & External Recording Archive](STORAGE_02_Hot_Cold_Archive.md) | Draft (2026-09-13): bounded hot PVC storage, dedicated bucket or mounted archive, protected indefinite retention, and unified playback and cleanup; extends Storage 01 |
+| [Integration 01 — Event Evidence & YA-WAMF](INT_01_Event_Enrichment_YAWAMF.md) | In progress (2026-11-08): P1 snapshot integration and P2 classification feedback implemented on unreleased branches in both repos, unit and contract tested; [deployment recipe](../integrations/YA_WAMF.md) published. Cross-repo E2E (X1, X3), saturation gate (X2) and real-camera pilot (A14) remain |
 
 ### Fleet control plane
 

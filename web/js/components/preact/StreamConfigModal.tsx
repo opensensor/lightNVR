@@ -1462,6 +1462,81 @@ export function StreamConfigModal({
               </AccordionSection>
             )}
 
+            {/* INT_01: per-camera observation evidence for integrations (off by default). */}
+            <AccordionSection
+              title={t('streamsConfig.observationEvidence')}
+              isExpanded={expandedSections.observation}
+              onToggle={() => onToggleSection('observation')}
+            >
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">{t('streamsConfig.observationEvidenceHelp')}</p>
+                <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  {t('streamsConfig.observationEvidenceDetectorRequired')}
+                </div>
+                <label className="touch-target flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    id="observation-evidence-enabled"
+                    name="observationEvidenceEnabled"
+                    className="h-4 w-4 text-primary focus:ring-primary border-input rounded"
+                    checked={!!currentStream.observationEvidenceEnabled}
+                    onChange={onInputChange}
+                  />
+                  <span className="text-sm font-medium">{t('streamsConfig.observationEvidenceEnable')}</span>
+                </label>
+                <div>
+                  <label htmlFor="observation-labels" className="block text-sm font-medium mb-2">
+                    {t('streamsConfig.observationLabels')}
+                  </label>
+                  <input
+                    type="text"
+                    id="observation-labels"
+                    name="observationLabels"
+                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
+                    maxLength={511}
+                    value={currentStream.observationLabels ?? ''}
+                    onChange={onInputChange}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.observationLabelsHelp')}</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="observation-max-age-days" className="block text-sm font-medium mb-2">
+                      {t('streamsConfig.observationMaxAgeDays')}
+                    </label>
+                    <input
+                      type="number"
+                      id="observation-max-age-days"
+                      name="observationMaxAgeDays"
+                      className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
+                      min="1"
+                      max="90"
+                      step="1"
+                      value={currentStream.observationMaxAgeDays ?? 7}
+                      onChange={onInputChange}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="observation-max-mib" className="block text-sm font-medium mb-2">
+                      {t('streamsConfig.observationMaxSizeMib')}
+                    </label>
+                    <input
+                      type="number"
+                      id="observation-max-mib"
+                      name="observationMaxMib"
+                      className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
+                      min="64"
+                      max="1048576"
+                      step="1"
+                      value={currentStream.observationMaxMib ?? 2048}
+                      onChange={onInputChange}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">{t('streamsConfig.observationBudgetHelp')}</p>
+              </div>
+            </AccordionSection>
+
             {/* Browser-side fisheye ePTZ (independent of mechanical ONVIF PTZ). */}
             <AccordionSection
               title={t('streamsConfig.eptzTitle')}

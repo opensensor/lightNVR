@@ -66,6 +66,14 @@ pub mod src__core__mqtt_destination_client;
 pub mod src__core__mqtt_event_adapter;
 #[path = "generated/src__core__mqtt_presence.rs"]
 pub mod src__core__mqtt_presence;
+#[path = "generated/src__core__observation_diagnostics.rs"]
+pub mod src__core__observation_diagnostics;
+#[path = "generated/src__core__observation_evidence.rs"]
+pub mod src__core__observation_evidence;
+#[path = "generated/src__core__observation_relay.rs"]
+pub mod src__core__observation_relay;
+#[path = "generated/src__core__observation_retention.rs"]
+pub mod src__core__observation_retention;
 #[path = "generated/src__core__path_utils.rs"]
 pub mod src__core__path_utils;
 #[path = "generated/src__core__sentry.rs"]
@@ -132,6 +140,10 @@ pub mod src__database__db_maintenance;
 pub mod src__database__db_migrations;
 #[path = "generated/src__database__db_motion_config.rs"]
 pub mod src__database__db_motion_config;
+#[path = "generated/src__database__db_observation_classifications.rs"]
+pub mod src__database__db_observation_classifications;
+#[path = "generated/src__database__db_observations.rs"]
+pub mod src__database__db_observations;
 #[path = "generated/src__database__db_onvif_discovery_inventory.rs"]
 pub mod src__database__db_onvif_discovery_inventory;
 #[path = "generated/src__database__db_operator_floor_plans.rs"]
@@ -254,6 +266,8 @@ pub mod src__utils__memory;
 pub mod src__utils__strings;
 #[path = "generated/src__utils__uuid.rs"]
 pub mod src__utils__uuid;
+#[path = "generated/src__utils__webrtc_candidates.rs"]
+pub mod src__utils__webrtc_candidates;
 #[path = "generated/src__utils__yaml_redact.rs"]
 pub mod src__utils__yaml_redact;
 #[path = "generated/src__utils__yaml_validate.rs"]
@@ -268,6 +282,8 @@ pub mod src__video__detection;
 pub mod src__video__detection_config;
 #[path = "generated/src__video__detection_embedded.rs"]
 pub mod src__video__detection_embedded;
+#[path = "generated/src__video__detection_evidence.rs"]
+pub mod src__video__detection_evidence;
 #[path = "generated/src__video__detection_integration.rs"]
 pub mod src__video__detection_integration;
 #[path = "generated/src__video__detection_model.rs"]
@@ -446,6 +462,8 @@ pub mod src__web__api_handlers_lpr;
 pub mod src__web__api_handlers_metrics;
 #[path = "generated/src__web__api_handlers_motion.rs"]
 pub mod src__web__api_handlers_motion;
+#[path = "generated/src__web__api_handlers_observations.rs"]
+pub mod src__web__api_handlers_observations;
 #[path = "generated/src__web__api_handlers_onvif_backend_agnostic.rs"]
 pub mod src__web__api_handlers_onvif_backend_agnostic;
 #[path = "generated/src__web__api_handlers_openapi.rs"]
@@ -558,6 +576,8 @@ pub mod src__web__recording_source;
 pub mod src__web__recordings_playback_state;
 #[path = "generated/src__web__request_response.rs"]
 pub mod src__web__request_response;
+#[path = "generated/src__web__stream_observation_settings.rs"]
+pub mod src__web__stream_observation_settings;
 #[path = "generated/src__web__thumbnail_thread.rs"]
 pub mod src__web__thumbnail_thread;
 fn main() {

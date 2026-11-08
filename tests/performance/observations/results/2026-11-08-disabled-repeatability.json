@@ -1,0 +1,21 @@
+{
+  "max_pct": 2,
+  "pass": false,
+  "checks": [
+    {
+      "key": "latency.segment_interval_ms.p95",
+      "a": 10035.298,
+      "b": 10037.886,
+      "variance_pct": 0.026,
+      "pass": true
+    },
+    {
+      "key": "latency.db_probe_ms.p95",
+      "a": 11.954,
+      "b": 12.321,
+      "variance_pct": 3.024,
+      "pass": false
+    }
+  ],
+  "same_workload": true
+}

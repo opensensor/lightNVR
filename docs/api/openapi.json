@@ -63,6 +63,10 @@
     {
       "name": "Device controls",
       "description": "PTZ, imaging and ONVIF inventory and device commands."
+    },
+    {
+      "name": "Integrations",
+      "description": "Durable detection observations, evidence images, history cursors and integration capabilities (INT_01)."
     }
   ],
   "x-lightnvr-coverage": {
@@ -300,9 +304,14 @@
       "setStreamRetention",
       "getStreamDetectionEngines",
       "setStreamDetectionEngines",
-      "getIceServers"
+      "getIceServers",
+      "getIntegrationCapabilities",
+      "listObservations",
+      "getObservation",
+      "getObservationSnapshot",
+      "putObservationClassification"
     ],
-    "description": "232 reviewed OpenAPI operations; eight registered media-protocol surfaces and one internal callback have explicit inventory dispositions outside this document. Discovery is filtered by current authority and never grants access."
+    "description": "237 reviewed OpenAPI operations; eight registered media-protocol surfaces and one internal callback have explicit inventory dispositions outside this document. Discovery is filtered by current authority and never grants access."
   },
   "x-lightnvr-validators": [
     "StreamSummaryPage",
@@ -610,7 +619,18 @@
     "StreamDetectionEngine",
     "StreamDetectionEnginesRequest",
     "StreamDetectionEngines",
-    "IceServersResponse"
+    "IceServersResponse",
+    "Observation",
+    "ObservationPage",
+    "ObservationEvidence",
+    "ObservationTransform",
+    "ObservationChangeEvent",
+    "ObservationClassification",
+    "ObservationClassificationWrite",
+    "ObservationClassificationResult",
+    "IntegrationCapabilities",
+    "ObservationError",
+    "ObservationPipelineDiagnostics"
   ],
   "paths": {
     "/api/streams": {
@@ -29053,6 +29073,749 @@
         },
         "description": "Return configured ICE servers for a principal permitted to view at least one camera. TURN credentials are intentionally provided to that authorized browser."
       }
+    },
+    "/api/integrations/capabilities": {
+      "get": {
+        "operationId": "getIntegrationCapabilities",
+        "summary": "Get integration capabilities",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "description": "Requires an authenticated principal and returns only its scope: source identity, contract versions, operations (supported and authorized), limits, history, delivery and the cameras where the principal holds live.view, snapshot.create or observations.annotate (contract \u00a79). Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.",
+        "responses": {
+          "200": {
+            "description": "Capability document for the calling principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationCapabilities"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated credential (existing auth layer body).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure (code internal_error).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Temporarily unavailable (code service_unavailable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/observations": {
+      "get": {
+        "operationId": "listObservations",
+        "summary": "List observation history",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Cursor-paged observation changes, ordered by persistence sequence and bounded by a watermark taken at query start (contract \u00a77). Results are limited to capture cameras where the principal holds live.view; an explicitly requested camera without it returns 403. limit counts observations after in-page dedup. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.",
+        "responses": {
+          "200": {
+            "description": "History page. Items hold current state; dedupe by (source, id, revision).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filter (invalid_request) or malformed cursor (invalid_cursor).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A requested camera_uuid is not authorized for live.view (code forbidden).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Cursor older than retained history, from another DB epoch, or ahead of the head (code cursor_expired); resume from oldest_cursor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated credential (existing auth layer body).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure (code internal_error).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Temporarily unavailable (code service_unavailable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "camera_uuid",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated capture camera UUIDs, at most 10 (contract D1). Default: all cameras where the principal holds live.view.",
+            "schema": {
+              "type": "string",
+              "maxLength": 369,
+              "pattern": "^[0-9a-fA-F-]{36}(,[0-9a-fA-F-]{36}){0,9}$"
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated original detector labels, at most 8 of 1..31 bytes; exact ASCII case-insensitive match (contract D1).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "Inclusive lower bound on observed_at.",
+            "schema": {
+              "$ref": "#/components/schemas/ObservationTime"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "description": "Exclusive upper bound on observed_at; must be after since.",
+            "schema": {
+              "$ref": "#/components/schemas/ObservationTime"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque cursor from next_cursor or oldest_cursor, or the literal head (start live-only). Absent: start of retained history.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Observations per page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          }
+        ]
+      }
+    },
+    "/api/observations/{id}": {
+      "get": {
+        "operationId": "getObservation",
+        "summary": "Get observation",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "One observation with its classifications, authorized by live.view on its immutable capture camera (contract \u00a78.1). Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.",
+        "responses": {
+          "200": {
+            "description": "Current observation state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Observation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid observation ID (code invalid_request).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown observation, no live.view on its capture camera, or the capture camera was deleted; indistinguishable (code observation_not_found).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated credential (existing auth layer body).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure (code internal_error).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Temporarily unavailable (code service_unavailable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Observation ID.",
+            "schema": {
+              "$ref": "#/components/schemas/ObservationUuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/observations/{id}/snapshot": {
+      "get": {
+        "operationId": "getObservationSnapshot",
+        "summary": "Get observation evidence image",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "snapshot.create",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "The unannotated evidence JPEG that was the inference input or submitted image (contract \u00a78.2). Requires snapshot.create on the capture camera; a caller with live.view but not snapshot.create gets 403 (contract D4). Never substitutes a latest frame or another asset. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.",
+        "responses": {
+          "200": {
+            "description": "Evidence image bytes; not JSON.",
+            "headers": {
+              "Cache-Control": {
+                "description": "private, max-age=300",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted asset ID.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Evidence is still pending (code evidence_pending). Honour Retry-After and give up polling after 120 s total.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Integer seconds, 1..30.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "If-None-Match matched the ETag."
+          },
+          "400": {
+            "description": "Invalid observation ID (code invalid_request).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "live.view is held but snapshot.create is not (code forbidden).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Evidence unavailable with a reason (evidence_unavailable), or the observation is unknown or not visible (observation_not_found).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Evidence media expired (code evidence_expired); metadata remains readable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated credential (existing auth layer body).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure (code internal_error).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Temporarily unavailable (code service_unavailable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Observation ID.",
+            "schema": {
+              "$ref": "#/components/schemas/ObservationUuid"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/observations/{id}/classifications/{namespace}/{name}": {
+      "put": {
+        "operationId": "putObservationClassification",
+        "summary": "Put observation classification",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "observations.annotate",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Create or update one classification annotation on an observation (contract \u00a710). Authorized with observations.annotate on the observation's capture-time camera (contract \u00a712.1); authorization is evaluated before the namespace and the body, so an observation the caller cannot see is an indistinguishable 404. The key is two path segments, {namespace}/{name}; namespace must equal the server-derived writer namespace of the authenticated user (D3, advertised as capabilities principal.writer_namespace). Identical retries are no-ops (200, changed=false). A stored change bumps the observation revision and publishes an io.lightnvr.detection.observation_changed.v1 event with change_cause classification. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.",
+        "responses": {
+          "200": {
+            "description": "Annotation updated, or identical retry (changed=false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationClassificationResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Annotation created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationClassificationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unknown body field (code invalid_request).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "live.view without observations.annotate on the capture camera (forbidden), or a key namespace or body writer field that is not the caller's derived namespace, or a key created by another user (namespace_forbidden).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown observation, neither live.view nor observations.annotate on its capture camera, or the capture camera was deleted; indistinguishable (code observation_not_found).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "revision_conflict or owner_decision_locked (current carries the stored annotation when the key exists), or annotation_limit (limit).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "input_asset_id, input_revision or the evidence state does not match the observation evidence (code evidence_mismatch, with observation_asset_id and evidence_state).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated credential (existing auth layer body).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure (code internal_error).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Temporarily unavailable (code service_unavailable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Observation ID.",
+            "schema": {
+              "$ref": "#/components/schemas/ObservationUuid"
+            }
+          },
+          {
+            "name": "namespace",
+            "in": "path",
+            "required": true,
+            "description": "Writer namespace.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{0,31}$"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Annotation name.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{0,31}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationClassificationWrite"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -29305,6 +30068,31 @@
           "error_message": {
             "type": "string",
             "description": "Present only when an Error state has a recorded reason."
+          },
+          "observation_evidence_enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations."
+          },
+          "observation_labels": {
+            "type": "string",
+            "maxLength": 511,
+            "default": "",
+            "description": "Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13)."
+          },
+          "observation_max_age_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "default": 7,
+            "description": "Evidence media maximum age in days (contract section 13)."
+          },
+          "observation_max_bytes": {
+            "type": "integer",
+            "minimum": 67108864,
+            "maximum": 1099511627776,
+            "default": 2147483648,
+            "description": "Evidence media byte budget for this camera, 64 MiB..1 TiB (contract section 13)."
           }
         },
         "required": [
@@ -30387,6 +31175,27 @@
           "set_privacy_mode": {
             "type": "null",
             "description": "A boolean selects the separate privacy-only form; null is ignored in the ordinary-update form."
+          },
+          "observation_evidence_enabled": {
+            "type": "boolean",
+            "description": "INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations. Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_labels": {
+            "type": "string",
+            "maxLength": 511,
+            "description": "Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_max_age_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Evidence media maximum age in days; must be an integer 1..90 (default 7). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_max_bytes": {
+            "type": "integer",
+            "minimum": 67108864,
+            "maximum": 1099511627776,
+            "description": "Evidence media byte budget; must be an integer 67108864 (64 MiB)..1099511627776 (1 TiB) (default 2 GiB). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
           }
         },
         "required": [],
@@ -31408,7 +32217,8 @@
           "lpr.read",
           "lpr.search",
           "lpr.export",
-          "lpr.delete"
+          "lpr.delete",
+          "observations.annotate"
         ]
       },
       "ApiTokenCreateRequest": {
@@ -34656,7 +35466,8 @@
                   "lpr.read",
                   "lpr.search",
                   "lpr.export",
-                  "lpr.delete"
+                  "lpr.delete",
+                  "observations.annotate"
                 ]
               },
               "camera_uuid": {
@@ -37739,6 +38550,9 @@
           },
           "uptimeCapability": {
             "type": "string"
+          },
+          "observation_pipeline": {
+            "$ref": "#/components/schemas/ObservationPipelineDiagnostics"
           }
         },
         "additionalProperties": true,
@@ -37759,6 +38573,276 @@
           "recordings",
           "streamStorage"
         ]
+      },
+      "ObservationPipelineDiagnostics": {
+        "type": "object",
+        "description": "INT_01 observation pipeline diagnostics (observation_diagnostics_to_json(), contract section 15). Counters are per process run unless noted; per-camera rows come from the last retention pass and may be up to 5 minutes old.",
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "False when evidence is unused: no queue exists, counters are zero and no observations are retained."
+          },
+          "accepted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dropped": {
+            "type": "object",
+            "description": "Observations dropped at admission, by reason.",
+            "properties": {
+              "queue_full": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "budget_exhausted": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "disabled": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "untracked": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "queue_full",
+              "budget_exhausted",
+              "disabled",
+              "untracked"
+            ],
+            "additionalProperties": true
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "queue_allocated": {
+                "type": "boolean"
+              },
+              "worker_running": {
+                "type": "boolean"
+              },
+              "backlog_items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "backlog_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "high_water_items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "high_water_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "drop_ring_depth": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ready": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unavailable_submitted": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "bytes_written": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failures": {
+                "type": "object",
+                "properties": {
+                  "encode_failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "write_failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "db_error": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "disabled": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "interrupted": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "encode_failed",
+                  "write_failed",
+                  "db_error",
+                  "disabled",
+                  "interrupted"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "queue_allocated",
+              "worker_running",
+              "backlog_items",
+              "backlog_bytes",
+              "high_water_items",
+              "high_water_bytes",
+              "drop_ring_depth",
+              "ready",
+              "unavailable_submitted",
+              "bytes_written",
+              "failures"
+            ],
+            "additionalProperties": true
+          },
+          "history": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "type": "boolean",
+                "description": "False when the observation tables could not be read; the DB-derived values are then zero."
+              },
+              "observations": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "oldest_seq": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "head_seq": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "oldest_observed_at": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ObservationTime"
+                  }
+                ]
+              },
+              "epoch_regenerations": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "available",
+              "observations",
+              "oldest_seq",
+              "head_seq",
+              "oldest_observed_at",
+              "epoch_regenerations"
+            ],
+            "additionalProperties": true
+          },
+          "publications": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expired": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "relay_lag_seconds": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Age of the oldest pending publication; 0 when none is pending."
+              },
+              "relay_running": {
+                "type": "boolean"
+              },
+              "relayed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "relayed_no_route": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "pending",
+              "failed",
+              "expired",
+              "relay_lag_seconds",
+              "relay_running",
+              "relayed",
+              "relayed_no_route"
+            ],
+            "additionalProperties": true
+          },
+          "budget_exhausted_cameras": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cameras": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "camera_uuid": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "retained_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max_age_days": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "budget_exhausted": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "camera_uuid",
+                "retained_bytes",
+                "max_bytes",
+                "max_age_days",
+                "budget_exhausted"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "active",
+          "accepted",
+          "dropped",
+          "evidence",
+          "history",
+          "publications",
+          "budget_exhausted_cameras",
+          "cameras"
+        ],
+        "additionalProperties": true
       },
       "SystemLogs": {
         "type": "object",
@@ -42789,6 +43873,9 @@
           },
           "end_timestamp": {
             "type": "integer"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/EvidenceDetectionObservation"
           }
         },
         "required": [
@@ -42800,6 +43887,34 @@
           "label",
           "timestamp",
           "end_timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceDetectionObservation": {
+        "type": "object",
+        "description": "INT_01 P2 (L15). Present only when the detection links to an observation of the same camera: observed in the same second \u00b11 with the same label (ASCII case-insensitive), nearest second first. classification is the annotation to display \u2014 owner_confirmed[0] before automated[0] of GET /api/observations/{id} \u2014 or null; the detection's own label and confidence are the detector's and never change.",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "owner_confirmed": {
+            "type": "boolean"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationClassification"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "owner_confirmed",
+          "classification"
         ],
         "additionalProperties": false
       },
@@ -46892,6 +48007,27 @@
           "set_privacy_mode": {
             "type": "null",
             "description": "A boolean selects the separate privacy-only form; null is ignored in the ordinary-update form."
+          },
+          "observation_evidence_enabled": {
+            "type": "boolean",
+            "description": "INT_01 per-camera opt-in for observation evidence for integrations (contract section 13). Off by default. Requires a bird-capable object detector for bird integrations. Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_labels": {
+            "type": "string",
+            "maxLength": 511,
+            "description": "Comma-separated detector labels eligible for observation evidence; empty means every object label. At most 16 labels, each 1..31 printable ASCII bytes after trimming surrounding whitespace; empty entries are rejected. Matching is ASCII case-insensitive on the original detector label (contract section 13). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_max_age_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Evidence media maximum age in days; must be an integer 1..90 (default 7). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
+          },
+          "observation_max_bytes": {
+            "type": "integer",
+            "minimum": 67108864,
+            "maximum": 1099511627776,
+            "description": "Evidence media byte budget; must be an integer 67108864 (64 MiB)..1099511627776 (1 TiB) (default 2 GiB). Requires camera.configure (all stream writes do). Null or a wrong type is rejected with 400; omission preserves the current value. Takes effect without a restart."
           }
         },
         "required": [
@@ -47635,6 +48771,1230 @@
           "ice_servers"
         ],
         "additionalProperties": true
+      },
+      "ObservationUuid": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "description": "Lowercase canonical UUID (contract \u00a72)."
+      },
+      "ObservationTime": {
+        "type": "string",
+        "format": "date-time",
+        "description": "UTC RFC 3339 with millisecond precision and a Z suffix (contract \u00a72)."
+      },
+      "ObservationEvidenceState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "ready",
+          "unavailable",
+          "expired"
+        ]
+      },
+      "ObservationEvidenceReason": {
+        "type": "string",
+        "enum": [
+          "queue_full",
+          "budget_exhausted",
+          "encode_failed",
+          "write_failed",
+          "interrupted",
+          "no_matching_media",
+          "disabled",
+          "retention_expired",
+          "deleted"
+        ],
+        "description": "Bounded reason (contract \u00a74.3). Consumers treat an unknown reason by its state."
+      },
+      "ObservationBox": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "const": "xywh_normalized"
+          },
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "width": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          },
+          "height": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "format",
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "additionalProperties": true,
+        "description": "Top-left corner and size normalized to the stored evidence image (contract \u00a73.2). Consumers never re-apply transform."
+      },
+      "ObservationTransform": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "resize",
+              "letterbox"
+            ]
+          },
+          "source_width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source_height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "inference_width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "inference_height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "scale_x": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "scale_y": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "pad_x": {
+            "type": "number",
+            "minimum": 0
+          },
+          "pad_y": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "mode",
+          "source_width",
+          "source_height",
+          "inference_width",
+          "inference_height",
+          "scale_x",
+          "scale_y",
+          "pad_x",
+          "pad_y"
+        ],
+        "additionalProperties": true,
+        "description": "Audit record of the inference-to-stored-image mapping: x = (u - pad_x) / scale_x, y = (v - pad_y) / scale_y (contract \u00a74.4)."
+      },
+      "ObservationDetector": {
+        "type": "object",
+        "properties": {
+          "engine_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "engine_type": {
+            "type": "string",
+            "enum": [
+              "object",
+              "api",
+              "onvif",
+              "external"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128,
+            "description": "Model basename only, never a path."
+          },
+          "model_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "engine_key",
+          "engine_type",
+          "model",
+          "model_version"
+        ],
+        "additionalProperties": true
+      },
+      "ObservationTrack": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9]{1,64}$"
+          },
+          "namespace": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "session": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          }
+        },
+        "required": [
+          "id",
+          "namespace",
+          "session"
+        ],
+        "additionalProperties": true,
+        "description": "Track hint only; compare id, namespace and session together. No lifecycle is implied (contract \u00a73.4)."
+      },
+      "ObservationRecordingReference": {
+        "type": "object",
+        "properties": {
+          "recording_id": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "recording_id"
+        ],
+        "additionalProperties": true
+      },
+      "ObservationEvidence": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ObservationEvidenceState"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationEvidenceReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "inference_input",
+              "submitted_image",
+              null
+            ]
+          },
+          "media_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "image/jpeg",
+              null
+            ]
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transform": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationTransform"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshot_url": {
+            "type": "string",
+            "pattern": "^/api/observations/[0-9a-f-]{36}/snapshot$",
+            "description": "Present only when state is ready. Relative and authenticated."
+          }
+        },
+        "required": [
+          "asset_id",
+          "state",
+          "reason",
+          "origin",
+          "media_type",
+          "width",
+          "height",
+          "bytes",
+          "captured_at",
+          "expires_at",
+          "transform"
+        ],
+        "additionalProperties": true,
+        "description": "Evidence asset (contract \u00a74). Every observation has one; siblings in a batch share asset_id.",
+        "allOf": [
+          {
+            "if": {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "enum": [
+                    "pending",
+                    "ready"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "null"
+                }
+              }
+            },
+            "else": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "$ref": "#/components/schemas/ObservationEvidenceReason"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "const": "ready"
+                }
+              }
+            },
+            "then": {
+              "type": "object",
+              "properties": {
+                "snapshot_url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "snapshot_url"
+              ]
+            },
+            "else": {
+              "type": "object",
+              "not": {
+                "type": "object",
+                "properties": {
+                  "snapshot_url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "snapshot_url"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ObservationClassification": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,31}/[a-z0-9][a-z0-9_.-]{0,31}$"
+          },
+          "writer_namespace": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,31}$"
+          },
+          "classifier": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "model_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "taxonomy_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "classified_at": {
+            "$ref": "#/components/schemas/ObservationTime"
+          },
+          "input_asset_id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "input_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "automated",
+              "owner_confirmed"
+            ]
+          },
+          "annotation_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/ObservationTime"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/ObservationTime"
+          }
+        },
+        "required": [
+          "key",
+          "writer_namespace",
+          "classifier",
+          "model_version",
+          "label",
+          "taxonomy_id",
+          "confidence",
+          "classified_at",
+          "input_asset_id",
+          "input_revision",
+          "kind",
+          "annotation_revision",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": true,
+        "description": "Stored classification annotation (contract \u00a710.3). P2."
+      },
+      "ObservationClassifications": {
+        "type": "object",
+        "properties": {
+          "automated": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/ObservationClassification"
+            }
+          },
+          "owner_confirmed": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/ObservationClassification"
+            }
+          }
+        },
+        "required": [
+          "automated",
+          "owner_confirmed"
+        ],
+        "additionalProperties": true,
+        "description": "Annotations split by kind, each ordered by updated_at descending. Both lists are empty in P1."
+      },
+      "ObservationClassificationWrite": {
+        "type": "object",
+        "properties": {
+          "classifier": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "model_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "taxonomy_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "classified_at": {
+            "$ref": "#/components/schemas/ObservationTime"
+          },
+          "input_asset_id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "input_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "automated",
+              "owner_confirmed"
+            ]
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0 or absent means the key must not exist yet."
+          },
+          "writer_namespace": {
+            "type": "string",
+            "description": "Optional. Accepted and ignored when it names the principal's derived namespace; any other value returns 403 namespace_forbidden."
+          },
+          "writer": {
+            "type": "string",
+            "description": "Same rule as writer_namespace."
+          }
+        },
+        "required": [
+          "classifier",
+          "label",
+          "confidence",
+          "classified_at",
+          "input_asset_id",
+          "input_revision",
+          "kind"
+        ],
+        "additionalProperties": false,
+        "description": "PUT body (contract \u00a710.3). Closed: unknown fields return 400. The writer namespace is derived by the server from the authenticated user, never from this body."
+      },
+      "ObservationClassificationResult": {
+        "type": "object",
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "observation_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "annotation": {
+            "$ref": "#/components/schemas/ObservationClassification"
+          }
+        },
+        "required": [
+          "changed",
+          "observation_revision",
+          "annotation"
+        ],
+        "additionalProperties": true
+      },
+      "Observation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^urn:lightnvr:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "camera_uuid": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "stream_name_at_capture": {
+            "type": "string",
+            "maxLength": 63,
+            "description": "Display only."
+          },
+          "batch_id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "object_index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 19
+          },
+          "observed_at": {
+            "$ref": "#/components/schemas/ObservationTime"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/ObservationTime"
+          },
+          "detector": {
+            "$ref": "#/components/schemas/ObservationDetector"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 31,
+            "description": "Original detector label (1..31 bytes); never modified by classification."
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "box": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationBox"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ObservationEvidence"
+          },
+          "track": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationTrack"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recording_reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationRecordingReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "classifications": {
+            "$ref": "#/components/schemas/ObservationClassifications"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "camera_uuid",
+          "stream_name_at_capture",
+          "batch_id",
+          "object_index",
+          "observed_at",
+          "created_at",
+          "detector",
+          "label",
+          "confidence",
+          "box",
+          "evidence",
+          "track",
+          "recording_reference",
+          "revision",
+          "classifications"
+        ],
+        "additionalProperties": true,
+        "description": "One detected object in one accepted inference result (contract \u00a73). Readers ignore unknown fields."
+      },
+      "ObservationPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "$ref": "#/components/schemas/Observation"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "has_more"
+        ],
+        "additionalProperties": true,
+        "description": "History page (contract \u00a77.2-7.3). Empty items with has_more=true is valid; continue from next_cursor."
+      },
+      "ObservationChangeEvent": {
+        "type": "object",
+        "properties": {
+          "observation_id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "camera_uuid": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 31
+          },
+          "observed_at": {
+            "$ref": "#/components/schemas/ObservationTime"
+          },
+          "change_cause": {
+            "type": "string",
+            "enum": [
+              "created",
+              "evidence",
+              "classification"
+            ]
+          },
+          "evidence_state": {
+            "$ref": "#/components/schemas/ObservationEvidenceState"
+          },
+          "evidence_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationEvidenceReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "asset_id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "snapshot_url": {
+            "type": "string",
+            "pattern": "^/api/observations/[0-9a-f-]{36}/snapshot$"
+          }
+        },
+        "required": [
+          "observation_id",
+          "revision",
+          "camera_uuid",
+          "label",
+          "observed_at",
+          "change_cause",
+          "evidence_state",
+          "evidence_reason",
+          "asset_id"
+        ],
+        "additionalProperties": true,
+        "description": "Data payload of io.lightnvr.detection.observation_changed.v1 (contract \u00a76.3). Consumers skip classification-only changes for re-classification.",
+        "allOf": [
+          {
+            "if": {
+              "type": "object",
+              "properties": {
+                "evidence_state": {
+                  "enum": [
+                    "pending",
+                    "ready"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "type": "object",
+              "properties": {
+                "evidence_reason": {
+                  "type": "null"
+                }
+              }
+            },
+            "else": {
+              "type": "object",
+              "properties": {
+                "evidence_reason": {
+                  "$ref": "#/components/schemas/ObservationEvidenceReason"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "type": "object",
+              "properties": {
+                "evidence_state": {
+                  "const": "ready"
+                }
+              }
+            },
+            "then": {
+              "type": "object",
+              "properties": {
+                "snapshot_url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "snapshot_url"
+              ]
+            },
+            "else": {
+              "type": "object",
+              "not": {
+                "type": "object",
+                "properties": {
+                  "snapshot_url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "snapshot_url"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ObservationError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid_request",
+              "invalid_cursor",
+              "forbidden",
+              "namespace_forbidden",
+              "observation_not_found",
+              "evidence_unavailable",
+              "evidence_pending",
+              "evidence_expired",
+              "cursor_expired",
+              "revision_conflict",
+              "owner_decision_locked",
+              "annotation_limit",
+              "evidence_mismatch",
+              "not_implemented",
+              "service_unavailable",
+              "internal_error"
+            ]
+          },
+          "field": {
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ObservationEvidenceReason"
+          },
+          "retry_after_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "expired_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "oldest_cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "oldest_observed_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservationTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "$ref": "#/components/schemas/ObservationClassification"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "observation_asset_id": {
+            "$ref": "#/components/schemas/ObservationUuid"
+          },
+          "evidence_state": {
+            "$ref": "#/components/schemas/ObservationEvidenceState"
+          }
+        },
+        "required": [
+          "error",
+          "code"
+        ],
+        "additionalProperties": true,
+        "description": "Coded error (contract \u00a711, D2): a valid ApiError with a string error and a stable code. Clients branch on status and code, never on the message."
+      },
+      "IntegrationCapabilityOperation": {
+        "type": "object",
+        "properties": {
+          "supported": {
+            "type": "boolean"
+          },
+          "authorized": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "not_implemented",
+              "not_available_in_this_version",
+              "not_authorized",
+              "invalid_writer_namespace",
+              "reserved_writer_namespace"
+            ]
+          }
+        },
+        "required": [
+          "supported",
+          "authorized"
+        ],
+        "additionalProperties": true
+      },
+      "IntegrationCapabilities": {
+        "type": "object",
+        "properties": {
+          "contract_versions": {
+            "type": "object",
+            "properties": {
+              "observations": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "classifications": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "observation_event": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "observations",
+              "classifications",
+              "observation_event"
+            ],
+            "additionalProperties": true
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^urn:lightnvr:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "kind": {
+                "const": "lightnvr"
+              },
+              "installation_uuid": {
+                "$ref": "#/components/schemas/ObservationUuid"
+              },
+              "product_version": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "installation_uuid",
+              "product_version"
+            ],
+            "additionalProperties": true
+          },
+          "principal": {
+            "type": "object",
+            "properties": {
+              "writer_namespace": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^[a-z0-9][a-z0-9_.-]{0,31}$"
+              }
+            },
+            "required": [
+              "writer_namespace"
+            ],
+            "additionalProperties": true
+          },
+          "operations": {
+            "type": "object",
+            "properties": {
+              "observations.history": {
+                "$ref": "#/components/schemas/IntegrationCapabilityOperation"
+              },
+              "observations.snapshot": {
+                "$ref": "#/components/schemas/IntegrationCapabilityOperation"
+              },
+              "observations.annotate": {
+                "$ref": "#/components/schemas/IntegrationCapabilityOperation"
+              },
+              "track_lifecycle": {
+                "$ref": "#/components/schemas/IntegrationCapabilityOperation"
+              },
+              "recorded_frame": {
+                "$ref": "#/components/schemas/IntegrationCapabilityOperation"
+              },
+              "event_clip": {
+                "$ref": "#/components/schemas/IntegrationCapabilityOperation"
+              },
+              "range_clip": {
+                "$ref": "#/components/schemas/IntegrationCapabilityOperation"
+              }
+            },
+            "required": [
+              "observations.history",
+              "observations.snapshot",
+              "observations.annotate",
+              "track_lifecycle",
+              "recorded_frame",
+              "event_clip",
+              "range_clip"
+            ],
+            "additionalProperties": {
+              "$ref": "#/components/schemas/IntegrationCapabilityOperation"
+            },
+            "description": "Unsupported features are declared explicitly; never infer support from an error."
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "history_page_default": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "history_page_max": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "history_filter_cameras_max": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "history_filter_labels_max": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_objects_per_batch": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "label_max_bytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "snapshot_retry_after_max_seconds": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "annotations_per_observation_max": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "history_page_default",
+              "history_page_max",
+              "history_filter_cameras_max",
+              "history_filter_labels_max",
+              "max_objects_per_batch",
+              "label_max_bytes",
+              "snapshot_retry_after_max_seconds",
+              "annotations_per_observation_max"
+            ],
+            "additionalProperties": true
+          },
+          "history": {
+            "type": "object",
+            "properties": {
+              "retention_days": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "oldest_cursor": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 256
+              },
+              "oldest_observed_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ObservationTime"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "retention_days",
+              "oldest_cursor",
+              "oldest_observed_at"
+            ],
+            "additionalProperties": true
+          },
+          "delivery": {
+            "type": "object",
+            "properties": {
+              "mqtt_enabled": {
+                "type": "boolean"
+              },
+              "topic": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Configured topic with a literal {camera_uuid} placeholder."
+              }
+            },
+            "required": [
+              "mqtt_enabled",
+              "topic"
+            ],
+            "additionalProperties": true
+          },
+          "cameras": {
+            "type": "array",
+            "maxItems": 1024,
+            "items": {
+              "type": "object",
+              "properties": {
+                "camera_uuid": {
+                  "$ref": "#/components/schemas/ObservationUuid"
+                },
+                "evidence_enabled": {
+                  "type": "boolean"
+                },
+                "actions": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "live.view",
+                      "snapshot.create",
+                      "observations.annotate"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "camera_uuid",
+                "evidence_enabled",
+                "actions"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "contract_versions",
+          "source",
+          "principal",
+          "operations",
+          "limits",
+          "history",
+          "delivery",
+          "cameras"
+        ],
+        "additionalProperties": true,
+        "description": "Capability document scoped to the calling principal (contract \u00a79)."
       }
     }
   }

@@ -17,6 +17,7 @@ import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog } from '../UI.tsx';
 import { formatFilenameTimestamp, formatLocalDateTime, toUnixSeconds } from '../../../utils/date-utils.ts';
 import { useI18n } from '../../../i18n.ts';
+import { DetectionClassifications, detectionOverlayLabel } from '../DetectionClassifications.tsx';
 import { FisheyeEptzCanvas } from '../FisheyeEptzCanvas.tsx';
 import { isEptzEnabled } from '../../../utils/eptz-config.ts';
 import { resolveRecordedStreamSummary } from '../../../utils/stream-summaries.ts';
@@ -743,7 +744,7 @@ export function TimelinePlayer({
 
       const fontSize = Math.round(Math.max(12, 14 * scale));
       ctx.font = `${fontSize}px Arial`;
-      const labelText = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
+      const labelText = detectionOverlayLabel(detection);
       const labelWidth = ctx.measureText(labelText).width + 10;
       const labelHeight = fontSize + 8;
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -1103,6 +1104,9 @@ export function TimelinePlayer({
           <SpeedControls />
         </div>
       </div>
+
+      {/* INT_01 L15: classifications linked to this segment's detections */}
+      <DetectionClassifications detections={detections} />
 
       {/* Delete confirmation */}
       <ConfirmDialog

@@ -41,6 +41,7 @@ typedef enum {
     AUTHZ_LPR_SEARCH,
     AUTHZ_LPR_EXPORT,
     AUTHZ_LPR_DELETE,
+    AUTHZ_OBSERVATIONS_ANNOTATE,
     AUTHZ_ACTION_COUNT
 } authorization_action_t;
 

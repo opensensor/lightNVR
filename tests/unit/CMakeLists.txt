@@ -151,6 +151,26 @@ target_link_options(test_db_backup_publication PRIVATE -Wl,--wrap=rename -Wl,--w
 set_tests_properties(test_db_backup_publication PROPERTIES TIMEOUT 30)
 add_layer2_test(test_sqlite_migration_boundaries CI_UNIT CI_SANITIZER)
 set_tests_properties(test_sqlite_migration_boundaries PROPERTIES TIMEOUT 20)
+add_layer2_test(test_observation_migration CI_UNIT CI_SANITIZER)
+set_tests_properties(test_observation_migration PROPERTIES TIMEOUT 30)
+add_layer2_test(test_observation_codec CI_UNIT CI_SANITIZER)
+add_layer2_test(test_db_observations CI_UNIT CI_SANITIZER)
+set_tests_properties(test_db_observations PROPERTIES TIMEOUT 60)
+add_layer2_test(test_db_observation_classifications CI_UNIT CI_SANITIZER)
+set_tests_properties(test_db_observation_classifications PROPERTIES TIMEOUT 60)
+add_layer2_test_with_ffmpeg(test_observation_evidence CI_UNIT CI_SANITIZER)
+set_tests_properties(test_observation_evidence PROPERTIES TIMEOUT 120)
+add_layer2_test(test_observation_relay CI_UNIT CI_SANITIZER)
+target_compile_definitions(test_observation_relay PRIVATE LIGHTNVR_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+set_tests_properties(test_observation_relay PROPERTIES TIMEOUT 60)
+# INT_01 L11 / A6: SIGKILL at each observation persistence boundary, then restart.
+add_layer2_test(test_observation_crash_boundaries CI_UNIT CI_SANITIZER)
+set_tests_properties(test_observation_crash_boundaries PROPERTIES TIMEOUT 180)
+add_layer2_test(test_observation_retention CI_UNIT CI_SANITIZER)
+target_link_options(test_observation_retention PRIVATE "-Wl,--wrap=unlink")
+set_tests_properties(test_observation_retention PROPERTIES TIMEOUT 60)
+add_layer2_test_with_ffmpeg(test_observation_diagnostics CI_UNIT CI_SANITIZER)
+set_tests_properties(test_observation_diagnostics PROPERTIES TIMEOUT 60)
 add_layer2_test(test_logger CI_UNIT CI_SANITIZER)
 add_layer2_test(test_strings CI_UNIT CI_SANITIZER)
 add_layer2_test(test_interruptible_sleep)
@@ -190,6 +210,8 @@ target_link_options(test_go2rtc_override_status PRIVATE
 add_layer3_test(test_onvif_transport CI_UNIT CI_SANITIZER)
 target_link_options(test_onvif_transport PRIVATE "-Wl,--wrap=_log_message_ctx" "-Wl,--wrap=send")
 set_tests_properties(test_onvif_transport PROPERTIES TIMEOUT 20)
+add_layer3_test(test_onvif_device_test CI_UNIT CI_SANITIZER)
+set_tests_properties(test_onvif_device_test PROPERTIES TIMEOUT 60)
 target_link_options(test_onvif_poll_recovery PRIVATE
     "-Wl,--wrap=detect_motion_onvif" "-Wl,--wrap=av_usleep"
 )
@@ -199,6 +221,8 @@ target_compile_definitions(test_onvif_lpr_event PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 add_layer2_test_with_ffmpeg(test_api_detection)
+target_compile_definitions(test_api_detection PRIVATE
+    OBS_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/integrations/observations")
 add_layer2_test_with_ffmpeg(test_mp4_failed_open_memory CI_UNIT)
 add_layer2_test_with_ffmpeg(test_ffmpeg_rgb24_padding)
 if(TARGET lightnvr-ffmpeg-guard)
@@ -239,6 +263,17 @@ add_layer2_test(test_db_live_saved_layouts)
 add_layer2_test(test_api_handlers_live_layouts)
 add_layer2_test(test_db_camera_favorites CI_UNIT)
 add_layer2_test(test_api_handlers_camera_favorites CI_UNIT)
+add_layer2_test(test_api_handlers_observations CI_UNIT CI_SANITIZER)
+target_link_options(test_api_handlers_observations PRIVATE
+    "-Wl,--wrap=httpd_check_action_access"
+    "-Wl,--wrap=httpd_evaluate_camera_identity_action"
+    "-Wl,--wrap=authorization_filter_cameras"
+    "-Wl,--wrap=http_serve_file"
+    "-Wl,--wrap=audit_log_append"
+    "-Wl,--wrap=audit_log_operation")
+target_compile_definitions(test_api_handlers_observations PRIVATE
+    OBS_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/integrations/observations")
+set_tests_properties(test_api_handlers_observations PROPERTIES TIMEOUT 60)
 add_layer2_test(test_db_operator_floor_plans)
 add_layer2_test(test_api_handlers_operator_floor_plans)
 add_layer2_test(test_floor_plan_background_publication CI_UNIT CI_SANITIZER)
@@ -343,6 +378,7 @@ add_layer2_test(test_api_handlers_users CI_UNIT)
 add_layer2_test(test_audit_log CI_SANITIZER)
 add_layer2_test(test_audit_summary CI_SANITIZER)
 add_layer2_test(test_event_envelope)
+target_compile_definitions(test_event_envelope PRIVATE LIGHTNVR_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_layer2_test(test_event_bus)
 add_layer2_test(test_event_detection_adapter)
 add_layer2_test(test_event_outbox)
@@ -580,7 +616,7 @@ target_compile_definitions(test_detection_current_frame PRIVATE
 )
 target_link_options(test_detection_current_frame PRIVATE
     "-Wl,--wrap=detect_objects_api_snapshot_with_options"
-    "-Wl,--wrap=detect_objects_api_with_options"
+    "-Wl,--wrap=detect_objects_api_with_evidence"
     "-Wl,--wrap=filter_detections_by_zones"
     "-Wl,--wrap=filter_detections_by_stream_objects"
 )
@@ -605,6 +641,23 @@ target_compile_definitions(test_udt_recording PRIVATE
     TEST_RECORDING_PATH="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4"
 )
 set_tests_properties(test_udt_recording PROPERTIES TIMEOUT 60)
+# INT_01 L6: local detector evidence (pure batch logic + UDT integration).
+add_layer2_test_with_ffmpeg(test_detection_evidence CI_UNIT CI_SANITIZER)
+add_layer3_test(test_detection_observation_evidence CI_UNIT CI_SANITIZER)
+target_link_options(test_detection_observation_evidence PRIVATE
+    "-Wl,--wrap=detect_objects"
+    "-Wl,--wrap=detect_motion"
+    "-Wl,--wrap=detection_evidence_model_geometry"
+    "-Wl,--wrap=filter_detections_by_zones"
+    "-Wl,--wrap=filter_detections_by_stream_objects"
+)
+set_tests_properties(test_detection_observation_evidence PROPERTIES TIMEOUT 60)
+add_layer3_test(test_api_detection_observation_evidence CI_UNIT CI_SANITIZER)
+target_link_options(test_api_detection_observation_evidence PRIVATE
+    "-Wl,--wrap=filter_detections_by_zones"
+    "-Wl,--wrap=filter_detections_by_stream_objects"
+)
+set_tests_properties(test_api_detection_observation_evidence PROPERTIES TIMEOUT 60)
 
 # Health tasks register their tests in independent fragments so parallel work
 # never needs to modify this shared list.
@@ -627,6 +680,9 @@ target_link_options(test_recording_file PRIVATE "-Wl,--wrap=write" "-Wl,--wrap=c
 
 add_layer1_test(test_uuid CI_UNIT CI_SANITIZER)
 target_sources(test_uuid PRIVATE ${CMAKE_SOURCE_DIR}/src/utils/uuid.c)
+# UUIDv5 (observation message IDs) hashes with mbedTLS SHA-1.
+target_include_directories(test_uuid PRIVATE ${SSL_INCLUDE_DIRS})
+target_link_libraries(test_uuid ${SSL_LIBRARIES})
 target_link_options(test_uuid PRIVATE "-Wl,--wrap=getrandom" "-Wl,--wrap=fread")
 
 # Compile the MQTT producer even in the isolated no-MQTT API variant, when the

@@ -349,7 +349,14 @@ void test_action_catalog_is_stable_and_complete(void) {
         authorization_action_catalog(&count);
     TEST_ASSERT_EQUAL_INT(AUTHZ_ACTION_COUNT, count);
     TEST_ASSERT_EQUAL_STRING("live.view", catalog[0].key);
-    TEST_ASSERT_EQUAL_STRING("lpr.delete", catalog[count - 1].key);
+    TEST_ASSERT_EQUAL_STRING("observations.annotate", catalog[count - 1].key);
+    /* INT_01 P2: appended at bit 19, camera-scoped and non-destructive. */
+    TEST_ASSERT_EQUAL_INT(19, (int)AUTHZ_OBSERVATIONS_ANNOTATE);
+    TEST_ASSERT_EQUAL_STRING("lpr.delete", catalog[AUTHZ_LPR_DELETE].key);
+    TEST_ASSERT_TRUE(catalog[AUTHZ_OBSERVATIONS_ANNOTATE].camera_scoped);
+    TEST_ASSERT_FALSE(catalog[AUTHZ_OBSERVATIONS_ANNOTATE].destructive);
+    /* L14 routes the annotation PUT through the evaluator. */
+    TEST_ASSERT_TRUE(catalog[AUTHZ_OBSERVATIONS_ANNOTATE].enforced);
     for (int i = 0; i < count; i++) {
         TEST_ASSERT_EQUAL_INT(
             catalog[i].action,
@@ -1893,6 +1900,9 @@ void test_effective_action_mask_reflects_grants_and_roles(void) {
     /* Operator deliberately excludes policy administration. */
     TEST_ASSERT_TRUE((mask & authorization_action_bit(AUTHZ_USERS_MANAGE)) == 0);
     TEST_ASSERT_TRUE((mask & authorization_action_bit(AUTHZ_SYSTEM_ADMIN)) == 0);
+    /* Built-in roles fail closed for observations.annotate (migration 0096). */
+    TEST_ASSERT_TRUE(
+        (mask & authorization_action_bit(AUTHZ_OBSERVATIONS_ANNOTATE)) == 0);
 
     /* A legacy administrator holds the entire catalog. */
     user_t admin;

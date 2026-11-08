@@ -293,6 +293,7 @@ impl C2Rust_Unnamed {
     pub const _ISpunct: Self = Self(4);
     pub const _ISalnum: Self = Self(8);
 }
+pub const EVENT_TYPE_MAX: ::core::ffi::c_int = 96 as ::core::ffi::c_int;
 pub const EVENT_ENVELOPE_MAX_BYTES: ::core::ffi::c_uint =
     (96 as ::core::ffi::c_uint).wrapping_mul(1024 as ::core::ffi::c_uint);
 pub const EVENT_OUTBOX_DESTINATION_MAX: ::core::ffi::c_int = 64 as ::core::ffi::c_int;
@@ -1521,6 +1522,56 @@ pub unsafe extern "C" fn db_event_outbox_prune_terminal(
     }
     pthread_mutex_unlock(mutex);
     return if rc == SQLITE_DONE {
+        0 as ::core::ffi::c_int
+    } else {
+        -1 as ::core::ffi::c_int
+    };
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn db_event_outbox_count_undelivered_type(
+    mut event_type: *const ::core::ffi::c_char,
+    mut count: *mut int64_t,
+) -> ::core::ffi::c_int {
+    if count.is_null() || !valid_text(event_type, EVENT_TYPE_MAX as size_t, r#true != 0) {
+        return -1 as ::core::ffi::c_int;
+    }
+    *count = 0 as int64_t;
+    let mut db: *mut sqlite3 = get_db_handle();
+    let mut mutex: *mut pthread_mutex_t = get_db_mutex();
+    if db.is_null() || mutex.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    pthread_mutex_lock(mutex);
+    let mut stmt: *mut sqlite3_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+    let mut rc: ::core::ffi::c_int = sqlite3_prepare_v2(
+        db,
+        b"SELECT count(*) FROM event_outbox WHERE event_type=? AND state IN ('pending','delivering');\0"
+            .as_ptr() as *const ::core::ffi::c_char,
+        -1 as ::core::ffi::c_int,
+        &raw mut stmt,
+        ::core::ptr::null_mut::<*const ::core::ffi::c_char>(),
+    );
+    if rc == SQLITE_OK {
+        sqlite3_bind_text(
+            stmt,
+            1 as ::core::ffi::c_int,
+            event_type,
+            -1 as ::core::ffi::c_int,
+            ::core::mem::transmute::<
+                ::libc::intptr_t,
+                Option<unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()>,
+            >(-1 as ::core::ffi::c_int as ::libc::intptr_t),
+        );
+        rc = sqlite3_step(stmt);
+        if rc == SQLITE_ROW {
+            *count = sqlite3_column_int64(stmt, 0 as ::core::ffi::c_int) as int64_t;
+        }
+    }
+    if !stmt.is_null() {
+        sqlite3_finalize(stmt);
+    }
+    pthread_mutex_unlock(mutex);
+    return if rc == SQLITE_ROW {
         0 as ::core::ffi::c_int
     } else {
         -1 as ::core::ffi::c_int

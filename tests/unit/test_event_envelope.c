@@ -3,10 +3,15 @@
  * @brief Versioned event registry, envelope, schema, and privacy tests.
  */
 
+#define _GNU_SOURCE
+
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
+
+#include <dirent.h>
 
 #include <cjson/cJSON.h>
 
@@ -144,7 +149,7 @@ void test_registry_is_stable_and_versioned(void) {
     int count = 0;
     const event_type_definition_t *registry = event_registry_all(&count);
     TEST_ASSERT_NOT_NULL(registry);
-    TEST_ASSERT_EQUAL_INT(13, count);
+    TEST_ASSERT_EQUAL_INT(14, count);
     for (int index = 0; index < count; index++) {
         TEST_ASSERT_NOT_NULL(strstr(registry[index].type, "io.lightnvr."));
         size_t length = strlen(registry[index].type);
@@ -439,6 +444,239 @@ void test_lpr_notification_is_restricted_and_plate_free(void) {
     cJSON_Delete(data);
 }
 
+/* ---- INT_01 L5: io.lightnvr.detection.observation_changed.v1 ---------- */
+
+#define OBSERVATION_TYPE "io.lightnvr.detection.observation_changed.v1"
+#ifndef LIGHTNVR_SOURCE_DIR
+#error "LIGHTNVR_SOURCE_DIR must be defined"
+#endif
+#define OBSERVATION_EVENT_FIXTURES \
+    LIGHTNVR_SOURCE_DIR "/tests/fixtures/integrations/observations/events"
+
+static char *read_text_file(const char *path) {
+    FILE *file = fopen(path, "rb");
+    if (!file) return NULL;
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char *buffer = calloc(1, (size_t)size + 1);
+    if (buffer && fread(buffer, 1, (size_t)size, file) != (size_t)size) {
+        free(buffer);
+        buffer = NULL;
+    }
+    fclose(file);
+    return buffer;
+}
+
+static time_t parse_event_time(const char *text) {
+    struct tm tm;
+    memset(&tm, 0, sizeof(tm));
+    TEST_ASSERT_EQUAL_INT(6, sscanf(text, "%4d-%2d-%2dT%2d:%2d:%2dZ",
+                                    &tm.tm_year, &tm.tm_mon, &tm.tm_mday,
+                                    &tm.tm_hour, &tm.tm_min, &tm.tm_sec));
+    tm.tm_year -= 1900;
+    tm.tm_mon -= 1;
+    return timegm(&tm);
+}
+
+/* Decode a fixture MQTT envelope through the normal constructor. */
+static int create_from_fixture(const cJSON *fixture, const cJSON *data,
+                               const char *subject_override,
+                               event_envelope_t *event, char *error,
+                               size_t error_size) {
+    const cJSON *subject = cJSON_GetObjectItemCaseSensitive(fixture, "subject");
+    return event_envelope_create_with_severity_and_id(
+        event, cJSON_GetObjectItemCaseSensitive(fixture, "type")->valuestring,
+        cJSON_GetObjectItemCaseSensitive(fixture, "source")->valuestring,
+        subject_override ? subject_override : subject->valuestring,
+        parse_event_time(
+            cJSON_GetObjectItemCaseSensitive(fixture, "time")->valuestring),
+        data, EVENT_SEVERITY_INFO,
+        cJSON_GetObjectItemCaseSensitive(fixture, "id")->valuestring, error,
+        error_size);
+}
+
+static cJSON *observation_fixture(const char *name) {
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/%s", OBSERVATION_EVENT_FIXTURES, name);
+    char *text = read_text_file(path);
+    TEST_ASSERT_NOT_NULL_MESSAGE(text, path);
+    cJSON *fixture = cJSON_Parse(text);
+    free(text);
+    TEST_ASSERT_NOT_NULL_MESSAGE(fixture, path);
+    return fixture;
+}
+
+void test_observation_changed_registry_entry(void) {
+    const event_type_definition_t *definition =
+        event_registry_find(OBSERVATION_TYPE);
+    TEST_ASSERT_NOT_NULL(definition);
+    TEST_ASSERT_EQUAL_STRING("detection", definition->family);
+    TEST_ASSERT_EQUAL_STRING("A durable object observation was created or changed",
+                             definition->description);
+    TEST_ASSERT_EQUAL_INT(EVENT_SEVERITY_INFO, definition->severity);
+    TEST_ASSERT_FALSE(definition->dynamic_severity);
+    TEST_ASSERT_EQUAL_INT(EVENT_SENSITIVITY_OPERATIONAL, definition->sensitivity);
+    TEST_ASSERT_EQUAL_INT(EVENT_MEDIA_REFERENCE_ALLOWED, definition->media_policy);
+    TEST_ASSERT_EQUAL_INT(EVENT_RATE_HIGH, definition->expected_rate);
+    TEST_ASSERT_EQUAL_INT(EVENT_SUBJECT_CAMERA, definition->subject_kind);
+    TEST_ASSERT_EQUAL_INT(3600, definition->default_expiry_seconds);
+}
+
+void test_observation_changed_validator_accepts_c3_fixtures(void) {
+    DIR *dir = opendir(OBSERVATION_EVENT_FIXTURES);
+    TEST_ASSERT_NOT_NULL_MESSAGE(dir, OBSERVATION_EVENT_FIXTURES);
+    int checked = 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        size_t length = strlen(entry->d_name);
+        if (length < 6 || strcmp(entry->d_name + length - 5, ".json") != 0) {
+            continue;
+        }
+        cJSON *fixture = observation_fixture(entry->d_name);
+        event_envelope_t event;
+        char error[256] = "";
+        TEST_ASSERT_EQUAL_INT_MESSAGE(
+            0, create_from_fixture(fixture,
+                                   cJSON_GetObjectItemCaseSensitive(fixture, "data"),
+                                   NULL, &event, error, sizeof(error)),
+            error);
+        char *serialized = event_envelope_serialize(&event, error, sizeof(error));
+        char *expected = cJSON_PrintUnformatted(fixture);
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(expected, serialized, entry->d_name);
+        free(serialized);
+        free(expected);
+        event_envelope_clear(&event);
+        cJSON_Delete(fixture);
+        checked++;
+    }
+    closedir(dir);
+    TEST_ASSERT_EQUAL_INT(8, checked);
+}
+
+static void assert_observation_rejected(const char *fixture_name,
+                                        void (*mutate)(cJSON *data),
+                                        const char *subject_override,
+                                        const char *label) {
+    cJSON *fixture = observation_fixture(fixture_name);
+    cJSON *data = cJSON_Duplicate(
+        cJSON_GetObjectItemCaseSensitive(fixture, "data"), true);
+    if (mutate) mutate(data);
+    event_envelope_t event;
+    char error[256] = "";
+    TEST_ASSERT_EQUAL_INT_MESSAGE(
+        -1, create_from_fixture(fixture, data, subject_override, &event,
+                                error, sizeof(error)),
+        label);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(0, strlen(error), label);
+    cJSON_Delete(data);
+    cJSON_Delete(fixture);
+}
+
+static void drop_observation_id(cJSON *d) { cJSON_DeleteItemFromObject(d, "observation_id"); }
+static void drop_revision(cJSON *d) { cJSON_DeleteItemFromObject(d, "revision"); }
+static void drop_camera(cJSON *d) { cJSON_DeleteItemFromObject(d, "camera_uuid"); }
+static void drop_label(cJSON *d) { cJSON_DeleteItemFromObject(d, "label"); }
+static void drop_observed_at(cJSON *d) { cJSON_DeleteItemFromObject(d, "observed_at"); }
+static void drop_cause(cJSON *d) { cJSON_DeleteItemFromObject(d, "change_cause"); }
+static void drop_state(cJSON *d) { cJSON_DeleteItemFromObject(d, "evidence_state"); }
+static void drop_reason(cJSON *d) { cJSON_DeleteItemFromObject(d, "evidence_reason"); }
+static void drop_asset(cJSON *d) { cJSON_DeleteItemFromObject(d, "asset_id"); }
+static void drop_snapshot(cJSON *d) { cJSON_DeleteItemFromObject(d, "snapshot_url"); }
+static void bad_observation_id(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "observation_id", cJSON_CreateString("bird-1"));
+}
+static void zero_revision(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "revision", cJSON_CreateNumber(0));
+}
+static void fractional_revision(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "revision", cJSON_CreateNumber(2.5));
+}
+static void long_label(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "label",
+                              cJSON_CreateString("abcdefghijklmnopqrstuvwxyz012345"));
+}
+static void empty_label(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "label", cJSON_CreateString(""));
+}
+static void bad_observed_at(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "observed_at", cJSON_CreateString("yesterday"));
+}
+static void unknown_cause(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "change_cause", cJSON_CreateString("deleted"));
+}
+static void unknown_state(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "evidence_state", cJSON_CreateString("lost"));
+}
+static void reason_on_ready(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "evidence_reason", cJSON_CreateString("queue_full"));
+}
+static void null_reason(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "evidence_reason", cJSON_CreateNull());
+}
+static void unknown_reason(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "evidence_reason", cJSON_CreateString("gremlins"));
+}
+static void mismatched_reason(cJSON *d) {
+    /* queue_full is an unavailable reason, not an expired one. */
+    cJSON_ReplaceItemInObject(d, "evidence_reason", cJSON_CreateString("queue_full"));
+}
+static void snapshot_on_pending(cJSON *d) {
+    cJSON_AddStringToObject(
+        d, "snapshot_url",
+        "/api/observations/55555555-5555-4555-8555-555555555555/snapshot");
+}
+static void wrong_snapshot(cJSON *d) {
+    cJSON_ReplaceItemInObject(
+        d, "snapshot_url",
+        cJSON_CreateString("/api/observations/99999999-9999-4999-8999-999999999999/snapshot"));
+}
+static void bad_asset(cJSON *d) {
+    cJSON_ReplaceItemInObject(d, "asset_id", cJSON_CreateNull());
+}
+static void other_camera(cJSON *d) {
+    cJSON_ReplaceItemInObject(
+        d, "camera_uuid", cJSON_CreateString("33333333-3333-4333-8333-333333333333"));
+}
+
+void test_observation_changed_validator_rejects_contract_violations(void) {
+    const char *ready = "a-r2-evidence-ready.json";
+    const char *pending = "a-r1-created-pending.json";
+    const char *expired = "a-r5-evidence-expired.json";
+    const char *unavailable = "b-r1-created-unavailable.json";
+    assert_observation_rejected(ready, drop_observation_id, NULL, "missing observation_id");
+    assert_observation_rejected(ready, drop_revision, NULL, "missing revision");
+    assert_observation_rejected(ready, drop_camera, NULL, "missing camera_uuid");
+    assert_observation_rejected(ready, drop_label, NULL, "missing label");
+    assert_observation_rejected(ready, drop_observed_at, NULL, "missing observed_at");
+    assert_observation_rejected(ready, drop_cause, NULL, "missing change_cause");
+    assert_observation_rejected(ready, drop_state, NULL, "missing evidence_state");
+    assert_observation_rejected(ready, drop_reason, NULL, "missing evidence_reason");
+    assert_observation_rejected(ready, drop_asset, NULL, "missing asset_id");
+    assert_observation_rejected(ready, drop_snapshot, NULL, "ready without snapshot_url");
+    assert_observation_rejected(ready, bad_observation_id, NULL, "non-UUID observation_id");
+    assert_observation_rejected(ready, zero_revision, NULL, "revision 0");
+    assert_observation_rejected(ready, fractional_revision, NULL, "fractional revision");
+    assert_observation_rejected(ready, long_label, NULL, "32-byte label");
+    assert_observation_rejected(ready, empty_label, NULL, "empty label");
+    assert_observation_rejected(ready, bad_observed_at, NULL, "non-RFC3339 observed_at");
+    assert_observation_rejected(ready, unknown_cause, NULL, "unknown cause");
+    assert_observation_rejected(ready, unknown_state, NULL, "unknown state");
+    assert_observation_rejected(ready, reason_on_ready, NULL, "reason on ready");
+    assert_observation_rejected(ready, wrong_snapshot, NULL, "snapshot_url of another observation");
+    assert_observation_rejected(ready, bad_asset, NULL, "null asset_id");
+    assert_observation_rejected(ready, other_camera, NULL, "camera_uuid differs from subject");
+    assert_observation_rejected(ready, NULL,
+                                "camera/33333333-3333-4333-8333-333333333333",
+                                "subject differs from camera_uuid");
+    assert_observation_rejected(pending, snapshot_on_pending, NULL, "snapshot_url on pending");
+    assert_observation_rejected(expired, null_reason, NULL, "expired without reason");
+    assert_observation_rejected(expired, mismatched_reason, NULL, "reason invalid for expired");
+    assert_observation_rejected(unavailable, null_reason, NULL, "unavailable without reason");
+    assert_observation_rejected(unavailable, unknown_reason, NULL, "unknown reason");
+    assert_observation_rejected(expired, snapshot_on_pending, NULL, "snapshot_url on expired");
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_registry_is_stable_and_versioned);
@@ -451,5 +689,8 @@ int main(void) {
     RUN_TEST(test_lpr_notification_is_restricted_and_plate_free);
     RUN_TEST(test_system_severity_range_subjects_and_persisted_identity);
     RUN_TEST(test_system_payload_severity_must_match_envelope);
+    RUN_TEST(test_observation_changed_registry_entry);
+    RUN_TEST(test_observation_changed_validator_accepts_c3_fixtures);
+    RUN_TEST(test_observation_changed_validator_rejects_contract_violations);
     return UNITY_END();
 }

@@ -436,6 +436,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   name="go2rtcExternalIp"
                   class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.go2rtcExternalIp}
+                  maxLength={255}
                   onChange={handleInputChange}
                   disabled={!canModifySettings}
                   placeholder={t('settings.autoDetect')}

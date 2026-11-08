@@ -41,6 +41,9 @@
 #include "core/mqtt_event_adapter.h"
 #include "core/mqtt_client.h"
 #include "core/mqtt_delivery_worker.h"
+#include "core/observation_evidence.h"
+#include "core/observation_relay.h"
+#include "core/observation_retention.h"
 #include "core/path_utils.h"
 #include "utils/strings.h"
 #include "video/stream_manager.h"
@@ -861,6 +864,46 @@ int main(int argc, char *argv[]) {
     (void)storage_target_refresh_health_and_publish();
     log_info("Storage manager initialized");
 
+    /* INT_01 startup order: reconcile (L4) -> evidence worker (L3) -> relay (L5) */
+    /* Evidence reconciliation needs the DB and event identity, and must finish
+     * before the evidence worker or relay start (design decision 2). The
+     * storage manager's periodic eviction stays off until it has completed. */
+    {
+        observation_reconcile_result_t observation_reconcile;
+        if (observation_retention_startup(config.storage_path, &observation_reconcile) != 0) {
+            log_warn("Observation evidence reconciliation incomplete; evidence eviction disabled");
+        }
+    }
+
+    /* INT_01 L3: evidence queue/worker. Only records configuration here; the
+     * worker thread and queue memory start lazily on the first submission, so
+     * nothing is allocated while every camera has evidence disabled. */
+    {
+        observation_evidence_config_t evidence_config = {0};
+        char queue_bytes[32] = {0};
+        evidence_config.storage_path = config.storage_path;
+        if (db_get_system_setting("observation_global_queue_bytes", queue_bytes,
+                                  sizeof(queue_bytes)) == 0 && queue_bytes[0]) {
+            long long value = strtoll(queue_bytes, NULL, 10);
+            if (value > 0) evidence_config.global_max_bytes = value;
+        }
+        if (observation_evidence_init(&evidence_config) != 0) {
+            log_error("Failed to initialize observation evidence; evidence admission disabled");
+        } else {
+            observation_evidence_set_enabled_probe(observation_evidence_stream_enabled_probe, NULL);
+        }
+    }
+
+    /* INT_01 L5: publication relay. Runs the D9 cursor-head check, drains
+     * publications staged by a previous process (bounded), then starts the
+     * steady-state thread. It only persists to the durable outbox, so it may
+     * start before the MQTT delivery worker; it must start after L4
+     * reconciliation and the L3 evidence worker, and before detection. */
+    if (observation_relay_start(NULL) != 0) {
+        log_error("Failed to start observation publication relay; "
+                  "staged observation changes stay pending");
+    }
+
     // Build the immutable health policy only after database and storage
     // prerequisites are live. Collector registration is complete before any
     // evaluator or sampler worker can observe a partial startup state.
@@ -1664,6 +1707,15 @@ cleanup:
         // hangs, the safety alarm will still fire.
         cleanup_detection_resources();
 
+        /* INT_01 shutdown (reverse of startup): relay (L5) stops before the
+         * event bus and identity it uses; unrelayed rows stay pending. */
+        observation_relay_stop();
+
+        /* INT_01 L3: then the evidence worker (detection producers are gone).
+         * It encodes for a bounded drain window and records the rest as
+         * unavailable(interrupted); it needs the DB and event identity. */
+        observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);
+
         // Drain accepted events while MQTT is still alive, then detach the
         // compatibility subscriber before tearing down broker state.
         log_info("Draining asynchronous event pipeline...");
@@ -1814,6 +1866,10 @@ cleanup:
         cleanup_mp4_recording_backend();
         cleanup_hls_streaming_backend();
         cleanup_transcoding_backend();
+
+        /* INT_01 shutdown (reverse of startup): relay (L5) first. */
+        observation_relay_stop();
+        observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);  /* then L3 */
 
         event_bus_shutdown(true);
         mqtt_event_adapter_unregister();

@@ -71,6 +71,10 @@ typedef enum {
 
 #define PLAYBACK_TRANSPORT_MAX 24
 #define EPTZ_CONFIG_MAX 1024
+// <= 16 labels of <= 31 bytes, comma separated (contract section 13).
+#define OBSERVATION_LABELS_MAX 512
+#define OBSERVATION_DEFAULT_MAX_AGE_DAYS 7
+#define OBSERVATION_DEFAULT_MAX_BYTES 2147483648LL
 
 /** Return true when value is one of the persisted playback transport values. */
 bool playback_transport_is_valid(const char *value);
@@ -186,6 +190,14 @@ typedef struct {
     // Versioned JSON for browser-side fisheye dewarping. Empty disables ePTZ.
     // The source stream and recordings always remain untouched.
     char eptz_config[EPTZ_CONFIG_MAX];
+
+    // INT_01 per-camera observation evidence (migration 0095, contract
+    // section 13). Off by default; an empty label list means every object
+    // label. Values <= 0 for the budgets are saved as the defaults.
+    bool observation_evidence_enabled;
+    char observation_labels[OBSERVATION_LABELS_MAX];
+    int observation_max_age_days;      // media max age (default 7)
+    int64_t observation_max_bytes;     // media byte budget (default 2 GiB)
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator
@@ -343,7 +355,7 @@ typedef struct {
     int go2rtc_webrtc_listen_port;        // WebRTC listen port (default: 8555)
     bool go2rtc_stun_enabled;             // Enable STUN servers (default: true)
     char go2rtc_stun_server[256];         // Primary STUN server (default: stun.l.google.com:19302)
-    char go2rtc_external_ip[64];          // Optional: External IP for NAT (empty = auto-detect)
+    char go2rtc_external_ip[256];         // Optional: WebRTC candidate list (IPs/hosts, comma-separated; empty = auto-detect)
     char go2rtc_ice_servers[512];         // Optional: Custom ICE servers (comma-separated)
 
     // Browser-side WebRTC live-view timeouts (milliseconds). Exposed to the web

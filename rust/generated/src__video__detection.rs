@@ -54,8 +54,6 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
     unsafe fn init_onvif_detection_system() -> ::core::ffi::c_int;
     unsafe fn shutdown_onvif_detection_system();
-    unsafe fn init_unified_detection_system() -> ::core::ffi::c_int;
-    unsafe fn shutdown_unified_detection_system();
     unsafe fn comprehensive_ffmpeg_cleanup(
         input_ctx: *mut *mut AVFormatContext,
         codec_ctx: *mut *mut AVCodecContext,
@@ -69,17 +67,19 @@ unsafe extern "C" {
         format: *const ::core::ffi::c_char,
         ...
     );
+    unsafe fn url_redact_for_logging(
+        url: *const ::core::ffi::c_char,
+        out_url: *mut ::core::ffi::c_char,
+        out_size: size_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn safe_strcpy(
         dest: *mut ::core::ffi::c_char,
         src: *const ::core::ffi::c_char,
         dst_size: size_t,
         src_size: size_t,
     ) -> ::core::ffi::c_int;
-    unsafe fn url_redact_for_logging(
-        url: *const ::core::ffi::c_char,
-        out_url: *mut ::core::ffi::c_char,
-        out_size: size_t,
-    ) -> ::core::ffi::c_int;
+    unsafe fn init_unified_detection_system() -> ::core::ffi::c_int;
+    unsafe fn shutdown_unified_detection_system();
     unsafe fn memset(
         __s: *mut ::core::ffi::c_void,
         __c: ::core::ffi::c_int,

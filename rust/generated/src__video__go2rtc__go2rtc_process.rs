@@ -130,6 +130,12 @@ unsafe extern "C" {
     unsafe fn curl_easy_perform(curl: *mut ::core::ffi::c_void) -> CURLcode;
     unsafe fn curl_easy_cleanup(curl: *mut ::core::ffi::c_void);
     unsafe fn curl_easy_getinfo(curl: *mut ::core::ffi::c_void, info: CURLINFO, ...) -> CURLcode;
+    unsafe fn go2rtc_parse_external_candidates(
+        list: *const ::core::ffi::c_char,
+        port: ::core::ffi::c_int,
+        out: *mut [::core::ffi::c_char; 128],
+        max: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
     unsafe fn go2rtc_api_get_base_path() -> *const ::core::ffi::c_char;
     unsafe fn go2rtc_api_apply_base_path_override(
         yaml: *const ::core::ffi::c_char,
@@ -274,6 +280,7 @@ pub type pid_t = __pid_t;
 pub type ssize_t = isize;
 pub type clockid_t = __clockid_t;
 pub type time_t = __time_t;
+pub type int64_t = i64;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct __sigset_t {
@@ -993,7 +1000,7 @@ pub struct config_t {
     pub go2rtc_webrtc_listen_port: ::core::ffi::c_int,
     pub go2rtc_stun_enabled: bool,
     pub go2rtc_stun_server: [::core::ffi::c_char; 256],
-    pub go2rtc_external_ip: [::core::ffi::c_char; 64],
+    pub go2rtc_external_ip: [::core::ffi::c_char; 256],
     pub go2rtc_ice_servers: [::core::ffi::c_char; 512],
     pub webrtc_connection_timeout_ms: ::core::ffi::c_int,
     pub webrtc_ice_recovery_timeout_ms: ::core::ffi::c_int,
@@ -1102,6 +1109,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 pub type uint8_t = u8;
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1195,6 +1206,7 @@ pub const GO2RTC_FFMPEG_H264: [::core::ffi::c_char; 215] = unsafe {
 pub const CLOCK_MONOTONIC: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const LIGHTNVR_VERSION_STRING: [::core::ffi::c_char; 7] =
     unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.47.3\0") };
+pub const GO2RTC_MAX_EXTERNAL_CANDIDATES: ::core::ffi::c_int = 8 as ::core::ffi::c_int;
 pub const GO2RTC_BASE_PATH: [::core::ffi::c_char; 8] =
     unsafe { ::core::mem::transmute::<[u8; 8], [::core::ffi::c_char; 8]>(*b"/go2rtc\0") };
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
@@ -12197,35 +12209,50 @@ unsafe extern "C" fn go2rtc_process_generate_config_locked(
             config_file,
             b"  candidates:\n\0".as_ptr() as *const ::core::ffi::c_char,
         );
-        if (*global_config).go2rtc_external_ip[0usize] as ::core::ffi::c_int
-            != '\0' as ::core::ffi::c_int
-        {
-            fprintf(
-                config_file,
-                b"    - \"%s:%d\"\n\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut (*global_config).go2rtc_external_ip as *mut ::core::ffi::c_char,
-                if (*global_config).go2rtc_webrtc_listen_port > 0 as ::core::ffi::c_int {
-                    (*global_config).go2rtc_webrtc_listen_port
-                } else {
-                    8555 as ::core::ffi::c_int
-                },
+        let mut webrtc_port: ::core::ffi::c_int =
+            if (*global_config).go2rtc_webrtc_listen_port > 0 as ::core::ffi::c_int {
+                (*global_config).go2rtc_webrtc_listen_port
+            } else {
+                8555 as ::core::ffi::c_int
+            };
+        let mut candidates: [[::core::ffi::c_char; 128]; 8] = [[0; 128]; 8];
+        let mut candidate_count: ::core::ffi::c_int = go2rtc_parse_external_candidates(
+            &raw mut (*global_config).go2rtc_external_ip as *mut ::core::ffi::c_char,
+            webrtc_port,
+            &raw mut candidates as *mut [::core::ffi::c_char; 128],
+            GO2RTC_MAX_EXTERNAL_CANDIDATES,
+        );
+        if candidate_count < 0 as ::core::ffi::c_int {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"go2rtc config: ignoring invalid external_ip list; using auto-detect\0".as_ptr()
+                    as *const ::core::ffi::c_char,
             );
-        } else {
+        }
+        if candidate_count <= 0 as ::core::ffi::c_int {
             fprintf(
                 config_file,
                 b"    - \"*:%d\"\n\0".as_ptr() as *const ::core::ffi::c_char,
-                if (*global_config).go2rtc_webrtc_listen_port > 0 as ::core::ffi::c_int {
-                    (*global_config).go2rtc_webrtc_listen_port
-                } else {
-                    8555 as ::core::ffi::c_int
-                },
+                webrtc_port,
             );
+        }
+        let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while i < candidate_count {
+            fprintf(
+                config_file,
+                b"    - \"%s\"\n\0".as_ptr() as *const ::core::ffi::c_char,
+                &raw mut *(&raw mut candidates as *mut [::core::ffi::c_char; 128])
+                    .offset(i as isize) as *mut ::core::ffi::c_char,
+            );
+            i += 1;
         }
         if (*global_config).go2rtc_stun_enabled {
             fprintf(
                 config_file,
-                b"    - \"stun:%s\"\n\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut (*global_config).go2rtc_stun_server as *mut ::core::ffi::c_char,
+                b"    - \"stun:%d\"\n\0".as_ptr() as *const ::core::ffi::c_char,
+                webrtc_port,
             );
         }
         fprintf(config_file, b"\n\0".as_ptr() as *const ::core::ffi::c_char);
@@ -12239,19 +12266,20 @@ unsafe extern "C" fn go2rtc_process_generate_config_locked(
         b"/usr/bin/lightnvr-ffmpeg-guard\0".as_ptr() as *const ::core::ffi::c_char,
         b"/usr/local/bin/lightnvr-ffmpeg-guard\0".as_ptr() as *const ::core::ffi::c_char,
     ];
-    let mut i: size_t = 0 as size_t;
-    while i < ::core::mem::size_of::<[*const ::core::ffi::c_char; 3]>()
-        .wrapping_div(::core::mem::size_of::<*const ::core::ffi::c_char>())
+    let mut i_0: size_t = 0 as size_t;
+    while i_0
+        < ::core::mem::size_of::<[*const ::core::ffi::c_char; 3]>()
+            .wrapping_div(::core::mem::size_of::<*const ::core::ffi::c_char>())
     {
-        if access(guard_paths[i], X_OK) == 0 as ::core::ffi::c_int {
+        if access(guard_paths[i_0], X_OK) == 0 as ::core::ffi::c_int {
             fprintf(
                 config_file,
                 b"  bin: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                guard_paths[i],
+                guard_paths[i_0],
             );
             break;
         } else {
-            i = i.wrapping_add(1);
+            i_0 = i_0.wrapping_add(1);
         }
     }
     let mut escaped_transcode: [::core::ffi::c_char; 1024] = [0; 1024];

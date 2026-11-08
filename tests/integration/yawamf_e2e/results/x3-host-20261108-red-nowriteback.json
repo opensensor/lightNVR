@@ -1,0 +1,377 @@
+{
+  "suite": "INT_01 X1/X3 lightNVR <-> YA-WAMF E2E",
+  "writeback_enabled": false,
+  "mode": "host-process",
+  "started_at": 1794161995.39704,
+  "finished_at": 1794162245.473003,
+  "seconds": 250.1,
+  "versions": {
+    "lightnvr": {
+      "commit": "bcf5290f",
+      "branch": "feat/int01-event-evidence",
+      "dirty_tracked": true,
+      "binary": "/home/matteius/opensensor/lightNVR/build-int01-X3/bin/lightnvr"
+    },
+    "yawamf": {
+      "commit": "1cbbae74",
+      "branch": "feature/lightnvr-provider"
+    },
+    "mosquitto": "mosquitto version 2.0.22",
+    "ffmpeg": "ffmpeg version 8.0.1-3ubuntu2 Copyright (c) 2000-2025 the FFmpeg developers",
+    "detector": "loopback HTTP x1-colour-detector 1.0 (light-object-detect wire format; finds the red/blue fixture birds by colour)",
+    "classifier": "pinned x1-colour-rule-v1 (harness/yawamf_launcher.py replaces ClassifierService.classify_async_live)",
+    "python": "3.12.12"
+  },
+  "recipe": [
+    {
+      "step": "prereq: MQTT broker",
+      "outcome": "ok",
+      "detail": {
+        "broker": "mosquitto version 2.0.22",
+        "port": 39075
+      }
+    },
+    {
+      "step": "prereq: lightNVR with [mqtt] block (step 3.1)",
+      "outcome": "ok",
+      "detail": {
+        "version": "0.47.3"
+      }
+    },
+    {
+      "step": "step 1-2: detector + evidence per camera",
+      "outcome": "ok",
+      "detail": {
+        "cameras": {
+          "feeder-bulk": "fbeda394-cd3d-41b8-8a59-a38733dd9f12",
+          "feeder-east": "4467465e-c408-42fb-a2aa-4bdf4c22a130",
+          "feeder-kill": "571911f9-77cf-4519-9f1b-54ee9538c73d",
+          "feeder-moving": "5c506dd1-30e8-4710-a662-749d226d9c8c",
+          "feeder-outcomes": "a19e729a-0cbb-4e06-935c-e4ee918179e3",
+          "feeder-pair": "6030b9ea-228c-40c4-8115-1a37338eb78c",
+          "feeder-wb": "209b0cf7-f2e7-47f7-aa85-b84fe3193c0d",
+          "feeder-wb-outage": "89c57d00-1ad1-4256-abee-b632c473b193"
+        },
+        "observation_evidence_enabled": true,
+        "observation_labels": "bird"
+      }
+    },
+    {
+      "step": "step 3.2: event route",
+      "outcome": "ok",
+      "detail": {
+        "route": "b2d36b11-223b-47aa-b0c2-920471409e79"
+      }
+    },
+    {
+      "step": "step 4.2: create role (recipe body)",
+      "outcome": "failed",
+      "detail": {
+        "status": 400,
+        "body": "{\"error\":\"expected_policy_version must be a positive integer\"}"
+      }
+    },
+    {
+      "step": "step 4.2: create role with expected_policy_version",
+      "outcome": "ok"
+    },
+    {
+      "step": "step 4.3: grant policy (no expected_policy_version)",
+      "outcome": "failed",
+      "detail": {
+        "status": 400,
+        "body": "{\"error\":\"expected_policy_version must be a positive integer\"}"
+      }
+    },
+    {
+      "step": "step 4.3: grant policy with expected_policy_version",
+      "outcome": "ok"
+    },
+    {
+      "step": "step 4.4: scoped token",
+      "outcome": "ok",
+      "detail": {
+        "principal": {
+          "writer_namespace": "yawamf"
+        },
+        "delivery": {
+          "mqtt_enabled": true,
+          "topic": "lightnvr/v1/events/io.lightnvr.detection.observation_changed.v1/{camera_uuid}"
+        },
+        "cameras_evidence_enabled": {
+          "209b0cf7-f2e7-47f7-aa85-b84fe3193c0d": true,
+          "4467465e-c408-42fb-a2aa-4bdf4c22a130": true,
+          "571911f9-77cf-4519-9f1b-54ee9538c73d": true,
+          "5c506dd1-30e8-4710-a662-749d226d9c8c": true,
+          "6030b9ea-228c-40c4-8115-1a37338eb78c": true,
+          "89c57d00-1ad1-4256-abee-b632c473b193": true,
+          "a19e729a-0cbb-4e06-935c-e4ee918179e3": true,
+          "fbeda394-cd3d-41b8-8a59-a38733dd9f12": true
+        }
+      }
+    },
+    {
+      "step": "step 5: YA-WAMF started (MQTT subscribed)",
+      "outcome": "ok",
+      "detail": {
+        "health_version": "2.23.1-feature/lightnvr-provider+1cbbae74",
+        "classification_writeback": {
+          "enabled": false,
+          "running": true,
+          "outcomes": {},
+          "last_outcome": null,
+          "last_outcome_at": null
+        }
+      }
+    },
+    {
+      "step": "step 6.1: Test lightNVR connection",
+      "outcome": "ok",
+      "detail": {
+        "ok": true,
+        "results": [
+          {
+            "id": "api_access",
+            "status": "ok",
+            "code": "connected",
+            "message": "Connected to lightNVR 0.47.3.",
+            "values": {
+              "product_version": "0.47.3",
+              "camera_count": 8
+            }
+          },
+          {
+            "id": "event_connectivity",
+            "status": "ok",
+            "code": "connected",
+            "message": "The MQTT broker answered and the lightNVR topic matches.",
+            "values": {
+              "topic": "lightnvr"
+            }
+          },
+          {
+            "id": "evidence_access",
+            "status": "ok",
+            "code": "authorized",
+            "message": "YA-WAMF may read detection photos.",
+            "values": {}
+          },
+          {
+            "id": "features",
+            "status": "ok",
+            "code": "listed",
+            "message": "Available: history, snapshots, annotate. Not available with this source: track_lifecycle, recorded_frame, event_clip, range_clip.",
+            "values": {
+              "supported": "history,snapshots,annotate",
+              "unsupported": "track_lifecycle,recorded_frame,event_clip,range_clip"
+            }
+          }
+        ],
+        "features": [
+          {
+            "name": "history",
+            "supported": true,
+            "reason": null
+          },
+          {
+            "name": "snapshots",
+            "supported": true,
+            "reason": null
+          },
+          {
+            "name": "annotate",
+            "supported": true,
+            "reason": null
+          },
+          {
+            "name": "track_lifecycle",
+            "supported": false,
+            "reason": "not_implemented"
+          },
+          {
+            "name": "recorded_frame",
+            "supported": false,
+            "reason": "not_implemented"
+          },
+          {
+            "name": "event_clip",
+            "supported": false,
+            "reason": "not_implemented"
+          },
+          {
+            "name": "range_clip",
+            "supported": false,
+            "reason": "not_implemented"
+          }
+        ],
+        "latest_observation": {
+          "state": "none_yet",
+          "code": null,
+          "observation_id": null,
+          "camera_uuid": null,
+          "camera_name": null,
+          "label": null,
+          "observed_at": null,
+          "photo_state": null,
+          "photo_reason": null,
+          "searched_labels": [
+            "bird"
+          ]
+        }
+      }
+    },
+    {
+      "step": "step 6.2: setup probe",
+      "outcome": "ok",
+      "detail": {
+        "status": 200,
+        "body": {
+          "items": [],
+          "next_cursor": "eyJ2IjoxLCJzZXEiOjAsImVwb2NoIjoiMWZmMzc5NjgtOTIwZS00MGE4LWFlYmQtNzE4NDYzYzA1OWEyIn0",
+          "has_more": false
+        }
+      }
+    },
+    {
+      "step": "step 6.2: setup probe, camera outside the token scope",
+      "outcome": "ok",
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "step": "diagnostics: token cannot read /api/system/info",
+      "outcome": "ok",
+      "detail": {
+        "status": 403
+      }
+    }
+  ],
+  "deploy_error": null,
+  "scenarios": [
+    {
+      "id": "A1",
+      "title": "identity and labels",
+      "started_at": 1794162000.0169942,
+      "evidence": {
+        "observation": {
+          "id": "735b1951-6716-4feb-a34f-4a16f02796d7",
+          "camera_uuid": "4467465e-c408-42fb-a2aa-4bdf4c22a130",
+          "stream_name_at_capture": "feeder-east",
+          "label": "bird",
+          "confidence": 0.899999976158142,
+          "box": {
+            "format": "xywh_normalized",
+            "x": 0.3125,
+            "y": 0.416667,
+            "width": 0.1,
+            "height": 0.177778
+          },
+          "revision": 2
+        },
+        "evidence": {
+          "asset_id": "fe39f160-04d3-4c09-844d-bae3e76b1add",
+          "state": "ready",
+          "reason": null,
+          "origin": "submitted_image",
+          "media_type": "image/jpeg",
+          "width": 640,
+          "height": 360,
+          "bytes": 2125,
+          "captured_at": "2026-11-08T18:20:00.543Z",
+          "expires_at": null,
+          "transform": {
+            "mode": "none",
+            "source_width": 640,
+            "source_height": 360,
+            "inference_width": 640,
+            "inference_height": 360,
+            "scale_x": 1,
+            "scale_y": 1,
+            "pad_x": 0,
+            "pad_y": 0
+          },
+          "snapshot_url": "/api/observations/735b1951-6716-4feb-a34f-4a16f02796d7/snapshot"
+        },
+        "yawamf_row": {
+          "event": "lnvr:e7ddc82d-b32a-4e7c-83e2-af3893bcec90:735b1951-6716-4feb-a34f-4a16f02796d7",
+          "observation_id": "735b1951-6716-4feb-a34f-4a16f02796d7",
+          "source_kind": "lightnvr",
+          "source_instance": "e7ddc82d-b32a-4e7c-83e2-af3893bcec90",
+          "camera_uuid": "4467465e-c408-42fb-a2aa-4bdf4c22a130",
+          "camera_name": "feeder-east",
+          "scientific_name": "Prunella modularis",
+          "display_name": "Dunnock",
+          "score": 0.93,
+          "intent": "dispatch",
+          "outcome": "skipped"
+        },
+        "topic": "lightnvr/v1/events/io.lightnvr.detection.observation_changed.v1/4467465e-c408-42fb-a2aa-4bdf4c22a130",
+        "mqtt_revisions": {
+          "1": {
+            "id": "f462393f-e5e1-5152-b03c-39f2e9a92cd7",
+            "cause": "created",
+            "evidence_state": "pending"
+          },
+          "2": {
+            "id": "63964555-a4bd-5332-bb61-d64ea1c1910d",
+            "cause": "evidence",
+            "evidence_state": "ready"
+          }
+        },
+        "classifier_calls": [
+          {
+            "t": 1794162000.618737,
+            "camera": "feeder-east",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.9,
+              38.3,
+              25.7
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          }
+        ]
+      },
+      "result": "pass",
+      "seconds": 2.0
+    },
+    {
+      "id": "A12",
+      "title": "write-back: species in both products, replays and stale revisions, owner precedence, no loop",
+      "started_at": 1794162002.0408356,
+      "result": "fail",
+      "error": "TimeoutError: timed out after 120s waiting for the automated write-back on lightNVR",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/run_e2e.py\", line 180, in scenario\n    entry[\"evidence\"] = fn()\n                        ^^^^\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/p2_scenarios.py\", line 127, in a12\n    stored = self.wait_species(obs[\"id\"], lambda r: r[\"kind\"] == \"automated\", 120, \"the automated write-back on lightNVR\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/p2_scenarios.py\", line 101, in wait_species\n    return wait_for(lambda: (lambda row: row if row and predicate(row) else None)(self.lnvr_species(observation_id)), timeout, 1.0, what)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/harness/components.py\", line 51, in wait_for\n    raise TimeoutError(f\"timed out after {timeout:.0f}s waiting for {what}\" + (f\" (last error: {last_error})\" if last_error else \"\"))\nTimeoutError: timed out after 120s waiting for the automated write-back on lightNVR\n",
+      "seconds": 122.2
+    },
+    {
+      "id": "A13",
+      "title": "write-back survives a lightNVR outage; the YA-WAMF detection stays intact",
+      "started_at": 1794162124.2596874,
+      "result": "fail",
+      "error": "TimeoutError: timed out after 120s waiting for the automated write-back before the outage",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/run_e2e.py\", line 180, in scenario\n    entry[\"evidence\"] = fn()\n                        ^^^^\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/p2_scenarios.py\", line 247, in a13\n    auto = self.wait_species(obs[\"id\"], lambda r: r[\"kind\"] == \"automated\", 120, \"the automated write-back before the outage\")\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/p2_scenarios.py\", line 101, in wait_species\n    return wait_for(lambda: (lambda row: row if row and predicate(row) else None)(self.lnvr_species(observation_id)), timeout, 1.0, what)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/harness/components.py\", line 51, in wait_for\n    raise TimeoutError(f\"timed out after {timeout:.0f}s waiting for {what}\" + (f\" (last error: {last_error})\" if last_error else \"\"))\nTimeoutError: timed out after 120s waiting for the automated write-back before the outage\n",
+      "seconds": 121.2
+    },
+    {
+      "id": "A7-annotate",
+      "title": "annotate needs observations.annotate on the capture camera",
+      "started_at": 1794162245.4441879,
+      "result": "fail",
+      "error": "HttpError: HTTP 403: b'{\"error\":\"API token scope exceeds live.view authority\"}'",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/run_e2e.py\", line 180, in scenario\n    entry[\"evidence\"] = fn()\n                        ^^^^\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/p2_scenarios.py\", line 303, in a7_annotate\n    other_camera = self.lnvr.api(\"POST\", f\"/api/authorization/users/{self.user_id}/tokens\", {\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/harness/components.py\", line 428, in api\n    return http_json(method, f\"{self.base}{route}\", body, headers or self.admin, expect)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/matteius/opensensor/lightNVR/tests/integration/yawamf_e2e/harness/components.py\", line 80, in http_json\n    raise HttpError(status, payload, response_headers)\ncomponents.HttpError: HTTP 403: b'{\"error\":\"API token scope exceeds live.view authority\"}'\n",
+      "seconds": 0.0
+    }
+  ],
+  "workdir": "/tmp/x3red/work",
+  "counts": {
+    "detector_requests": 1470,
+    "mqtt_messages_captured": 6
+  }
+}

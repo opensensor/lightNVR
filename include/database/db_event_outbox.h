@@ -98,6 +98,11 @@ int db_event_outbox_prune_terminal(int64_t updated_before, int limit,
 int db_event_outbox_get_stats(const char *destination, int64_t now,
                               event_outbox_stats_t *stats);
 
+/* Count undelivered (pending or delivering) rows of one event type across all
+ * destinations. Used by producers that cap their share of the outbox. */
+int db_event_outbox_count_undelivered_type(const char *event_type,
+                                           int64_t *count);
+
 void db_event_outbox_item_clear(event_outbox_item_t *item);
 
 #endif /* LIGHTNVR_DB_EVENT_OUTBOX_H */

@@ -1,0 +1,143 @@
+{
+  "items": [
+    {
+      "id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "camera_uuid": "22222222-2222-4222-8222-222222222222",
+      "stream_name_at_capture": "feeder-east",
+      "batch_id": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      "object_index": 0,
+      "observed_at": "2026-11-08T14:03:14.000Z",
+      "created_at": "2026-11-08T14:03:14.085Z",
+      "detector": {
+        "engine_key": "http-yolo",
+        "engine_type": "api",
+        "model": "yolov8n",
+        "model_version": "8.3.0"
+      },
+      "label": "bird",
+      "confidence": 0.84,
+      "box": {
+        "format": "xywh_normalized",
+        "x": 0.4,
+        "y": 0.125,
+        "width": 0.2,
+        "height": 0.2
+      },
+      "evidence": {
+        "asset_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "state": "ready",
+        "reason": null,
+        "origin": "submitted_image",
+        "media_type": "image/jpeg",
+        "width": 1280,
+        "height": 720,
+        "bytes": 182340,
+        "captured_at": "2026-11-08T14:03:14.000Z",
+        "expires_at": "2026-11-15T14:03:14.000Z",
+        "transform": {
+          "mode": "letterbox",
+          "source_width": 1280,
+          "source_height": 720,
+          "inference_width": 640,
+          "inference_height": 640,
+          "scale_x": 0.5,
+          "scale_y": 0.5,
+          "pad_x": 0,
+          "pad_y": 140
+        },
+        "snapshot_url": "/api/observations/dddddddd-dddd-4ddd-8ddd-dddddddddddd/snapshot"
+      },
+      "track": {
+        "id": "17",
+        "namespace": "http-yolo",
+        "session": "9b0c7d1e-5f43-4b8e-9d0e-0b6c1f2a3d4e"
+      },
+      "recording_reference": {
+        "recording_id": 81236
+      },
+      "revision": 2,
+      "classifications": {
+        "automated": [],
+        "owner_confirmed": []
+      }
+    },
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "camera_uuid": "22222222-2222-4222-8222-222222222222",
+      "stream_name_at_capture": "feeder-east",
+      "batch_id": "77777777-7777-4777-8777-777777777777",
+      "object_index": 0,
+      "observed_at": "2026-11-08T14:03:12.481Z",
+      "created_at": "2026-11-08T14:03:12.530Z",
+      "detector": {
+        "engine_key": "legacy-primary",
+        "engine_type": "object",
+        "model": "ssd_mobilenet_v2.sod",
+        "model_version": null
+      },
+      "label": "bird",
+      "confidence": 0.87,
+      "box": {
+        "format": "xywh_normalized",
+        "x": 0.412,
+        "y": 0.288,
+        "width": 0.12,
+        "height": 0.165
+      },
+      "evidence": {
+        "asset_id": "88888888-8888-4888-8888-888888888888",
+        "state": "ready",
+        "reason": null,
+        "origin": "inference_input",
+        "media_type": "image/jpeg",
+        "width": 640,
+        "height": 360,
+        "bytes": 48211,
+        "captured_at": "2026-11-08T14:03:12.481Z",
+        "expires_at": "2026-11-15T14:03:12.481Z",
+        "transform": {
+          "mode": "none",
+          "source_width": 640,
+          "source_height": 360,
+          "inference_width": 640,
+          "inference_height": 360,
+          "scale_x": 1,
+          "scale_y": 1,
+          "pad_x": 0,
+          "pad_y": 0
+        },
+        "snapshot_url": "/api/observations/55555555-5555-4555-8555-555555555555/snapshot"
+      },
+      "track": null,
+      "recording_reference": {
+        "recording_id": 81234
+      },
+      "revision": 3,
+      "classifications": {
+        "automated": [
+          {
+            "key": "yawamf/species",
+            "writer_namespace": "yawamf",
+            "classifier": "yawamf",
+            "model_version": "convnext-v2-2026.10",
+            "label": "Black-capped Chickadee",
+            "taxonomy_id": "inat:144815",
+            "confidence": 0.93,
+            "classified_at": "2026-11-08T14:03:15.002Z",
+            "input_asset_id": "88888888-8888-4888-8888-888888888888",
+            "input_revision": 2,
+            "kind": "automated",
+            "annotation_revision": 1,
+            "created_at": "2026-11-08T14:03:15.120Z",
+            "updated_at": "2026-11-08T14:03:15.120Z"
+          }
+        ],
+        "owner_confirmed": []
+      }
+    }
+  ],
+  "next_cursor": "eyJ2IjoxLCJzZXEiOjEwMTAsImVwb2NoIjoiNjY2NjY2NjYtNjY2Ni00NjY2LTg2NjYtNjY2NjY2NjY2NjY2In0",
+  "has_more": false
+}

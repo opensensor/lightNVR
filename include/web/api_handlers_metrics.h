@@ -28,4 +28,11 @@ void handle_get_metrics(const http_request_t *req, http_response_t *res);
  */
 void handle_post_player_telemetry(const http_request_t *req, http_response_t *res);
 
+struct observation_diagnostics_snapshot;
+/**
+ * INT_01 L10: Prometheus families for the observation pipeline
+ * (lightnvr_observation_*). Pure: renders the given snapshot. Caller frees.
+ */
+char *api_metrics_render_observations(const struct observation_diagnostics_snapshot *diagnostics);
+
 #endif /* LIGHTNVR_API_HANDLERS_METRICS_H */

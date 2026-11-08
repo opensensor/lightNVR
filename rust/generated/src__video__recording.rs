@@ -268,6 +268,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -373,7 +377,7 @@ pub struct config_t {
     pub go2rtc_webrtc_listen_port: ::core::ffi::c_int,
     pub go2rtc_stun_enabled: bool,
     pub go2rtc_stun_server: [::core::ffi::c_char; 256],
-    pub go2rtc_external_ip: [::core::ffi::c_char; 64],
+    pub go2rtc_external_ip: [::core::ffi::c_char; 256],
     pub go2rtc_ice_servers: [::core::ffi::c_char; 512],
     pub webrtc_connection_timeout_ms: ::core::ffi::c_int,
     pub webrtc_ice_recovery_timeout_ms: ::core::ffi::c_int,
@@ -1991,6 +1995,10 @@ pub unsafe extern "C" fn start_recording(
         publish_url: [0; 512],
         playback_transport: [0; 24],
         eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
     };
     if get_stream_config(stream, &raw mut config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(

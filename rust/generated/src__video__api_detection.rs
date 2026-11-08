@@ -8,6 +8,8 @@ unsafe extern "C" {
         __format: *const ::core::ffi::c_char,
         ...
     ) -> ::core::ffi::c_int;
+    unsafe fn floor(__x: ::core::ffi::c_double) -> ::core::ffi::c_double;
+    unsafe fn round(__x: ::core::ffi::c_double) -> ::core::ffi::c_double;
     unsafe fn time(__timer: *mut time_t) -> time_t;
     unsafe fn curl_mime_init(easy: *mut ::core::ffi::c_void) -> *mut curl_mime;
     unsafe fn curl_mime_free(mime: *mut curl_mime);
@@ -81,6 +83,14 @@ unsafe extern "C" {
     ) -> bool;
     unsafe fn curl_init_global() -> ::core::ffi::c_int;
     unsafe fn is_shutdown_initiated() -> bool;
+    unsafe fn event_producer_publish_detection(
+        camera_uuid: *const ::core::ffi::c_char,
+        stream_name: *const ::core::ffi::c_char,
+        result: *const detection_result_t,
+        occurred_at: time_t,
+        error: *mut ::core::ffi::c_char,
+        error_size: size_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn event_producer_publish_detection_for_stream(
         stream_name: *const ::core::ffi::c_char,
         result: *const detection_result_t,
@@ -98,6 +108,21 @@ unsafe extern "C" {
         dst_size: size_t,
         src_size: size_t,
     ) -> ::core::ffi::c_int;
+    unsafe fn detection_evidence_observed_at_ms(frame_ts: time_t) -> int64_t;
+    unsafe fn detection_evidence_capture_jpeg(
+        camera: *const detection_evidence_camera_t,
+        engine: *const detection_evidence_engine_t,
+        detections: *const detection_t,
+        count: ::core::ffi::c_int,
+        observed_at_ms: int64_t,
+        jpeg: *mut uint8_t,
+        jpeg_size: size_t,
+        width: ::core::ffi::c_int,
+        height: ::core::ffi::c_int,
+        transform: *const observation_evidence_transform_t,
+        submit_result: *mut observation_evidence_result_t,
+        asset_uuid_out: *mut ::core::ffi::c_char,
+    ) -> detection_evidence_status_t;
     unsafe fn filter_detections_by_zones(
         stream_name: *const ::core::ffi::c_char,
         result: *mut detection_result_t,
@@ -120,6 +145,13 @@ unsafe extern "C" {
     ) -> *mut jpeg_encoder_cache_t;
     unsafe fn jpeg_encoder_cleanup_all();
     unsafe fn store_detections_in_db(
+        stream_name: *const ::core::ffi::c_char,
+        result: *const detection_result_t,
+        timestamp: time_t,
+        recording_id: uint64_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn store_detections_in_db_for_camera(
+        camera_uuid: *const ::core::ffi::c_char,
         stream_name: *const ::core::ffi::c_char,
         result: *const detection_result_t,
         timestamp: time_t,
@@ -164,6 +196,10 @@ unsafe extern "C" {
         __needle: *const ::core::ffi::c_char,
     ) -> *mut ::core::ffi::c_char;
     unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
+    unsafe fn strcasecmp(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
     unsafe fn malloc(__size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn realloc(__ptr: *mut ::core::ffi::c_void, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
@@ -172,6 +208,7 @@ unsafe extern "C" {
 pub type size_t = usize;
 pub type __time_t = ::core::ffi::c_long;
 pub type time_t = __time_t;
+pub type int64_t = i64;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct __pthread_internal_list {
@@ -845,6 +882,10 @@ pub struct stream_config_t {
     pub publish_url: [::core::ffi::c_char; 512],
     pub playback_transport: [::core::ffi::c_char; 24],
     pub eptz_config: [::core::ffi::c_char; 1024],
+    pub observation_evidence_enabled: bool,
+    pub observation_labels: [::core::ffi::c_char; 512],
+    pub observation_max_age_days: ::core::ffi::c_int,
+    pub observation_max_bytes: int64_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -950,7 +991,7 @@ pub struct config_t {
     pub go2rtc_webrtc_listen_port: ::core::ffi::c_int,
     pub go2rtc_stun_enabled: bool,
     pub go2rtc_stun_server: [::core::ffi::c_char; 256],
-    pub go2rtc_external_ip: [::core::ffi::c_char; 64],
+    pub go2rtc_external_ip: [::core::ffi::c_char; 256],
     pub go2rtc_ice_servers: [::core::ffi::c_char; 512],
     pub webrtc_connection_timeout_ms: ::core::ffi::c_int,
     pub webrtc_ice_recovery_timeout_ms: ::core::ffi::c_int,
@@ -993,6 +1034,37 @@ pub struct detection_result_t {
     pub count: ::core::ffi::c_int,
     pub detections: [detection_t; 20],
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct observation_evidence_result_t(pub ::core::ffi::c_int);
+impl observation_evidence_result_t {
+    pub const OBS_EVIDENCE_ACCEPTED: Self = Self(0);
+    pub const OBS_EVIDENCE_DROPPED_QUEUE_FULL: Self = Self(1);
+    pub const OBS_EVIDENCE_DROPPED_BUDGET: Self = Self(2);
+    pub const OBS_EVIDENCE_DISABLED: Self = Self(3);
+    pub const OBS_EVIDENCE_INVALID: Self = Self(-1);
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct observation_transform_mode_t(pub ::core::ffi::c_uint);
+impl observation_transform_mode_t {
+    pub const OBS_TRANSFORM_NONE: Self = Self(0);
+    pub const OBS_TRANSFORM_RESIZE: Self = Self(1);
+    pub const OBS_TRANSFORM_LETTERBOX: Self = Self(2);
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct observation_evidence_transform_t {
+    pub mode: observation_transform_mode_t,
+    pub source_width: ::core::ffi::c_int,
+    pub source_height: ::core::ffi::c_int,
+    pub inference_width: ::core::ffi::c_int,
+    pub inference_height: ::core::ffi::c_int,
+    pub scale_x: ::core::ffi::c_double,
+    pub scale_y: ::core::ffi::c_double,
+    pub pad_x: ::core::ffi::c_double,
+    pub pad_y: ::core::ffi::c_double,
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct api_detection_options_t {
@@ -1002,10 +1074,69 @@ pub struct api_detection_options_t {
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
+pub struct api_detection_response_meta_t {
+    pub letterbox: bool,
+    pub inference_width: ::core::ffi::c_int,
+    pub inference_height: ::core::ffi::c_int,
+    pub scale_x: ::core::ffi::c_double,
+    pub scale_y: ::core::ffi::c_double,
+    pub pad_x: ::core::ffi::c_double,
+    pub pad_y: ::core::ffi::c_double,
+    pub pixel_units: bool,
+    pub model: [::core::ffi::c_char; 128],
+    pub model_version: [::core::ffi::c_char; 64],
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct api_detection_evidence_t {
+    pub camera_uuid: *const ::core::ffi::c_char,
+    pub engine_key: *const ::core::ffi::c_char,
+    pub evidence_enabled: bool,
+    pub labels_csv: *const ::core::ffi::c_char,
+    pub observed_at_ms: int64_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
 pub struct memory_struct_t {
     pub memory: *mut ::core::ffi::c_char,
     pub size: size_t,
     pub capacity: size_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct submitted_image_t {
+    pub jpeg: *mut uint8_t,
+    pub size: size_t,
+    pub width: ::core::ffi::c_int,
+    pub height: ::core::ffi::c_int,
+    pub transform: observation_evidence_transform_t,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct detection_evidence_status_t(pub ::core::ffi::c_uint);
+impl detection_evidence_status_t {
+    pub const DETECTION_EVIDENCE_SUBMITTED: Self = Self(0);
+    pub const DETECTION_EVIDENCE_NOT_ENABLED: Self = Self(1);
+    pub const DETECTION_EVIDENCE_NOT_ELIGIBLE: Self = Self(2);
+    pub const DETECTION_EVIDENCE_NOT_OBJECT_ENGINE: Self = Self(3);
+    pub const DETECTION_EVIDENCE_ERROR: Self = Self(4);
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct detection_evidence_engine_t {
+    pub engine_key: *const ::core::ffi::c_char,
+    pub engine_type: *const ::core::ffi::c_char,
+    pub model_path: *const ::core::ffi::c_char,
+    pub model_version: *const ::core::ffi::c_char,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct detection_evidence_camera_t {
+    pub camera_uuid: *const ::core::ffi::c_char,
+    pub stream_name: *const ::core::ffi::c_char,
+    pub evidence_enabled: bool,
+    pub labels_csv: *const ::core::ffi::c_char,
+    pub recording_id: int64_t,
 }
 pub type jpeg_encoder_cache_t = jpeg_encoder_cache;
 pub const SIZE_MAX: ::core::ffi::c_ulong = 18446744073709551615 as ::core::ffi::c_ulong;
@@ -1014,9 +1145,6 @@ pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::
 pub const MAX_DETECTIONS: ::core::ffi::c_int = 20 as ::core::ffi::c_int;
 pub const MAX_LABEL_LENGTH: ::core::ffi::c_int = 32 as ::core::ffi::c_int;
 pub const MAX_ZONE_ID_LENGTH: ::core::ffi::c_int = 32 as ::core::ffi::c_int;
-pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
-pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 static mut initialized: bool = r#false != 0;
 static mut curl_mutex: pthread_mutex_t = pthread_mutex_t {
     __data: __pthread_mutex_s {
@@ -1738,12 +1866,169 @@ unsafe extern "C" fn log_json_item(
     }
     free(json_str as *mut ::core::ffi::c_void);
 }
+unsafe extern "C" fn parse_response_meta(
+    mut root: *const cJSON,
+    mut meta: *mut api_detection_response_meta_t,
+) {
+    memset(
+        meta as *mut ::core::ffi::c_void,
+        0 as ::core::ffi::c_int,
+        ::core::mem::size_of::<api_detection_response_meta_t>(),
+    );
+    (*meta).pad_y = -1.0f64;
+    (*meta).pad_x = (*meta).pad_y;
+    let mut model: *const cJSON =
+        cJSON_GetObjectItemCaseSensitive(root, b"model\0".as_ptr() as *const ::core::ffi::c_char);
+    if cJSON_IsString(model) != 0
+        && *(*model).valuestring.offset(0isize) as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+        && strlen((*model).valuestring) < ::core::mem::size_of::<[::core::ffi::c_char; 128]>()
+    {
+        safe_strcpy(
+            &raw mut (*meta).model as *mut ::core::ffi::c_char,
+            (*model).valuestring,
+            ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
+            0 as size_t,
+        );
+    }
+    let mut version: *const cJSON = cJSON_GetObjectItemCaseSensitive(
+        root,
+        b"model_version\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    if cJSON_IsString(version) != 0
+        && *(*version).valuestring.offset(0isize) as ::core::ffi::c_int
+            != '\0' as ::core::ffi::c_int
+        && strlen((*version).valuestring) < ::core::mem::size_of::<[::core::ffi::c_char; 64]>()
+    {
+        safe_strcpy(
+            &raw mut (*meta).model_version as *mut ::core::ffi::c_char,
+            (*version).valuestring,
+            ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+            0 as size_t,
+        );
+    }
+    let mut lb: *const cJSON = cJSON_GetObjectItemCaseSensitive(
+        root,
+        b"letterbox\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    if lb.is_null() || cJSON_IsObject(lb) == 0 {
+        return;
+    }
+    let mut w: ::core::ffi::c_double = 0.0f64;
+    let mut h: ::core::ffi::c_double = 0.0f64;
+    let mut v: ::core::ffi::c_double = 0.0f64;
+    if !number_item(
+        lb,
+        b"width\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut w,
+    ) || !number_item(
+        lb,
+        b"height\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut h,
+    ) || !(w >= 1.0f64)
+        || !(h >= 1.0f64)
+        || w > 65535.0f64
+        || h > 65535.0f64
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"API Detection: Ignoring letterbox declaration without a valid width/height\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    (*meta).inference_width = w as ::core::ffi::c_int;
+    (*meta).inference_height = h as ::core::ffi::c_int;
+    if number_item(
+        lb,
+        b"scale\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut v,
+    ) as ::core::ffi::c_int
+        != 0
+        && v > 0.0f64
+    {
+        (*meta).scale_y = v;
+        (*meta).scale_x = (*meta).scale_y;
+    }
+    if number_item(
+        lb,
+        b"scale_x\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut v,
+    ) as ::core::ffi::c_int
+        != 0
+        && v > 0.0f64
+    {
+        (*meta).scale_x = v;
+    }
+    if number_item(
+        lb,
+        b"scale_y\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut v,
+    ) as ::core::ffi::c_int
+        != 0
+        && v > 0.0f64
+    {
+        (*meta).scale_y = v;
+    }
+    if number_item(
+        lb,
+        b"pad_x\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut v,
+    ) as ::core::ffi::c_int
+        != 0
+        && v >= 0.0f64
+    {
+        (*meta).pad_x = v;
+    }
+    if number_item(
+        lb,
+        b"pad_y\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut v,
+    ) as ::core::ffi::c_int
+        != 0
+        && v >= 0.0f64
+    {
+        (*meta).pad_y = v;
+    }
+    let mut units: *const cJSON =
+        cJSON_GetObjectItemCaseSensitive(lb, b"box_units\0".as_ptr() as *const ::core::ffi::c_char);
+    (*meta).pixel_units = cJSON_IsString(units) != 0
+        && strcasecmp(
+            (*units).valuestring,
+            b"pixels\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int;
+    (*meta).letterbox = r#true != 0;
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn api_detection_parse_response(
     mut json: *const ::core::ffi::c_char,
     mut options: *const api_detection_options_t,
     mut result: *mut detection_result_t,
 ) -> ::core::ffi::c_int {
+    return api_detection_parse_response_meta(
+        json,
+        options,
+        result,
+        ::core::ptr::null_mut::<api_detection_response_meta_t>(),
+    );
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn api_detection_parse_response_meta(
+    mut json: *const ::core::ffi::c_char,
+    mut options: *const api_detection_options_t,
+    mut result: *mut detection_result_t,
+    mut meta: *mut api_detection_response_meta_t,
+) -> ::core::ffi::c_int {
+    if !meta.is_null() {
+        memset(
+            meta as *mut ::core::ffi::c_void,
+            0 as ::core::ffi::c_int,
+            ::core::mem::size_of::<api_detection_response_meta_t>(),
+        );
+        (*meta).pad_y = -1.0f64;
+        (*meta).pad_x = (*meta).pad_y;
+    }
     if json.is_null() || result.is_null() {
         return -1 as ::core::ffi::c_int;
     }
@@ -1775,6 +2060,9 @@ pub unsafe extern "C" fn api_detection_parse_response(
             },
         );
         return -1 as ::core::ffi::c_int;
+    }
+    if !meta.is_null() && cJSON_IsObject(root) != 0 {
+        parse_response_meta(root, meta);
     }
     if doods2 {
         let mut error: *const cJSON =
@@ -1924,6 +2212,191 @@ pub unsafe extern "C" fn api_detection_parse_response(
     }
     cJSON_Delete(root);
     return 0 as ::core::ffi::c_int;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn api_detection_apply_response_geometry(
+    mut meta: *const api_detection_response_meta_t,
+    mut image_w: ::core::ffi::c_int,
+    mut image_h: ::core::ffi::c_int,
+    mut source_w: ::core::ffi::c_int,
+    mut source_h: ::core::ffi::c_int,
+    mut result: *mut detection_result_t,
+    mut transform: *mut observation_evidence_transform_t,
+) -> ::core::ffi::c_int {
+    if image_w <= 0 as ::core::ffi::c_int || image_h <= 0 as ::core::ffi::c_int || result.is_null()
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    if source_w <= 0 as ::core::ffi::c_int || source_h <= 0 as ::core::ffi::c_int {
+        source_w = image_w;
+        source_h = image_h;
+    }
+    let mut t: observation_evidence_transform_t = observation_evidence_transform_t {
+        mode: observation_transform_mode_t::OBS_TRANSFORM_NONE,
+        source_width: 0,
+        source_height: 0,
+        inference_width: 0,
+        inference_height: 0,
+        scale_x: 0.,
+        scale_y: 0.,
+        pad_x: 0.,
+        pad_y: 0.,
+    };
+    memset(
+        &raw mut t as *mut ::core::ffi::c_void,
+        0 as ::core::ffi::c_int,
+        ::core::mem::size_of::<observation_evidence_transform_t>(),
+    );
+    t.mode = observation_transform_mode_t::OBS_TRANSFORM_NONE;
+    t.source_width = source_w;
+    t.source_height = source_h;
+    t.inference_width = image_w;
+    t.inference_height = image_h;
+    t.scale_y = 1.0f64;
+    t.scale_x = t.scale_y;
+    if !meta.is_null()
+        && (*meta).letterbox as ::core::ffi::c_int != 0
+        && (*meta).inference_width > 0 as ::core::ffi::c_int
+        && (*meta).inference_height > 0 as ::core::ffi::c_int
+    {
+        let iw: ::core::ffi::c_double = (*meta).inference_width as ::core::ffi::c_double;
+        let ih: ::core::ffi::c_double = (*meta).inference_height as ::core::ffi::c_double;
+        let mut sx: ::core::ffi::c_double = (*meta).scale_x;
+        let mut sy: ::core::ffi::c_double = (*meta).scale_y;
+        if !(sx > 0.0f64) || !(sy > 0.0f64) {
+            let mut uniform: ::core::ffi::c_double = if (iw / image_w as ::core::ffi::c_double)
+                < ih / image_h as ::core::ffi::c_double
+            {
+                iw / image_w as ::core::ffi::c_double
+            } else {
+                ih / image_h as ::core::ffi::c_double
+            };
+            if !(sx > 0.0f64) {
+                sx = uniform;
+            }
+            if !(sy > 0.0f64) {
+                sy = uniform;
+            }
+        }
+        let mut px: ::core::ffi::c_double = (*meta).pad_x;
+        let mut py: ::core::ffi::c_double = (*meta).pad_y;
+        if px < 0.0f64 {
+            px = floor((iw - round(image_w as ::core::ffi::c_double * sx)) / 2.0f64);
+        }
+        if py < 0.0f64 {
+            py = floor((ih - round(image_h as ::core::ffi::c_double * sy)) / 2.0f64);
+        }
+        if px < 0.0f64 {
+            px = 0.0f64;
+        }
+        if py < 0.0f64 {
+            py = 0.0f64;
+        }
+        let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while i < (*result).count {
+            let mut d: *mut detection_t =
+                (&raw mut (*result).detections as *mut detection_t).offset(i as isize);
+            let mut u: ::core::ffi::c_double = (*d).x as ::core::ffi::c_double;
+            let mut v: ::core::ffi::c_double = (*d).y as ::core::ffi::c_double;
+            let mut du: ::core::ffi::c_double = (*d).width as ::core::ffi::c_double;
+            let mut dv: ::core::ffi::c_double = (*d).height as ::core::ffi::c_double;
+            if !(*meta).pixel_units {
+                u *= iw;
+                du *= iw;
+                v *= ih;
+                dv *= ih;
+            }
+            (*d).x = ((u - px) / sx / image_w as ::core::ffi::c_double) as ::core::ffi::c_float;
+            (*d).y = ((v - py) / sy / image_h as ::core::ffi::c_double) as ::core::ffi::c_float;
+            (*d).width = (du / sx / image_w as ::core::ffi::c_double) as ::core::ffi::c_float;
+            (*d).height = (dv / sy / image_h as ::core::ffi::c_double) as ::core::ffi::c_float;
+            i += 1;
+        }
+        t.mode = observation_transform_mode_t::OBS_TRANSFORM_LETTERBOX;
+        t.inference_width = (*meta).inference_width;
+        t.inference_height = (*meta).inference_height;
+        t.scale_x = sx;
+        t.scale_y = sy;
+        t.pad_x = px;
+        t.pad_y = py;
+    }
+    if !transform.is_null() {
+        *transform = t;
+    }
+    return 0 as ::core::ffi::c_int;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn api_detection_jpeg_dimensions(
+    mut jpeg: *const uint8_t,
+    mut size: size_t,
+    mut width: *mut ::core::ffi::c_int,
+    mut height: *mut ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    if jpeg.is_null()
+        || size < 4 as size_t
+        || width.is_null()
+        || height.is_null()
+        || *jpeg.offset(0isize) as ::core::ffi::c_int != 0xff as ::core::ffi::c_int
+        || *jpeg.offset(1isize) as ::core::ffi::c_int != 0xd8 as ::core::ffi::c_int
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut pos: size_t = 2 as size_t;
+    while pos.wrapping_add(4 as size_t) <= size {
+        if *jpeg.offset(pos as isize) as ::core::ffi::c_int != 0xff as ::core::ffi::c_int {
+            return -1 as ::core::ffi::c_int;
+        }
+        let mut marker: uint8_t = *jpeg.offset(pos.wrapping_add(1 as size_t) as isize);
+        if marker as ::core::ffi::c_int == 0xff as ::core::ffi::c_int {
+            pos = pos.wrapping_add(1);
+        } else if marker as ::core::ffi::c_int == 0xd8 as ::core::ffi::c_int
+            || marker as ::core::ffi::c_int == 0x1 as ::core::ffi::c_int
+            || marker as ::core::ffi::c_int >= 0xd0 as ::core::ffi::c_int
+                && marker as ::core::ffi::c_int <= 0xd7 as ::core::ffi::c_int
+        {
+            pos = pos.wrapping_add(2 as size_t);
+        } else {
+            if marker as ::core::ffi::c_int == 0xd9 as ::core::ffi::c_int
+                || marker as ::core::ffi::c_int == 0xda as ::core::ffi::c_int
+            {
+                return -1 as ::core::ffi::c_int;
+            }
+            let mut seg: size_t = (*jpeg.offset(pos.wrapping_add(2 as size_t) as isize) as size_t)
+                << 8 as ::core::ffi::c_int
+                | *jpeg.offset(pos.wrapping_add(3 as size_t) as isize) as size_t;
+            if seg < 2 as size_t || pos.wrapping_add(2 as size_t).wrapping_add(seg) > size {
+                return -1 as ::core::ffi::c_int;
+            }
+            let mut sof: bool = marker as ::core::ffi::c_int >= 0xc0 as ::core::ffi::c_int
+                && marker as ::core::ffi::c_int <= 0xcf as ::core::ffi::c_int
+                && marker as ::core::ffi::c_int != 0xc4 as ::core::ffi::c_int
+                && marker as ::core::ffi::c_int != 0xc8 as ::core::ffi::c_int
+                && marker as ::core::ffi::c_int != 0xcc as ::core::ffi::c_int;
+            if sof {
+                if seg < 7 as size_t {
+                    return -1 as ::core::ffi::c_int;
+                }
+                let mut h: ::core::ffi::c_int = (*jpeg
+                    .offset(pos.wrapping_add(5 as size_t) as isize)
+                    as ::core::ffi::c_int)
+                    << 8 as ::core::ffi::c_int
+                    | *jpeg.offset(pos.wrapping_add(6 as size_t) as isize) as ::core::ffi::c_int;
+                let mut w: ::core::ffi::c_int = (*jpeg
+                    .offset(pos.wrapping_add(7 as size_t) as isize)
+                    as ::core::ffi::c_int)
+                    << 8 as ::core::ffi::c_int
+                    | *jpeg.offset(pos.wrapping_add(8 as size_t) as isize) as ::core::ffi::c_int;
+                if w <= 0 as ::core::ffi::c_int || h <= 0 as ::core::ffi::c_int {
+                    return -1 as ::core::ffi::c_int;
+                }
+                *width = w;
+                *height = h;
+                return 0 as ::core::ffi::c_int;
+            }
+            pos = pos.wrapping_add((2 as size_t).wrapping_add(seg));
+        }
+    }
+    return -1 as ::core::ffi::c_int;
 }
 unsafe extern "C" fn write_memory_callback(
     mut contents: *mut ::core::ffi::c_void,
@@ -2168,6 +2641,7 @@ unsafe extern "C" fn perform_detection_request(
     mut request_id: *const ::core::ffi::c_char,
     mut options: *const api_detection_options_t,
     mut result: *mut detection_result_t,
+    mut meta: *mut api_detection_response_meta_t,
 ) -> ::core::ffi::c_int {
     let mut res: CURLcode = CURLcode::CURLE_OK;
     let mut http_code: ::core::ffi::c_long = 0;
@@ -2398,7 +2872,7 @@ unsafe extern "C" fn perform_detection_request(
                         context,
                         &raw mut preview as *mut ::core::ffi::c_char,
                     );
-                    ret = api_detection_parse_response(chunk.memory, options, result);
+                    ret = api_detection_parse_response_meta(chunk.memory, options, result, meta);
                     if ret != 0 as ::core::ffi::c_int {
                         _log_message_ctx(
                             log_level_t::LOG_LEVEL_ERROR,
@@ -2421,12 +2895,179 @@ unsafe extern "C" fn perform_detection_request(
     curl_easy_cleanup(curl);
     return ret;
 }
+unsafe extern "C" fn has_camera_uuid(mut evidence: *const api_detection_evidence_t) -> bool {
+    return !evidence.is_null()
+        && !(*evidence).camera_uuid.is_null()
+        && *(*evidence).camera_uuid.offset(0isize) as ::core::ffi::c_int
+            != '\0' as ::core::ffi::c_int;
+}
+unsafe extern "C" fn apply_submitted_geometry(
+    mut context: *const ::core::ffi::c_char,
+    mut stream_name: *const ::core::ffi::c_char,
+    mut meta: *const api_detection_response_meta_t,
+    mut source_w: ::core::ffi::c_int,
+    mut source_h: ::core::ffi::c_int,
+    mut result: *mut detection_result_t,
+    mut image: *mut submitted_image_t,
+) {
+    if (*image).width <= 0 as ::core::ffi::c_int || (*image).height <= 0 as ::core::ffi::c_int {
+        if api_detection_jpeg_dimensions(
+            (*image).jpeg,
+            (*image).size,
+            &raw mut (*image).width,
+            &raw mut (*image).height,
+        ) != 0 as ::core::ffi::c_int
+        {
+            (*image).height = 0 as ::core::ffi::c_int;
+            (*image).width = (*image).height;
+        }
+    }
+    if (*image).width <= 0 as ::core::ffi::c_int || (*image).height <= 0 as ::core::ffi::c_int {
+        if (*meta).letterbox {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"%s: Cannot map the declared letterbox for %s: submitted JPEG size unknown\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
+                context,
+                if !stream_name.is_null() {
+                    stream_name
+                } else {
+                    b"(none)\0".as_ptr() as *const ::core::ffi::c_char
+                },
+            );
+        }
+        return;
+    }
+    api_detection_apply_response_geometry(
+        meta,
+        (*image).width,
+        (*image).height,
+        source_w,
+        source_h,
+        result,
+        &raw mut (*image).transform,
+    );
+}
+unsafe extern "C" fn submit_api_evidence(
+    mut context: *const ::core::ffi::c_char,
+    mut stream_name: *const ::core::ffi::c_char,
+    mut result: *const detection_result_t,
+    mut threshold: ::core::ffi::c_float,
+    mut recording_id: uint64_t,
+    mut options: *const api_detection_options_t,
+    mut evidence: *const api_detection_evidence_t,
+    mut meta: *const api_detection_response_meta_t,
+    mut image: *mut submitted_image_t,
+) {
+    let mut jpeg: *mut uint8_t = (*image).jpeg;
+    (*image).jpeg = ::core::ptr::null_mut::<uint8_t>();
+    if !has_camera_uuid(evidence)
+        || !(*evidence).evidence_enabled
+        || (*result).count <= 0 as ::core::ffi::c_int
+        || jpeg.is_null()
+        || (*image).width <= 0 as ::core::ffi::c_int
+        || (*image).height <= 0 as ::core::ffi::c_int
+    {
+        free(jpeg as *mut ::core::ffi::c_void);
+        return;
+    }
+    let mut survivors: [detection_t; 20] = [detection_t {
+        label: [0; 32],
+        confidence: 0.,
+        x: 0.,
+        y: 0.,
+        width: 0.,
+        height: 0.,
+        track_id: 0,
+        zone_id: [0; 32],
+    }; 20];
+    let mut n: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < (*result).count && n < MAX_DETECTIONS {
+        if !(threshold > 0.0f32 && (*result).detections[i as usize].confidence < threshold) {
+            let c2rust_fresh0 = n;
+            n += 1;
+            survivors[c2rust_fresh0 as usize] = (*result).detections[i as usize];
+        }
+        i += 1;
+    }
+    if n == 0 as ::core::ffi::c_int {
+        free(jpeg as *mut ::core::ffi::c_void);
+        return;
+    }
+    let mut model: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    if (*meta).model[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+        model = &raw const (*meta).model as *const ::core::ffi::c_char;
+    } else if (*options).format.0 == api_detection_format_t::API_DETECTION_FORMAT_DOODS2.0
+        && (*options).detector_name[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+        && strcmp(
+            &raw const (*options).detector_name as *const ::core::ffi::c_char,
+            b"default\0".as_ptr() as *const ::core::ffi::c_char,
+        ) != 0 as ::core::ffi::c_int
+    {
+        model = &raw const (*options).detector_name as *const ::core::ffi::c_char;
+    }
+    let mut camera: detection_evidence_camera_t = detection_evidence_camera_t {
+        camera_uuid: (*evidence).camera_uuid,
+        stream_name: stream_name,
+        evidence_enabled: r#true != 0,
+        labels_csv: (*evidence).labels_csv,
+        recording_id: recording_id as int64_t,
+    };
+    let mut engine: detection_evidence_engine_t = detection_evidence_engine_t {
+        engine_key: (*evidence).engine_key,
+        engine_type: b"api\0".as_ptr() as *const ::core::ffi::c_char,
+        model_path: model,
+        model_version: if (*meta).model_version[0usize] as ::core::ffi::c_int != 0 {
+            &raw const (*meta).model_version as *const ::core::ffi::c_char
+        } else {
+            ::core::ptr::null::<::core::ffi::c_char>()
+        },
+    };
+    let mut submitted: observation_evidence_result_t =
+        observation_evidence_result_t::OBS_EVIDENCE_INVALID;
+    let mut status: detection_evidence_status_t = detection_evidence_capture_jpeg(
+        &raw mut camera,
+        &raw mut engine,
+        &raw mut survivors as *mut detection_t,
+        n,
+        (*evidence).observed_at_ms,
+        jpeg,
+        (*image).size,
+        (*image).width,
+        (*image).height,
+        &raw mut (*image).transform,
+        &raw mut submitted,
+        ::core::ptr::null_mut::<::core::ffi::c_char>(),
+    );
+    if status.0 == detection_evidence_status_t::DETECTION_EVIDENCE_SUBMITTED.0
+        && submitted.0 != observation_evidence_result_t::OBS_EVIDENCE_ACCEPTED.0
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_DEBUG,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"%s: Observation evidence for %s not queued (%d)\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            context,
+            stream_name,
+            submitted.0,
+        );
+    }
+}
 unsafe extern "C" fn finalize_detections(
     mut context: *const ::core::ffi::c_char,
     mut stream_name: *const ::core::ffi::c_char,
     mut result: *mut detection_result_t,
     mut frame_timestamp: time_t,
     mut recording_id: uint64_t,
+    mut threshold: ::core::ffi::c_float,
+    mut options: *const api_detection_options_t,
+    mut evidence: *const api_detection_evidence_t,
+    mut meta: *const api_detection_response_meta_t,
+    mut image: *mut submitted_image_t,
 ) -> ::core::ffi::c_int {
     if stream_name.is_null()
         || *stream_name.offset(0isize) as ::core::ffi::c_int == '\0' as ::core::ffi::c_int
@@ -2439,6 +3080,8 @@ unsafe extern "C" fn finalize_detections(
                 as *const ::core::ffi::c_char,
             context,
         );
+        free((*image).jpeg as *mut ::core::ffi::c_void);
+        (*image).jpeg = ::core::ptr::null_mut::<uint8_t>();
         return 0 as ::core::ffi::c_int;
     }
     _log_message_ctx(
@@ -2461,6 +3104,8 @@ unsafe extern "C" fn finalize_detections(
             context,
             stream_name,
         );
+        free((*image).jpeg as *mut ::core::ffi::c_void);
+        (*image).jpeg = ::core::ptr::null_mut::<uint8_t>();
         return -1 as ::core::ffi::c_int;
     }
     filter_detections_by_stream_objects(stream_name, result);
@@ -2469,7 +3114,18 @@ unsafe extern "C" fn finalize_detections(
     } else {
         time(::core::ptr::null_mut::<time_t>())
     };
-    store_detections_in_db(stream_name, result, timestamp, recording_id);
+    let by_camera: bool = has_camera_uuid(evidence);
+    if by_camera {
+        store_detections_in_db_for_camera(
+            (*evidence).camera_uuid,
+            stream_name,
+            result,
+            timestamp,
+            recording_id,
+        );
+    } else {
+        store_detections_in_db(stream_name, result, timestamp, recording_id);
+    }
     if (*result).count > 0 as ::core::ffi::c_int {
         let mut event_error: [::core::ffi::c_char; 256] = [
             0 as ::core::ffi::c_char,
@@ -2729,14 +3385,25 @@ unsafe extern "C" fn finalize_detections(
             0,
             0,
         ];
-        if event_producer_publish_detection_for_stream(
-            stream_name,
-            result,
-            timestamp,
-            &raw mut event_error as *mut ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
-        ) != 0 as ::core::ffi::c_int
-        {
+        let mut rc: ::core::ffi::c_int = if by_camera as ::core::ffi::c_int != 0 {
+            event_producer_publish_detection(
+                (*evidence).camera_uuid,
+                stream_name,
+                result,
+                timestamp,
+                &raw mut event_error as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+            )
+        } else {
+            event_producer_publish_detection_for_stream(
+                stream_name,
+                result,
+                timestamp,
+                &raw mut event_error as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+            )
+        };
+        if rc != 0 as ::core::ffi::c_int {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_DEBUG,
                 LOG_COMPONENT,
@@ -2748,7 +3415,32 @@ unsafe extern "C" fn finalize_detections(
             );
         }
     }
+    submit_api_evidence(
+        context,
+        stream_name,
+        result,
+        threshold,
+        recording_id,
+        options,
+        evidence,
+        meta,
+        image,
+    );
     return 0 as ::core::ffi::c_int;
+}
+unsafe extern "C" fn stamp_evidence(
+    mut r#in: *const api_detection_evidence_t,
+    mut storage: *mut api_detection_evidence_t,
+    mut frame_timestamp: time_t,
+) -> *const api_detection_evidence_t {
+    if r#in.is_null() {
+        return ::core::ptr::null::<api_detection_evidence_t>();
+    }
+    *storage = *r#in;
+    if (*storage).observed_at_ms <= 0 as int64_t {
+        (*storage).observed_at_ms = detection_evidence_observed_at_ms(frame_timestamp);
+    }
+    return storage;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn init_api_detection_system() -> ::core::ffi::c_int {
@@ -2824,8 +3516,47 @@ pub unsafe extern "C" fn detect_objects_api_with_options(
     mut frame_timestamp: time_t,
     mut options: *const api_detection_options_t,
 ) -> ::core::ffi::c_int {
+    return detect_objects_api_with_evidence(
+        api_url,
+        frame_data,
+        width,
+        height,
+        channels,
+        result,
+        stream_name,
+        threshold,
+        recording_id,
+        frame_timestamp,
+        options,
+        ::core::ptr::null::<api_detection_evidence_t>(),
+    );
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn detect_objects_api_with_evidence(
+    mut api_url: *const ::core::ffi::c_char,
+    mut frame_data: *const ::core::ffi::c_uchar,
+    mut width: ::core::ffi::c_int,
+    mut height: ::core::ffi::c_int,
+    mut channels: ::core::ffi::c_int,
+    mut result: *mut detection_result_t,
+    mut stream_name: *const ::core::ffi::c_char,
+    mut threshold: ::core::ffi::c_float,
+    mut recording_id: uint64_t,
+    mut frame_timestamp: time_t,
+    mut options: *const api_detection_options_t,
+    mut evidence_in: *const api_detection_evidence_t,
+) -> ::core::ffi::c_int {
     static mut context: *const ::core::ffi::c_char =
         b"API Detection\0".as_ptr() as *const ::core::ffi::c_char;
+    let mut evidence_storage: api_detection_evidence_t = api_detection_evidence_t {
+        camera_uuid: ::core::ptr::null::<::core::ffi::c_char>(),
+        engine_key: ::core::ptr::null::<::core::ffi::c_char>(),
+        evidence_enabled: false,
+        labels_csv: ::core::ptr::null::<::core::ffi::c_char>(),
+        observed_at_ms: 0,
+    };
+    let mut evidence: *const api_detection_evidence_t =
+        stamp_evidence(evidence_in, &raw mut evidence_storage, frame_timestamp);
     if is_shutdown_initiated() {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
@@ -2996,6 +3727,18 @@ pub unsafe extern "C" fn detect_objects_api_with_options(
         free(jpeg_data as *mut ::core::ffi::c_void);
         return -1 as ::core::ffi::c_int;
     }
+    let mut meta: api_detection_response_meta_t = api_detection_response_meta_t {
+        letterbox: false,
+        inference_width: 0,
+        inference_height: 0,
+        scale_x: 0.,
+        scale_y: 0.,
+        pad_x: 0.,
+        pad_y: 0.,
+        pixel_units: false,
+        model: [0; 128],
+        model_version: [0; 64],
+    };
     let mut ret: ::core::ffi::c_int = perform_detection_request(
         context,
         actual_api_url,
@@ -3005,11 +3748,66 @@ pub unsafe extern "C" fn detect_objects_api_with_options(
         stream_name,
         options,
         result,
+        &raw mut meta,
     );
-    free(jpeg_data as *mut ::core::ffi::c_void);
     if ret == 0 as ::core::ffi::c_int {
-        ret = finalize_detections(context, stream_name, result, frame_timestamp, recording_id);
+        let mut image: submitted_image_t = submitted_image_t {
+            jpeg: jpeg_data as *mut uint8_t,
+            size: jpeg_size,
+            width: if snapshot_ok as ::core::ffi::c_int != 0 {
+                0 as ::core::ffi::c_int
+            } else {
+                width
+            },
+            height: if snapshot_ok as ::core::ffi::c_int != 0 {
+                0 as ::core::ffi::c_int
+            } else {
+                height
+            },
+            transform: observation_evidence_transform_t {
+                mode: observation_transform_mode_t::OBS_TRANSFORM_NONE,
+                source_width: 0,
+                source_height: 0,
+                inference_width: 0,
+                inference_height: 0,
+                scale_x: 0.,
+                scale_y: 0.,
+                pad_x: 0.,
+                pad_y: 0.,
+            },
+        };
+        jpeg_data = ::core::ptr::null_mut::<::core::ffi::c_uchar>();
+        apply_submitted_geometry(
+            context,
+            stream_name,
+            &raw mut meta,
+            if snapshot_ok as ::core::ffi::c_int != 0 {
+                0 as ::core::ffi::c_int
+            } else {
+                width
+            },
+            if snapshot_ok as ::core::ffi::c_int != 0 {
+                0 as ::core::ffi::c_int
+            } else {
+                height
+            },
+            result,
+            &raw mut image,
+        );
+        ret = finalize_detections(
+            context,
+            stream_name,
+            result,
+            frame_timestamp,
+            recording_id,
+            threshold,
+            options,
+            evidence,
+            &raw mut meta,
+            &raw mut image,
+        );
     }
+    free(jpeg_data as *mut ::core::ffi::c_void);
     if ret != 0 as ::core::ffi::c_int {
         (*result).count = 0 as ::core::ffi::c_int;
         return ret;
@@ -3061,8 +3859,39 @@ pub unsafe extern "C" fn detect_objects_api_snapshot_with_options(
     mut frame_timestamp: time_t,
     mut options: *const api_detection_options_t,
 ) -> ::core::ffi::c_int {
+    return detect_objects_api_snapshot_with_evidence(
+        api_url,
+        stream_name,
+        result,
+        threshold,
+        recording_id,
+        frame_timestamp,
+        options,
+        ::core::ptr::null::<api_detection_evidence_t>(),
+    );
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn detect_objects_api_snapshot_with_evidence(
+    mut api_url: *const ::core::ffi::c_char,
+    mut stream_name: *const ::core::ffi::c_char,
+    mut result: *mut detection_result_t,
+    mut threshold: ::core::ffi::c_float,
+    mut recording_id: uint64_t,
+    mut frame_timestamp: time_t,
+    mut options: *const api_detection_options_t,
+    mut evidence_in: *const api_detection_evidence_t,
+) -> ::core::ffi::c_int {
     static mut context: *const ::core::ffi::c_char =
         b"API Detection (snapshot)\0".as_ptr() as *const ::core::ffi::c_char;
+    let mut evidence_storage: api_detection_evidence_t = api_detection_evidence_t {
+        camera_uuid: ::core::ptr::null::<::core::ffi::c_char>(),
+        engine_key: ::core::ptr::null::<::core::ffi::c_char>(),
+        evidence_enabled: false,
+        labels_csv: ::core::ptr::null::<::core::ffi::c_char>(),
+        observed_at_ms: 0,
+    };
+    let mut evidence: *const api_detection_evidence_t =
+        stamp_evidence(evidence_in, &raw mut evidence_storage, frame_timestamp);
     if is_shutdown_initiated() {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
@@ -3166,6 +3995,18 @@ pub unsafe extern "C" fn detect_objects_api_snapshot_with_options(
         free(jpeg_data as *mut ::core::ffi::c_void);
         return API_DETECTION_SNAPSHOT_UNAVAILABLE;
     }
+    let mut meta: api_detection_response_meta_t = api_detection_response_meta_t {
+        letterbox: false,
+        inference_width: 0,
+        inference_height: 0,
+        scale_x: 0.,
+        scale_y: 0.,
+        pad_x: 0.,
+        pad_y: 0.,
+        pixel_units: false,
+        model: [0; 128],
+        model_version: [0; 64],
+    };
     let mut ret: ::core::ffi::c_int = perform_detection_request(
         context,
         actual_api_url,
@@ -3175,11 +4016,50 @@ pub unsafe extern "C" fn detect_objects_api_snapshot_with_options(
         stream_name,
         options,
         result,
+        &raw mut meta,
     );
-    free(jpeg_data as *mut ::core::ffi::c_void);
     if ret == 0 as ::core::ffi::c_int {
-        ret = finalize_detections(context, stream_name, result, frame_timestamp, recording_id);
+        let mut image: submitted_image_t = submitted_image_t {
+            jpeg: jpeg_data as *mut uint8_t,
+            size: jpeg_size,
+            width: 0,
+            height: 0,
+            transform: observation_evidence_transform_t {
+                mode: observation_transform_mode_t::OBS_TRANSFORM_NONE,
+                source_width: 0,
+                source_height: 0,
+                inference_width: 0,
+                inference_height: 0,
+                scale_x: 0.,
+                scale_y: 0.,
+                pad_x: 0.,
+                pad_y: 0.,
+            },
+        };
+        jpeg_data = ::core::ptr::null_mut::<::core::ffi::c_uchar>();
+        apply_submitted_geometry(
+            context,
+            stream_name,
+            &raw mut meta,
+            0 as ::core::ffi::c_int,
+            0 as ::core::ffi::c_int,
+            result,
+            &raw mut image,
+        );
+        ret = finalize_detections(
+            context,
+            stream_name,
+            result,
+            frame_timestamp,
+            recording_id,
+            threshold,
+            options,
+            evidence,
+            &raw mut meta,
+            &raw mut image,
+        );
     }
+    free(jpeg_data as *mut ::core::ffi::c_void);
     if ret != 0 as ::core::ffi::c_int {
         (*result).count = 0 as ::core::ffi::c_int;
         return -1 as ::core::ffi::c_int;
@@ -3213,3 +4093,6 @@ pub unsafe extern "C" fn detect_objects_api_snapshot(
         ::core::ptr::null::<api_detection_options_t>(),
     );
 }
+pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
+pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;

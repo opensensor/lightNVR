@@ -17,10 +17,13 @@ int __wrap_detect_objects_api_snapshot_with_options(const char *url, const char 
     return -2;
 }
 
-int __wrap_detect_objects_api_with_options(const char *url, const unsigned char *data,
+int __wrap_detect_objects_api_with_evidence(const char *url, const unsigned char *data,
         int width, int height, int channels, detection_result_t *result,
         const char *name, float threshold, uint64_t recording_id,
-        time_t timestamp, const api_detection_options_t *options) {
+        time_t timestamp, const api_detection_options_t *options,
+        const api_detection_evidence_t *evidence) {
+    TEST_ASSERT_NOT_NULL(evidence);
+    TEST_ASSERT_EQUAL_STRING(ctx->camera_uuid, evidence->camera_uuid);
     TEST_ASSERT_EQUAL_STRING("http://127.0.0.1:9001/detect", url);
     TEST_ASSERT_EQUAL_STRING("current-frame", name);
     TEST_ASSERT_EQUAL_INT(64, width);

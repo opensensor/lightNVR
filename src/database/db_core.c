@@ -972,6 +972,27 @@ static int private_existing_database_files(const char *path) {
     return 0;
 }
 
+/*
+ * INT_01 D9: same effect as db_observation_meta_regenerate_epoch(), done with
+ * raw SQL on the init connection because nothing else can use the database
+ * yet, and so db_core.c does not pull the observation layer (and its
+ * event-identity dependencies) into tools such as rebuild_recordings.
+ */
+static int regenerate_observation_epoch_after_restore(void) {
+    char epoch[LIGHTNVR_UUID_STRING_SIZE];
+    if (!db || lightnvr_uuid_generate_v4(epoch) != 0) return -1;
+    sqlite3_stmt *stmt = NULL;
+    int rc = -1;
+    if (sqlite3_prepare_v2(db, "UPDATE observation_meta SET epoch_uuid = ? WHERE id = 1;",
+                           -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, epoch, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_DONE) rc = 0;
+    }
+    sqlite3_finalize(stmt);
+    if (rc == 0) log_info("Regenerated observation cursor epoch after database restore");
+    return rc;
+}
+
 int init_database(const char *db_path) {
     return init_database_ex(db_path, DB_INIT_DEFAULT);
 }
@@ -980,6 +1001,8 @@ int init_database_ex(const char *db_path, unsigned flags) {
     int rc;
     char *err_msg = NULL;
     bool is_new_database = false;
+    /* D9: a restored backup carries the old observation cursor epoch. */
+    bool restored_from_backup = false;
     sqlite3 *test_db = NULL;
     sqlite3_stmt *stmt = NULL;
 
@@ -1134,6 +1157,7 @@ int init_database_ex(const char *db_path, unsigned flags) {
                     // Continue anyway, we'll try to create a new database
                 } else {
                     log_info("Successfully restored database from backup");
+                    restored_from_backup = true;
                 }
             } else {
                 log_warn("No backup database file found, will create a new database");
@@ -1194,6 +1218,7 @@ int init_database_ex(const char *db_path, unsigned flags) {
                                 // Continue anyway, we'll try to repair the database
                             } else {
                                 log_info("Successfully restored database from backup");
+                                restored_from_backup = true;
                             }
                         } else {
                             log_warn("No backup database file found, will attempt to repair");
@@ -1418,6 +1443,15 @@ int init_database_ex(const char *db_path, unsigned flags) {
         sqlite3_close_v2(db); // Use close_v2 for better cleanup
         db = NULL;
         return -1;
+    }
+
+    /* INT_01 D9 (contract section 7.6): the restored backup carries the old
+     * observation_meta.epoch_uuid while its change seq rewinds, so cursors
+     * issued against the lost history must stop validating. Runs after the
+     * migrations so observation_meta exists. */
+    if (restored_from_backup && !(db_init_flags & DB_INIT_NO_MIGRATE) &&
+        regenerate_observation_epoch_after_restore() != 0) {
+        log_error("Failed to regenerate the observation cursor epoch after restore");
     }
 
     /* Normalize legacy comma-separated camera tags after the schema exists.

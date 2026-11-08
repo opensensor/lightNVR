@@ -16,6 +16,7 @@
 #include "web/api_handlers.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/stream_observation_settings.h"
 #include "web/fleet_health.h"
 #define LOG_COMPONENT "StreamsAPI"
 #include "core/logger.h"
@@ -611,6 +612,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", db_streams[i].post_detection_buffer);
         cJSON_AddStringToObject(stream_obj, "detection_object_filter", db_streams[i].detection_object_filter);
         cJSON_AddStringToObject(stream_obj, "detection_object_filter_list", db_streams[i].detection_object_filter_list);
+        stream_observation_settings_to_json(stream_obj, &db_streams[i]);
         cJSON_AddNumberToObject(stream_obj, "protocol", (int)db_streams[i].protocol);
         cJSON_AddBoolToObject(stream_obj, "record_audio", db_streams[i].record_audio);
         cJSON_AddBoolToObject(stream_obj, "audio_voice_enhancement", db_streams[i].audio_voice_enhancement);
@@ -831,6 +833,7 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", config.post_detection_buffer);
     cJSON_AddStringToObject(stream_obj, "detection_object_filter", config.detection_object_filter);
     cJSON_AddStringToObject(stream_obj, "detection_object_filter_list", config.detection_object_filter_list);
+    stream_observation_settings_to_json(stream_obj, &config);
     cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
     cJSON_AddBoolToObject(stream_obj, "audio_voice_enhancement", config.audio_voice_enhancement);
@@ -1037,6 +1040,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", config.post_detection_buffer);
     cJSON_AddStringToObject(stream_obj, "detection_object_filter", config.detection_object_filter);
     cJSON_AddStringToObject(stream_obj, "detection_object_filter_list", config.detection_object_filter_list);
+    stream_observation_settings_to_json(stream_obj, &config);
     cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
     cJSON_AddBoolToObject(stream_obj, "audio_voice_enhancement", config.audio_voice_enhancement);

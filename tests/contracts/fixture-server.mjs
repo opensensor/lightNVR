@@ -24,7 +24,7 @@ export async function startFixture(options = {}) {
     throw new Error('Fixture maxStreams must be an integer from 1 to 1024');
   }
   const directory = await mkdtemp(path.join(tmpdir(), 'lightnvr-contract-'));
-  let child, output, reservation, exit, stopped = false;
+  let child, output, reservation, exit, stopped = false, expectedSignal = null, configPath, env;
   const fixture = {
     directory, logPath: path.join(directory, 'process.log'), credentials, users: {}, cameras: {}, tokens: {},
     async request(route, {principal = 'admin', method = 'GET', body, headers = {}, ...rest} = {}) {
@@ -52,6 +52,23 @@ export async function startFixture(options = {}) {
       } else if (fixture.tokens[principal]) await context.setExtraHTTPHeaders({Authorization: `Bearer ${fixture.tokens[principal]}`});
       return context;
     },
+    /** Test-only: end the current process (SIGKILL by default) and keep the directory. */
+    async kill(signal = 'SIGKILL') {
+      if (!child || child.exitCode !== null || child.signalCode !== null) throw new Error('Fixture process is not running');
+      expectedSignal = signal;
+      child.kill(signal);
+      let timer;
+      const done = await Promise.race([exit.then(() => true), new Promise(resolve => { timer = setTimeout(() => resolve(false), 15000); })]);
+      clearTimeout(timer);
+      if (!done) { child.kill('SIGKILL'); await exit; throw new Error(`Fixture did not exit on ${signal}`); }
+      if (signal === 'SIGTERM' && child.exitCode !== 0) throw new Error(`Fixture exited ${child.exitCode}/${child.signalCode} on SIGTERM`);
+    },
+    /** Test-only: start the next process generation on the same directory, config and port. */
+    async relaunch() {
+      if (child && child.exitCode === null && child.signalCode === null) throw new Error('Fixture process is still running');
+      expectedSignal = null;
+      await launch();
+    },
     async stop({failed = false} = {}) {
       if (stopped) return;
       stopped = true;
@@ -68,7 +85,7 @@ export async function startFixture(options = {}) {
       if (output) await output.close();
       const logs = await readFile(fixture.logPath, 'utf8').catch(() => '');
       const nativeFailure = /ERROR: (AddressSanitizer|LeakSanitizer)|runtime error:/.test(logs) || (child && child.exitCode !== 0 && child.exitCode !== null) || shutdownTimedOut ||
-        (child?.signalCode && !(shutdownRequested && child.signalCode === 'SIGTERM'));
+        (child?.signalCode && !(shutdownRequested && child.signalCode === 'SIGTERM') && child.signalCode !== expectedSignal);
       if (failed || nativeFailure || options.retain) console.error(`Contract fixture retained: ${directory}`);
       else await rm(directory, {recursive: true, force: true});
       if (nativeFailure) throw new Error(`Native fixture failed; inspect ${fixture.logPath}`);
@@ -79,13 +96,27 @@ export async function startFixture(options = {}) {
     fixture.port = reservation.port;
     fixture.baseURL = `http://127.0.0.1:${fixture.port}`;
     for (const dir of ['recordings', 'models']) await mkdir(path.join(directory, dir));
-    const config = `[general]\npid_file = ${directory}/lightnvr.pid\nlog_file = ${directory}/server.log\nlog_level = 2\nsyslog_enabled = false\n[storage]\npath = ${directory}/recordings\nmax_size = 0\nrecord_mp4_directly = false\n[database]\npath = ${directory}/lightnvr.db\n[web]\nport = ${fixture.port}\nbind_ip = 127.0.0.1\nroot = ${options.webRoot || `${root}/web/dist`}\nauth_enabled = true\nusername = admin\npassword = admin\nweb_thread_pool_size = 4\n[streams]\nmax_streams = ${maxStreams}\n[models]\npath = ${directory}/models\n[go2rtc]\nenabled = false\nauto_start = false\n`;
-    const configPath = path.join(directory, 'lightnvr.ini');
+    const config = `[general]\npid_file = ${directory}/lightnvr.pid\nlog_file = ${directory}/server.log\nlog_level = 2\nsyslog_enabled = false\n[storage]\npath = ${directory}/recordings\nmax_size = 0\nrecord_mp4_directly = false\n[database]\npath = ${directory}/lightnvr.db\n[web]\nport = ${fixture.port}\nbind_ip = 127.0.0.1\nroot = ${options.webRoot || `${root}/web/dist`}\nauth_enabled = true\nusername = admin\npassword = admin\nweb_thread_pool_size = 4\n[streams]\nmax_streams = ${maxStreams}\n[models]\npath = ${directory}/models\n[go2rtc]\nenabled = false\nauto_start = false\n` + (options.extraConfig ? `${options.extraConfig}\n` : '');
+    configPath = path.join(directory, 'lightnvr.ini');
     await writeFile(configPath, config);
     output = await open(fixture.logPath, 'w', 0o600);
-    await reservation.release(); reservation = null;
-    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('LIGHTNVR_')));
+    env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('LIGHTNVR_')));
     if(options.lprMasterKeyHex) env.LIGHTNVR_LPR_MASTER_KEY_HEX=options.lprMasterKeyHex;
+    await launch();
+    await fixture.json('/api/auth/users/1/password', {method: 'PUT', principal: 'anonymous', headers: {Authorization: basic({username: 'admin', password: 'admin'})}, body: {old_password: 'admin', new_password: credentials.admin.password}});
+    if (options.seed !== false) await seedFixture(fixture);
+    return fixture;
+  } catch (error) {
+    await fixture.stop({failed: true}).catch(stopError => { error.message += `; ${stopError.message}`; });
+    error.message += `; fixture: ${directory}`;
+    throw error;
+  }
+
+  /** Spawn one process generation; readiness is judged only on this generation's log output. */
+  async function launch() {
+    if (!reservation) reservation = await reservePort(fixture.port);
+    const logOffset = (await readFile(path.join(directory, 'server.log')).catch(() => Buffer.alloc(0))).length;
+    await reservation.release(); reservation = null;
     child = spawn(path.resolve(root, options.binary || process.env.LIGHTNVR_CONTRACT_BIN || 'build/eng-api-T2/bin/lightnvr'), ['-c', configPath], {cwd: root, env, stdio: ['ignore', output.fd, output.fd]});
     fixture.pid = child.pid;
     let spawnError;
@@ -99,7 +130,7 @@ export async function startFixture(options = {}) {
       // Require our PID and successful bind in our own log before connecting.
       // A PID file alone does not prove ownership of a port lost after reservation.
       const pid = await readFile(path.join(directory, 'lightnvr.pid'), 'utf8').catch(() => '');
-      const serverLog = await readFile(path.join(directory, 'server.log'), 'utf8').catch(() => '');
+      const serverLog = (await readFile(path.join(directory, 'server.log')).catch(() => Buffer.alloc(0))).subarray(logOffset).toString('utf8');
       if (Number(pid.trim()) === child.pid && serverLog.includes(`libuv_server_start: Listening on 127.0.0.1:${fixture.port}`)) {
         try { const r = await fetch(`${fixture.baseURL}/api/streams`, {signal: AbortSignal.timeout(500)}); ready = r.status === 401; } catch {}
       }
@@ -107,13 +138,6 @@ export async function startFixture(options = {}) {
       await pause(100);
     }
     if (!ready) throw new Error('Server startup timed out (or port was taken after reservation)');
-    await fixture.json('/api/auth/users/1/password', {method: 'PUT', principal: 'anonymous', headers: {Authorization: basic({username: 'admin', password: 'admin'})}, body: {old_password: 'admin', new_password: credentials.admin.password}});
-    if (options.seed !== false) await seedFixture(fixture);
-    return fixture;
-  } catch (error) {
-    await fixture.stop({failed: true}).catch(stopError => { error.message += `; ${stopError.message}`; });
-    error.message += `; fixture: ${directory}`;
-    throw error;
   }
 }
 

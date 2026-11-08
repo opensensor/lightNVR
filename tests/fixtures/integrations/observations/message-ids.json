@@ -1,0 +1,67 @@
+{
+  "rule": "message_id = UUIDv5(namespace.uuid, source + \"|\" + observation_id + \"|\" + revision), revision as a decimal string",
+  "namespace": {
+    "name": "https://lightnvr.io/ns/observation-change/v1",
+    "parent": "NAMESPACE_URL 6ba7b811-9dad-11d1-80b4-00c04fd430c8",
+    "uuid": "0bc01005-a431-522b-9124-a114f67d187a"
+  },
+  "contract_test_vector": "43ebdf02-b2d5-5403-a0ef-2a4e7d58ada9",
+  "vectors": [
+    {
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "observation_id": "55555555-5555-4555-8555-555555555555",
+      "revision": 1,
+      "name": "urn:lightnvr:11111111-1111-4111-8111-111111111111|55555555-5555-4555-8555-555555555555|1",
+      "message_id": "085e44dc-9a26-5604-9e04-8e1425a0905b"
+    },
+    {
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "observation_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "revision": 1,
+      "name": "urn:lightnvr:11111111-1111-4111-8111-111111111111|bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb|1",
+      "message_id": "d99668f3-4b89-5414-aeee-e4e65ee4c8a5"
+    },
+    {
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "observation_id": "55555555-5555-4555-8555-555555555555",
+      "revision": 2,
+      "name": "urn:lightnvr:11111111-1111-4111-8111-111111111111|55555555-5555-4555-8555-555555555555|2",
+      "message_id": "43ebdf02-b2d5-5403-a0ef-2a4e7d58ada9"
+    },
+    {
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "observation_id": "cccccccc-cccc-4ccc-8ccc-cccccccccc00",
+      "revision": 2,
+      "name": "urn:lightnvr:11111111-1111-4111-8111-111111111111|cccccccc-cccc-4ccc-8ccc-cccccccccc00|2",
+      "message_id": "16ad08e3-9eb4-5226-82af-e7185fdcdabe"
+    },
+    {
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "observation_id": "cccccccc-cccc-4ccc-8ccc-cccccccccc01",
+      "revision": 2,
+      "name": "urn:lightnvr:11111111-1111-4111-8111-111111111111|cccccccc-cccc-4ccc-8ccc-cccccccccc01|2",
+      "message_id": "a6ebc805-5df5-5a19-9c14-43c9fd05ad26"
+    },
+    {
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "observation_id": "55555555-5555-4555-8555-555555555555",
+      "revision": 3,
+      "name": "urn:lightnvr:11111111-1111-4111-8111-111111111111|55555555-5555-4555-8555-555555555555|3",
+      "message_id": "de82ee69-00f4-5e04-be22-834a86651682"
+    },
+    {
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "observation_id": "e0e0e0e0-e0e0-4e0e-8e0e-e0e0e0e0e0e0",
+      "revision": 1,
+      "name": "urn:lightnvr:11111111-1111-4111-8111-111111111111|e0e0e0e0-e0e0-4e0e-8e0e-e0e0e0e0e0e0|1",
+      "message_id": "a977c786-3b49-5f9b-a6e4-dc078b44086a"
+    },
+    {
+      "source": "urn:lightnvr:11111111-1111-4111-8111-111111111111",
+      "observation_id": "55555555-5555-4555-8555-555555555555",
+      "revision": 5,
+      "name": "urn:lightnvr:11111111-1111-4111-8111-111111111111|55555555-5555-4555-8555-555555555555|5",
+      "message_id": "c9b83216-1196-546c-852f-fcfb272051eb"
+    }
+  ]
+}

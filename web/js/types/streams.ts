@@ -4,6 +4,7 @@
  */
 import type { EptzFormFields } from '../utils/eptz-config.ts';
 import type { components } from '../../generated/api/schema';
+import type { ObservationFormFields } from '../utils/observation-evidence.ts';
 
 /**
  * A numeric form field: a number until the user edits it, then the input's
@@ -229,7 +230,7 @@ export type StreamEptzFormFields =
   { [K in Exclude<keyof EptzFormFields, 'eptzEnabled'>]: FormNumber };
 
 /** UI-owned fields only; full wire responses are mapped explicitly. */
-export type StreamFormState = StreamFormFields & StreamEptzFormFields & {
+export type StreamFormState = StreamFormFields & StreamEptzFormFields & ObservationFormFields & {
   canControlPrivacy?: boolean;
 };
 
@@ -258,6 +259,7 @@ export interface ExpandedSections {
   eptz: boolean;
   ptz: boolean;
   advanced: boolean;
+  observation: boolean;
   go2rtcOverride: boolean;
   restream: boolean;
 }

@@ -1,0 +1,1247 @@
+{
+  "suite": "INT_01 X1/X3 lightNVR <-> YA-WAMF E2E",
+  "writeback_enabled": true,
+  "mode": "host-process",
+  "started_at": 1794162509.1281445,
+  "finished_at": 1794162962.9463036,
+  "seconds": 453.8,
+  "versions": {
+    "lightnvr": {
+      "commit": "bcf5290f",
+      "branch": "feat/int01-event-evidence",
+      "dirty_tracked": true,
+      "binary": "/home/matteius/opensensor/lightNVR/build-int01-X3/bin/lightnvr"
+    },
+    "yawamf": {
+      "commit": "1cbbae74",
+      "branch": "feature/lightnvr-provider"
+    },
+    "mosquitto": "mosquitto version 2.0.22",
+    "ffmpeg": "ffmpeg version 8.0.1-3ubuntu2 Copyright (c) 2000-2025 the FFmpeg developers",
+    "detector": "loopback HTTP x1-colour-detector 1.0 (light-object-detect wire format; finds the red/blue fixture birds by colour)",
+    "classifier": "pinned x1-colour-rule-v1 (harness/yawamf_launcher.py replaces ClassifierService.classify_async_live)",
+    "python": "3.12.12"
+  },
+  "recipe": [
+    {
+      "step": "prereq: MQTT broker",
+      "outcome": "ok",
+      "detail": {
+        "broker": "mosquitto version 2.0.22",
+        "port": 46153
+      }
+    },
+    {
+      "step": "prereq: lightNVR with [mqtt] block (step 3.1)",
+      "outcome": "ok",
+      "detail": {
+        "version": "0.47.3"
+      }
+    },
+    {
+      "step": "step 1-2: detector + evidence per camera",
+      "outcome": "ok",
+      "detail": {
+        "cameras": {
+          "feeder-bulk": "6dab5ccc-193e-40ce-90e9-9ffa8117e722",
+          "feeder-east": "91eed0e0-2e86-47ce-a734-b5856abd7497",
+          "feeder-kill": "1755d8d0-c2a6-4a5b-9132-55168a387c08",
+          "feeder-moving": "d8e75d4a-f21d-46d3-b153-2d95fd96e9a3",
+          "feeder-outcomes": "542dce9e-dfdd-4f05-a451-6e21c427bd03",
+          "feeder-pair": "3676ace0-cb75-4a75-adbf-c89de606aaf4",
+          "feeder-wb": "300c0294-e470-4ef1-9e2f-b04b55c12878",
+          "feeder-wb-outage": "f73a5a16-8e66-41e7-8ad5-80fcd8c84d20"
+        },
+        "observation_evidence_enabled": true,
+        "observation_labels": "bird"
+      }
+    },
+    {
+      "step": "step 3.2: event route",
+      "outcome": "ok",
+      "detail": {
+        "route": "b6027a13-15e7-4411-85ba-78195f29ce79"
+      }
+    },
+    {
+      "step": "step 4.2: create role (recipe body)",
+      "outcome": "failed",
+      "detail": {
+        "status": 400,
+        "body": "{\"error\":\"expected_policy_version must be a positive integer\"}"
+      }
+    },
+    {
+      "step": "step 4.2: create role with expected_policy_version",
+      "outcome": "ok"
+    },
+    {
+      "step": "step 4.3: grant policy (no expected_policy_version)",
+      "outcome": "failed",
+      "detail": {
+        "status": 400,
+        "body": "{\"error\":\"expected_policy_version must be a positive integer\"}"
+      }
+    },
+    {
+      "step": "step 4.3: grant policy with expected_policy_version",
+      "outcome": "ok"
+    },
+    {
+      "step": "step 4.4: scoped token",
+      "outcome": "ok",
+      "detail": {
+        "principal": {
+          "writer_namespace": "yawamf"
+        },
+        "delivery": {
+          "mqtt_enabled": true,
+          "topic": "lightnvr/v1/events/io.lightnvr.detection.observation_changed.v1/{camera_uuid}"
+        },
+        "cameras_evidence_enabled": {
+          "1755d8d0-c2a6-4a5b-9132-55168a387c08": true,
+          "300c0294-e470-4ef1-9e2f-b04b55c12878": true,
+          "3676ace0-cb75-4a75-adbf-c89de606aaf4": true,
+          "542dce9e-dfdd-4f05-a451-6e21c427bd03": true,
+          "6dab5ccc-193e-40ce-90e9-9ffa8117e722": true,
+          "91eed0e0-2e86-47ce-a734-b5856abd7497": true,
+          "d8e75d4a-f21d-46d3-b153-2d95fd96e9a3": true,
+          "f73a5a16-8e66-41e7-8ad5-80fcd8c84d20": true
+        }
+      }
+    },
+    {
+      "step": "step 5: YA-WAMF started (MQTT subscribed)",
+      "outcome": "ok",
+      "detail": {
+        "health_version": "2.23.1-feature/lightnvr-provider+1cbbae74",
+        "classification_writeback": {
+          "enabled": true,
+          "running": true,
+          "outcomes": {},
+          "last_outcome": null,
+          "last_outcome_at": null
+        }
+      }
+    },
+    {
+      "step": "step 6.1: Test lightNVR connection",
+      "outcome": "ok",
+      "detail": {
+        "ok": true,
+        "results": [
+          {
+            "id": "api_access",
+            "status": "ok",
+            "code": "connected",
+            "message": "Connected to lightNVR 0.47.3.",
+            "values": {
+              "product_version": "0.47.3",
+              "camera_count": 8
+            }
+          },
+          {
+            "id": "event_connectivity",
+            "status": "ok",
+            "code": "connected",
+            "message": "The MQTT broker answered and the lightNVR topic matches.",
+            "values": {
+              "topic": "lightnvr"
+            }
+          },
+          {
+            "id": "evidence_access",
+            "status": "ok",
+            "code": "authorized",
+            "message": "YA-WAMF may read detection photos.",
+            "values": {}
+          },
+          {
+            "id": "features",
+            "status": "ok",
+            "code": "listed",
+            "message": "Available: history, snapshots, annotate. Not available with this source: track_lifecycle, recorded_frame, event_clip, range_clip.",
+            "values": {
+              "supported": "history,snapshots,annotate",
+              "unsupported": "track_lifecycle,recorded_frame,event_clip,range_clip"
+            }
+          }
+        ],
+        "features": [
+          {
+            "name": "history",
+            "supported": true,
+            "reason": null
+          },
+          {
+            "name": "snapshots",
+            "supported": true,
+            "reason": null
+          },
+          {
+            "name": "annotate",
+            "supported": true,
+            "reason": null
+          },
+          {
+            "name": "track_lifecycle",
+            "supported": false,
+            "reason": "not_implemented"
+          },
+          {
+            "name": "recorded_frame",
+            "supported": false,
+            "reason": "not_implemented"
+          },
+          {
+            "name": "event_clip",
+            "supported": false,
+            "reason": "not_implemented"
+          },
+          {
+            "name": "range_clip",
+            "supported": false,
+            "reason": "not_implemented"
+          }
+        ],
+        "latest_observation": {
+          "state": "none_yet",
+          "code": null,
+          "observation_id": null,
+          "camera_uuid": null,
+          "camera_name": null,
+          "label": null,
+          "observed_at": null,
+          "photo_state": null,
+          "photo_reason": null,
+          "searched_labels": [
+            "bird"
+          ]
+        }
+      }
+    },
+    {
+      "step": "step 6.2: setup probe",
+      "outcome": "ok",
+      "detail": {
+        "status": 200,
+        "body": {
+          "items": [],
+          "next_cursor": "eyJ2IjoxLCJzZXEiOjAsImVwb2NoIjoiYTk4MjdlZDEtOTIwNC00MzgwLTg3NTctODVkNDAwYzVmYzhhIn0",
+          "has_more": false
+        }
+      }
+    },
+    {
+      "step": "step 6.2: setup probe, camera outside the token scope",
+      "outcome": "ok",
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "step": "diagnostics: token cannot read /api/system/info",
+      "outcome": "ok",
+      "detail": {
+        "status": 403
+      }
+    }
+  ],
+  "deploy_error": null,
+  "scenarios": [
+    {
+      "id": "A1",
+      "title": "identity and labels",
+      "started_at": 1794162513.8266811,
+      "evidence": {
+        "observation": {
+          "id": "5eb8a4ff-e7b5-4a71-9ef1-448e4c268f8f",
+          "camera_uuid": "91eed0e0-2e86-47ce-a734-b5856abd7497",
+          "stream_name_at_capture": "feeder-east",
+          "label": "bird",
+          "confidence": 0.899999976158142,
+          "box": {
+            "format": "xywh_normalized",
+            "x": 0.3125,
+            "y": 0.416667,
+            "width": 0.1,
+            "height": 0.177778
+          },
+          "revision": 2
+        },
+        "evidence": {
+          "asset_id": "8cc6ee43-5309-49de-a7e8-9adb605b7fb4",
+          "state": "ready",
+          "reason": null,
+          "origin": "submitted_image",
+          "media_type": "image/jpeg",
+          "width": 640,
+          "height": 360,
+          "bytes": 2125,
+          "captured_at": "2026-11-08T18:28:34.378Z",
+          "expires_at": null,
+          "transform": {
+            "mode": "none",
+            "source_width": 640,
+            "source_height": 360,
+            "inference_width": 640,
+            "inference_height": 360,
+            "scale_x": 1,
+            "scale_y": 1,
+            "pad_x": 0,
+            "pad_y": 0
+          },
+          "snapshot_url": "/api/observations/5eb8a4ff-e7b5-4a71-9ef1-448e4c268f8f/snapshot"
+        },
+        "yawamf_row": {
+          "event": "lnvr:277b5716-7899-4a09-b7f8-0885e9629983:5eb8a4ff-e7b5-4a71-9ef1-448e4c268f8f",
+          "observation_id": "5eb8a4ff-e7b5-4a71-9ef1-448e4c268f8f",
+          "source_kind": "lightnvr",
+          "source_instance": "277b5716-7899-4a09-b7f8-0885e9629983",
+          "camera_uuid": "91eed0e0-2e86-47ce-a734-b5856abd7497",
+          "camera_name": "feeder-east",
+          "scientific_name": "Prunella modularis",
+          "display_name": "Dunnock",
+          "score": 0.93,
+          "intent": "dispatch",
+          "outcome": "skipped"
+        },
+        "topic": "lightnvr/v1/events/io.lightnvr.detection.observation_changed.v1/91eed0e0-2e86-47ce-a734-b5856abd7497",
+        "mqtt_revisions": {
+          "1": {
+            "id": "9c22823f-a05c-5e38-bd1f-b99215a86eb1",
+            "cause": "created",
+            "evidence_state": "pending"
+          },
+          "2": {
+            "id": "9f4bc15a-f6c2-5c66-a248-700966dd9e7b",
+            "cause": "evidence",
+            "evidence_state": "ready"
+          },
+          "3": {
+            "id": "835d9fac-b5cb-5e04-b973-53eb82f204f3",
+            "cause": "classification",
+            "evidence_state": "ready"
+          }
+        },
+        "classifier_calls": [
+          {
+            "t": 1794162514.4532409,
+            "camera": "feeder-east",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.9,
+              38.3,
+              25.7
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          }
+        ]
+      },
+      "result": "pass",
+      "seconds": 2.0
+    },
+    {
+      "id": "A2",
+      "title": "moving-bird alignment (HTTP detector)",
+      "started_at": 1794162515.8482296,
+      "evidence": {
+        "detector": "http (loopback x1-colour-detector)",
+        "observations": [
+          {
+            "id": "3dc85cc1-196b-4e8d-8f18-9a805d20b90e",
+            "sha256": "d84a6d7aac33817ba45b29fe227186378f221f840f33e34f22feee08e1b466c8",
+            "box": {
+              "format": "xywh_normalized",
+              "x": 0.475,
+              "y": 0.416667,
+              "width": 0.1,
+              "height": 0.177778
+            },
+            "bird_px": [
+              304,
+              150,
+              368,
+              214
+            ],
+            "transform": {
+              "mode": "none",
+              "source_width": 640,
+              "source_height": 360,
+              "inference_width": 640,
+              "inference_height": 360,
+              "scale_x": 1,
+              "scale_y": 1,
+              "pad_x": 0,
+              "pad_y": 0
+            }
+          },
+          {
+            "id": "c252abcb-be23-4b40-9f54-21130a503cc9",
+            "sha256": "4338a66ac1a2a64a105d98b41aca3b165df6c10bb84c0c66bf68ca5eafbf7baf",
+            "box": {
+              "format": "xywh_normalized",
+              "x": 0.85,
+              "y": 0.416667,
+              "width": 0.1,
+              "height": 0.177778
+            },
+            "bird_px": [
+              544,
+              150,
+              608,
+              214
+            ],
+            "transform": {
+              "mode": "none",
+              "source_width": 640,
+              "source_height": 360,
+              "inference_width": 640,
+              "inference_height": 360,
+              "scale_x": 1,
+              "scale_y": 1,
+              "pad_x": 0,
+              "pad_y": 0
+            }
+          },
+          {
+            "id": "5f254536-4ee4-4b8f-8aef-2228bfbdfc00",
+            "sha256": "731fadb3aaa07602b894dc532fad34c6522c71347e287107835a190c669c18e9",
+            "box": {
+              "format": "xywh_normalized",
+              "x": 0.75,
+              "y": 0.416667,
+              "width": 0.1,
+              "height": 0.177778
+            },
+            "bird_px": [
+              480,
+              150,
+              544,
+              214
+            ],
+            "transform": {
+              "mode": "none",
+              "source_width": 640,
+              "source_height": 360,
+              "inference_width": 640,
+              "inference_height": 360,
+              "scale_x": 1,
+              "scale_y": 1,
+              "pad_x": 0,
+              "pad_y": 0
+            }
+          }
+        ],
+        "bird_x_px_per_frame": [
+          304,
+          544,
+          480
+        ],
+        "cross_frame_crop_colours": [
+          "background",
+          "background",
+          "background",
+          "background",
+          "background",
+          "background"
+        ],
+        "yawamf_species": [
+          "Prunella modularis",
+          "Prunella modularis",
+          "Prunella modularis"
+        ],
+        "classifier_calls": [
+          {
+            "t": 1794162517.0398607,
+            "camera": "feeder-moving",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.7,
+              38.5,
+              25.4
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          },
+          {
+            "t": 1794162518.3115864,
+            "camera": "feeder-moving",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.7,
+              38.5,
+              25.4
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          },
+          {
+            "t": 1794162519.592602,
+            "camera": "feeder-moving",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.7,
+              38.5,
+              25.4
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          }
+        ],
+        "local_detector": "pending: no bird-capable local model drawn on this fixture (see README)"
+      },
+      "result": "pass",
+      "seconds": 4.1
+    },
+    {
+      "id": "A3",
+      "title": "two birds in one frame",
+      "started_at": 1794162519.9196844,
+      "evidence": {
+        "asset_id": "9b6b285d-fce1-4f05-ad2d-a066e1e60bb6",
+        "batch_id": "4767590b-62ca-4bb0-a36f-73becd59fded",
+        "box_colours": {
+          "220979fd-eb6e-44c2-969e-379cd2bd615b": "red",
+          "cdd012e3-4cfc-4e86-ab25-d6e1a1817535": "blue"
+        },
+        "yawamf_species": {
+          "220979fd-eb6e-44c2-969e-379cd2bd615b": "Prunella modularis",
+          "cdd012e3-4cfc-4e86-ab25-d6e1a1817535": "Erithacus rubecula"
+        },
+        "classifier_calls": [
+          {
+            "t": 1794162520.95077,
+            "camera": "feeder-pair",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              28.2,
+              38.0,
+              185.0
+            ],
+            "red_fraction": 0.0,
+            "blue_fraction": 0.789,
+            "result": "Erithacus rubecula"
+          },
+          {
+            "t": 1794162520.9523351,
+            "camera": "feeder-pair",
+            "size": [
+              72,
+              72
+            ],
+            "mean_rgb": [
+              185.7,
+              38.5,
+              25.8
+            ],
+            "red_fraction": 0.789,
+            "blue_fraction": 0.0,
+            "result": "Prunella modularis"
+          }
+        ],
+        "yawamf_detection_rows": 2
+      },
+      "result": "pass",
+      "seconds": 2.0
+    },
+    {
+      "id": "A4",
+      "title": "replay x10 with overlapping API recovery",
+      "started_at": 1794162521.9474359,
+      "evidence": {
+        "messages_replayed": 90,
+        "distinct_messages": 9,
+        "observations": 3,
+        "rows_after": 3,
+        "extra_classifier_calls": 0,
+        "intents": {
+          "220979fd-eb6e-44c2-969e-379cd2bd615b": [
+            "dispatch",
+            "skipped"
+          ],
+          "5eb8a4ff-e7b5-4a71-9ef1-448e4c268f8f": [
+            "dispatch",
+            "skipped"
+          ],
+          "cdd012e3-4cfc-4e86-ab25-d6e1a1817535": [
+            "dispatch",
+            "skipped"
+          ]
+        },
+        "overlapping_backfill": {
+          "status": "completed",
+          "processed": 6,
+          "new_detections": 0,
+          "updated": 0,
+          "skipped": 6,
+          "errors": 0,
+          "skipped_reasons": {
+            "already_exists": 6
+          },
+          "error_reasons": {},
+          "message": "No new detections found, 6 already existed"
+        }
+      },
+      "result": "pass",
+      "seconds": 15.3
+    },
+    {
+      "id": "A12",
+      "title": "write-back: species in both products, replays and stale revisions, owner precedence, no loop",
+      "started_at": 1794162537.2456667,
+      "evidence": {
+        "species_in_both": {
+          "observation_id": "dd086cb3-c382-4518-b6aa-6017c28e3b88",
+          "yawamf_event": "lnvr:277b5716-7899-4a09-b7f8-0885e9629983:dd086cb3-c382-4518-b6aa-6017c28e3b88",
+          "yawamf": {
+            "display_name": "Dunnock",
+            "scientific_name": "Prunella modularis",
+            "common_name": "Dunnock",
+            "score": 0.93,
+            "manual_tagged": 0
+          },
+          "lightnvr_row": {
+            "key": "yawamf/species",
+            "kind": "automated",
+            "label": "Dunnock",
+            "confidence": 0.93,
+            "annotation_revision": 1,
+            "writer_namespace": "yawamf",
+            "input_revision": 2,
+            "classifier": "yawamf"
+          },
+          "lightnvr_get_classifications": {
+            "automated": [
+              {
+                "key": "yawamf/species",
+                "writer_namespace": "yawamf",
+                "classifier": "yawamf",
+                "model_version": "model.tflite",
+                "label": "Dunnock",
+                "taxonomy_id": "inat:13988",
+                "confidence": 0.93,
+                "classified_at": "2026-11-08T18:28:57.692Z",
+                "input_asset_id": "f622342b-2cc4-4fcc-bf1f-6507e799c519",
+                "input_revision": 2,
+                "kind": "automated",
+                "annotation_revision": 1,
+                "created_at": "2026-11-08T18:28:57.696Z",
+                "updated_at": "2026-11-08T18:28:57.696Z"
+              }
+            ],
+            "owner_confirmed": []
+          },
+          "lightnvr_detection_result": {
+            "label": "bird",
+            "confidence": 0.899999976158142,
+            "observation": {
+              "id": "dd086cb3-c382-4518-b6aa-6017c28e3b88",
+              "owner_confirmed": false,
+              "classification": {
+                "key": "yawamf/species",
+                "writer_namespace": "yawamf",
+                "classifier": "yawamf",
+                "model_version": "model.tflite",
+                "label": "Dunnock",
+                "taxonomy_id": "inat:13988",
+                "confidence": 0.93,
+                "classified_at": "2026-11-08T18:28:57.692Z",
+                "input_asset_id": "f622342b-2cc4-4fcc-bf1f-6507e799c519",
+                "input_revision": 2,
+                "kind": "automated",
+                "annotation_revision": 1,
+                "created_at": "2026-11-08T18:28:57.696Z",
+                "updated_at": "2026-11-08T18:28:57.696Z"
+              }
+            }
+          },
+          "writeback_job": {
+            "status": "succeeded",
+            "attempt_count": 0,
+            "retry_after": null,
+            "last_error": null,
+            "revision": 0
+          }
+        },
+        "no_feedback_loop": {
+          "classification_message_id": "c50ba2ed-b943-59a3-8076-68db2f0ee56e",
+          "observation_revision": 3,
+          "classifier_calls_for_observation": 1,
+          "intent": {
+            "notification_intent": "dispatch",
+            "notification_intent_at": "2026-11-08 18:28:57.682903",
+            "notification_outcome": "skipped",
+            "notification_outcome_at": "2026-11-08 18:28:57.684387"
+          },
+          "writeback_job_revision": 0
+        },
+        "replays_and_stale_revisions": {
+          "mqtt_messages_replayed": 30,
+          "identical_put_retries": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "stale_revision": {
+            "status": 409,
+            "code": "revision_conflict",
+            "current_label": "Dunnock"
+          },
+          "future_revision": {
+            "status": 409,
+            "code": "revision_conflict"
+          },
+          "annotations_after": [
+            {
+              "key": "yawamf/species",
+              "kind": "automated",
+              "label": "Dunnock",
+              "confidence": 0.93,
+              "annotation_revision": 1,
+              "writer_namespace": "yawamf",
+              "input_revision": 2,
+              "classifier": "yawamf"
+            }
+          ],
+          "observation_revision_after": 3
+        },
+        "owner_correction": {
+          "patch_response": {
+            "status": "updated",
+            "old_species": "Dunnock",
+            "new_species": "European Robin",
+            "manual_tagged": true
+          },
+          "yawamf": {
+            "display_name": "European Robin",
+            "scientific_name": "Erithacus rubecula",
+            "common_name": "European Robin",
+            "manual_tagged": 1
+          },
+          "lightnvr_row": {
+            "key": "yawamf/species",
+            "kind": "owner_confirmed",
+            "label": "European Robin",
+            "confidence": 1.0,
+            "annotation_revision": 2,
+            "writer_namespace": "yawamf",
+            "input_revision": 3,
+            "classifier": "yawamf"
+          },
+          "lightnvr_detection_result": {
+            "id": "dd086cb3-c382-4518-b6aa-6017c28e3b88",
+            "owner_confirmed": true,
+            "classification": {
+              "key": "yawamf/species",
+              "writer_namespace": "yawamf",
+              "classifier": "yawamf",
+              "model_version": null,
+              "label": "European Robin",
+              "taxonomy_id": "inat:13094",
+              "confidence": 1,
+              "classified_at": "2026-11-08T18:29:18.782Z",
+              "input_asset_id": "f622342b-2cc4-4fcc-bf1f-6507e799c519",
+              "input_revision": 3,
+              "kind": "owner_confirmed",
+              "annotation_revision": 2,
+              "created_at": "2026-11-08T18:28:57.696Z",
+              "updated_at": "2026-11-08T18:29:18.787Z"
+            }
+          }
+        },
+        "automated_after_owner": {
+          "lightnvr_put": {
+            "status": 409,
+            "code": "owner_decision_locked",
+            "current_kind": "owner_confirmed"
+          },
+          "yawamf_writeback_job": {
+            "status": "terminal",
+            "attempt_count": 1,
+            "retry_after": null,
+            "last_error": "dropped:owner_decision_locked",
+            "revision": 2
+          },
+          "lightnvr_row_after": {
+            "key": "yawamf/species",
+            "kind": "owner_confirmed",
+            "label": "European Robin",
+            "confidence": 1.0,
+            "annotation_revision": 2,
+            "writer_namespace": "yawamf",
+            "input_revision": 3,
+            "classifier": "yawamf"
+          }
+        },
+        "totals": {
+          "classifier_calls_for_observation": 1,
+          "yawamf_rows": 1,
+          "intent": {
+            "notification_intent": "dispatch",
+            "notification_intent_at": "2026-11-08 18:28:57.682903",
+            "notification_outcome": "skipped",
+            "notification_outcome_at": "2026-11-08 18:28:57.684387"
+          },
+          "classification_revisions_published": [
+            3,
+            4
+          ]
+        }
+      },
+      "result": "pass",
+      "seconds": 81.6
+    },
+    {
+      "id": "A13",
+      "title": "write-back survives a lightNVR outage; the YA-WAMF detection stays intact",
+      "started_at": 1794162618.881237,
+      "evidence": {
+        "observation_id": "4db73649-60d2-4311-9db3-8b4f352333c6",
+        "yawamf_event": "lnvr:277b5716-7899-4a09-b7f8-0885e9629983:4db73649-60d2-4311-9db3-8b4f352333c6",
+        "automated_before_outage": {
+          "key": "yawamf/species",
+          "kind": "automated",
+          "label": "Dunnock",
+          "confidence": 0.93,
+          "annotation_revision": 1,
+          "writer_namespace": "yawamf",
+          "input_revision": 2,
+          "classifier": "yawamf"
+        },
+        "during_outage": {
+          "patch_response": {
+            "status": "updated",
+            "new_species": "European Robin",
+            "manual_tagged": true
+          },
+          "yawamf_detection": {
+            "display_name": "European Robin",
+            "scientific_name": "Erithacus rubecula",
+            "manual_tagged": 1
+          },
+          "event_api_species": {
+            "display_name": "European Robin",
+            "scientific_name": "Erithacus rubecula",
+            "manual_tagged": true
+          },
+          "writeback_job": {
+            "status": "retryable",
+            "attempt_count": 1,
+            "retry_after": "2026-11-08 18:30:54.316406+00:00",
+            "last_error": "retry:source_unreachable:request_error",
+            "revision": 1
+          },
+          "writeback_job_end_of_outage": {
+            "status": "retryable",
+            "attempt_count": 1,
+            "retry_after": "2026-11-08 18:30:54.316406+00:00",
+            "last_error": "retry:source_unreachable:request_error",
+            "revision": 1
+          },
+          "health_classification_writeback": {
+            "enabled": true,
+            "running": true,
+            "outcomes": {
+              "succeeded:stored": 9,
+              "dropped:owner_decision_locked": 1,
+              "retry:source_unreachable": 1
+            },
+            "last_outcome": "retry:source_unreachable",
+            "last_outcome_at": 1794162624.316406
+          },
+          "seconds_down": 46.8
+        },
+        "after_restart": {
+          "lightnvr_row": {
+            "key": "yawamf/species",
+            "kind": "owner_confirmed",
+            "label": "European Robin",
+            "confidence": 1.0,
+            "annotation_revision": 2,
+            "writer_namespace": "yawamf",
+            "input_revision": 3,
+            "classifier": "yawamf"
+          },
+          "writeback_job": {
+            "status": "succeeded",
+            "attempt_count": 1,
+            "retry_after": null,
+            "last_error": null,
+            "revision": 1
+          },
+          "converged_seconds_after_restart": 14.0,
+          "lightnvr_detection_result": {
+            "id": "4db73649-60d2-4311-9db3-8b4f352333c6",
+            "owner_confirmed": true,
+            "classification": {
+              "key": "yawamf/species",
+              "writer_namespace": "yawamf",
+              "classifier": "yawamf",
+              "model_version": null,
+              "label": "European Robin",
+              "taxonomy_id": "inat:13094",
+              "confidence": 1,
+              "classified_at": "2026-11-08T18:31:24.327Z",
+              "input_asset_id": "086ef605-3fb8-4d6f-ac5d-77302a8d1ea8",
+              "input_revision": 3,
+              "kind": "owner_confirmed",
+              "annotation_revision": 2,
+              "created_at": "2026-11-08T18:30:19.797Z",
+              "updated_at": "2026-11-08T18:31:24.332Z"
+            }
+          }
+        },
+        "classifier_calls_for_observation": 1,
+        "intent": {
+          "notification_intent": "dispatch",
+          "notification_intent_at": "2026-11-08 18:30:19.784367",
+          "notification_outcome": "skipped",
+          "notification_outcome_at": "2026-11-08 18:30:19.785593"
+        }
+      },
+      "result": "pass",
+      "seconds": 75.7
+    },
+    {
+      "id": "A7-annotate",
+      "title": "annotate needs observations.annotate on the capture camera",
+      "started_at": 1794162694.5667305,
+      "evidence": {
+        "observation_id": "dd086cb3-c382-4518-b6aa-6017c28e3b88",
+        "without_annotate": {
+          "existing_key": [
+            403,
+            {
+              "error": "Forbidden",
+              "code": "forbidden"
+            }
+          ],
+          "new_key": [
+            403,
+            {
+              "error": "Forbidden",
+              "code": "forbidden"
+            }
+          ]
+        },
+        "annotate_other_camera_scope": {
+          "writer_namespace": "yawamf-east",
+          "response": [
+            404,
+            {
+              "error": "Observation not found",
+              "code": "observation_not_found"
+            }
+          ]
+        },
+        "with_annotate": {
+          "create": {
+            "status": 201,
+            "changed": true
+          },
+          "retry": {
+            "status": 200,
+            "changed": false
+          }
+        },
+        "rows_unchanged_by_refusals": true,
+        "audit_latest": [
+          {
+            "outcome": "success",
+            "result": "noop"
+          },
+          {
+            "outcome": "success",
+            "result": "created"
+          },
+          {
+            "outcome": "denied",
+            "result": "observation_not_found"
+          },
+          {
+            "outcome": "denied",
+            "result": "forbidden"
+          },
+          {
+            "outcome": "denied",
+            "result": "forbidden"
+          },
+          {
+            "outcome": "success",
+            "result": "updated"
+          }
+        ]
+      },
+      "result": "pass",
+      "seconds": 0.1
+    },
+    {
+      "id": "A5",
+      "title": "broker down for 100 observations, both apps restarted",
+      "started_at": 1794162694.6781096,
+      "evidence": {
+        "observations_created_while_broker_down": 100,
+        "outbox_states_while_broker_down": {
+          "delivered": 27,
+          "pending": 200
+        },
+        "outbox_states_after": {
+          "delivered": 327
+        },
+        "yawamf_rows_while_down": 0,
+        "yawamf_rows_after_restart": 100,
+        "converged_seconds_after_restart": 6.6,
+        "classifier_calls_for_camera": 100,
+        "outbox": "all 200 revisions delivered after the broker returned",
+        "intents": {
+          "suppressed_recovery": 100
+        },
+        "recovery_status": {
+          "state": "caught_up",
+          "source_kind": "lightnvr",
+          "source_instance": "277b5716-7899-4a09-b7f8-0885e9629983",
+          "recovery_required": false,
+          "gap_reason": null,
+          "cursor_saved": true,
+          "last_error": null,
+          "updated_at": "2026-11-08 18:32:49",
+          "last_run": {
+            "trigger": "start",
+            "started_at": 1794162765.630308,
+            "finished_at": 1794162769.1608427,
+            "result": "caught_up",
+            "detail": null,
+            "start": "resume",
+            "pages": 2,
+            "items": 198,
+            "outcomes": {
+              "already_exists": 98,
+              "admitted": 100
+            }
+          }
+        }
+      },
+      "result": "pass",
+      "seconds": 75.2
+    },
+    {
+      "id": "A6",
+      "title": "kill points end to end",
+      "started_at": 1794162769.8789027,
+      "evidence": {
+        "phase1_lightnvr_sigkill": {
+          "frames_reported_before_kill": 4,
+          "observations": 24,
+          "integrity": {
+            "asset_states": {
+              "ready": 12
+            },
+            "final_files": 12,
+            "tmp_files": 0
+          },
+          "startup_log": [
+            "[2026-11-08 13:32:54.754] [INFO] Observation evidence initialized (worker starts on first submission; queue 64 items / 33554432 bytes, 8 per camera)",
+            "[2026-11-08 13:32:54.764] [INFO] Observation publication relay started"
+          ],
+          "converged_seconds_after_restart": 31.0,
+          "ready": 24,
+          "not_ready": {},
+          "yawamf_rows": 24
+        },
+        "phase2_yawamf_sigkill": {
+          "observations_total": 44,
+          "ready": 44,
+          "yawamf_rows": 44,
+          "classifier_calls_in_phase": 20,
+          "converged_seconds_after_restart": 3.6,
+          "integrity": {
+            "asset_states": {
+              "ready": 22
+            },
+            "final_files": 22,
+            "tmp_files": 0
+          }
+        }
+      },
+      "result": "pass",
+      "seconds": 52.2
+    },
+    {
+      "id": "A8",
+      "title": "expired, unavailable, temporary and expired-cursor outcomes",
+      "started_at": 1794162822.0451794,
+      "evidence": {
+        "temporary_lightnvr_unreachable": {
+          "rows_while_unreachable": 0,
+          "recovery_status_while_unreachable": {
+            "state": "unreachable",
+            "source_kind": null,
+            "source_instance": null,
+            "recovery_required": false,
+            "gap_reason": null,
+            "cursor_saved": false,
+            "last_error": null,
+            "updated_at": null,
+            "last_run": {
+              "trigger": "start",
+              "started_at": 1794162832.8314598,
+              "finished_at": 1794162837.833155,
+              "result": "unreachable",
+              "detail": "lightNVR request to /api/integrations/capabilities timed out",
+              "start": null,
+              "pages": 0,
+              "items": 0,
+              "outcomes": {}
+            }
+          },
+          "rows_after_resume": 2,
+          "converged_seconds_after_resume": 16.0
+        },
+        "expired_and_unavailable": {
+          "lightnvr": {
+            "8d26e617-9379-4834-b538-3bbcbf8ae4dd": {
+              "case": "expired",
+              "state": "expired",
+              "reason": "retention_expired",
+              "snapshot_status": 410,
+              "snapshot_code": "evidence_expired"
+            },
+            "3ef8e39b-e08a-4a4e-a7b3-f6d99bf907ef": {
+              "case": "expired",
+              "state": "expired",
+              "reason": "retention_expired",
+              "snapshot_status": 410,
+              "snapshot_code": "evidence_expired"
+            },
+            "7f586db1-3045-42ab-881a-67410d93347a": {
+              "case": "unavailable",
+              "state": "unavailable",
+              "reason": "write_failed",
+              "snapshot_status": 404,
+              "snapshot_code": "evidence_unavailable"
+            },
+            "a88ae5eb-d50d-4c8a-a958-0c91ed44ddab": {
+              "case": "unavailable",
+              "state": "unavailable",
+              "reason": "write_failed",
+              "snapshot_status": 404,
+              "snapshot_code": "evidence_unavailable"
+            }
+          },
+          "recovery_run": {
+            "trigger": "start",
+            "started_at": 1794162940.8157122,
+            "finished_at": 1794162940.825726,
+            "result": "caught_up",
+            "detail": null,
+            "start": "resume",
+            "pages": 1,
+            "items": 6,
+            "outcomes": {
+              "already_exists": 2,
+              "evidence_expired": 2,
+              "evidence_unavailable": 2
+            }
+          },
+          "yawamf_rows": 0,
+          "backfill": {
+            "status": "completed",
+            "processed": 250,
+            "new_detections": 0,
+            "updated": 0,
+            "skipped": 250,
+            "errors": 0,
+            "skipped_reasons": {
+              "already_exists": 246,
+              "evidence_expired": 2,
+              "evidence_unavailable": 2
+            },
+            "error_reasons": {},
+            "message": "No new detections found, 246 already existed, 2 with evidence expired, 2 without an evidence image"
+          }
+        },
+        "expired_cursor_after_restore": {
+          "old_cursor_response": {
+            "status": 410,
+            "body": {
+              "error": "Cursor is older than retained observation history",
+              "code": "cursor_expired",
+              "oldest_cursor": "eyJ2IjoxLCJzZXEiOjAsImVwb2NoIjoiYWRjMjE4YjUtNjQ1Ni00YzZlLTk4YzMtZWQxNDg2MTU3YmJkIn0",
+              "oldest_observed_at": "2026-10-31T18:34:29.654Z"
+            }
+          },
+          "recovery_after_restore": {
+            "state": "caught_up",
+            "source_kind": "lightnvr",
+            "source_instance": "277b5716-7899-4a09-b7f8-0885e9629983",
+            "recovery_required": true,
+            "gap_reason": "cursor_expired",
+            "cursor_saved": true,
+            "last_error": null,
+            "updated_at": "2026-11-08 18:36:02",
+            "last_run": {
+              "trigger": "start",
+              "started_at": 1794162962.6572747,
+              "finished_at": 1794162962.7301,
+              "result": "caught_up",
+              "detail": null,
+              "start": "resume",
+              "pages": 3,
+              "items": 250,
+              "outcomes": {
+                "already_exists": 246,
+                "evidence_expired": 2,
+                "evidence_unavailable": 2
+              }
+            }
+          },
+          "diagnostics_entries": [
+            {
+              "source": "source_recovery",
+              "component": "lightnvr",
+              "severity": "warning",
+              "reason_code": "cursor_expired",
+              "message": "Source history expired before it was recovered; sightings in the gap cannot be recovered"
+            }
+          ],
+          "after_acknowledge": {
+            "state": "caught_up",
+            "recovery_required": false,
+            "gap_reason": null
+          },
+          "observations_lost_by_restore_still_in_yawamf": 2
+        }
+      },
+      "result": "pass",
+      "seconds": 140.9
+    }
+  ],
+  "workdir": "/tmp/x3full/work",
+  "counts": {
+    "detector_requests": 2175,
+    "mqtt_messages_captured": 603
+  }
+}

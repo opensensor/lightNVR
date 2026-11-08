@@ -16,6 +16,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* go2rtc_parse_external_candidates() lives in utils so builds without
+ * go2rtc (ENABLE_GO2RTC=OFF) can still validate the setting. */
+#include "utils/webrtc_candidates.h"
+
 /**
  * @brief Initialize the go2rtc process manager
  * 

@@ -3,7 +3,7 @@
  * src/web/api_handlers_detection.c, and the timelineState store in
  * components/preact/timeline/TimelinePage.tsx.
  */
-import type { StreamSummary } from './core.ts';
+import type { DetectionObservation, StreamSummary } from './core.ts';
 
 /** Anything with a Unix-second span: segments and exact detection intervals. */
 export interface TimelineRange {
@@ -74,6 +74,7 @@ export interface TimelineDetection {
   height: number;
   timestamp: number;
   end_timestamp: number;
+  observation?: DetectionObservation;
 }
 
 export interface TimelineDetectionsResponse {
