@@ -2883,9 +2883,156 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   - an expired cursor yields a recovery-required state shown in health;
   - live+recovery overlap with each message replayed 10× gives one detection
     and one intent (A4, A5 YA-WAMF half).
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commit `119d9f48` on `feature/lightnvr-provider`, not pushed)
 - **log**:
-- **files edited/created**:
+  - **Entry points** (`app/services/source_recovery_service.py`, singleton
+    `source_recovery_service`):
+    - `request(trigger, processor=None)` coalesces requests and lazily starts
+      the loop. `mqtt_service._request_source_recovery` calls it after
+      subscribing (`start`, then `reconnect`), and also on the no-broker
+      return. It is a no-op for Frigate.
+    - The loop runs every 300 s. While held up (`blocked`, `unreachable`,
+      `failed`) it backs off 30 s → 600 s; after `page_budget` it re-runs
+      at once.
+    - `run_once(trigger) -> RecoveryRun(result, detail, start, pages, items,
+      outcomes)`. Results: `caught_up|page_budget|blocked|unreachable|refused|unsupported|not_applicable|failed`.
+      Runs are serialized by a lock.
+    - Other methods: `history_window(after=, before=, cameras=)`, an async
+      iterator for the date-range backfill that never touches the cursor;
+      `acknowledge_gap()`; `get_status()`; `handles_backfill()`; `stop()`
+      (`main.py` shutdown, after MQTT stops).
+    - Pure rules live in `app/services/sources/recovery_policy.py`:
+      `filter_fingerprint`, `start_point`, `page_may_advance`,
+      `backfill_outcome` and `outcome_code`. The repository is
+      `app/repositories/source_cursor_repository.py`.
+  - **Initial cursor decision**: when no `source_cursors` row exists, start at
+    `cursor=head` (contract D10), so the first start is live-only.
+    - Paging all retained history (30 days by default) on first connection
+      would classify and store every retained sighting unasked. Scan History
+      (date-range backfill) imports retained history on request instead.
+    - A row whose cursor is NULL means "start of retained history". A changed
+      filter fingerprint resets the row to that, as §7.3 requires.
+      `RecoveryRequired(oldest_cursor=None)` from `invalid_cursor` or an
+      unsafe cursor also resets to it.
+    - The fingerprint covers the configured `camera_uuids` with no labels.
+      Recovery reads every label, and admission skips labels that are not
+      ingested, with a reason.
+  - **Retry persistence choice**: there is no `processing_job_state` row,
+    because its FK to `detections.frigate_event` cannot reference a
+    pre-admission item.
+    - The cursor is saved only after a page in which every decision is
+      `settled`. Cursors are opaque, so page boundaries are the only safe
+      resume points.
+    - The run still processes the rest of a blocked page. On the next run the
+      page is re-fetched; settled items come back as `already_admitted` and
+      only the retried item does work.
+    - `source_cursors.last_error` holds `retry: <reason> xN`,
+      `source_unreachable: …`, `source_refused: …` or `failed: …`, and is
+      cleared on the next save.
+    - Live `retry` decisions are replayed by the next interval or reconnect
+      run, because the cursor trails until recovery passes them.
+    - A permanently failing item blocks cursor progress, visibly in health.
+      Live ingestion continues meanwhile.
+  - **Expired cursor**:
+    - The run calls `mark_recovery_required`, which stores
+      `cursor=oldest_cursor` (or NULL), sets
+      `recovery_state=recovery_required`, records an
+      `error_diagnostics_history` entry (`source=source_recovery`) and logs a
+      warning.
+    - It then resumes in the same run, with at most 2 expiries per run.
+    - The state is sticky until `POST /api/backfill/source-recovery/acknowledge`.
+      `/health.source_recovery` and `GET /api/backfill/source-recovery` show
+      `recovery_required`, `gap_reason`, `last_error` and `last_run`.
+    - `/health` top-level status is not degraded by it.
+    - The `epoch` column stays NULL, because cursors are opaque and lightNVR
+      answers `410` on an epoch change.
+  - **Backfill (`routers/backfill.py`, additive)**: when the active source is
+    not Frigate, both `POST /backfill` and `/backfill/async` go through
+    `history_window` with `origin="recovery"`.
+    - `backfill_outcome` reasons: `already_exists`, `evidence_pending`,
+      `observation_missing`, `evidence_expired`, `evidence_unavailable`,
+      `unsupported_by_source` (evidence `not_implemented`), and
+      `label_not_ingested` or the filter detail. The error reasons are
+      `source_unreachable`, `source_refused`, `evidence_not_ready`,
+      `classification_unavailable` and `not_saved`.
+    - The English messages name each reason class.
+    - Whole-run outcomes:
+      - no history capability → `failed` with `unsupported_by_source`;
+      - `SourceUnavailableError` → `failed` with `source_unreachable` and
+        nothing marked skipped.
+    - Camera filters accept lightNVR UUIDs only.
+    - The labels are `settings.data.backfill_reasons.*` in all 9 locales,
+      which keeps the audit test's key parity.
+    - `backfill_service.py`, `frigate_event_absence.py` and
+      `frigate_missing_policy.py` are unchanged.
+  - **RED→GREEN**:
+    - Both new test modules first failed at collection (`ModuleNotFoundError:
+      app.services.sources.recovery_policy` and
+      `app.repositories.source_cursor_repository`).
+    - After the change, 27 pure and 19 integration tests pass. The
+      integration tests use a fake lightNVR on `httpx.MockTransport` that
+      implements the §7.3 page algorithm (watermark, `has_more`, `head`,
+      410 with `oldest_cursor`, pruning, epoch change) over observations
+      built from the vendored C3 `single-ready.json`. Cases:
+      - 100 observations with pending→ready flips between pages give exactly
+        100 detections and 100 classifier calls, with zero notifications;
+      - a crash on item 15 keeps the cursor at seq 10, and a fresh processor
+        and service resume to 30 detections and 30 classifier calls;
+      - a 503 snapshot blocks the page and is replayed;
+      - an expired epoch gives `recovery_required` in
+        `build_health_payload()` and is then acknowledged;
+      - 20 observations × 10 live replays, overlapped with recovery, give 20
+        detections, 20 classifier calls and at most one notify per key;
+      - head bootstrap, filter reset, unreachable, unsupported, the Frigate
+        no-op, and the sync and async backfill outcome reasons.
+    - A mutation check, making `page_may_advance` always True, fails the
+      retry test and the pure test.
+    - 3 MQTT hook tests were added to `pure/test_source_live_dispatch.py`.
+      An autouse recorder stops that file from starting the real loop.
+  - **Gates**: W0, `test_dead_modules`, `test_lightnvr_ingestion`,
+    `test_backfill_integration` and the new tests give 158 passed. Pure lane:
+    2220 passed, 4 skipped. Rest of the suite: 5687 passed, 56 skipped, 0
+    failed, on the exact commit content. `export_openapi.py --check`,
+    `export_openapi_types.py --check`, `dead_modules_check`,
+    `docs_consistency_check`, the changelog check, repo-wide `ruff
+    check`/`ruff format --check`, `npm run check` (0 errors, 0 warnings) and
+    the i18n vitest suite (177) are all clean.
+  - **Shared-tree note**: W7's commit `7fb42e41` left `backend/app/main.py`
+    unparseable. The `notification_intent` import and the `reconcile` phase
+    were spliced inside the `registry` import and an `await
+    _run_lifecycle_phase(` call. W6's commit carries the corrected ordering;
+    the working tree already had it. Check this when reviewing `7fb42e41` on
+    its own.
+  - **Gotchas for W9/X1**:
+    - Recovery needs an `EventProcessor`. MQTT start attaches it, and
+      `history_window` falls back to `EventProcessor()`. Tests should build
+      `SourceRecoveryService(processor=…, page_limit=…)` rather than use the
+      singleton, whose loop task outlives a test.
+    - A first start never imports history. For A4 acceptance, seed a
+      `source_cursors` row (cursor NULL or a real cursor with
+      `filter_fingerprint(camera_uuids, ())`), or drive Scan History.
+    - Setting `camera_uuids` later changes the fingerprint, which replays all
+      retained history once. It is idempotent but costs fetches.
+    - W8's `GET /api/diagnostics/source` and SourceHealthCard do not show
+      `source_recovery` yet. The data is in `/health.source_recovery` and
+      `GET /api/backfill/source-recovery`, and acknowledging needs a UI button
+      (a follow-up for W8/W9).
+    - The Scan History UI copy still says "Analyzing Frigate…" for lightNVR.
+    - X1: a lightNVR restore (epoch change) should show `recovery_required`
+      and a diagnostics entry, followed by a full catch-up from
+      `oldest_cursor`.
+- **files edited/created** (YA-WAMF):
+  - `backend/app/services/source_recovery_service.py` (new),
+    `backend/app/services/sources/recovery_policy.py` (new),
+    `backend/app/repositories/source_cursor_repository.py` (new)
+  - `backend/app/routers/backfill.py`, `backend/app/services/mqtt_service.py`,
+    `backend/app/main.py`
+  - `backend/openapi.json`, `apps/ui/src/lib/api/generated/openapi.ts`
+    (regenerated), `apps/ui/src/lib/i18n/locales/*/settings.json`
+  - `backend/tests/test_source_recovery.py` (new),
+    `backend/tests/pure/test_source_recovery_policy.py` (new),
+    `backend/tests/pure/test_source_live_dispatch.py`
+  - `docs/api.md`, `changelog.d/lightnvr-recovery.md` (new)
 
 #### W7: Durable notification intent
 - **depends_on**: [W2, W4]
