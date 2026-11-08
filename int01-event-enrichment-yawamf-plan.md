@@ -961,9 +961,91 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
     (inject a failure between write and rename); disabled mode allocates
     nothing (assert via counters or a test hook); shutdown with a full queue
     does not leak (ASan build `build-asan`).
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - RED: `test_observation_evidence` failed to link (every
+    `observation_evidence_*` symbol undefined). GREEN: 14/14, stable over 8
+    runs, in `build-int01-L3` and `build-int01-L3-asan` (ASan/UBSan/LSan
+    clean). `test_db_observations`, `test_observation_retention`,
+    `test_observation_relay` and `test_shutdown_coordinator` also pass under
+    ASan.
+  - Run: `cd build-int01-L3 && make test_observation_evidence && ./bin/test_observation_evidence`.
+  - The local build needs the apt FFmpeg headers. With the stale
+    `/usr/local/include` headers, `jpeg_encoder_cache_create` fails ("Failed to
+    open MJPEG codec for cache: Invalid argument"), every asset correctly ends
+    `unavailable(encode_failed)`, and the ready/JPEG tests fail. The L3 build
+    dirs put a symlink dir of `/usr/include/x86_64-linux-gnu/libav*` first via
+    `CMAKE_C_FLAGS=-I<dir>`. CI is unaffected.
+  - API (`include/core/observation_evidence.h`):
+    - `observation_evidence_init(const observation_evidence_config_t*)`
+      records the storage root and bounds only. Defaults: 64 items, 32 MiB
+      global (`observation_global_queue_bytes`, read in `main.c`), 8 per
+      camera, per-camera bytes = global.
+    - L6: `observation_evidence_submit(const observation_batch_input_t*, uint8_t *rgb24, int w, int h, const observation_evidence_transform_t*, char asset_uuid_out[37])`.
+      The buffer must carry `RGB24_SWS_TAIL_PADDING` slack, as
+      `ffmpeg_frame_to_rgb24_padded()` returns it. Ownership is taken on
+      **every** return.
+    - L7: `observation_evidence_submit_jpeg(batch, uint8_t *jpeg, size_t size, int w, int h, transform, asset_uuid_out)`
+      stores the exact bytes with origin `submitted_image`.
+      `observation_evidence_submit_unavailable(batch, "no_matching_media", asset_uuid_out)`
+      records ONVIF/external batches through the drop ring, so the caller
+      never takes the DB mutex.
+    - Results are `ACCEPTED`, `DROPPED_QUEUE_FULL`, `DROPPED_BUDGET`,
+      `DISABLED` (not initialized or stopping; nothing recorded) and
+      `INVALID`. The producer builds the batch (`batch_id`, `camera_uuid`,
+      objects) and the worker inserts it. Do not call
+      `db_observation_insert_batch` yourself.
+    - L4: `observation_evidence_set_budget_exhausted(camera_uuid, bool)` and
+      `observation_evidence_is_budget_exhausted()`. This is static memory, so
+      it works before init and allocates nothing. Its signature matches L4's
+      weak declaration.
+    - L10: `observation_evidence_get_stats(observation_evidence_stats_t*)`
+      covers accepted, dropped
+      (`queue_full`/`budget`/`disabled`/`untracked`), ready, failures
+      (encode/write/db), `disabled_at_encode`, interrupted, `bytes_written`,
+      backlog items/bytes, drop-ring depth, high-water items/bytes and
+      `budget_exhausted_cameras`. `allocated` and `worker_running` back the
+      "no queue when disabled" check. Counters reset on init.
+    - Helpers: `observation_evidence_transform_json()` (the §4.4 JSON) and
+      `observation_evidence_relative_path()`.
+      `observation_evidence_set_enabled_probe()` and the stock
+      `observation_evidence_stream_enabled_probe` (installed by `main.c`)
+      read `streams.observation_evidence_enabled` before encoding and record
+      `unavailable(disabled)` when it is off.
+  - Path layout: `observations/<camera_uuid>/<yyyy-mm-dd>/<asset_uuid>.jpg`,
+    relative to `config.storage_path` and stored in `observation_assets.path`.
+    The date is the **UTC** date of `observed_at_ms`. The temp file is
+    `<final>.tmp`, files are 0640 and directories 0750. This matches L4's
+    reconciler.
+  - Design:
+    - Admission uses atomic reservations, a Treiber stack (one consumer takes
+      the whole list with a single exchange, so there is no ABA) and a
+      preallocated 256-cell Vyukov ring for drop records. Wakeups use
+      `sem_post`.
+    - A producer can touch only two mutexes: the slot-registration lock (the
+      first submit for a camera) and a trylock on lazy start. The worker holds
+      neither.
+    - The worker owns a private `jpeg_encoder_cache_create` encoder, because
+      the global `jpeg_encoder_get_cached` table can evict an encoder another
+      thread is using.
+    - An item that is being processed still counts against the bounds.
+  - Gotchas:
+    - `main.c` order: L4 reconcile → L3 init → L5 relay start → detection.
+      Shutdown: detection → L5 relay stop → L3 shutdown (2 s drain) → event
+      bus/identity. Publications the worker writes during the drain are
+      relayed at the next start.
+    - Abandoned or never-encoded items are inserted directly as
+      `unavailable(interrupted)` (or `disabled`), not pending→X. L2 allows
+      these as initial states. Their origin, media type and transform are
+      NULL (no media).
+    - If the `pending→ready` commit fails after the rename, the final file is
+      unlinked, so a ready file never sits behind a non-ready row.
+    - `expires_at_ms` is not set on ready. L4/L8 derive it from the
+      per-camera age budget.
+    - Camera slots are never recycled (`MAX_STREAMS` of them). Past that, a
+      camera is bounded by the global limits only, and its budget flag cannot
+      be stored (logged).
+- **files edited/created**: `include/core/observation_evidence.h`, `src/core/observation_evidence.c`, `tests/unit/test_observation_evidence.c`, `tests/unit/CMakeLists.txt`, `src/core/main.c` (commit `5247c8ab`)
 
 #### L4: Startup reconciliation, retention and eviction
 - **depends_on**: [L2]
