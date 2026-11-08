@@ -9,7 +9,7 @@ import addFormats from 'ajv-formats';
 import standaloneCode from 'ajv/dist/standalone/index.js';
 import {buildSync} from 'esbuild';
 import {minify} from 'terser';
-import {configureContractCodegen, normalizeErrorAccumulators, normalizeRepeatedCounterChecks} from './validator-codegen.mjs';
+import {configureContractCodegen, normalizeErrorAccumulators, normalizeRepeatedCounterChecks, normalizeKnownObjectChecks} from './validator-codegen.mjs';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const nativePath = 'include/web/openapi_document_generated.h';
@@ -90,7 +90,7 @@ export async function generateArtifacts(source, target = 'all') {
       format: {beautify: true, indent_level: 2, comments: false},
     });
     if (!optimized.code) throw new Error('Validator optimization produced no code');
-    const final = await minify(normalizeRepeatedCounterChecks(optimized.code), {
+    const final = await minify(normalizeKnownObjectChecks(normalizeRepeatedCounterChecks(optimized.code)), {
       module: true, mangle: false, compress: {passes: 3},
       format: {beautify: true, indent_level: 2, comments: false},
     });

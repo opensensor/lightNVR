@@ -1,5 +1,5 @@
 /** Ajv 8.20 standalone code generation for the non-mutating contract profile.
- * The properties/required emitters follow Ajv's MIT-licensed keyword emitters
+ * The custom emitters follow Ajv's MIT-licensed keyword emitters
  * (https://github.com/ajv-validator/ajv), using independent validity temporaries
  * and explicit missing-property branches instead of assignments in conditions.
  * Copyright (c) 2015-2021 Evgeny Poberezkin; see AJV-LICENSE.
@@ -7,7 +7,7 @@
  */
 import code from 'ajv/dist/vocabularies/code.js';
 import util from 'ajv/dist/compile/util.js';
-import {_, Name} from 'ajv/dist/compile/codegen/index.js';
+import {_, Name, not} from 'ajv/dist/compile/codegen/index.js';
 import ts from 'typescript';
 export function configureContractCodegen(ajv) {
   if (ajv.opts.allErrors || ajv.opts.$data || ajv.opts.useDefaults ||
@@ -25,6 +25,60 @@ export function configureContractCodegen(ajv) {
     // Keep item tracking and branch/error evaluation unchanged.
     if(cxt.parentSchema.additionalProperties!==undefined)cxt.it.props=true;
     emitAnyOf(cxt);
+  };
+  const allOf=ajv.getKeyword('allOf');
+  const discardedPropertySchemas=[];
+  allOf.code = cxt=>{
+    // As with anyOf, the enclosing additionalProperties rule supersedes
+    // property maps from all branches. Nested schemas keep their own tracking.
+    if(cxt.parentSchema.additionalProperties!==undefined)cxt.it.props=true;
+    const {gen,schema,it}=cxt;
+    const valid=gen.name('valid');
+    schema.forEach((sch,i)=>{
+      if(util.alwaysValidSchema(it,sch))return;
+      // A branch still needs its annotations when it enforces unevaluated
+      // properties itself. Otherwise the parent's fully evaluated sentinel
+      // makes the branch's output map unnecessary. Scope this to this schema;
+      // nested schemas and array-item annotations must remain untouched.
+      discardedPropertySchemas.push(it.props===true && sch.unevaluatedProperties===undefined ? sch : undefined);
+      let branch;
+      try{branch=cxt.subschema({keyword:'allOf',schemaProp:i},valid);}
+      finally{discardedPropertySchemas.pop();}
+      cxt.ok(valid);
+      cxt.mergeEvaluated(branch);
+    });
+  };
+  const conditional=ajv.getKeyword('if');
+  conditional.code = cxt=>{
+    const {gen,parentSchema,it}=cxt;
+    if(parentSchema.then===undefined && parentSchema.else===undefined)
+      util.checkStrictMode(it,'"if" without "then" and "else" is ignored');
+    const hasClause=keyword=>parentSchema[keyword]!==undefined && !util.alwaysValidSchema(it,parentSchema[keyword]);
+    const hasThen=hasClause('then'),hasElse=hasClause('else');
+    if(!hasThen && !hasElse)return;
+    // Both branches assign valid when present; only a missing branch needs the
+    // true default. Never overwrite the condition's temporary with clause results.
+    const valid=gen.let('valid',hasThen && hasElse ? undefined : true);
+    const condition=gen.name('_valid');
+    const annotations=branch=>discardedPropertySchemas.at(-1)===parentSchema ? {...branch,props:undefined} : branch;
+    const conditionCxt=cxt.subschema({keyword:'if',compositeRule:true,createErrors:false,allErrors:false},condition);
+    cxt.mergeEvaluated(annotations(conditionCxt));
+    cxt.reset();
+    const clause=(keyword,ifClause)=>()=>{
+      const clauseValid=gen.name('_valid');
+      const clauseCxt=cxt.subschema({keyword},clauseValid);
+      gen.assign(valid,clauseValid);
+      cxt.mergeValidEvaluated(annotations(clauseCxt),valid);
+      if(ifClause)gen.assign(ifClause,_`${keyword}`);
+      else cxt.setParams({ifClause:keyword});
+    };
+    if(hasThen && hasElse){
+      const ifClause=gen.let('ifClause');
+      cxt.setParams({ifClause});
+      gen.if(condition,clause('then',ifClause),clause('else',ifClause));
+    }else if(hasThen)gen.if(condition,clause('then'));
+    else gen.if(not(condition),clause('else'));
+    cxt.pass(valid,()=>cxt.error(true));
   };
   const oneOf=ajv.getKeyword('oneOf');
   oneOf.code = cxt=>{
@@ -121,25 +175,63 @@ export function normalizeErrorAccumulators(source) {
   try{return ts.createPrinter().printFile(result.transformed[0]);}finally{result.dispose();}
 }
 
-/** Ajv can repeat the same local error-count check for pattern + format. Only
- * collapse identical strict comparisons of internal counters and literals;
- * property reads, calls, coercive comparisons and arbitrary expressions stay.
+/** Ajv can repeat local error-count checks, and optimization can turn snapshots
+ * into self-comparisons. Counters are finite integers, so loose comparisons are
+ * safe here too. Property reads, calls and arbitrary expressions stay intact.
  */
 export function normalizeRepeatedCounterChecks(source) {
   const ast = ts.createSourceFile('validators.js', source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.JS);
   const atom = node => ts.isNumericLiteral(node) || (ts.isIdentifier(node) && /^(?:errors|_errs[0-9]+)$/.test(node.text));
   const comparison = node => ts.isBinaryExpression(node) &&
-    [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(node.operatorToken.kind) &&
+    [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken,
+      ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken].includes(node.operatorToken.kind) &&
     atom(node.left) && atom(node.right);
   const result = ts.transform(ast, [ctx => root => {
     const visit = node => {
+      if(comparison(node) && node.left.getText(ast)===node.right.getText(ast))
+        return [ts.SyntaxKind.EqualsEqualsEqualsToken,ts.SyntaxKind.EqualsEqualsToken].includes(node.operatorToken.kind)
+          ? ctx.factory.createTrue() : ctx.factory.createFalse();
       if (ts.isBinaryExpression(node) &&
           [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken].includes(node.operatorToken.kind) &&
-          comparison(node.left) && comparison(node.right) && node.left.getText(ast) === node.right.getText(ast)) return node.left;
+          comparison(node.left) && comparison(node.right) && node.left.getText(ast) === node.right.getText(ast)) return visit(node.left);
       return ts.visitEachChild(node, visit, ctx);
     };
     return ts.visitNode(root, visit);
   }]);
   try { return ts.createPrinter().printFile(result.transformed[0]); }
   finally { result.dispose(); }
+}
+
+/** Remove the repeated object guard emitted by not after a fail-fast type guard.
+ * Only cross declarations of counter snapshots, with no calls or assignments.
+ * This deliberately does not perform general control-flow/type inference.
+ */
+export function normalizeKnownObjectChecks(source) {
+  const ast=ts.createSourceFile('validators.js',source,ts.ScriptTarget.ES2020,true,ts.ScriptKind.JS);
+  const compact=node=>node.getText(ast).replace(/\s+/g,'');
+  const result=ts.transform(ast,[ctx=>root=>{
+    const visit=node=>{
+      if(!ts.isBlock(node))return ts.visitEachChild(node,visit,ctx);
+      let known;
+      const statements=node.statements.map(statement=>{
+        let updated=statement;
+        if(known && ts.isIfStatement(statement) && !statement.elseStatement &&
+            /^errors===_errs\d+$/.test(compact(statement.expression))) {
+          const inner=statement.thenStatement;
+          if(ts.isIfStatement(inner) && compact(inner.expression)===`${known}&&"object"==typeof${known}&&!Array.isArray(${known})`)
+            updated=ctx.factory.updateIfStatement(statement,statement.expression,inner.thenStatement,undefined);
+        }
+        if(ts.isIfStatement(statement) && !statement.elseStatement && ts.isReturnStatement(statement.thenStatement)) {
+          const match=compact(statement.expression).match(/^!(data\d*)\|\|"object"!=typeof\1\|\|Array\.isArray\(\1\)$/);
+          known=match?.[1];
+        }else if(!(ts.isVariableStatement(statement) && statement.declarationList.declarations.every(declaration=>
+          ts.isIdentifier(declaration.name) && /^_errs\d+$/.test(declaration.name.text) &&
+          declaration.initializer && ts.isIdentifier(declaration.initializer) && declaration.initializer.text==='errors')))known=undefined;
+        return ts.visitEachChild(updated,visit,ctx);
+      });
+      return ctx.factory.updateBlock(node,statements);
+    };
+    return ts.visitNode(root,visit);
+  }]);
+  try{return ts.createPrinter().printFile(result.transformed[0]);}finally{result.dispose();}
 }

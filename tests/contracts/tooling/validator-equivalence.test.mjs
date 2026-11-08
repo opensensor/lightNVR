@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {root, schemaDocument, generateArtifacts} from '../../../scripts/contracts/generate.mjs';
-import {configureContractCodegen, normalizeRepeatedCounterChecks} from '../../../scripts/contracts/validator-codegen.mjs';
+import {configureContractCodegen, normalizeRepeatedCounterChecks, normalizeKnownObjectChecks} from '../../../scripts/contracts/validator-codegen.mjs';
 
 // The oracle is unmodified Ajv. Exercise every public guard against independent
 // valid seeds and property/type mutations, comparing diagnostics and no-effects.
@@ -62,10 +62,20 @@ test('optimized canonical validators agree with unmodified Ajv across all export
     const artifacts=await generateArtifacts(source,'web');
     const file=path.join(dir,'validators.mjs');await writeFile(file,artifacts.get('web/generated/api/validators.js'));
     const generated=await import(pathToFileURL(file));
+    assert.doesNotMatch(artifacts.get('web/generated/api/validators.js'), /errors\s*===?\s*errors/);
     let cases=0,valid=0,invalid=0;
     for(const name of doc['x-lightnvr-validators']) {
       const oracle=baseline.getSchema(`urn:lightnvr:contracts#/$defs/${name}`),candidate=generated[`validate${name}`];
-      for(const seed of seeds(doc.components.schemas[name],doc.components.schemas)) {
+      const samples=seeds(doc.components.schemas[name],doc.components.schemas);
+      if(name==='ObservationEvidence') {
+        const base=Object.fromEntries(doc.components.schemas[name].required.map(key=>[key,null]));
+        base.asset_id='00000000-0000-4000-8000-000000000001';
+        for(const state of doc.components.schemas.ObservationEvidenceState.enum)
+          for(const reason of [null,'disabled','invalid'])
+            for(const snapshot of [{},{snapshot_url:`/api/observations/${base.asset_id}/snapshot`},{snapshot_url:null}])
+              samples.push({...base,state,reason,...snapshot});
+      }
+      for(const seed of samples) {
         for(const value of mutations(seed)) {
           const original=structuredClone(value),expected=oracle(value);
           const errors=expected?null:oracle.errors.map(({keyword,schemaPath})=>({keyword,schemaPath}));
@@ -124,4 +134,58 @@ test('repeated counter checks collapse without folding property reads or calls',
   assert.match(result,/if \(0 === _errs5\)/);
   assert.match(result,/a\.x === 0 && a\.x === 0/);
   assert.match(result,/f\(\) === 0 && f\(\) === 0/);
+  const loose=normalizeRepeatedCounterChecks('if (errors == errors && errors == errors) check(); if (errors != errors) check(); if (value == value) check(); if (errors == "0" && errors == "0") check();');
+  assert.match(loose,/if \(true\)/);
+  assert.match(loose,/if \(false\)/);
+  assert.match(loose,/value == value/);
+  assert.match(loose,/errors == "0" && errors == "0"/);
+});
+
+test('conditional emitters preserve clause diagnostics and evaluated properties/items',()=>{
+  const condition={properties:{a:{type:'integer'}},required:['a']};
+  const then={properties:{b:{type:'string'}},required:['b']};
+  const otherwise={properties:{c:{type:'boolean'}},required:['c']};
+  const clauses=[{if:condition,then,else:otherwise},{if:condition,then},{if:condition,else:otherwise}];
+  const schemas=clauses.flatMap(clause=>[
+    {type:'object',...clause,unevaluatedProperties:false},
+    {type:'object',allOf:[clause],unevaluatedProperties:false},
+    {type:'object',allOf:[{...clause,unevaluatedProperties:false}],additionalProperties:true},
+    {type:'object',allOf:[{properties:{child:{type:'object',...clause,unevaluatedProperties:false}}}],additionalProperties:true},
+    ...[true,false,{type:'number'}].map(additionalProperties=>({type:'object',allOf:[clause],properties:{a:true,b:true,c:true},additionalProperties})),
+    {type:'object',anyOf:[clause,{required:['d'],properties:{d:{type:'number'}}}],unevaluatedProperties:false},
+  ]);
+  schemas.push(...[
+    {then:{prefixItems:[true,{type:'string'}]}},
+    {else:{prefixItems:[true,{type:'boolean'}]}},
+    {then:{prefixItems:[true,{type:'string'}]},else:{prefixItems:[true,{type:'boolean'}]}},
+  ].map(clause=>({type:'array',if:{prefixItems:[{type:'integer'}]},...clause,unevaluatedItems:false})));
+  const values=[null,{},[],[1],[1,'x'],['x',true],['x','wrong'],[1,'x',2],{a:1},{b:'x'},
+    {a:1,b:'x'},{a:1,b:2},{a:'wrong',c:true},{c:false},{c:'wrong'},
+    {a:1,b:'x',extra:2},{a:1,b:'x',extra:'wrong'},{a:1,b:'x',c:true},{d:2},
+    {child:{a:1,b:'x'}},{child:{a:1,b:'x',extra:2}},{child:{c:true}}];
+  for(const schema of schemas){
+    const oracle=new Ajv2020({strict:false}).compile(schema);
+    const ajv=new Ajv2020({strict:false});configureContractCodegen(ajv);
+    const candidate=ajv.compile(schema);
+    for(const value of values){
+      const original=structuredClone(value);
+      assert.equal(candidate(value),oracle(value),JSON.stringify({schema,value}));
+      assert.deepEqual(candidate.errors,oracle.errors,JSON.stringify({schema,value}));
+      assert.deepEqual(value,original);
+    }
+  }
+});
+
+test('object guard normalization requires a dominating return and only counter snapshots',()=>{
+  const guard='if (!data || "object" != typeof data || Array.isArray(data)) return false;';
+  const repeated='if (errors === _errs1) if (data && "object" == typeof data && !Array.isArray(data)) { accept(); } else { reject(); }';
+  const normalized=normalizeKnownObjectChecks(`function check(data) { ${guard} let _errs1 = errors; ${repeated} }`);
+  assert.doesNotMatch(normalized,/reject\(\)/);
+  assert.match(normalized,/accept\(\)/);
+  for(const between of ['data = null;','change();','let _errs1 = change();']){
+    const kept=normalizeKnownObjectChecks(`function check(data) { ${guard} ${between} ${repeated} }`);
+    assert.match(kept,/reject\(\)/);
+  }
+  assert.match(normalizeKnownObjectChecks(`function check(data) { ${repeated} }`),/reject\(\)/);
+  assert.match(normalizeKnownObjectChecks(`function check(data) { ${guard.replace('return false','report()')} ${repeated} }`),/reject\(\)/);
 });
