@@ -9,6 +9,7 @@
 #define _GNU_SOURCE
 
 #include "web/device_request.h"
+#include "video/onvif_device_management.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -629,12 +630,14 @@ void handle_post_test_onvif_connection(const http_request_t *req, http_response_
     }
 
     // Test ONVIF connection
-    int result = test_onvif_connection(url, username, password);
+    char detail[1024];
+    int result = test_onvif_connection_detail(url, username, password, detail, sizeof(detail));
     cJSON_Delete(root);
 
-    if (result != 0) {
-        log_error("Failed to connect to ONVIF device");
-        http_response_set_json_error(res, 500, "Failed to connect to ONVIF device");
+    if (result != ONVIF_TEST_OK) {
+        /* The camera, not this server, failed: 502 with what went wrong. */
+        log_error("[ONVIFAPI] ONVIF connection test failed (%d): %s", result, detail);
+        http_response_set_json_error(res, 502, detail[0] ? detail : "Failed to connect to ONVIF device");
         return;
     }
 
@@ -647,7 +650,8 @@ void handle_post_test_onvif_connection(const http_request_t *req, http_response_
     }
 
     cJSON_AddBoolToObject(response_json, "success", true);
-    cJSON_AddStringToObject(response_json, "message", "Successfully connected to ONVIF device");
+    cJSON_AddStringToObject(response_json, "message",
+                            detail[0] ? detail : "Successfully connected to ONVIF device");
 
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(response_json);

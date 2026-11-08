@@ -5,12 +5,15 @@
  * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
  */
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <curl/curl.h>
 #include <libavformat/avformat.h>
+#include <libavutil/error.h>
 
 #include "ezxml.h"
 #include "video/onvif_device_management.h"
@@ -48,6 +51,11 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
 }
 
 // Send a SOAP request to the ONVIF device
+/* Why the last send_soap_request() on this thread returned NULL, so the
+ * connection test can tell the user what failed. */
+enum { SOAP_FAIL_NONE = 0, SOAP_FAIL_TRANSPORT, SOAP_FAIL_AUTH, SOAP_FAIL_OTHER };
+static __thread int g_soap_failure;
+
 static char* send_soap_request(const char *device_url, const char *soap_action, const char *request_body,
                               const char *username, const char *password) {
     CURL *curl;
@@ -183,11 +191,15 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
     }
 
     // Check HTTP response code and parse any SOAP fault
+    g_soap_failure = (res == CURLE_OK) ? SOAP_FAIL_NONE : SOAP_FAIL_TRANSPORT;
     if (res == CURLE_OK) {
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 
         if (http_code != 200) {
+            bool not_authorized = http_code == 401 || http_code == 403 ||
+                                  (chunk.size > 0 && strstr(chunk.memory, "NotAuthorized") != NULL);
+            g_soap_failure = not_authorized ? SOAP_FAIL_AUTH : SOAP_FAIL_OTHER;
             log_error("ONVIF device management request failed with HTTP code %ld", http_code);
             if (chunk.size > 0) {
                 onvif_log_soap_fault(chunk.memory, chunk.size, "Device Management");
@@ -854,71 +866,138 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
 }
 
 // Test connection to an ONVIF device
-int test_onvif_connection(const char *url, const char *username, const char *password) {
-    // Attempt to get device profiles as a way to test the connection
+int onvif_plain_rtsp_fallback_url(const char *uri, char *out, size_t out_size) {
+    if (!uri || !out || out_size == 0 || strncasecmp(uri, "rtsps://", 8) != 0) return -1;
+    const char *authority = uri + 8;
+    const char *path = authority + strcspn(authority, "/?#");
+    /* userinfo ends at the last '@' inside the authority */
+    const char *host = authority;
+    for (const char *p = authority; p < path; p++) {
+        if (*p == '@') host = p + 1;
+    }
+    const char *host_end;
+    if (*host == '[') {
+        const char *close = memchr(host, ']', (size_t)(path - host));
+        if (!close) return -1;
+        host_end = close + 1;
+    } else {
+        const char *colon = memchr(host, ':', (size_t)(path - host));
+        host_end = colon ? colon : path;
+    }
+    if (host_end == host) return -1;
+    int written = snprintf(out, out_size, "rtsp://%.*s:554%s",
+                           (int)(host_end - authority), authority, path);
+    return (written > 0 && (size_t)written < out_size) ? 0 : -1;
+}
+
+/* Open and close a stream (TCP, then UDP). Fills `error` with a reason. */
+static bool probe_stream(const char *stream_url, const char *safe_url, char *error, size_t error_size) {
+    static const int protocols[] = {STREAM_PROTOCOL_TCP, STREAM_PROTOCOL_UDP};
+    int ret = -1;
+    for (size_t i = 0; i < sizeof(protocols) / sizeof(protocols[0]); i++) {
+        AVFormatContext *input_ctx = NULL;
+        ret = open_input_stream(&input_ctx, stream_url, protocols[i]);
+        if (ret >= 0) {
+            avformat_close_input(&input_ctx);
+            log_info("Successfully connected to stream: %s", safe_url);
+            return true;
+        }
+        log_warn("Failed to open stream %s over %s", safe_url, protocols[i] == STREAM_PROTOCOL_TCP ? "TCP" : "UDP");
+    }
+    char reason[AV_ERROR_MAX_STRING_SIZE] = {0};
+    av_strerror(ret, reason, sizeof(reason));
+    snprintf(error, error_size, "%s", reason[0] ? reason : "could not open stream");
+    return false;
+}
+
+int test_onvif_connection_detail(const char *url, const char *username, const char *password,
+                                 char *detail, size_t detail_size) {
+    char scratch[1];
+    if (!detail || detail_size == 0) {
+        detail = scratch;
+        detail_size = sizeof(scratch);
+    }
+    detail[0] = '\0';
+
     char safe_device_url[MAX_URL_LENGTH];
     if (url_redact_for_logging(url, safe_device_url, sizeof(safe_device_url)) != 0) {
         safe_strcpy(safe_device_url, "[invalid-url]", sizeof(safe_device_url), 0);
     }
     log_info("Testing connection to ONVIF device: %s", safe_device_url);
-    
+
+    g_soap_failure = SOAP_FAIL_NONE;
     onvif_profile_t profiles[1];
     int count = get_onvif_device_profiles(url, username, password, profiles, 1);
-    
     if (count <= 0) {
         log_error("Failed to connect to ONVIF device: %s", safe_device_url);
-        return -1;
+        switch (g_soap_failure) {
+        case SOAP_FAIL_AUTH:
+            snprintf(detail, detail_size,
+                     "The camera rejected the ONVIF credentials. Check the username and password, "
+                     "that this ONVIF user may read media profiles, and that the camera's clock is correct.");
+            return ONVIF_TEST_AUTH_FAILED;
+        case SOAP_FAIL_TRANSPORT:
+            snprintf(detail, detail_size, "Could not reach the camera's ONVIF service at %s.", safe_device_url);
+            return ONVIF_TEST_UNREACHABLE;
+        default:
+            snprintf(detail, detail_size,
+                     "The camera's ONVIF service at %s answered, but did not return a usable media profile.",
+                     safe_device_url);
+            return ONVIF_TEST_DEVICE_ERROR;
+        }
     }
-    
+
     log_info("Successfully connected to ONVIF device: %s", safe_device_url);
-    
-    // Now test the stream connection
-    if (strlen(profiles[0].stream_uri) > 0) {
-        char stream_url[MAX_URL_LENGTH];
-        char safe_stream_url[MAX_URL_LENGTH];
-
-        if (url_apply_credentials(profiles[0].stream_uri,
-                                  (username && strlen(username) > 0) ? username : NULL,
-                                  (password && strlen(password) > 0) ? password : NULL,
-                                  stream_url, sizeof(stream_url)) != 0) {
-            safe_strcpy(stream_url, profiles[0].stream_uri, sizeof(stream_url), 0);
-        }
-
-        if (url_redact_for_logging(stream_url, safe_stream_url, sizeof(safe_stream_url)) != 0) {
-            safe_strcpy(safe_stream_url, "[invalid-url]", sizeof(safe_stream_url), 0);
-        }
-
-        log_info("Testing stream connection for profile: %s, URI: %s",
-                 profiles[0].token, safe_stream_url);
-        
-        // Try to open the stream with TCP protocol first
-        AVFormatContext *input_ctx = NULL;
-        int ret = open_input_stream(&input_ctx, stream_url, STREAM_PROTOCOL_TCP);
-        
-        if (ret < 0) {
-            log_warn("Failed to connect to stream with TCP protocol, trying UDP: %s", safe_stream_url);
-            
-            // Try UDP protocol as fallback
-            ret = open_input_stream(&input_ctx, stream_url, STREAM_PROTOCOL_UDP);
-            
-            if (ret < 0) {
-                // Try with a direct RTSP URL without any modifications
-                log_warn("Failed with UDP protocol too, trying direct RTSP connection");
-
-                log_info("Trying direct RTSP URL: %s", safe_stream_url);
-                ret = open_input_stream(&input_ctx, stream_url, STREAM_PROTOCOL_TCP);
-                
-                if (ret < 0) {
-                    log_error("All connection attempts failed for stream: %s", safe_stream_url);
-                    return -1;
-                }
-            }
-        }
-        
-        // Close the stream
-        avformat_close_input(&input_ctx);
-        log_info("Successfully connected to stream: %s", safe_stream_url);
+    if (profiles[0].stream_uri[0] == '\0') {
+        snprintf(detail, detail_size, "Connected to the camera's ONVIF service.");
+        return ONVIF_TEST_OK;
     }
-    
-    return 0;
+
+    const char *user = (username && username[0]) ? username : NULL;
+    const char *pass = (password && password[0]) ? password : NULL;
+    char stream_url[MAX_URL_LENGTH];
+    char safe_stream_url[MAX_URL_LENGTH];
+    if (url_apply_credentials(profiles[0].stream_uri, user, pass, stream_url, sizeof(stream_url)) != 0) {
+        safe_strcpy(stream_url, profiles[0].stream_uri, sizeof(stream_url), 0);
+    }
+    if (url_redact_for_logging(stream_url, safe_stream_url, sizeof(safe_stream_url)) != 0) {
+        safe_strcpy(safe_stream_url, "[invalid-url]", sizeof(safe_stream_url), 0);
+    }
+    log_info("Testing stream connection for profile: %s, URI: %s", profiles[0].token, safe_stream_url);
+
+    char error[AV_ERROR_MAX_STRING_SIZE + 32];
+    if (probe_stream(stream_url, safe_stream_url, error, sizeof(error))) {
+        snprintf(detail, detail_size, "Connected to the camera and opened its stream at %s.", safe_stream_url);
+        return ONVIF_TEST_OK;
+    }
+
+    /* Some cameras advertise rtsps:// on a port where secure RTSP is
+     * disabled while plain RTSP on 554 works; try that before giving up. */
+    char fallback_url[MAX_URL_LENGTH];
+    if (onvif_plain_rtsp_fallback_url(stream_url, fallback_url, sizeof(fallback_url)) == 0) {
+        char safe_fallback[MAX_URL_LENGTH];
+        if (url_redact_for_logging(fallback_url, safe_fallback, sizeof(safe_fallback)) != 0) {
+            safe_strcpy(safe_fallback, "[invalid-url]", sizeof(safe_fallback), 0);
+        }
+        log_info("Advertised secure stream failed; trying plain RTSP: %s", safe_fallback);
+        char fallback_error[AV_ERROR_MAX_STRING_SIZE + 32];
+        if (probe_stream(fallback_url, safe_fallback, fallback_error, sizeof(fallback_error))) {
+            snprintf(detail, detail_size,
+                     "Connected to the camera. Its advertised stream %s failed (%s), "
+                     "but plain RTSP at %s works.", safe_stream_url, error, safe_fallback);
+            return ONVIF_TEST_OK;
+        }
+        snprintf(detail, detail_size,
+                 "ONVIF works, but the camera's stream could not be opened: %s (%s); also tried %s (%s).",
+                 safe_stream_url, error, safe_fallback, fallback_error);
+    } else {
+        snprintf(detail, detail_size, "ONVIF works, but the camera's stream could not be opened: %s (%s).",
+                 safe_stream_url, error);
+    }
+    log_error("All connection attempts failed for stream: %s", safe_stream_url);
+    return ONVIF_TEST_STREAM_FAILED;
+}
+
+int test_onvif_connection(const char *url, const char *username, const char *password) {
+    return test_onvif_connection_detail(url, username, password, NULL, 0);
 }

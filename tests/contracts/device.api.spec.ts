@@ -82,7 +82,7 @@ test('owned ONVIF headers, empty inventory, profiles, connection test, and claim
   const profiles=await wire(server,'/api/onvif/device/profiles',identity);expect(profiles.response.status).toBe(200);valid('OnvifProfilesResponse',profiles.body);expect(profiles.body.profiles[0].video_source_token).toBe('VideoSource_1');expect(profiles.body.profiles[0].stream_uri).toBe('');projectedResponse(doc,'/api/onvif/device/profiles','get',200,profiles.body);
   const tested=await wire(server,'/api/onvif/device/test',admin,'POST',{url:device.base+'/onvif/device_service'});expect(tested.response.status).toBe(200);valid('DeviceCommandResult',tested.body);
   device.setEmpty(true);const empty=await wire(server,'/api/onvif/device/profiles',identity);expect(empty.response.status).toBe(200);expect(empty.body.profiles).toEqual([]);valid('OnvifProfilesResponse',empty.body);
-  expect((await wire(server,'/api/onvif/device/test',admin,'POST',{url:device.base+'/onvif/device_service'})).response.status).toBe(500);
+  const noProfile=await wire(server,'/api/onvif/device/test',admin,'POST',{url:device.base+'/onvif/device_service'});expect(noProfile.response.status).toBe(502);expect(noProfile.body.error).toContain('usable media profile');
   for(const [route,body] of [['/api/onvif/discovery/discover',{network:4}],['/api/onvif/device/test',{url:device.base,username:false}],['/api/onvif/device/add',{device_url:device.base,profile_token:'x',stream_name:'A',password:4}],['/api/onvif/device/claim',{inventory_uuid:'bad',stream_name:'A'}]] as const){const before=device.requests.length;expect((await wire(server,route,admin,'POST',body)).response.status).toBe(400);expect(device.requests.slice(before)).toEqual([]);}
  }finally{await device.close();}
 });

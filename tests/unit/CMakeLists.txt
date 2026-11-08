@@ -209,6 +209,8 @@ target_link_options(test_go2rtc_override_status PRIVATE
 add_layer3_test(test_onvif_transport CI_UNIT CI_SANITIZER)
 target_link_options(test_onvif_transport PRIVATE "-Wl,--wrap=_log_message_ctx" "-Wl,--wrap=send")
 set_tests_properties(test_onvif_transport PROPERTIES TIMEOUT 20)
+add_layer3_test(test_onvif_device_test CI_UNIT CI_SANITIZER)
+set_tests_properties(test_onvif_device_test PROPERTIES TIMEOUT 60)
 target_link_options(test_onvif_poll_recovery PRIVATE
     "-Wl,--wrap=detect_motion_onvif" "-Wl,--wrap=av_usleep"
 )
