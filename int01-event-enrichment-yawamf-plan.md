@@ -1368,9 +1368,79 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
     not a later frame. Compare a hash of the decoded inference frame against
     the decoded evidence (PSNR above a threshold).
   - Existing `tests/test_stream_detection.c` and `test_detection_*` pass.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - RED: `test_detection_evidence` failed to link (every
+    `detection_evidence_*` symbol undefined). `test_detection_observation_evidence`
+    failed 3/5 ("Expected 2 Was 0", "Expected 4 Was 0": no observations from
+    the UDT). GREEN: 8/8 and 5/5 in `build-int01-L6` (LiteRT on) and
+    `build-int01-L6-asan` (ASan/UBSan clean). `test_detection_*`,
+    `test_udt_recording`, `test_api_detection`, `test_db_detections`,
+    `test_event_detection_adapter`, `test_observation_evidence`,
+    `test_db_observations`, `test_db_streams` and `tests/test_stream_detection`
+    pass in both. Failing for other reasons: `test_sod_unified` and
+    `test_sod_voc` (pre-existing), plus `test_observation_relay` and
+    `test_observation_diagnostics`, which come from another task's
+    uncommitted edits.
+  - Run: `cd build-int01-L6 && make test_detection_evidence test_detection_observation_evidence && ./bin/test_detection_evidence && ./bin/test_detection_observation_evidence`.
+    The build dirs reuse L3's apt-FFmpeg header symlink dir via `CMAKE_C_FLAGS=-I…`.
+    The ASan dir needs `-DENABLE_LITERT=OFF`, because xnnpack does not build
+    under Debug/ASan.
+  - Integration points (`src/video/unified_detection_thread.c`):
+    - `udt_evidence_wanted` / `udt_submit_evidence` (around line 3063) are
+      shared by both paths.
+    - Single engine: `detect_on_decoded_frame` keeps the embedded-model RGB
+      buffer (`evidence_rgb`, around line 3352) only when evidence is enabled.
+      It submits after the threshold compaction (around line 3390).
+    - Multi-engine: `detect_with_runtime_engines` records each engine's slice
+      of `combined` and submits one batch per object engine, because a batch
+      has a single detector provenance. The last engine gets the shared
+      buffer; earlier ones get a padded copy. Motion slices are never
+      submitted.
+    - Detection stream: the background thread already calls
+      `detect_on_decoded_frame`, so capture happens on the inference thread
+      at the detection stream's resolution. The result slot still carries
+      only `detection_result_t`.
+    - The API branch is untouched (L7).
+  - Settings: the ctx caches `observation_evidence_enabled` (atomic) and
+    `observation_labels` (under `ctx->mutex`) at thread start.
+    `unified_detection_set_observation_settings(stream_name, enabled, labels)`
+    refreshes them and is called from `put_stream_worker_locked`
+    (`api_handlers_streams_modify.c`). Nothing in this feature reads the DB
+    on the detection/packet threads. `recording_id` comes from
+    `detection_link_recording_id` (in-memory).
+  - Sidecar API (`include/video/detection_evidence.h`):
+    - `detection_evidence_build_batch`: clamped boxes (degenerate → null box),
+      confidence clamped to [0,1], `object_index` = position among eligible
+      objects, model basename, track only for `track_id >= 0` with
+      namespace = engine key and session = `detection_evidence_boot_session()`
+      (UUIDv4 per process).
+    - `detection_evidence_label_eligible`: case-insensitive, trims blanks;
+      empty means all labels.
+    - `detection_evidence_transform_compute` and
+      `detection_evidence_model_geometry`:
+      - SOD is `resize` to the network size, via new `sod_model_input_size()`.
+      - LiteRT is `letterbox`, mirroring `letterbox_rgb24()`.
+      - RealNet or unknown is `none`.
+      - The stored image is always the full decoded frame, and boxes are
+        already normalized to it.
+    - `detection_evidence_observed_at_ms`: wall-clock ms when still inside
+      the frame's second, else `frame_ts * 1000`.
+    - `detection_evidence_capture`: takes ownership of the RGB buffer on every
+      return.
+  - For L7: reuse `detection_evidence_build_batch` (pass
+    `engine_type = "api"`). Do not call `detection_evidence_capture`, which
+    accepts only `object`. Submit with `observation_evidence_submit_jpeg`, and
+    for ONVIF use `observation_evidence_submit_unavailable`. Reuse
+    `detection_evidence_boot_session()` for tracks. The single-engine API
+    branch of `detect_on_decoded_frame` and the "API engines isolated"
+    branch of `detect_with_runtime_engines` are where L7's signature changes
+    land.
+  - Gotchas:
+    - Unity has no double support, so tests use a local `ASSERT_NEAR`.
+    - `test_udt_recording` wraps `lightnvr_uuid_generate_v4`. Evidence is off
+      there, so batch IDs are never generated.
+- **files edited/created**: `include/video/detection_evidence.h`, `src/video/detection_evidence.c`, `include/video/sod_detection.h`, `src/video/sod_detection.c`, `include/video/unified_detection_thread.h`, `src/video/unified_detection_thread.c`, `src/web/api_handlers_streams_modify.c`, `tests/unit/test_detection_evidence.c`, `tests/unit/test_detection_observation_evidence.c`, `tests/unit/CMakeLists.txt` (commit `7c7082b6`)
 
 #### L7: HTTP API detector integration and ONVIF unavailable evidence
 - **depends_on**: [L2, L3, L6, C3]
