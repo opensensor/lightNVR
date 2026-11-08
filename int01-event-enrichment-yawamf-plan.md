@@ -2077,9 +2077,57 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   evidence and annotations are kept; the 0095 down-migration drops data, so
   take a backup first). Write the supported-version matrix.
 - **validation**: Doc links resolve. The recipe is executed verbatim in X1/A14.
-- **status**: Not Completed
+- **status**: Completed (commit `271f3191`, not pushed)
 - **log**:
-- **files edited/created**:
+  - `reason_not_testable` (docs part): documentation only; the recipe itself is
+    executed by X1/A14. Static verification instead:
+    - a link/anchor checker (GitHub heading slugs, duplicate suffixes, fenced
+      code skipped) over the 7 touched docs: 125 relative links, 0 broken. A
+      negative sample (bad anchor, missing file) is reported as 2 broken.
+    - a name check of every backticked env var, route, event type, metric,
+      action and reason code in the four docs against lightNVR `src`,
+      `include`, migrations, OpenAPI and `en.json`, and YA-WAMF `HEAD`
+      (`backend/app`, `apps/ui/src`, docs): all found. YA-WAMF routes were
+      checked against their router prefixes (`/api/setup/source`,
+      `/api/setup/lightnvr/test`, `/api/diagnostics/source`,
+      `/api/backfill/source-recovery`); every named test file exists.
+  - **Docs**: new `docs/integrations/YA_WAMF.md` (recipe + matrix). The event
+    route example uses `mqtt:default` with a `camera_uuid` selector and no
+    predicate; with zero stored routes no route is needed (publish-all).
+    `EVENT_CONTRACT.md` gains the `observation_changed.v1` data schema and the
+    predicate rule; `MQTT_INTEGRATION.md` an "Observation change events" section;
+    `DETECTION_ENGINES.md` an "Observation evidence (INT_01)" engine table.
+    Contract §15 names the schema and §18 points at the published matrix.
+  - **OpenAPI (L10 follow-up)**: RED: the new
+    `observations-contract.test.mjs` case failed (`observation_pipeline`
+    undefined). GREEN after adding `ObservationPipelineDiagnostics` (every
+    member the C serializer always emits is required; integers ≥ 0;
+    `oldest_observed_at` null or `ObservationTime`; camera UUID pattern
+    case-insensitive) as an optional `SystemInformation` property and to
+    `x-lightnvr-validators`. The test also parses
+    `observation_diagnostics_to_json()` and asserts the documented key set
+    equals the emitted one. `generate.mjs` and `--check` OK, `lint.mjs` valid
+    (same 5 warnings), `coverage.mjs --check` OK, tooling tests 61/61
+    (includes the untracked `native-embedding.test.mjs`).
+    `build-int01-L14` (cmake re-run from the repo): `test_api_handlers_system`
+    32/32, `test_api_handlers_openapi` 8/8. `system.api.spec.ts` 10/10 against
+    `build-int01-L11/bin/lightnvr`, which Ajv-validates the real
+    `/api/system/info` against the updated canonical schema.
+  - `web/js/types/system.ts`: `failures` widened to `Record<string, unknown>`,
+    because the generated type's index signature made `npm run typecheck`
+    fail; typecheck clean, jest `observationPipeline` 3/3.
+  - **Unverified in the docs** (for X1/A14): the whole recipe end to end;
+    Mosquitto; a real bird model (tests used synthetic detectors); the
+    user → role → policy → token sequence as one flow (each API exists and is
+    tested separately); running an older lightNVR against a 0095/0096 DB;
+    the history retention setting has no API, so the doc says so.
+- **files edited/created**: `docs/integrations/YA_WAMF.md` (new),
+  `docs/EVENT_CONTRACT.md`, `docs/MQTT_INTEGRATION.md`,
+  `docs/DETECTION_ENGINES.md`, `docs/integrations/OBSERVATIONS_CONTRACT.md`,
+  `docs/prd/INT_01_Event_Enrichment_YAWAMF.md`, `docs/prd/README.md`,
+  `docs/api/openapi.json`, `include/web/openapi_document_generated.h`,
+  `web/generated/api/{schema.d.ts,validators.d.ts,validators.js}`,
+  `web/js/types/system.ts`, `tests/contracts/tooling/observations-contract.test.mjs`
 
 ### P1 — YA-WAMF (repo `../YetAnother-WhosAtMyFeeder`, branch `feature/lightnvr-provider`)
 
