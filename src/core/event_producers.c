@@ -88,37 +88,57 @@ static int publish_event(const char *type, const char *subject,
         error_size);
 }
 
-static int durably_enqueue_event(const event_envelope_t *event,
-                                 char *error, size_t error_size) {
+const char *event_producer_enqueue_result_name(
+    event_producer_enqueue_result_t result) {
+    switch (result) {
+        case EVENT_PRODUCER_ENQUEUE_FAILED: return "failed";
+        case EVENT_PRODUCER_ENQUEUE_ENQUEUED: return "enqueued";
+        case EVENT_PRODUCER_ENQUEUE_DUPLICATE: return "duplicate";
+        case EVENT_PRODUCER_ENQUEUE_NO_ROUTE: return "no_route";
+        case EVENT_PRODUCER_ENQUEUE_MQTT_DISABLED: return "mqtt_disabled";
+        case EVENT_PRODUCER_ENQUEUE_FULL: return "full";
+    }
+    return "unknown";
+}
+
+event_producer_enqueue_result_t event_producer_enqueue_durable(
+    const event_envelope_t *event, char *error, size_t error_size) {
+    if (error && error_size > 0) error[0] = '\0';
+    if (!event) {
+        set_error(error, error_size, "event is required");
+        return EVENT_PRODUCER_ENQUEUE_FAILED;
+    }
     event_route_delivery_plan_t plan = {0};
     event_router_result_t route_result =
         event_router_evaluate_delivery(event, &plan);
     if (route_result == EVENT_ROUTER_ERROR) {
         event_route_delivery_plan_clear(&plan);
         set_error(error, error_size, "event route evaluation failed");
-        return -1;
+        return EVENT_PRODUCER_ENQUEUE_FAILED;
     }
     if (route_result == EVENT_ROUTER_DEFAULT) {
         if (!g_config.mqtt_enabled) {
             event_route_delivery_plan_clear(&plan);
-            return 0;
+            return EVENT_PRODUCER_ENQUEUE_MQTT_DISABLED;
         }
         event_outbox_enqueue_result_t result = mqtt_delivery_worker_enqueue(
             event, g_config.mqtt_topic_prefix, NULL);
         event_route_delivery_plan_clear(&plan);
-        if (result == EVENT_OUTBOX_ENQUEUED ||
-            result == EVENT_OUTBOX_DUPLICATE) {
-            return 0;
-        }
+        if (result == EVENT_OUTBOX_ENQUEUED) return EVENT_PRODUCER_ENQUEUE_ENQUEUED;
+        if (result == EVENT_OUTBOX_DUPLICATE) return EVENT_PRODUCER_ENQUEUE_DUPLICATE;
         set_error(error, error_size, "durable event outbox enqueue failed");
-        return -1;
+        return result == EVENT_OUTBOX_FULL ? EVENT_PRODUCER_ENQUEUE_FULL
+                                           : EVENT_PRODUCER_ENQUEUE_FAILED;
     }
     if (route_result == EVENT_ROUTER_NO_MATCH) {
         event_route_delivery_plan_clear(&plan);
-        return 0;
+        return EVENT_PRODUCER_ENQUEUE_NO_ROUTE;
     }
 
     bool failed = false;
+    bool any_error = false;
+    bool any_enqueued = false;
+    bool any_duplicate = false;
     bool destination_accepted[EVENT_ROUTE_MAX_COUNT] = {false};
     for (size_t index = 0; index < plan.count; index++) {
         const event_route_delivery_plan_entry_t *entry = &plan.entries[index];
@@ -144,8 +164,11 @@ static int durably_enqueue_event(const event_envelope_t *event,
         if (result != EVENT_OUTBOX_ENQUEUED &&
             result != EVENT_OUTBOX_DUPLICATE) {
             failed = true;
+            if (result != EVENT_OUTBOX_FULL) any_error = true;
         } else {
             destination_accepted[index] = true;
+            if (result == EVENT_OUTBOX_ENQUEUED) any_enqueued = true;
+            else any_duplicate = true;
         }
     }
     if (!failed) {
@@ -164,15 +187,32 @@ static int durably_enqueue_event(const event_envelope_t *event,
                 event_router_record_destination_enqueued(
                     event, &plan, entry->destination_key) != 0) {
                 failed = true;
+                any_error = true;
             }
         }
     }
     event_route_delivery_plan_clear(&plan);
     if (failed) {
         set_error(error, error_size, "durable event route enqueue failed");
-        return -1;
+        return any_error ? EVENT_PRODUCER_ENQUEUE_FAILED
+                         : EVENT_PRODUCER_ENQUEUE_FULL;
     }
-    return 0;
+    if (any_enqueued) return EVENT_PRODUCER_ENQUEUE_ENQUEUED;
+    if (any_duplicate) return EVENT_PRODUCER_ENQUEUE_DUPLICATE;
+    /* Every matched destination was the disabled default broker. */
+    return EVENT_PRODUCER_ENQUEUE_MQTT_DISABLED;
+}
+
+/* Legacy 0/-1 contract for the producers in this file: every non-failure
+ * outcome (including no route and MQTT disabled) is success. */
+static int durably_enqueue_event(const event_envelope_t *event,
+                                 char *error, size_t error_size) {
+    event_producer_enqueue_result_t result =
+        event_producer_enqueue_durable(event, error, error_size);
+    return result == EVENT_PRODUCER_ENQUEUE_FAILED ||
+           result == EVENT_PRODUCER_ENQUEUE_FULL
+        ? -1
+        : 0;
 }
 
 static int camera_subject_for_stream(

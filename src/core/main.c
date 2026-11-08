@@ -41,6 +41,7 @@
 #include "core/mqtt_event_adapter.h"
 #include "core/mqtt_client.h"
 #include "core/mqtt_delivery_worker.h"
+#include "core/observation_relay.h"
 #include "core/observation_retention.h"
 #include "core/path_utils.h"
 #include "utils/strings.h"
@@ -873,6 +874,16 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    /* INT_01 L5: publication relay. Runs the D9 cursor-head check, drains
+     * publications staged by a previous process (bounded), then starts the
+     * steady-state thread. It only persists to the durable outbox, so it may
+     * start before the MQTT delivery worker; it must start after L4
+     * reconciliation and the L3 evidence worker, and before detection. */
+    if (observation_relay_start(NULL) != 0) {
+        log_error("Failed to start observation publication relay; "
+                  "staged observation changes stay pending");
+    }
+
     // Build the immutable health policy only after database and storage
     // prerequisites are live. Collector registration is complete before any
     // evaluator or sampler worker can observe a partial startup state.
@@ -1676,6 +1687,10 @@ cleanup:
         // hangs, the safety alarm will still fire.
         cleanup_detection_resources();
 
+        /* INT_01 shutdown (reverse of startup): relay (L5) stops before the
+         * event bus and identity it uses; unrelayed rows stay pending. */
+        observation_relay_stop();
+
         // Drain accepted events while MQTT is still alive, then detach the
         // compatibility subscriber before tearing down broker state.
         log_info("Draining asynchronous event pipeline...");
@@ -1826,6 +1841,9 @@ cleanup:
         cleanup_mp4_recording_backend();
         cleanup_hls_streaming_backend();
         cleanup_transcoding_backend();
+
+        /* INT_01 shutdown (reverse of startup): relay (L5) first. */
+        observation_relay_stop();
 
         event_bus_shutdown(true);
         mqtt_event_adapter_unregister();

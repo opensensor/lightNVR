@@ -316,6 +316,14 @@ int db_observation_publication_mark(int64_t change_seq,
                                     observation_publication_state_t state,
                                     const char *last_error);
 
+/* Post-commit notification (L5 relay wakeup). Called after a committed
+ * db_observation_insert_batch() or db_observation_asset_transition() that
+ * staged publication rows, outside the DB mutex. NULL clears it. Callers of
+ * db_observation_bump_revision_locked() own their COMMIT and must notify
+ * themselves (observation_relay_notify()). */
+typedef void (*db_observation_publication_hook_t)(void);
+void db_observations_set_publication_hook(db_observation_publication_hook_t hook);
+
 /* ---- Retention -------------------------------------------------------- */
 
 typedef struct {

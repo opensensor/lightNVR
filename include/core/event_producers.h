@@ -13,8 +13,30 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "core/event_envelope.h"
 #include "telemetry/system_health_evaluator.h"
 #include "video/detection_result.h"
+
+typedef enum {
+    EVENT_PRODUCER_ENQUEUE_FAILED = -1,       /* router error or outbox error */
+    EVENT_PRODUCER_ENQUEUE_ENQUEUED = 0,      /* at least one new outbox row */
+    EVENT_PRODUCER_ENQUEUE_DUPLICATE = 1,     /* every destination already had it */
+    EVENT_PRODUCER_ENQUEUE_NO_ROUTE = 2,      /* routes exist; none matched or suppressed */
+    EVENT_PRODUCER_ENQUEUE_MQTT_DISABLED = 3, /* only the default broker, which is off */
+    EVENT_PRODUCER_ENQUEUE_FULL = 4           /* outbox refused for capacity */
+} event_producer_enqueue_result_t;
+
+const char *event_producer_enqueue_result_name(event_producer_enqueue_result_t result);
+
+/*
+ * Route an already-built envelope and persist it in the durable outbox for
+ * every accepted destination (the path system-health transitions use). It
+ * performs no network I/O and does not publish to the in-process bus; callers
+ * do that after a non-failure result. Replaying the same event ID is safe:
+ * the outbox deduplicates on source + event ID + destination.
+ */
+event_producer_enqueue_result_t event_producer_enqueue_durable(
+    const event_envelope_t *event, char *error, size_t error_size);
 
 /*
  * Normalize and enqueue an object-detection fact. This function performs no

@@ -223,6 +223,20 @@ int observation_cursor_decode(const char *cursor, int64_t *seq, char epoch_uuid[
     return result;
 }
 
+/* ---- post-commit publication hook (L5) ------------------------------- */
+
+static db_observation_publication_hook_t publication_hook = NULL;
+
+void db_observations_set_publication_hook(db_observation_publication_hook_t hook) {
+    __atomic_store_n(&publication_hook, hook, __ATOMIC_RELEASE);
+}
+
+static void notify_publications_committed(void) {
+    db_observation_publication_hook_t hook =
+        __atomic_load_n(&publication_hook, __ATOMIC_ACQUIRE);
+    if (hook) hook();
+}
+
 /* ---- write transactions (db_auth.c pattern) ---------------------------- */
 
 typedef struct {
@@ -641,6 +655,7 @@ int db_observation_insert_batch(const observation_batch_input_t *batch,
     if (rc == DB_OBS_OK) {
         safe_strcpy(result->asset_uuid, asset_uuid, sizeof(result->asset_uuid), 0);
         result->object_count = ordered;
+        if (ordered > 0) notify_publications_committed();
     } else {
         memset(result, 0, sizeof(*result));
     }
@@ -747,6 +762,7 @@ int db_observation_asset_transition(const char *asset_uuid,
         result->observations_bumped = (int)count;
         result->last_seq = last_seq;
     }
+    if (rc == DB_OBS_OK && count > 0) notify_publications_committed();
     return rc;
 }
 

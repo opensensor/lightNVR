@@ -18,6 +18,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "database/db_observations.h"
 #include "utils/uuid.h"
 
 static const event_type_definition_t EVENT_TYPES[] = {
@@ -25,6 +26,18 @@ static const event_type_definition_t EVENT_TYPES[] = {
         .type = "io.lightnvr.detection.object.v1",
         .family = "detection",
         .description = "One or more objects observed by a camera",
+        .severity = EVENT_SEVERITY_INFO,
+        .sensitivity = EVENT_SENSITIVITY_OPERATIONAL,
+        .media_policy = EVENT_MEDIA_REFERENCE_ALLOWED,
+        .expected_rate = EVENT_RATE_HIGH,
+        .subject_kind = EVENT_SUBJECT_CAMERA,
+        .default_expiry_seconds = 3600,
+    },
+    {
+        /* INT_01 (docs/integrations/OBSERVATIONS_CONTRACT.md section 6). */
+        .type = "io.lightnvr.detection.observation_changed.v1",
+        .family = "detection",
+        .description = "A durable object observation was created or changed",
         .severity = EVENT_SEVERITY_INFO,
         .sensitivity = EVENT_SENSITIVITY_OPERATIONAL,
         .media_policy = EVENT_MEDIA_REFERENCE_ALLOWED,
@@ -364,10 +377,149 @@ static bool system_subject_matches_scope(const char *subject,
     return false;
 }
 
+/* RFC 3339 UTC with optional fraction: YYYY-MM-DDTHH:MM:SS[.f{1,9}]Z. */
+static bool valid_rfc3339_utc(const char *value) {
+    if (!value) return false;
+    size_t length = strnlen(value, 40);
+    if (length < 20 || length >= 40) return false;
+    const char *pattern = "dddd-dd-ddTdd:dd:dd";
+    for (size_t index = 0; index < 19; index++) {
+        if (pattern[index] == 'd') {
+            if (!isdigit((unsigned char)value[index])) return false;
+        } else if (value[index] != pattern[index]) {
+            return false;
+        }
+    }
+    size_t cursor = 19;
+    if (value[cursor] == '.') {
+        size_t digits = 0;
+        cursor++;
+        while (isdigit((unsigned char)value[cursor]) && digits < 9) {
+            cursor++;
+            digits++;
+        }
+        if (digits == 0) return false;
+    }
+    return value[cursor] == 'Z' && value[cursor + 1] == '\0';
+}
+
+static bool valid_observation_label(const char *value) {
+    if (!value) return false;
+    size_t length = strnlen(value, OBS_LABEL_SIZE);
+    if (length == 0 || length >= OBS_LABEL_SIZE) return false;
+    for (const unsigned char *cursor = (const unsigned char *)value; *cursor;
+         cursor++) {
+        if (iscntrl(*cursor)) return false;
+    }
+    return true;
+}
+
+/* Section 6.3 payload rules for io.lightnvr.detection.observation_changed.v1. */
+static int validate_observation_changed(const event_envelope_t *event,
+                                        char *error, size_t error_size) {
+    const cJSON *data = event->data;
+    const cJSON *observation_id = required_field(
+        data, "observation_id", cJSON_String, error, error_size);
+    const cJSON *revision = required_field(data, "revision", cJSON_Number,
+                                           error, error_size);
+    const cJSON *camera_uuid = required_field(data, "camera_uuid", cJSON_String,
+                                              error, error_size);
+    const cJSON *label = required_field(data, "label", cJSON_String, error,
+                                        error_size);
+    const cJSON *observed_at = required_field(data, "observed_at", cJSON_String,
+                                              error, error_size);
+    const cJSON *cause = required_field(data, "change_cause", cJSON_String,
+                                        error, error_size);
+    const cJSON *state = required_field(data, "evidence_state", cJSON_String,
+                                        error, error_size);
+    const cJSON *asset_id = required_field(data, "asset_id", cJSON_String,
+                                           error, error_size);
+    if (!observation_id || !revision || !camera_uuid || !label ||
+        !observed_at || !cause || !state || !asset_id) {
+        return -1;
+    }
+    const cJSON *reason =
+        cJSON_GetObjectItemCaseSensitive(data, "evidence_reason");
+    if (!reason) {
+        set_error(error, error_size,
+                  "event data is missing required field 'evidence_reason'");
+        return -1;
+    }
+    if (!lightnvr_uuid_is_valid(observation_id->valuestring) ||
+        !lightnvr_uuid_is_valid(asset_id->valuestring) ||
+        !lightnvr_uuid_is_valid(camera_uuid->valuestring)) {
+        set_error(error, error_size, "observation identifiers must be UUIDs");
+        return -1;
+    }
+    if (strcmp(event->subject + 7, camera_uuid->valuestring) != 0) {
+        set_error(error, error_size,
+                  "observation camera_uuid must match the event subject");
+        return -1;
+    }
+    if (revision->valuedouble < 1 || revision->valuedouble > INT_MAX ||
+        revision->valuedouble != (double)revision->valueint) {
+        set_error(error, error_size, "observation revision must be an integer >= 1");
+        return -1;
+    }
+    if (!valid_observation_label(label->valuestring)) {
+        set_error(error, error_size, "observation label must be 1..31 bytes");
+        return -1;
+    }
+    if (!valid_rfc3339_utc(observed_at->valuestring)) {
+        set_error(error, error_size, "observation observed_at must be RFC 3339 UTC");
+        return -1;
+    }
+    if (strcmp(cause->valuestring, "created") != 0 &&
+        strcmp(cause->valuestring, "evidence") != 0 &&
+        strcmp(cause->valuestring, "classification") != 0) {
+        set_error(error, error_size, "observation change_cause is unknown");
+        return -1;
+    }
+    observation_asset_state_t evidence_state;
+    if (observation_asset_state_parse(state->valuestring, &evidence_state) != 0) {
+        set_error(error, error_size, "observation evidence_state is unknown");
+        return -1;
+    }
+    if (!cJSON_IsNull(reason) && !cJSON_IsString(reason)) {
+        set_error(error, error_size, "observation evidence_reason must be a string or null");
+        return -1;
+    }
+    const char *reason_text = cJSON_IsString(reason) ? reason->valuestring : NULL;
+    if (reason_text && reason_text[0] == '\0') {
+        set_error(error, error_size, "observation evidence_reason must not be empty");
+        return -1;
+    }
+    if (!observation_reason_is_valid(evidence_state, reason_text)) {
+        set_error(error, error_size,
+                  "observation evidence_reason is inconsistent with evidence_state");
+        return -1;
+    }
+    const cJSON *snapshot = cJSON_GetObjectItemCaseSensitive(data, "snapshot_url");
+    if (evidence_state == OBS_ASSET_READY) {
+        char expected[96];
+        snprintf(expected, sizeof(expected), "/api/observations/%s/snapshot",
+                 observation_id->valuestring);
+        if (!cJSON_IsString(snapshot) ||
+            strcmp(snapshot->valuestring, expected) != 0) {
+            set_error(error, error_size,
+                      "ready observation events need their own snapshot_url");
+            return -1;
+        }
+    } else if (snapshot) {
+        set_error(error, error_size,
+                  "snapshot_url is only allowed when evidence is ready");
+        return -1;
+    }
+    return 0;
+}
+
 static int validate_type_data(const event_envelope_t *event,
                               char *error, size_t error_size) {
     const char *type = event->type;
     const cJSON *data = event->data;
+    if (strcmp(type, "io.lightnvr.detection.observation_changed.v1") == 0) {
+        return validate_observation_changed(event, error, error_size);
+    }
     if (strcmp(type, "io.lightnvr.detection.object.v1") == 0) {
         const cJSON *count = required_field(data, "count", cJSON_Number, error,
                                             error_size);

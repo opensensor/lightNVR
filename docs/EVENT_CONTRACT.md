@@ -47,6 +47,7 @@ Every event uses a CloudEvents-inspired JSON envelope:
 | Type | Severity | Sensitivity | Default expiry | Expected rate | Media policy |
 | --- | --- | --- | ---: | --- | --- |
 | `io.lightnvr.detection.object.v1` | info | operational | 1 hour | high | reference allowed |
+| `io.lightnvr.detection.observation_changed.v1` | info | operational | 1 hour | high | reference allowed |
 | `io.lightnvr.recognition.license_plate.v1` | info | restricted | 1 hour | high | forbidden |
 | `io.lightnvr.camera.offline.v1` | warning | operational | 1 day | low | forbidden |
 | `io.lightnvr.camera.recovered.v1` | info | operational | 1 day | low | forbidden |
@@ -62,16 +63,30 @@ Expiry is internal delivery metadata and is intentionally not part of the JSON
 payload. MQTT 5 delivery may carry it as a message-expiry property; the durable
 outbox uses the same value.
 
-### Reserved: observation change events (INT_01)
+### Observation change events (INT_01)
 
-`io.lightnvr.detection.observation_changed.v1` (info, operational, 1 hour,
-high rate, reference allowed, subject `camera/<uuid>`) is reserved by the
-[observations contract](integrations/OBSERVATIONS_CONTRACT.md#6-change-event-iolightnvrdetectionobservation_changedv1).
-It is registered in `src/core/event_envelope.c` by INT_01 task L5, and this
-table gains its row at that point. Unlike the facts above, each message carries
-a deterministic UUIDv5 `id` per observation revision, and the
-[observation history API](integrations/OBSERVATIONS_CONTRACT.md#7-history-and-cursor-get-apiobservations)
-is its durable recovery path. Existing detection topics are unchanged.
+`io.lightnvr.detection.observation_changed.v1` (subject `camera/<uuid>`) is
+defined by the
+[observations contract](integrations/OBSERVATIONS_CONTRACT.md#6-change-event-iolightnvrdetectionobservation_changedv1)
+and registered in `src/core/event_envelope.c`. Unlike the facts above, each
+message carries a deterministic UUIDv5 `id` per observation revision and its
+`time` is the change row's creation time truncated to seconds, so a replay
+is byte-identical.
+
+- The publication relay (`src/core/observation_relay.c`) enqueues staged
+  changes in persistence order through `event_producer_enqueue_durable()`,
+  the same router → outbox path as other durable producers. Route
+  suppression applies; a suppressed or unrouted change is recorded as
+  `relayed_no_route`, never deleted.
+- The type holds at most 2,000 undelivered outbox rows (contract D8). Above
+  that the relay pauses and leaves changes pending, so a broker outage cannot
+  crowd out operational warnings.
+- Delivery is at least once. Consumers deduplicate on `source` + `id`, and
+  the
+  [observation history API](integrations/OBSERVATIONS_CONTRACT.md#7-history-and-cursor-get-apiobservations)
+  is the durable recovery path.
+
+Existing detection topics are unchanged.
 
 ## Data schemas
 

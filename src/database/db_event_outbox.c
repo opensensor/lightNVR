@@ -498,6 +498,28 @@ int db_event_outbox_prune_terminal(int64_t updated_before, int limit,
     return rc == SQLITE_DONE ? 0 : -1;
 }
 
+int db_event_outbox_count_undelivered_type(const char *event_type,
+                                           int64_t *count) {
+    if (!count || !valid_text(event_type, EVENT_TYPE_MAX, true)) return -1;
+    *count = 0;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        db, "SELECT count(*) FROM event_outbox WHERE event_type=? AND "
+            "state IN ('pending','delivering');", -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, event_type, -1, SQLITE_TRANSIENT);
+        rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW) *count = sqlite3_column_int64(stmt, 0);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
+    return rc == SQLITE_ROW ? 0 : -1;
+}
+
 int db_event_outbox_get_stats(const char *destination, int64_t now,
                               event_outbox_stats_t *stats) {
     if (!stats || (destination &&
