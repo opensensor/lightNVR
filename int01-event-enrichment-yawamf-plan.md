@@ -998,9 +998,109 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   - a protected asset blocks eviction and flips the budget flag;
   - the prune advances `observation_meta.oldest_seq`;
   - recording deletion leaves assets intact.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - RED: `test_observation_retention` failed to compile without
+    `core/observation_retention.h`, then failed to link with every new
+    symbol undefined once the header existed. GREEN 8/8 in `build-int01-L4`
+    and `build-int01-L4-asan` (ASan/UBSan clean, 3 repeated runs);
+    `test_db_observations` still passes 15/15. In the
+    `storage|db_|migration|observation|retention|backup|schema|stream|uuid|event_`
+    ctest subset, three tests fail, none from L4:
+    - `test_storage_reconcile_incomplete` segfaults inside FFmpeg mpeg4. The
+      older `build-tls` binary segfaults the same way (stale local headers).
+    - `test_api_handlers_event_routes` expects 13 event types and finds 14.
+      That count comes from L5's uncommitted event type.
+    - `test_api_handlers_observations` and `test_observation_evidence` are
+      L8's and L3's in-progress tests.
+  - Run: `cd build-int01-L4 && make test_observation_retention && ./bin/test_observation_retention`.
+  - API (`include/core/observation_retention.h`):
+    - `observation_retention_startup(storage_path, &result)`: the startup
+      sweep. Returns counts for temp files deleted, stale files deleted,
+      pending assets interrupted, ready assets with missing files, and
+      whether the epoch was regenerated.
+    - `observation_retention_startup_done()`.
+    - `observation_retention_run(storage_path, now_ms, &result)`: one
+      bounded pass. Returns 1 if startup has not run yet.
+    - `observation_retention_maintenance_tick()`: the storage-manager hook.
+    - `observation_retention_budget_exhausted(camera_uuid)`: non-blocking.
+    - `observation_retention_budget_exhausted_count()`.
+    - `observation_retention_camera_status(out, max)`: for L10. Returns
+      retained bytes, max bytes, max age and the flag per camera, as of the
+      last pass.
+    - `observation_cursor_head_write/read/reconcile()`: the D9 sidecar.
+  - Hooks:
+    - `main.c` calls `observation_retention_startup()` right after "Storage
+      manager initialized", under the
+      `/* INT_01 startup order: reconcile (L4) -> evidence worker (L3) -> relay (L5) */`
+      marker. That is after `event_identity_init()` and before L3, L5 and
+      detection start.
+    - `storage_manager.c` calls `observation_retention_maintenance_tick()`
+      on every heartbeat (60 s). The tick runs a pass at most every 300 s,
+      or on the next heartbeat when the previous pass hit a bound. The
+      storage thread starts inside `init_storage_manager()`, before
+      reconciliation, so the tick is a no-op until startup has completed.
+    - `db_core.c` regenerates `observation_meta.epoch_uuid` after either
+      `restore_database_from_backup()` call succeeds, once migrations have
+      run. This closes the gap L2 noted.
+  - Semantics chosen where the contract is loose:
+    - An asset's age is the newest `observed_at_ms` among the observations
+      that reference it, falling back to `captured_at` and then
+      `created_at`. So a reference expires at its own media age, not at the
+      30-day history prune, and a shared asset survives until its last
+      reference expires (A3).
+    - Byte pressure counts only `ready` bytes, protected ones included. It
+      evicts the oldest unprotected assets first.
+    - The flag is set only when a camera is still over budget and has no
+      unprotected `ready` media left. If a pass bound stopped eviction, the
+      flag is not set and `more_work` is set instead.
+    - Bounds per pass: 256 evictions and 5,000 pruned change rows, pruned
+      500 per transaction.
+    - Expiry runs the CAS `ready→expired(retention_expired)` first, then
+      unlinks the file. A lost CAS (for example a racing L8 delete) leaves
+      the file to the winner. A crash between the two steps leaves a stale
+      file, which the next startup sweep deletes.
+    - Assets whose observations were all pruned while `ready` are reclaimed:
+      expire, unlink, delete the row. L2's prune keeps those rows. Protected
+      unreferenced assets are kept.
+    - Startup also handles a pending asset whose final file exists (crash
+      after rename, before the `ready` commit). It becomes `interrupted` and
+      the file is deleted, because the transform and dimensions are only in
+      worker memory.
+    - A `ready` asset whose path resolves outside the evidence tree is
+      treated as missing (`write_failed`).
+  - Never touches recordings:
+    - Paths resolve only to `<storage>/observations/...*.jpg`. Absolute
+      paths, `observations/...` and paths relative to the evidence tree are
+      accepted. Any `.`, `..` or empty segment is refused.
+    - The sweep uses `lstat`, skips symlinks, and only deletes `*.jpg.tmp`
+      and `<uuid>.jpg`.
+    - Tested with a stored path that escapes the tree into `recordings/`.
+  - Budget flag:
+    - L3's header declares `observation_evidence_set_budget_exhausted()`,
+      but its `.c` is not committed yet. L4 calls it through a weak
+      reference on every pass, sending set and clear changes.
+    - That call is a no-op until L3's object is linked, and needs no code
+      change once it is. In a static archive, the weak reference does not
+      pull the object in itself; L3's own `main.c` wiring does.
+  - Overlap with L5 (D9 sidecar):
+    - L5's uncommitted `observation_relay.c` also implements the sidecar
+      check and writer, with the same path and the same
+      `{"epoch","head_seq"}` format, so the two interoperate.
+    - The check must happen in L4, because the reconciliation transitions
+      advance the DB head and would hide a rewind from a later check. L4
+      checks first and rewrites the sidecar after the sweep, so L5's
+      startup check is then a harmless no-op.
+    - Whichever task lands second could remove the duplicate.
+  - Gotchas:
+    - `db_core.c` regenerates the epoch with raw SQL on the init connection
+      instead of calling `db_observation_meta_regenerate_epoch()`.
+      `rebuild_recordings` links a hand-picked source list without
+      `db_observations.c` and its event-identity dependencies.
+    - The restore path has no unit test. L11's restore test covers it.
+    - Startup returns -1 and leaves periodic eviction off when a DB read or
+      transition fails, for example when `event_identity_init()` failed.
+- **files edited/created**: `include/core/observation_retention.h`, `src/core/observation_retention.c`, `tests/unit/test_observation_retention.c`, `tests/unit/CMakeLists.txt`, `src/core/main.c`, `src/storage/storage_manager.c`, `src/database/db_core.c` (commit `7373d598`)
 
 #### L5: Publication relay and the new event type
 - **depends_on**: [L2, C3]
