@@ -1342,9 +1342,118 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
     lazily backfilled.
   - Changing the configured source does not rewrite old rows.
   - Single Alembic head check passes. W0 is green.
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commit `d3079b63` on `feature/lightnvr-provider`, not pushed)
 - **log**:
-- **files edited/created**:
+  - The revision is `d4e1a7c93b52` (it revises `c1d734b9e201`) and is the
+    single head. P1 needs no other YA-WAMF revision.
+  - **`detections` columns**, all nullable:
+    - `source_kind` VARCHAR(32), `source_instance` VARCHAR(255),
+      `external_observation_id` VARCHAR(255) and `source_camera_id`
+      VARCHAR(255).
+    - Partial unique index `uq_detections_source_identity(source_kind,
+      source_instance, external_observation_id) WHERE source_kind IS NOT NULL`.
+    - For W7: `notification_intent`, constrained by
+      `ck_detections_notification_intent` to
+      `dispatch|suppressed_recovery|suppressed_policy`, and
+      `notification_intent_at`.
+    - For W7: `notification_outcome`, constrained by
+      `ck_detections_notification_outcome` to
+      `sent|failed|unknown|skipped`, and `notification_outcome_at`.
+    - NULL intent means a legacy row or no intent recorded. `notified_at`
+      still marks a successful send.
+  - **`source_cursors` table**:
+    - `source_kind` and `source_instance` form the primary key
+      (`pk_source_cursors`).
+    - Other columns: `cursor` TEXT, `epoch`, `filter_fingerprint`,
+      `last_error`, and `updated_at` (default `CURRENT_TIMESTAMP`).
+    - `filter_fingerprint` was added for the contract §16.5 camera and label
+      filter fingerprint.
+    - `recovery_state` is NOT NULL, defaults to `current`, and is constrained
+      by `ck_source_cursors_recovery_state` to `current|recovery_required`.
+  - **Choice of instance**: placeholder plus a startup bind, chosen as the
+    safer option.
+    - No existing migration reads settings, and the resolved `frigate_url`
+      depends on environment overrides, the config file and defaults.
+    - The migration therefore backfills `('frigate', 'unbound',
+      frigate_event)`.
+    - `init_db()` then calls `_bind_unbound_source_identity` after
+      `_verify_schema`. That runs `bind_unbound_frigate_detections`
+      (`app/repositories/source_identity_repository.py`), which:
+      - gives NULL-source rows (old-binary inserts) the kind `frigate`,
+        `external_observation_id = frigate_event` and the configured instance;
+      - replaces `unbound` with the configured instance;
+      - never touches a row that already has a real instance, so a later
+        `frigate_url` change does not reassign history.
+    - The instance comes from `app/utils/source_identity.frigate_source_instance`:
+      - the lowercased host, with any trailing dot dropped, plus the port;
+      - the scheme's default port (80 or 443) is made explicit;
+      - credentials, path and query are dropped;
+      - IPv6 hosts are bracketed;
+      - a URL with no scheme is treated as http.
+    - Examples: `http://Frigate.LAN:5000/` → `frigate.lan:5000`, and the
+      default `http://frigate:5000` → `frigate:5000`.
+    - An unusable URL returns None. The row keeps `unbound`, which can never
+      equal a derived value because a derived value always has a `:port`.
+      The bind is retried on the next start.
+    - The bind never blocks startup.
+  - **No table recreation**: the migration uses raw `ALTER TABLE ADD/DROP
+    COLUMN`, not batch recreation. Batch recreation would drop the four
+    `detections` triggers (initial-classification capture and media cleanup)
+    and rebuild the parent of eight foreign keys. As a result, downgrade
+    needs SQLite 3.35 or newer; it raises a clear error otherwise.
+  - **RED → GREEN**:
+    - New tests first failed at collection (`ModuleNotFoundError`).
+    - With the implementation present and the migration file removed, 8 of 8
+      migration tests failed.
+    - With the migration restored, all pass.
+    - The first full-suite run found two more problems:
+      - 29 failures in hand-built `CREATE TABLE detections` fixtures
+        (`test_detection_repository.py`, `test_canonical_identity_repair.py`),
+        fixed by adding the columns to them;
+      - 1 real regression: SQLite reports the source-tuple conflict *before*
+        the `frigate_event` conflict, which broke `create()`'s idempotent
+        duplicate skip.
+    - The regression got its own RED test, then a fix:
+      `_DUPLICATE_DETECTION_KEYS` treats either key as a duplicate.
+  - **Final results**:
+    - Full suite: 7556 passed, 60 skipped.
+    - W0 gate, all migration tests, `scripts/ci_migration_path_check.py`,
+      `ruff check` and `ruff format --check` from the repo root, and
+      `docs_consistency_check.py` are all green.
+  - **Gotchas for W4**:
+    - Any `Detection` with `source_kind=None` is written as a Frigate row for
+      the configured instance (`_source_identity_params`). lightNVR rows must
+      set `source_kind='lightnvr'`, `source_instance` (the installation UUID),
+      `external_observation_id` and `source_camera_id`.
+    - A NULL `source_instance` would escape the unique index.
+    - `INSERT OR IGNORE` paths (`insert_if_not_exists`,
+      `upsert_if_higher_score`) silently ignore a source-tuple conflict.
+    - `DETECTION_SELECT_COLUMNS` and `_row_to_detection` deliberately do not
+      read the source columns, because callers append columns positionally.
+      Only `DetectionRepository.get_by_source_identity()` fills them; extend
+      deliberately.
+  - **Gotchas for W6**:
+    - There is one cursor row per `(kind, instance)`. A changed filter must
+      reset the row to absent (§7.3).
+    - A `410` sets `recovery_state='recovery_required'`.
+    - `REQUIRED_COLUMNS` now lists the `source_cursors` columns.
+  - **Gotchas for W7**:
+    - Use the intent and outcome vocabularies above. Changing them needs a
+      new revision, and adding a CHECK later would force a table recreation,
+      so avoid that.
+    - The migration does not backfill intent on legacy rows. NULL means
+      legacy.
+- **files edited/created** (YA-WAMF):
+  - `backend/migrations/versions/d4e1a7c93b52_add_source_identity.py` (new)
+  - `backend/app/utils/source_identity.py` (new)
+  - `backend/app/repositories/source_identity_repository.py` (new)
+  - `backend/app/db_schema.py`, `backend/app/database.py`,
+    `backend/app/repositories/detection_repository.py`
+  - `backend/tests/test_source_identity_migration.py` (new),
+    `backend/tests/pure/test_source_identity.py` (new),
+    `backend/tests/test_detection_repository.py`,
+    `backend/tests/test_canonical_identity_repair.py`
+  - `MIGRATION.md`, `changelog.d/lightnvr-source-identity.md` (new)
 
 #### W3: Route every Frigate call through the provider and gate by capability
 - **depends_on**: [W1]
