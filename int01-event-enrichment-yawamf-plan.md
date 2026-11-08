@@ -3738,9 +3738,108 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   a manual checklist that records outcomes.
 - **validation**: The compose suite passes in CI or nightly. The A14 checklist
   is completed and committed with versions.
-- **status**: Not Completed
+- **status**: Completed for the automated suite. lightNVR commit `def9367c`;
+  YA-WAMF fixes `b89846d0`, `fcf449f2`, `37c0877f` and `1cbbae74`. Nothing
+  is pushed. The validation is only partly met: the compose (container) mode
+  has not run in CI, and A14 is a checklist still open for an operator.
 - **log**:
-- **files edited/created**:
+  - **Mode executed: host processes.** Docker exists, but X1 ran real
+    Mosquitto 2.0.22, the `build-int01-X1` lightNVR binary (built from
+    `e294f956` with the L14 options: MQTT+SOD on, LiteRT off, the apt FFmpeg
+    header symlink dir) and the YA-WAMF backend from its venv, all as host
+    processes driven by `run_e2e.py`. The `compose/` Dockerfile and
+    docker-compose file (one container that owns every process, because the
+    suite SIGKILLs and SIGSTOPs them and reads both DBs) are committed as the
+    CI path but **were not built or run**.
+  - **Pinned models**:
+    - Detector: loopback HTTP `x1-colour-detector 1.0`, in the
+      light-object-detect format. It finds the red and blue fixture squares
+      in the submitted JPEG and reports them only for the frames a scenario
+      arms.
+    - Optional A2-local: the real SOD VOC `tiny20.sod` (local file) on a
+      real cardinal photo. The photo is from Wikimedia, CC BY-SA, so it is not
+      committed; the README gives its URL and SHA-256.
+    - YA-WAMF classifier: `x1-colour-rule-v1`. The launcher replaces only
+      `ClassifierService.classify_async_live`: ≥10% saturated-red pixels is
+      Prunella, otherwise ≥10% blue is Erithacus, otherwise no result.
+    - The real YA-WAMF model and a real HTTP or LiteRT bird model are still
+      pending, and the matrix says so.
+  - **Results** (`results/x1-host-20261108.json`, 286 s, all pass against
+    YA-WAMF `1cbbae74`):
+
+    | A-ID | Result and evidence |
+    | --- | --- |
+    | A1 | 1 observation. `created`/`pending`, then `evidence`/`ready`, on the real broker with the UUIDv5 message IDs. 1 row `lnvr:<installation>:<obs>` with the camera UUID and Prunella 0.93, from 1 classifier call. |
+    | A2 | HTTP, 3 frames: each snapshot is byte-equal to a detector input and its box equals the detector box. Crops taken across frames miss the bird. Local SOD: IoU 0.50–0.53 with the bird found in the stored image, origin `inference_input`, transform `resize` 640×360→416×416. |
+    | A3 | 2 siblings share one asset; the red box is identified as Prunella and the blue as Erithacus, from 2 classifier calls. |
+    | A4 | 60 replays of 6 captured messages with backfill overlapping. Still 3 rows, 0 extra classifier calls, intents unchanged, backfill `new_detections: 0`. |
+    | A5 | 100 observations with the broker down: the outbox held 200 pending deliveries. After restarting the broker, lightNVR and YA-WAMF, all 100 rows appeared within 6.6 s, all 200 revisions were delivered, and intents were `suppressed_recovery` ×100. |
+    | A6 | lightNVR SIGKILL after 4 frames: startup order held, no pending asset or tmp file, ready rows equal files, all 24 converged 12 s after restart. YA-WAMF SIGKILL mid-burst: 44/44 rows, no duplicates, converged in 4 s. |
+    | A8 | Temporary: lightNVR SIGSTOPped while YA-WAMF started, so 0 rows and status `unreachable`; after SIGCONT, converged in 16 s. Expired: `410 evidence_expired`. Unavailable: `404 evidence_unavailable(write_failed)`. Recovery outcomes and backfill report both reasons and admit neither. Restore: the old cursor gets `410 cursor_expired`, YA-WAMF shows `recovery_required`/`cursor_expired` plus a `source_recovery` diagnostics event, and acknowledging clears it. |
+
+  - **Bugs found and fixed** (all in YA-WAMF, RED first, no trailer):
+    - `b89846d0`: YA-WAMF did not start with `LIGHTNVR__CAMERA_UUIDS` set as
+      documented. pydantic-settings JSON-decoded the list (`Extra data`).
+      Fix: `Annotated[list[str], NoDecode]`. Pure test with two UUIDs.
+    - `fcf449f2`: after recovery skipped an observation for an expired or
+      unavailable photo, a replay or Scan History saw it as a duplicate or
+      stale revision and counted it as "already existed" (136 vs 132 real
+      rows). Fix: the ledger keeps the skip decision for expired,
+      unavailable and missing observations.
+    - `37c0877f`: a live message that hit an unreachable lightNVR (the A6
+      SIGKILL) was retried only at the 300 s recovery interval; the pre-fix
+      run, kept as `results/x1-host-20261108-prefix-a6.json`, took 297 s.
+      Fix: a live RETRY requests recovery.
+    - `1cbbae74`: a follow-up to the previous fix. A burst of live retries
+      woke recovery once each, and every held-up run doubled the backoff
+      (30→120 s, measured at 121 s). Fix: live retries do not cut a scheduled
+      backoff short and are folded into a held-up run.
+    - YA-WAMF gates: full backend 7995 passed / 60 skipped; ruff clean;
+      `export_openapi` and type checks up to date; the changelog fragments
+      are well formed. The UI was untouched, so `npm` checks were not rerun.
+    - No lightNVR product bug. lightNVR C code is untouched, so `rust/` is
+      unaffected.
+  - **Recipe corrections** (`docs/integrations/YA_WAMF.md`):
+    - the `Feeder East` example name is invalid (only `[A-Za-z0-9._-]`);
+    - PUT `/api/streams` answers 202 and applies asynchronously;
+    - role and policy writes need `expected_policy_version`, now with a
+      role body;
+    - `detection_threshold` in the stream API is a percentage;
+    - the minimum YA-WAMF commit for `LIGHTNVR__CAMERA_UUIDS`;
+    - status and matrix rewritten, and contract §18 rows updated.
+  - **Pending**: the container mode in CI; a real HTTP bird model and
+    LiteRT end to end; YA-WAMF's real classifier; A14
+    (`A14_PILOT_CHECKLIST.md`, unchecked).
+  - Run:
+    `../YetAnother-WhosAtMyFeeder/backend/.venv/bin/python tests/integration/yawamf_e2e/run_e2e.py --lightnvr-bin build-int01-X1/bin/lightnvr [--sod-model ~/tiny20.sod --bird-image cardinal.jpg]`
+  - **Gotchas for X3**:
+    - Mosquitto runs as `mosquitto -p <port>`. Ubuntu's AppArmor profile
+      blocks configs outside `/etc/mosquitto`.
+    - `mosquitto_sub` exits when the broker stops, so resubscribe after a
+      restart.
+    - Use `detection_threshold: 50`, not `0.5`.
+    - YA-WAMF ignores live messages until its capabilities fetch succeeds.
+      When it starts with lightNVR down, recovery catches up.
+    - The YA-WAMF connection test needs `api_url` in the body.
+    - YA-WAMF writes a `speciesid.pre-migration-*.db` copy on every start.
+    - Both sides back off MQTT reconnects for about 35 s.
+    - The suite's `Detector.arm()` and the `LightNvr`/`YaWamf` start, stop,
+      kill and SQL helpers can be reused for A12/A13: start YA-WAMF with
+      `LIGHTNVR__WRITEBACK_ENABLED=true` and read
+      `observation_classifications` directly.
+- **files edited/created**: `tests/integration/yawamf_e2e/{README.md,
+  A14_PILOT_CHECKLIST.md, run_e2e.py, harness/components.py,
+  harness/yawamf_launcher.py, compose/Dockerfile, compose/docker-compose.yml,
+  results/x1-host-20261108.{json,mqtt-capture.jsonl,detector.jsonl,classifier.jsonl},
+  results/x1-host-20261108-prefix-a6.json}` (new),
+  `docs/integrations/YA_WAMF.md`, `docs/integrations/OBSERVATIONS_CONTRACT.md`;
+  YA-WAMF `backend/app/config_models.py`,
+  `backend/app/services/sources/observation_admission.py`,
+  `backend/app/services/source_ingestion.py`,
+  `backend/app/services/event_processor.py`,
+  `backend/app/services/source_recovery_service.py`,
+  `backend/tests/pure/{test_lightnvr_parse,test_observation_admission,test_source_live_dispatch}.py`,
+  `changelog.d/lightnvr-{camera-uuids-env,backfill-lost-photo-reasons,live-retry-recovery}.md`
 
 #### X2: Saturation and performance release gate (A11)
 - **depends_on**: [C4, L6, L7, L10]
