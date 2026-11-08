@@ -41,6 +41,7 @@
 #include "core/mqtt_event_adapter.h"
 #include "core/mqtt_client.h"
 #include "core/mqtt_delivery_worker.h"
+#include "core/observation_retention.h"
 #include "core/path_utils.h"
 #include "utils/strings.h"
 #include "video/stream_manager.h"
@@ -860,6 +861,17 @@ int main(int argc, char *argv[]) {
     set_retention_days(config.retention_days);
     (void)storage_target_refresh_health_and_publish();
     log_info("Storage manager initialized");
+
+    /* INT_01 startup order: reconcile (L4) -> evidence worker (L3) -> relay (L5) */
+    /* Evidence reconciliation needs the DB and event identity, and must finish
+     * before the evidence worker or relay start (design decision 2). The
+     * storage manager's periodic eviction stays off until it has completed. */
+    {
+        observation_reconcile_result_t observation_reconcile;
+        if (observation_retention_startup(config.storage_path, &observation_reconcile) != 0) {
+            log_warn("Observation evidence reconciliation incomplete; evidence eviction disabled");
+        }
+    }
 
     // Build the immutable health policy only after database and storage
     // prerequisites are live. Collector registration is complete before any

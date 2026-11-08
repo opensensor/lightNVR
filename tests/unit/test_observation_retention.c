@@ -1,0 +1,559 @@
+/* INT_01 L4: startup reconciliation, retention and eviction of observation
+ * evidence (contract sections 4.2, 4.5, 7.6 and 14), against a real migrated
+ * database and a temporary storage directory. */
+#define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <ftw.h>
+#include <pthread.h>
+#include <sqlite3.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
+
+#include "unity.h"
+#include "core/event_identity.h"
+#include "core/observation_retention.h"
+#include "core/path_utils.h"
+#include "database/db_core.h"
+#include "database/db_observations.h"
+#include "database/db_recordings.h"
+#include "database/db_streams.h"
+#include "database/db_system_settings.h"
+#include "utils/strings.h"
+#include "utils/uuid.h"
+
+#define DAY_MS 86400000LL
+
+static char db_path[256];
+static char storage[256];
+static char cam_a[OBS_UUID_SIZE];
+static char cam_b[OBS_UUID_SIZE];
+static int64_t now_ms;
+
+/* ---- helpers ---------------------------------------------------------- */
+
+static int64_t scalar64(const char *sql) {
+    sqlite3_stmt *stmt = NULL;
+    int64_t value = -999;
+    pthread_mutex_lock(get_db_mutex());
+    if (sqlite3_prepare_v2(get_db_handle(), sql, -1, &stmt, NULL) == SQLITE_OK &&
+        sqlite3_step(stmt) == SQLITE_ROW)
+        value = sqlite3_column_int64(stmt, 0);
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(get_db_mutex());
+    TEST_ASSERT_NOT_EQUAL_INT_MESSAGE(-999, (int)value, sql);
+    return value;
+}
+
+static void exec_sql(const char *sql) {
+    char *error = NULL;
+    pthread_mutex_lock(get_db_mutex());
+    int rc = sqlite3_exec(get_db_handle(), sql, NULL, NULL, &error);
+    pthread_mutex_unlock(get_db_mutex());
+    if (rc != SQLITE_OK) fprintf(stderr, "%s: %s\n", sql, error ? error : "");
+    sqlite3_free(error);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SQLITE_OK, rc, sql);
+}
+
+static void make_camera(const char *name, char out[OBS_UUID_SIZE]) {
+    stream_config_t *s = calloc(1, sizeof(*s));
+    TEST_ASSERT_NOT_NULL(s);
+    safe_strcpy(s->name, name, sizeof(s->name), 0);
+    safe_strcpy(s->url, "rtsp://camera/stream", sizeof(s->url), 0);
+    safe_strcpy(s->codec, "h264", sizeof(s->codec), 0);
+    s->enabled = true;
+    s->priority = 5;
+    s->segment_duration = 60;
+    safe_strcpy(s->detection_object_filter, "none", sizeof(s->detection_object_filter), 0);
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(s));
+    memset(s, 0, sizeof(*s));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(name, s));
+    safe_strcpy(out, s->camera_uuid, OBS_UUID_SIZE, 0);
+    free(s);
+}
+
+static observation_insert_result_t insert_batch(const char *camera, int64_t observed_at_ms,
+                                                int objects, int64_t recording_id) {
+    observation_batch_input_t batch;
+    memset(&batch, 0, sizeof(batch));
+    TEST_ASSERT_EQUAL_INT(0, lightnvr_uuid_generate_v4(batch.batch_id));
+    safe_strcpy(batch.camera_uuid, camera, sizeof(batch.camera_uuid), 0);
+    batch.observed_at_ms = observed_at_ms;
+    safe_strcpy(batch.engine_key, "legacy-primary", sizeof(batch.engine_key), 0);
+    safe_strcpy(batch.engine_type, "object", sizeof(batch.engine_type), 0);
+    batch.recording_id = recording_id;
+    batch.object_count = objects;
+    for (int i = 0; i < objects; ++i) {
+        batch.objects[i].object_index = i;
+        safe_strcpy(batch.objects[i].label, "bird", sizeof(batch.objects[i].label), 0);
+        batch.objects[i].confidence = 0.9;
+    }
+    observation_asset_input_t asset;
+    memset(&asset, 0, sizeof(asset));
+    asset.state = OBS_ASSET_PENDING;
+    safe_strcpy(asset.origin, "inference_input", sizeof(asset.origin), 0);
+    safe_strcpy(asset.media_type, "image/jpeg", sizeof(asset.media_type), 0);
+    observation_insert_result_t result;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_insert_batch(&batch, &asset, &result));
+    return result;
+}
+
+/* Relative path (stored in observation_assets.path) and absolute path. */
+static void asset_paths(const char *camera, const char *asset, const char *suffix,
+                        char *rel, size_t rel_size, char *abs, size_t abs_size) {
+    snprintf(rel, rel_size, "observations/%s/2026-11-08/%s.jpg%s", camera, asset, suffix);
+    snprintf(abs, abs_size, "%s/%s", storage, rel);
+}
+
+static void write_file(const char *path, size_t bytes) {
+    char dir[512];
+    safe_strcpy(dir, path, sizeof(dir), 0);
+    char *slash = strrchr(dir, '/');
+    TEST_ASSERT_NOT_NULL(slash);
+    *slash = '\0';
+    TEST_ASSERT_EQUAL_INT(0, mkdir_recursive(dir));
+    FILE *f = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL_MESSAGE(f, path);
+    for (size_t i = 0; i < bytes; ++i) fputc(0xAB, f);
+    fclose(f);
+}
+
+static bool exists(const char *path) {
+    struct stat st;
+    return lstat(path, &st) == 0;
+}
+
+typedef struct {
+    observation_insert_result_t insert;
+    char rel[512];
+    char abs[512];
+} ready_asset_t;
+
+static ready_asset_t make_ready(const char *camera, int64_t observed_at_ms, int64_t bytes,
+                                int objects) {
+    ready_asset_t r;
+    memset(&r, 0, sizeof(r));
+    r.insert = insert_batch(camera, observed_at_ms, objects, 0);
+    asset_paths(camera, r.insert.asset_uuid, "", r.rel, sizeof(r.rel), r.abs, sizeof(r.abs));
+    write_file(r.abs, (size_t)bytes);
+    observation_asset_media_t media = {
+        .path = r.rel, .bytes = bytes, .width = 640, .height = 360, .expires_at_ms = 0,
+    };
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK,
+        db_observation_asset_transition(r.insert.asset_uuid, OBS_ASSET_PENDING,
+                                        OBS_ASSET_READY, NULL, &media, NULL));
+    return r;
+}
+
+static observation_asset_record_t asset_of(const char *uuid) {
+    observation_asset_record_t asset;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_asset_get(uuid, &asset));
+    return asset;
+}
+
+static void set_protected(const char *asset, int value) {
+    char sql[256];
+    snprintf(sql, sizeof(sql), "UPDATE observation_assets SET protected = %d WHERE uuid = '%s';",
+             value, asset);
+    exec_sql(sql);
+}
+
+static void set_budget(const char *camera, int days, int64_t bytes) {
+    char sql[256];
+    snprintf(sql, sizeof(sql),
+             "UPDATE streams SET observation_max_age_days = %d, observation_max_bytes = %lld "
+             "WHERE camera_uuid = '%s';", days, (long long)bytes, camera);
+    exec_sql(sql);
+}
+
+static int rm_entry(const char *path, const struct stat *st, int flag, struct FTW *ftw) {
+    (void)st; (void)flag; (void)ftw;
+    return remove(path);
+}
+
+static void rm_tree(const char *path) {
+    nftw(path, rm_entry, 16, FTW_DEPTH | FTW_PHYS);
+}
+
+static observation_retention_result_t run_retention(int64_t at_ms) {
+    observation_retention_result_t result;
+    TEST_ASSERT_EQUAL_INT(0, observation_retention_run(storage, at_ms, &result));
+    return result;
+}
+
+static void startup(observation_reconcile_result_t *result) {
+    TEST_ASSERT_EQUAL_INT(0, observation_retention_startup(storage, result));
+    TEST_ASSERT_TRUE(observation_retention_startup_done());
+}
+
+void setUp(void) {
+    exec_sql("DELETE FROM object_observations; DELETE FROM observation_assets; "
+             "DELETE FROM observation_changes; DELETE FROM recordings;");
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/observations", storage);
+    rm_tree(dir);
+    set_budget(cam_a, 7, 2147483648LL);
+    set_budget(cam_b, 7, 2147483648LL);
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting("observation_history_retention_days", "30"));
+    observation_retention_reset_for_testing();
+}
+void tearDown(void) {}
+
+/* ---- startup reconciliation ------------------------------------------- */
+
+static void test_startup_reconciles_interrupted_missing_and_orphan_files(void) {
+    /* A: interrupted write, only the temp file exists. */
+    observation_insert_result_t a = insert_batch(cam_a, now_ms, 2, 0);
+    char rel[512], a_tmp[512], b_final[512], orphan[512], scratch[512];
+    asset_paths(cam_a, a.asset_uuid, ".tmp", rel, sizeof(rel), a_tmp, sizeof(a_tmp));
+    write_file(a_tmp, 100);
+    /* B: crash after rename but before the ready commit. */
+    observation_insert_result_t b = insert_batch(cam_a, now_ms, 1, 0);
+    asset_paths(cam_a, b.asset_uuid, "", rel, sizeof(rel), b_final, sizeof(b_final));
+    write_file(b_final, 100);
+    /* C: ready whose file vanished; D: healthy ready asset. */
+    ready_asset_t c = make_ready(cam_a, now_ms, 200, 1);
+    TEST_ASSERT_EQUAL_INT(0, unlink(c.abs));
+    ready_asset_t d = make_ready(cam_b, now_ms, 300, 1);
+    /* An orphan final file, an orphan temp file, and files L4 must not touch. */
+    char orphan_uuid[OBS_UUID_SIZE];
+    TEST_ASSERT_EQUAL_INT(0, lightnvr_uuid_generate_v4(orphan_uuid));
+    asset_paths(cam_b, orphan_uuid, "", rel, sizeof(rel), orphan, sizeof(orphan));
+    write_file(orphan, 50);
+    char orphan_tmp[512];
+    asset_paths(cam_b, orphan_uuid, ".tmp", rel, sizeof(rel), orphan_tmp, sizeof(orphan_tmp));
+    write_file(orphan_tmp, 50);
+    snprintf(scratch, sizeof(scratch), "%s/observations/README.txt", storage);
+    write_file(scratch, 10);
+    char recording[512];
+    snprintf(recording, sizeof(recording), "%s/recordings/cam_a/%s.jpg", storage, orphan_uuid);
+    write_file(recording, 10);
+
+    observation_reconcile_result_t result;
+    startup(&result);
+    TEST_ASSERT_EQUAL_INT(2, result.tmp_files_deleted);
+    TEST_ASSERT_EQUAL_INT(2, result.stale_files_deleted);  /* orphan + B's final */
+    TEST_ASSERT_EQUAL_INT(2, result.pending_interrupted);
+    TEST_ASSERT_EQUAL_INT(1, result.ready_missing);
+
+    TEST_ASSERT_FALSE(exists(a_tmp));
+    TEST_ASSERT_FALSE(exists(b_final));
+    TEST_ASSERT_FALSE(exists(orphan));
+    TEST_ASSERT_FALSE(exists(orphan_tmp));
+    TEST_ASSERT_TRUE(exists(d.abs));
+    TEST_ASSERT_TRUE(exists(scratch));
+    TEST_ASSERT_TRUE(exists(recording));
+
+    observation_asset_record_t asset = asset_of(a.asset_uuid);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_UNAVAILABLE, asset.state);
+    TEST_ASSERT_EQUAL_STRING("interrupted", asset.reason);
+    asset = asset_of(b.asset_uuid);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_UNAVAILABLE, asset.state);
+    TEST_ASSERT_EQUAL_STRING("interrupted", asset.reason);
+    asset = asset_of(c.insert.asset_uuid);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_UNAVAILABLE, asset.state);
+    TEST_ASSERT_EQUAL_STRING("write_failed", asset.reason);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(d.insert.asset_uuid).state);
+
+    /* Every observation sharing A got an evidence revision (published). */
+    for (int i = 0; i < 2; ++i) {
+        observation_record_t record;
+        TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_get(a.observation_uuids[i], &record));
+        TEST_ASSERT_EQUAL_INT(2, record.revision);
+    }
+
+    /* Idempotent: a second sweep finds nothing to do. */
+    startup(&result);
+    TEST_ASSERT_EQUAL_INT(0, result.tmp_files_deleted + result.stale_files_deleted +
+                             result.pending_interrupted + result.ready_missing);
+}
+
+static void test_periodic_run_waits_for_startup_reconciliation(void) {
+    ready_asset_t old = make_ready(cam_a, now_ms - 30 * DAY_MS, 100, 1);
+    observation_retention_result_t result;
+    TEST_ASSERT_EQUAL_INT(1, observation_retention_run(storage, now_ms, &result));
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(old.insert.asset_uuid).state);
+    TEST_ASSERT_TRUE(exists(old.abs));
+}
+
+/* ---- age and byte budgets ---------------------------------------------- */
+
+static void test_age_budget_expires_media_and_keeps_metadata(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t old = make_ready(cam_a, now_ms - 8 * DAY_MS, 1000, 1);
+    ready_asset_t fresh = make_ready(cam_a, now_ms - 1 * DAY_MS, 1000, 1);
+    ready_asset_t protected_old = make_ready(cam_a, now_ms - 9 * DAY_MS, 1000, 1);
+    set_protected(protected_old.insert.asset_uuid, 1);
+    observation_insert_result_t pending_old = insert_batch(cam_a, now_ms - 20 * DAY_MS, 1, 0);
+
+    observation_retention_result_t result = run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(1, result.assets_expired);
+    TEST_ASSERT_FALSE(exists(old.abs));
+    TEST_ASSERT_TRUE(exists(fresh.abs));
+    TEST_ASSERT_TRUE(exists(protected_old.abs));
+
+    observation_record_t record;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_get(old.insert.observation_uuids[0], &record));
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_EXPIRED, record.asset.state);
+    TEST_ASSERT_EQUAL_STRING("retention_expired", record.asset.reason);
+    TEST_ASSERT_EQUAL_INT(640, record.asset.width);
+    TEST_ASSERT_EQUAL_INT(360, record.asset.height);
+    TEST_ASSERT_EQUAL_INT64(1000, record.asset.bytes);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(fresh.insert.asset_uuid).state);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(protected_old.insert.asset_uuid).state);
+    /* Pending is the worker's: never evicted. */
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_PENDING, asset_of(pending_old.asset_uuid).state);
+    TEST_ASSERT_FALSE(observation_retention_budget_exhausted(cam_a));
+}
+
+static void test_shared_asset_survives_until_last_reference_expires(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t shared = make_ready(cam_a, now_ms - 8 * DAY_MS, 1000, 2);
+    /* The second reference is newer (e.g. a later sibling re-using the frame). */
+    char sql[256];
+    snprintf(sql, sizeof(sql),
+             "UPDATE object_observations SET observed_at_ms = %lld WHERE uuid = '%s';",
+             (long long)(now_ms - 2 * DAY_MS), shared.insert.observation_uuids[1]);
+    exec_sql(sql);
+
+    run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(shared.insert.asset_uuid).state);
+    TEST_ASSERT_TRUE(exists(shared.abs));
+
+    run_retention(now_ms + 6 * DAY_MS);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_EXPIRED, asset_of(shared.insert.asset_uuid).state);
+    TEST_ASSERT_FALSE(exists(shared.abs));
+    for (int i = 0; i < 2; ++i) {
+        observation_record_t record;
+        TEST_ASSERT_EQUAL_INT(DB_OBS_OK,
+                              db_observation_get(shared.insert.observation_uuids[i], &record));
+        TEST_ASSERT_EQUAL_INT(OBS_ASSET_EXPIRED, record.asset.state);
+    }
+}
+
+static void test_byte_budget_evicts_oldest_and_protected_assets_flip_the_flag(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t p1 = make_ready(cam_a, now_ms - 5 * 3600000LL, 6000, 1);
+    set_protected(p1.insert.asset_uuid, 1);
+    ready_asset_t u1 = make_ready(cam_a, now_ms - 4 * 3600000LL, 3000, 1);
+    ready_asset_t u2 = make_ready(cam_a, now_ms - 3 * 3600000LL, 3000, 1);
+    ready_asset_t other = make_ready(cam_b, now_ms - 6 * 3600000LL, 9000, 1);
+    set_budget(cam_a, 7, 10000);
+    set_budget(cam_b, 7, 10000);
+
+    observation_retention_result_t result = run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(1, result.assets_expired);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_EXPIRED, asset_of(u1.insert.asset_uuid).state);
+    TEST_ASSERT_EQUAL_STRING("retention_expired", asset_of(u1.insert.asset_uuid).reason);
+    TEST_ASSERT_FALSE(exists(u1.abs));
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(u2.insert.asset_uuid).state);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(other.insert.asset_uuid).state);
+    TEST_ASSERT_FALSE(observation_retention_budget_exhausted(cam_a));
+    TEST_ASSERT_EQUAL_INT(0, observation_retention_budget_exhausted_count());
+
+    /* Shrink the budget below the protected asset alone. */
+    set_budget(cam_a, 7, 5000);
+    result = run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(1, result.assets_expired);
+    TEST_ASSERT_FALSE(exists(u2.abs));
+    TEST_ASSERT_TRUE(exists(p1.abs));
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(p1.insert.asset_uuid).state);
+    TEST_ASSERT_EQUAL_INT(1, result.cameras_budget_exhausted);
+    TEST_ASSERT_TRUE(observation_retention_budget_exhausted(cam_a));
+    TEST_ASSERT_FALSE(observation_retention_budget_exhausted(cam_b));
+    TEST_ASSERT_EQUAL_INT(1, observation_retention_budget_exhausted_count());
+
+    observation_retention_camera_status_t status[4];
+    int n = observation_retention_camera_status(status, 4);
+    TEST_ASSERT_EQUAL_INT(2, n);
+    bool seen = false;
+    for (int i = 0; i < n; ++i) {
+        if (strcmp(status[i].camera_uuid, cam_a) != 0) continue;
+        seen = true;
+        TEST_ASSERT_TRUE(status[i].budget_exhausted);
+        TEST_ASSERT_EQUAL_INT64(6000, status[i].retained_bytes);
+        TEST_ASSERT_EQUAL_INT64(5000, status[i].max_bytes);
+    }
+    TEST_ASSERT_TRUE(seen);
+
+    /* Unprotecting lets eviction proceed and clears the flag. */
+    set_protected(p1.insert.asset_uuid, 0);
+    run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_EXPIRED, asset_of(p1.insert.asset_uuid).state);
+    TEST_ASSERT_FALSE(exists(p1.abs));
+    TEST_ASSERT_FALSE(observation_retention_budget_exhausted(cam_a));
+    TEST_ASSERT_EQUAL_INT(0, observation_retention_budget_exhausted_count());
+}
+
+/* ---- history ----------------------------------------------------------- */
+
+static void test_history_prune_advances_oldest_seq_and_reclaims_assets(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t old = make_ready(cam_a, now_ms - 3 * DAY_MS, 500, 1);
+    ready_asset_t fresh = make_ready(cam_a, now_ms, 500, 1);
+    observation_meta_t before;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_meta_get(&before));
+
+    char sql[512];
+    snprintf(sql, sizeof(sql),
+             "UPDATE observation_changes SET created_at_ms = %lld WHERE observation_uuid = '%s';",
+             (long long)(now_ms - 3 * DAY_MS), old.insert.observation_uuids[0]);
+    exec_sql(sql);
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting("observation_history_retention_days", "1"));
+
+    observation_retention_result_t result = run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(2, result.changes_pruned);  /* created + evidence */
+    TEST_ASSERT_EQUAL_INT(1, result.observations_pruned);
+
+    observation_meta_t after;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_meta_get(&after));
+    TEST_ASSERT_TRUE(after.oldest_seq > before.oldest_seq);
+    TEST_ASSERT_EQUAL_INT64(after.oldest_seq, result.oldest_seq);
+
+    /* The asset lost its last reference: file deleted and row removed. */
+    observation_asset_record_t asset;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_NOT_FOUND, db_observation_asset_get(old.insert.asset_uuid, &asset));
+    TEST_ASSERT_FALSE(exists(old.abs));
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(fresh.insert.asset_uuid).state);
+    TEST_ASSERT_TRUE(exists(fresh.abs));
+}
+
+/* ---- isolation from recordings ----------------------------------------- */
+
+static void test_recording_deletion_leaves_assets_intact(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    char rec_path[512];
+    snprintf(rec_path, sizeof(rec_path), "%s/recordings/cam_a/clip.mp4", storage);
+    write_file(rec_path, 64);
+    recording_metadata_t meta;
+    memset(&meta, 0, sizeof(meta));
+    safe_strcpy(meta.stream_name, "cam_a", sizeof(meta.stream_name), 0);
+    safe_strcpy(meta.file_path, rec_path, sizeof(meta.file_path), 0);
+    safe_strcpy(meta.codec, "h264", sizeof(meta.codec), 0);
+    safe_strcpy(meta.trigger_type, "detection", sizeof(meta.trigger_type), 0);
+    meta.start_time = (time_t)(now_ms / 1000) - 60;
+    meta.end_time = (time_t)(now_ms / 1000);
+    meta.is_complete = true;
+    meta.size_bytes = 64;
+    meta.retention_override_days = -1;
+    meta.retention_tier = 2;
+    meta.schedule_restricted = -1;
+    uint64_t recording_id = add_recording_metadata(&meta);
+    TEST_ASSERT_TRUE(recording_id > 0);
+
+    observation_insert_result_t ins = insert_batch(cam_a, now_ms, 1, (int64_t)recording_id);
+    char rel[512], abs[512];
+    asset_paths(cam_a, ins.asset_uuid, "", rel, sizeof(rel), abs, sizeof(abs));
+    write_file(abs, 100);
+    observation_asset_media_t media = {.path = rel, .bytes = 100, .width = 64, .height = 48};
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_asset_transition(
+        ins.asset_uuid, OBS_ASSET_PENDING, OBS_ASSET_READY, NULL, &media, NULL));
+
+    char sql[128];
+    snprintf(sql, sizeof(sql), "DELETE FROM recordings WHERE id = %llu;",
+             (unsigned long long)recording_id);
+    exec_sql(sql);
+
+    run_retention(now_ms);
+    observation_record_t record;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_get(ins.observation_uuids[0], &record));
+    TEST_ASSERT_EQUAL_INT64(0, record.recording_id);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, record.asset.state);
+    TEST_ASSERT_TRUE(exists(abs));
+    /* Evidence eviction never touches recordings either, even for a path that
+     * escapes the observations tree. */
+    char evil[600];
+    snprintf(evil, sizeof(evil),
+             "UPDATE observation_assets SET path = 'observations/../recordings/cam_a/clip.mp4' "
+             "WHERE uuid = '%s';", ins.asset_uuid);
+    exec_sql(evil);
+    run_retention(now_ms + 30 * DAY_MS);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_EXPIRED, asset_of(ins.asset_uuid).state);
+    TEST_ASSERT_TRUE(exists(rec_path));
+}
+
+/* ---- D9 cursor head sidecar -------------------------------------------- */
+
+static void test_cursor_head_sidecar_detects_rewind(void) {
+    insert_batch(cam_a, now_ms, 1, 0);
+    observation_meta_t meta;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_meta_get(&meta));
+
+    /* Missing sidecar: created, epoch kept. */
+    bool regenerated = true;
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_reconcile(storage, &regenerated));
+    TEST_ASSERT_FALSE(regenerated);
+    char epoch[OBS_UUID_SIZE];
+    int64_t head = -1;
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_read(storage, epoch, &head));
+    TEST_ASSERT_EQUAL_STRING(meta.epoch_uuid, epoch);
+    TEST_ASSERT_EQUAL_INT64(meta.head_seq, head);
+
+    /* Sidecar is ahead of the DB in the same epoch: the DB was restored. */
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_write(storage, meta.epoch_uuid,
+                                                           meta.head_seq + 100));
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_reconcile(storage, &regenerated));
+    TEST_ASSERT_TRUE(regenerated);
+    observation_meta_t now_meta;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_meta_get(&now_meta));
+    TEST_ASSERT_NOT_EQUAL(0, strcmp(meta.epoch_uuid, now_meta.epoch_uuid));
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_read(storage, epoch, &head));
+    TEST_ASSERT_EQUAL_STRING(now_meta.epoch_uuid, epoch);
+    TEST_ASSERT_EQUAL_INT64(now_meta.head_seq, head);
+
+    /* A different epoch (already regenerated in-process): no regeneration. */
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_write(
+        storage, "66666666-6666-4666-8666-666666666666", now_meta.head_seq + 100));
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_reconcile(storage, &regenerated));
+    TEST_ASSERT_FALSE(regenerated);
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_meta_get(&meta));
+    TEST_ASSERT_EQUAL_STRING(now_meta.epoch_uuid, meta.epoch_uuid);
+
+    /* A corrupt sidecar is treated as missing. */
+    char path[512];
+    snprintf(path, sizeof(path), "%s/observations/.cursor_head.json", storage);
+    write_file(path, 5);
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_reconcile(storage, &regenerated));
+    TEST_ASSERT_FALSE(regenerated);
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_read(storage, epoch, &head));
+    TEST_ASSERT_EQUAL_STRING(meta.epoch_uuid, epoch);
+}
+
+int main(void) {
+    const char *tmp = getenv("TMPDIR");
+    snprintf(storage, sizeof(storage), "%s/lightnvr_obs_retention_XXXXXX",
+             tmp && *tmp ? tmp : "/tmp");
+    if (!mkdtemp(storage)) return 1;
+    snprintf(db_path, sizeof(db_path), "%s/test.db", storage);
+    if (init_database(db_path) != 0) return 1;
+    if (event_identity_init() != 0) return 1;
+    now_ms = (int64_t)time(NULL) * 1000;
+
+    UNITY_BEGIN();
+    make_camera("cam_a", cam_a);
+    make_camera("cam_b", cam_b);
+    RUN_TEST(test_startup_reconciles_interrupted_missing_and_orphan_files);
+    RUN_TEST(test_periodic_run_waits_for_startup_reconciliation);
+    RUN_TEST(test_age_budget_expires_media_and_keeps_metadata);
+    RUN_TEST(test_shared_asset_survives_until_last_reference_expires);
+    RUN_TEST(test_byte_budget_evicts_oldest_and_protected_assets_flip_the_flag);
+    RUN_TEST(test_history_prune_advances_oldest_seq_and_reclaims_assets);
+    RUN_TEST(test_recording_deletion_leaves_assets_intact);
+    RUN_TEST(test_cursor_head_sidecar_detects_rewind);
+    int result = UNITY_END();
+
+    observation_retention_reset_for_testing();
+    event_identity_shutdown();
+    shutdown_database();
+    rm_tree(storage);
+    return result;
+}

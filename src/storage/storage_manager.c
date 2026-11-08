@@ -40,6 +40,7 @@
 #include "core/event_producers.h"
 #include "core/logger.h"
 #include "core/mqtt_client.h"
+#include "core/observation_retention.h"
 #include "core/path_utils.h"
 #include "utils/strings.h"
 
@@ -1816,6 +1817,10 @@ static void* unified_storage_controller_func(void *arg) {
             log_warn("Storage target health refresh failed");
         }
         cleanup_pressured_targets();
+        // INT_01 evidence age/byte budgets and history prune. Bounded and
+        // rate-limited internally; a no-op until startup reconciliation ran.
+        // Touches only <storage>/observations, never recordings.
+        observation_retention_maintenance_tick();
         unified_ctrl.last_heartbeat = now;
 
         // Check if forced cleanup was requested
