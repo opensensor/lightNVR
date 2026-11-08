@@ -16,7 +16,8 @@ const enforcedKeys: Action[] = [
   'storage.configure', 'events.configure', 'users.manage', 'system.admin',
   'lpr.read', 'lpr.search', 'lpr.export', 'lpr.delete',
 ];
-const unenforcedKeys: Action[] = ['audio.listen', 'audio.talk', 'fleet.execute_job'];
+// observations.annotate (INT_01 P2) is reported unenforced until the annotation PUT lands (L14).
+const unenforcedKeys: Action[] = ['audio.listen', 'audio.talk', 'fleet.execute_job', 'observations.annotate'];
 
 test.describe('API token permission catalog @ui @users', () => {
   test.beforeEach(async ({ page }) => {

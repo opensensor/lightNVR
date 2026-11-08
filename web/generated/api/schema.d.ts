@@ -3728,7 +3728,7 @@ export interface components {
         };
         AdminSimulationRequest: ({
             /** @enum {string} */
-            action: "live.view" | "audio.listen" | "audio.talk" | "recordings.replay" | "recordings.export" | "snapshot.create" | "ptz.control" | "evidence.protect" | "recording.delete" | "camera.configure" | "fleet.execute_job" | "lpr.read" | "lpr.search" | "lpr.export" | "lpr.delete";
+            action: "live.view" | "audio.listen" | "audio.talk" | "recordings.replay" | "recordings.export" | "snapshot.create" | "ptz.control" | "evidence.protect" | "recording.delete" | "camera.configure" | "fleet.execute_job" | "lpr.read" | "lpr.search" | "lpr.export" | "lpr.delete" | "observations.annotate";
             camera_uuid: string;
             user_id: number;
         } & {
@@ -4011,7 +4011,7 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        AuthorizationAction: "live.view" | "audio.listen" | "audio.talk" | "recordings.replay" | "recordings.export" | "snapshot.create" | "ptz.control" | "evidence.protect" | "recording.delete" | "camera.configure" | "fleet.execute_job" | "storage.configure" | "events.configure" | "users.manage" | "system.admin" | "lpr.read" | "lpr.search" | "lpr.export" | "lpr.delete";
+        AuthorizationAction: "live.view" | "audio.listen" | "audio.talk" | "recordings.replay" | "recordings.export" | "snapshot.create" | "ptz.control" | "evidence.protect" | "recording.delete" | "camera.configure" | "fleet.execute_job" | "storage.configure" | "events.configure" | "users.manage" | "system.admin" | "lpr.read" | "lpr.search" | "lpr.export" | "lpr.delete" | "observations.annotate";
         AuthSession: {
             created_at: number;
             current: boolean;

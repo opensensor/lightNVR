@@ -62,6 +62,10 @@ static const authorization_action_metadata_t action_catalog[] = {
      "Export protected plate reads", true, false, true},
     {AUTHZ_LPR_DELETE, "lpr.delete", "License plates",
      "Permanently delete protected plate reads", true, true, true},
+    /* INT_01 P2 (migration 0096, bit 19). Reported unenforced until L14 routes
+     * PUT /api/observations/{id}/classifications through the evaluator. */
+    {AUTHZ_OBSERVATIONS_ANNOTATE, "observations.annotate", "Integrations",
+     "Annotate detection observations with classifier results", true, false, false},
 };
 
 _Static_assert(sizeof(action_catalog) / sizeof(action_catalog[0]) ==

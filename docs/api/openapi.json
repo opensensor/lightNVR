@@ -32220,7 +32220,8 @@
           "lpr.read",
           "lpr.search",
           "lpr.export",
-          "lpr.delete"
+          "lpr.delete",
+          "observations.annotate"
         ]
       },
       "ApiTokenCreateRequest": {
@@ -35468,7 +35469,8 @@
                   "lpr.read",
                   "lpr.search",
                   "lpr.export",
-                  "lpr.delete"
+                  "lpr.delete",
+                  "observations.annotate"
                 ]
               },
               "camera_uuid": {

@@ -2312,6 +2312,48 @@ static const char migration_0095_down[] =
     "DROP INDEX IF EXISTS idx_observation_assets_state_camera;\n"
     "DROP TABLE IF EXISTS observation_assets;";
 
+static const char migration_0096_up[] =
+    "CREATE TABLE observation_classifications (\n"
+    "    observation_uuid TEXT NOT NULL REFERENCES object_observations(uuid) ON DELETE CASCADE,\n"
+    "    key TEXT NOT NULL CHECK (length(key) BETWEEN 3 AND 65),\n"
+    "    writer_namespace TEXT NOT NULL CHECK (length(writer_namespace) BETWEEN 1 AND 32),\n"
+    "    writer_user_id INTEGER NOT NULL CHECK (writer_user_id > 0),\n"
+    "    classifier TEXT NOT NULL CHECK (length(classifier) BETWEEN 1 AND 64),\n"
+    "    model_version TEXT CHECK (model_version IS NULL OR length(model_version) BETWEEN 1 AND 64),\n"
+    "    label TEXT NOT NULL CHECK (length(CAST(label AS BLOB)) BETWEEN 1 AND 128),\n"
+    "    taxonomy_id TEXT CHECK (taxonomy_id IS NULL OR length(taxonomy_id) BETWEEN 1 AND 64),\n"
+    "    confidence REAL NOT NULL CHECK (confidence >= 0.0 AND confidence <= 1.0),\n"
+    "    classified_at_ms INTEGER NOT NULL CHECK (classified_at_ms >= 0),\n"
+    "    input_asset_uuid TEXT NOT NULL CHECK (length(input_asset_uuid) = 36),\n"
+    "    input_revision INTEGER NOT NULL CHECK (input_revision >= 1),\n"
+    "    kind TEXT NOT NULL CHECK (kind IN ('automated', 'owner_confirmed')),\n"
+    "    annotation_revision INTEGER NOT NULL DEFAULT 1 CHECK (annotation_revision >= 1),\n"
+    "    created_at_ms INTEGER NOT NULL,\n"
+    "    updated_at_ms INTEGER NOT NULL,\n"
+    "    PRIMARY KEY (observation_uuid, key),\n"
+    "    -- The key's namespace segment is the writer's namespace.\n"
+    "    CHECK (substr(key, 1, length(writer_namespace) + 1) = writer_namespace || '/')\n"
+    ");\n"
+    "\n"
+    "-- New persisted action-mask positions are appended; existing positions never\n"
+    "-- move. Built-in roles fail closed: only Administrator receives the action.\n"
+    "INSERT INTO authz_actions\n"
+    "    (action_key, category, description, camera_scoped, destructive, sort_order, bit_index)\n"
+    "VALUES\n"
+    "    ('observations.annotate', 'Integrations',\n"
+    "     'Annotate detection observations with classifier results', 1, 0, 200, 19);\n"
+    "\n"
+    "INSERT INTO authz_role_actions (role_uuid, action_key)\n"
+    "SELECT '00000000-0000-4000-8000-000000000001', action_key\n"
+    "FROM authz_actions\n"
+    "WHERE action_key = 'observations.annotate';";
+
+static const char migration_0096_down[] =
+    "-- Drops all classification annotations; take a backup first.\n"
+    "DELETE FROM authz_role_actions WHERE action_key = 'observations.annotate';\n"
+    "DELETE FROM authz_actions WHERE action_key = 'observations.annotate';\n"
+    "DROP TABLE IF EXISTS observation_classifications;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2978,8 +3020,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0095_down,
         .is_embedded = true
     },
+    {
+        .version = "0096",
+        .description = "add_observation_classifications",
+        .sql_up = migration_0096_up,
+        .sql_down = migration_0096_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 95
+#define EMBEDDED_MIGRATIONS_COUNT 96
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

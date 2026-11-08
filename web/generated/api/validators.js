@@ -188,7 +188,7 @@ var __getOwnPropNames = Object.getOwnPropertyNames, __commonJS = (cb, mod) => fu
   }
 }), __contract_AdminActionCatalog = validate183, schema93 = {
   type: "string",
-  enum: [ "live.view", "audio.listen", "audio.talk", "recordings.replay", "recordings.export", "snapshot.create", "ptz.control", "evidence.protect", "recording.delete", "camera.configure", "fleet.execute_job", "storage.configure", "events.configure", "users.manage", "system.admin", "lpr.read", "lpr.search", "lpr.export", "lpr.delete" ]
+  enum: [ "live.view", "audio.listen", "audio.talk", "recordings.replay", "recordings.export", "snapshot.create", "ptz.control", "evidence.protect", "recording.delete", "camera.configure", "fleet.execute_job", "storage.configure", "events.configure", "users.manage", "system.admin", "lpr.read", "lpr.search", "lpr.export", "lpr.delete", "observations.annotate" ]
 };
 
 function validate182(data, {instancePath: instancePath = "", parentData: parentData, parentDataProperty: parentDataProperty, rootData: rootData = data, dynamicAnchors: dynamicAnchors = {}} = {}) {
@@ -279,7 +279,7 @@ function validate182(data, {instancePath: instancePath = "", parentData: parentD
             type: "string"
           }
         } ], !1;
-        if ("live.view" !== data0 && "audio.listen" !== data0 && "audio.talk" !== data0 && "recordings.replay" !== data0 && "recordings.export" !== data0 && "snapshot.create" !== data0 && "ptz.control" !== data0 && "evidence.protect" !== data0 && "recording.delete" !== data0 && "camera.configure" !== data0 && "fleet.execute_job" !== data0 && "storage.configure" !== data0 && "events.configure" !== data0 && "users.manage" !== data0 && "system.admin" !== data0 && "lpr.read" !== data0 && "lpr.search" !== data0 && "lpr.export" !== data0 && "lpr.delete" !== data0) return validate182.errors = [ {
+        if ("live.view" !== data0 && "audio.listen" !== data0 && "audio.talk" !== data0 && "recordings.replay" !== data0 && "recordings.export" !== data0 && "snapshot.create" !== data0 && "ptz.control" !== data0 && "evidence.protect" !== data0 && "recording.delete" !== data0 && "camera.configure" !== data0 && "fleet.execute_job" !== data0 && "storage.configure" !== data0 && "events.configure" !== data0 && "users.manage" !== data0 && "system.admin" !== data0 && "lpr.read" !== data0 && "lpr.search" !== data0 && "lpr.export" !== data0 && "lpr.delete" !== data0 && "observations.annotate" !== data0) return validate182.errors = [ {
           instancePath: instancePath + "/key",
           schemaPath: "#/$defs/AuthorizationAction/enum",
           keyword: "enum",
@@ -642,7 +642,7 @@ function validate185(data, {instancePath: instancePath = "", parentData: parentD
                           type: "string"
                         }
                       } ], !1;
-                      if ("live.view" !== data5 && "audio.listen" !== data5 && "audio.talk" !== data5 && "recordings.replay" !== data5 && "recordings.export" !== data5 && "snapshot.create" !== data5 && "ptz.control" !== data5 && "evidence.protect" !== data5 && "recording.delete" !== data5 && "camera.configure" !== data5 && "fleet.execute_job" !== data5 && "storage.configure" !== data5 && "events.configure" !== data5 && "users.manage" !== data5 && "system.admin" !== data5 && "lpr.read" !== data5 && "lpr.search" !== data5 && "lpr.export" !== data5 && "lpr.delete" !== data5) return validate185.errors = [ {
+                      if ("live.view" !== data5 && "audio.listen" !== data5 && "audio.talk" !== data5 && "recordings.replay" !== data5 && "recordings.export" !== data5 && "snapshot.create" !== data5 && "ptz.control" !== data5 && "evidence.protect" !== data5 && "recording.delete" !== data5 && "camera.configure" !== data5 && "fleet.execute_job" !== data5 && "storage.configure" !== data5 && "events.configure" !== data5 && "users.manage" !== data5 && "system.admin" !== data5 && "lpr.read" !== data5 && "lpr.search" !== data5 && "lpr.export" !== data5 && "lpr.delete" !== data5 && "observations.annotate" !== data5) return validate185.errors = [ {
                         instancePath: instancePath + "/actions/" + i0,
                         schemaPath: "#/$defs/AuthorizationAction/enum",
                         keyword: "enum",
@@ -3091,7 +3091,7 @@ function validate188(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if ("live.view" !== data4 && "audio.listen" !== data4 && "audio.talk" !== data4 && "recordings.replay" !== data4 && "recordings.export" !== data4 && "snapshot.create" !== data4 && "ptz.control" !== data4 && "evidence.protect" !== data4 && "recording.delete" !== data4 && "camera.configure" !== data4 && "fleet.execute_job" !== data4 && "storage.configure" !== data4 && "events.configure" !== data4 && "users.manage" !== data4 && "system.admin" !== data4 && "lpr.read" !== data4 && "lpr.search" !== data4 && "lpr.export" !== data4 && "lpr.delete" !== data4) return validate188.errors = [ {
+            if ("live.view" !== data4 && "audio.listen" !== data4 && "audio.talk" !== data4 && "recordings.replay" !== data4 && "recordings.export" !== data4 && "snapshot.create" !== data4 && "ptz.control" !== data4 && "evidence.protect" !== data4 && "recording.delete" !== data4 && "camera.configure" !== data4 && "fleet.execute_job" !== data4 && "storage.configure" !== data4 && "events.configure" !== data4 && "users.manage" !== data4 && "system.admin" !== data4 && "lpr.read" !== data4 && "lpr.search" !== data4 && "lpr.export" !== data4 && "lpr.delete" !== data4 && "observations.annotate" !== data4) return validate188.errors = [ {
               instancePath: instancePath + "/actions/" + i0,
               schemaPath: "#/$defs/AuthorizationAction/enum",
               keyword: "enum",
@@ -3565,7 +3565,7 @@ function validate200(data, {instancePath: instancePath = "", parentData: parentD
                 type: "string"
               }
             } ], !1;
-            if ("live.view" !== data1 && "audio.listen" !== data1 && "audio.talk" !== data1 && "recordings.replay" !== data1 && "recordings.export" !== data1 && "snapshot.create" !== data1 && "ptz.control" !== data1 && "evidence.protect" !== data1 && "recording.delete" !== data1 && "camera.configure" !== data1 && "fleet.execute_job" !== data1 && "storage.configure" !== data1 && "events.configure" !== data1 && "users.manage" !== data1 && "system.admin" !== data1 && "lpr.read" !== data1 && "lpr.search" !== data1 && "lpr.export" !== data1 && "lpr.delete" !== data1) return validate200.errors = [ {
+            if ("live.view" !== data1 && "audio.listen" !== data1 && "audio.talk" !== data1 && "recordings.replay" !== data1 && "recordings.export" !== data1 && "snapshot.create" !== data1 && "ptz.control" !== data1 && "evidence.protect" !== data1 && "recording.delete" !== data1 && "camera.configure" !== data1 && "fleet.execute_job" !== data1 && "storage.configure" !== data1 && "events.configure" !== data1 && "users.manage" !== data1 && "system.admin" !== data1 && "lpr.read" !== data1 && "lpr.search" !== data1 && "lpr.export" !== data1 && "lpr.delete" !== data1 && "observations.annotate" !== data1) return validate200.errors = [ {
               instancePath: instancePath + "/action",
               schemaPath: "#/$defs/AuthorizationAction/enum",
               keyword: "enum",
@@ -3989,7 +3989,7 @@ var __contract_AdminSimulationRequest = validate199, schema204 = {
       },
       action: {
         type: "string",
-        enum: [ "live.view", "audio.listen", "audio.talk", "recordings.replay", "recordings.export", "snapshot.create", "ptz.control", "evidence.protect", "recording.delete", "camera.configure", "fleet.execute_job", "lpr.read", "lpr.search", "lpr.export", "lpr.delete" ]
+        enum: [ "live.view", "audio.listen", "audio.talk", "recordings.replay", "recordings.export", "snapshot.create", "ptz.control", "evidence.protect", "recording.delete", "camera.configure", "fleet.execute_job", "lpr.read", "lpr.search", "lpr.export", "lpr.delete", "observations.annotate" ]
       },
       camera_uuid: {
         type: "string",
@@ -4104,7 +4104,7 @@ function validate199(data, {instancePath: instancePath = "", parentData: parentD
           };
           vErrors.push(err6), errors++;
         }
-        if ("live.view" !== data1 && "audio.listen" !== data1 && "audio.talk" !== data1 && "recordings.replay" !== data1 && "recordings.export" !== data1 && "snapshot.create" !== data1 && "ptz.control" !== data1 && "evidence.protect" !== data1 && "recording.delete" !== data1 && "camera.configure" !== data1 && "fleet.execute_job" !== data1 && "lpr.read" !== data1 && "lpr.search" !== data1 && "lpr.export" !== data1 && "lpr.delete" !== data1) {
+        if ("live.view" !== data1 && "audio.listen" !== data1 && "audio.talk" !== data1 && "recordings.replay" !== data1 && "recordings.export" !== data1 && "snapshot.create" !== data1 && "ptz.control" !== data1 && "evidence.protect" !== data1 && "recording.delete" !== data1 && "camera.configure" !== data1 && "fleet.execute_job" !== data1 && "lpr.read" !== data1 && "lpr.search" !== data1 && "lpr.export" !== data1 && "lpr.delete" !== data1 && "observations.annotate" !== data1) {
           let err7 = {
             instancePath: instancePath + "/action",
             schemaPath: "#/anyOf/0/properties/action/enum",
@@ -6086,7 +6086,7 @@ function validate89(data, {instancePath: instancePath = "", parentData: parentDa
                     type: "string"
                   }
                 } ], !1;
-                if ("live.view" !== data3 && "audio.listen" !== data3 && "audio.talk" !== data3 && "recordings.replay" !== data3 && "recordings.export" !== data3 && "snapshot.create" !== data3 && "ptz.control" !== data3 && "evidence.protect" !== data3 && "recording.delete" !== data3 && "camera.configure" !== data3 && "fleet.execute_job" !== data3 && "storage.configure" !== data3 && "events.configure" !== data3 && "users.manage" !== data3 && "system.admin" !== data3 && "lpr.read" !== data3 && "lpr.search" !== data3 && "lpr.export" !== data3 && "lpr.delete" !== data3) return validate89.errors = [ {
+                if ("live.view" !== data3 && "audio.listen" !== data3 && "audio.talk" !== data3 && "recordings.replay" !== data3 && "recordings.export" !== data3 && "snapshot.create" !== data3 && "ptz.control" !== data3 && "evidence.protect" !== data3 && "recording.delete" !== data3 && "camera.configure" !== data3 && "fleet.execute_job" !== data3 && "storage.configure" !== data3 && "events.configure" !== data3 && "users.manage" !== data3 && "system.admin" !== data3 && "lpr.read" !== data3 && "lpr.search" !== data3 && "lpr.export" !== data3 && "lpr.delete" !== data3 && "observations.annotate" !== data3) return validate89.errors = [ {
                   instancePath: instancePath + "/actions/" + i0,
                   schemaPath: "#/$defs/AuthorizationAction/enum",
                   keyword: "enum",
@@ -6374,7 +6374,7 @@ function validate91(data, {instancePath: instancePath = "", parentData: parentDa
                               type: "string"
                             }
                           } ], !1;
-                          if ("live.view" !== data8 && "audio.listen" !== data8 && "audio.talk" !== data8 && "recordings.replay" !== data8 && "recordings.export" !== data8 && "snapshot.create" !== data8 && "ptz.control" !== data8 && "evidence.protect" !== data8 && "recording.delete" !== data8 && "camera.configure" !== data8 && "fleet.execute_job" !== data8 && "storage.configure" !== data8 && "events.configure" !== data8 && "users.manage" !== data8 && "system.admin" !== data8 && "lpr.read" !== data8 && "lpr.search" !== data8 && "lpr.export" !== data8 && "lpr.delete" !== data8) return validate91.errors = [ {
+                          if ("live.view" !== data8 && "audio.listen" !== data8 && "audio.talk" !== data8 && "recordings.replay" !== data8 && "recordings.export" !== data8 && "snapshot.create" !== data8 && "ptz.control" !== data8 && "evidence.protect" !== data8 && "recording.delete" !== data8 && "camera.configure" !== data8 && "fleet.execute_job" !== data8 && "storage.configure" !== data8 && "events.configure" !== data8 && "users.manage" !== data8 && "system.admin" !== data8 && "lpr.read" !== data8 && "lpr.search" !== data8 && "lpr.export" !== data8 && "lpr.delete" !== data8 && "observations.annotate" !== data8) return validate91.errors = [ {
                             instancePath: instancePath + "/actions/" + i0,
                             schemaPath: "#/$defs/AuthorizationAction/enum",
                             keyword: "enum",
@@ -6768,7 +6768,7 @@ function validate203(data, {instancePath: instancePath = "", parentData: parentD
             type: "string"
           }
         } ], !1;
-        if ("live.view" !== data0 && "audio.listen" !== data0 && "audio.talk" !== data0 && "recordings.replay" !== data0 && "recordings.export" !== data0 && "snapshot.create" !== data0 && "ptz.control" !== data0 && "evidence.protect" !== data0 && "recording.delete" !== data0 && "camera.configure" !== data0 && "fleet.execute_job" !== data0 && "storage.configure" !== data0 && "events.configure" !== data0 && "users.manage" !== data0 && "system.admin" !== data0 && "lpr.read" !== data0 && "lpr.search" !== data0 && "lpr.export" !== data0 && "lpr.delete" !== data0) return validate203.errors = [ {
+        if ("live.view" !== data0 && "audio.listen" !== data0 && "audio.talk" !== data0 && "recordings.replay" !== data0 && "recordings.export" !== data0 && "snapshot.create" !== data0 && "ptz.control" !== data0 && "evidence.protect" !== data0 && "recording.delete" !== data0 && "camera.configure" !== data0 && "fleet.execute_job" !== data0 && "storage.configure" !== data0 && "events.configure" !== data0 && "users.manage" !== data0 && "system.admin" !== data0 && "lpr.read" !== data0 && "lpr.search" !== data0 && "lpr.export" !== data0 && "lpr.delete" !== data0 && "observations.annotate" !== data0) return validate203.errors = [ {
           instancePath: instancePath + "/action",
           schemaPath: "#/$defs/AuthorizationAction/enum",
           keyword: "enum",
@@ -7997,7 +7997,7 @@ function validate206(data, {instancePath: instancePath = "", parentData: parentD
           };
           vErrors.push(err5), errors++;
         }
-        if ("live.view" !== key0 && "audio.listen" !== key0 && "audio.talk" !== key0 && "recordings.replay" !== key0 && "recordings.export" !== key0 && "snapshot.create" !== key0 && "ptz.control" !== key0 && "evidence.protect" !== key0 && "recording.delete" !== key0 && "camera.configure" !== key0 && "fleet.execute_job" !== key0 && "storage.configure" !== key0 && "events.configure" !== key0 && "users.manage" !== key0 && "system.admin" !== key0 && "lpr.read" !== key0 && "lpr.search" !== key0 && "lpr.export" !== key0 && "lpr.delete" !== key0) {
+        if ("live.view" !== key0 && "audio.listen" !== key0 && "audio.talk" !== key0 && "recordings.replay" !== key0 && "recordings.export" !== key0 && "snapshot.create" !== key0 && "ptz.control" !== key0 && "evidence.protect" !== key0 && "recording.delete" !== key0 && "camera.configure" !== key0 && "fleet.execute_job" !== key0 && "storage.configure" !== key0 && "events.configure" !== key0 && "users.manage" !== key0 && "system.admin" !== key0 && "lpr.read" !== key0 && "lpr.search" !== key0 && "lpr.export" !== key0 && "lpr.delete" !== key0 && "observations.annotate" !== key0) {
           let err6 = {
             instancePath: instancePath + "/allowed_decision_modes",
             schemaPath: "#/$defs/AuthorizationAction/enum",
@@ -8136,7 +8136,7 @@ function validate206(data, {instancePath: instancePath = "", parentData: parentD
             };
             vErrors.push(err12), errors++;
           }
-          if ("live.view" !== key2 && "audio.listen" !== key2 && "audio.talk" !== key2 && "recordings.replay" !== key2 && "recordings.export" !== key2 && "snapshot.create" !== key2 && "ptz.control" !== key2 && "evidence.protect" !== key2 && "recording.delete" !== key2 && "camera.configure" !== key2 && "fleet.execute_job" !== key2 && "storage.configure" !== key2 && "events.configure" !== key2 && "users.manage" !== key2 && "system.admin" !== key2 && "lpr.read" !== key2 && "lpr.search" !== key2 && "lpr.export" !== key2 && "lpr.delete" !== key2) {
+          if ("live.view" !== key2 && "audio.listen" !== key2 && "audio.talk" !== key2 && "recordings.replay" !== key2 && "recordings.export" !== key2 && "snapshot.create" !== key2 && "ptz.control" !== key2 && "evidence.protect" !== key2 && "recording.delete" !== key2 && "camera.configure" !== key2 && "fleet.execute_job" !== key2 && "storage.configure" !== key2 && "events.configure" !== key2 && "users.manage" !== key2 && "system.admin" !== key2 && "lpr.read" !== key2 && "lpr.search" !== key2 && "lpr.export" !== key2 && "lpr.delete" !== key2 && "observations.annotate" !== key2) {
             let err13 = {
               instancePath: instancePath + "/allowed_decision_modes",
               schemaPath: "#/$defs/AuthorizationAction/enum",

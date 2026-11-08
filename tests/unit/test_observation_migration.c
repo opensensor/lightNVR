@@ -277,8 +277,8 @@ static void test_upgrade_down_and_reapply_reach_same_schema(void) {
     migrate_through("0094");
     char *before = structure();
     char *before_settings = settings();
-    /* Upgrade the 0094 database. */
-    migrate_first(EMBEDDED_MIGRATIONS_COUNT);
+    /* Upgrade the 0094 database to 0095 (later migrations are tested on their own). */
+    migrate_through("0095");
     char *upgraded = full_sql();
     char *upgraded_structure = structure();
     TEST_ASSERT_TRUE(strcmp(before, upgraded_structure) != 0);
@@ -290,7 +290,7 @@ static void test_upgrade_down_and_reapply_reach_same_schema(void) {
     TEST_ASSERT_EQUAL_STRING(before, after_down);
     TEST_ASSERT_EQUAL_STRING(before_settings, after_down_settings);
     /* Up again reaches the same schema as an upgrade, and the same as a fresh database. */
-    migrate_first(EMBEDDED_MIGRATIONS_COUNT);
+    migrate_through("0095");
     char *reapplied = full_sql();
     TEST_ASSERT_EQUAL_STRING(upgraded, reapplied);
     TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM object_observations"));
@@ -300,7 +300,7 @@ static void test_upgrade_down_and_reapply_reach_same_schema(void) {
     sqlite_migrate_t *upgraded_migration = migration; migration = NULL;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(":memory:", &db));
     ok("PRAGMA foreign_keys = ON;");
-    migrate_first(EMBEDDED_MIGRATIONS_COUNT);
+    migrate_through("0095");
     char *fresh = full_sql();
     TEST_ASSERT_EQUAL_STRING(upgraded, fresh);
     migrate_free(migration); sqlite3_close(db);
