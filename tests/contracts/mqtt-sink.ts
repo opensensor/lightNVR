@@ -1,6 +1,7 @@
 /** Minimal owned MQTT 3.1.1 sink: observes real PUBLISH bytes, controls PUBACK. */
 import net from 'node:net';
-export async function startMqttSink() {
+/** port 0 = ephemeral; pass a reserved port to bring a "down" broker up later. */
+export async function startMqttSink(port = 0) {
  const sockets=new Set<net.Socket>();
  const publications:{topic:string;payload:Buffer;qos:number}[]=[];
  let acknowledge=true;
@@ -37,7 +38,7 @@ export async function startMqttSink() {
    }
   });
  });
- await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+ await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});
  return {port:(server.address() as net.AddressInfo).port,publications,
   acknowledge(value:boolean){acknowledge=value;},
   disconnect(){for(const socket of sockets)socket.destroy();},

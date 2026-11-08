@@ -200,11 +200,19 @@ void observation_evidence_get_stats(observation_evidence_stats_t *out);
 typedef enum {
     OBS_EVIDENCE_STAGE_ITEM_BEGIN = 0,  /* worker picked an item (may block to stall the queue) */
     OBS_EVIDENCE_STAGE_BEFORE_RENAME,   /* tmp written + fsynced; nonzero = inject failure */
-    OBS_EVIDENCE_STAGE_ITEM_DONE
+    OBS_EVIDENCE_STAGE_ITEM_DONE,
+    OBS_EVIDENCE_STAGE_AFTER_INSERT,    /* batch + pending asset committed, nothing written yet */
+    OBS_EVIDENCE_STAGE_BEFORE_COMMIT    /* final file renamed + dir fsynced, pending->ready not
+                                         * yet committed */
 } observation_evidence_stage_t;
 
 /* Invoked on the worker thread. A nonzero return at BEFORE_RENAME is treated
- * as a write failure. NULL clears. Intended for tests and fault injection. */
+ * as a write failure; other stages ignore the return value. NULL clears.
+ * Intended for tests and fault injection only: the hook can be installed only
+ * by code linked into the process (there is no configuration, environment or
+ * API path to it), so a production build can never trigger it. The L11
+ * crash-boundary test (tests/unit/test_observation_crash_boundaries.c) raises
+ * SIGKILL from AFTER_INSERT, BEFORE_RENAME and BEFORE_COMMIT. */
 typedef int (*observation_evidence_stage_fn)(observation_evidence_stage_t stage,
                                              const char *path, void *ctx);
 void observation_evidence_set_stage_hook(observation_evidence_stage_fn fn, void *ctx);

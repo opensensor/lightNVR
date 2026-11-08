@@ -529,6 +529,7 @@ static void process_item(evidence_item_t *item) {
         log_warn("Evidence: inserting batch %s failed: %d", item->batch.batch_id, rc);
         return;
     }
+    (void)stage_hook(OBS_EVIDENCE_STAGE_AFTER_INSERT, NULL);
 
     char relative[MAX_PATH_LENGTH];
     char final_path[MAX_PATH_LENGTH];
@@ -575,6 +576,7 @@ static void process_item(evidence_item_t *item) {
         .width = item->width, .height = item->height, .expires_at_ms = 0,
     };
     observation_transition_result_t result;
+    (void)stage_hook(OBS_EVIDENCE_STAGE_BEFORE_COMMIT, final_path);
     rc = db_observation_asset_transition(item->asset.asset_uuid, OBS_ASSET_PENDING,
                                          OBS_ASSET_READY, NULL, &media, &result);
     if (rc == DB_OBS_ERROR)

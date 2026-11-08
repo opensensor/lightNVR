@@ -248,6 +248,25 @@ static void maybe_write_sidecar_locked(const relay_settings_t *settings) {
 
 /* ---- relay pass ------------------------------------------------------------ */
 
+static pthread_mutex_t g_stage_lock = PTHREAD_MUTEX_INITIALIZER;
+static observation_relay_stage_fn g_stage_hook;
+static void *g_stage_ctx;
+
+void observation_relay_set_stage_hook(observation_relay_stage_fn fn, void *ctx) {
+    pthread_mutex_lock(&g_stage_lock);
+    g_stage_hook = fn;
+    g_stage_ctx = ctx;
+    pthread_mutex_unlock(&g_stage_lock);
+}
+
+static void stage_hook(observation_relay_stage_t stage, const observation_publication_t *row) {
+    pthread_mutex_lock(&g_stage_lock);
+    observation_relay_stage_fn fn = g_stage_hook;
+    void *ctx = g_stage_ctx;
+    pthread_mutex_unlock(&g_stage_lock);
+    if (fn) fn(stage, row, ctx);
+}
+
 static bool mark(int64_t seq, observation_publication_state_t state, const char *error,
                  bool *cas_lost) {
     int rc = db_observation_publication_mark(seq, state, error);
@@ -346,8 +365,11 @@ static int run_pass_locked(const relay_settings_t *settings, observation_relay_p
             break;
         }
 
+        stage_hook(OBS_RELAY_STAGE_BEFORE_ENQUEUE, row);
         event_producer_enqueue_result_t result =
             event_producer_enqueue_durable(&event, error, sizeof(error));
+        if (result == EVENT_PRODUCER_ENQUEUE_ENQUEUED || result == EVENT_PRODUCER_ENQUEUE_DUPLICATE)
+            stage_hook(OBS_RELAY_STAGE_AFTER_ENQUEUE, row);
         observation_publication_state_t state;
         bool retry = false;
         switch (result) {
@@ -384,6 +406,7 @@ static int run_pass_locked(const relay_settings_t *settings, observation_relay_p
             break;
         }
         if (!cas_lost) {
+            stage_hook(OBS_RELAY_STAGE_AFTER_MARK, row);
             pass->processed++;
             pthread_mutex_lock(&RELAY.mutex);
             if (state == OBS_PUBLICATION_RELAYED) {

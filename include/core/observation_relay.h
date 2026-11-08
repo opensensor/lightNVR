@@ -119,4 +119,24 @@ void observation_relay_notify(void);
 void observation_relay_get_stats(observation_relay_stats_t *stats);
 void observation_relay_reset_stats(void);  /* tests */
 
+/* ---- Test hooks ---------------------------------------------------------- */
+
+typedef enum {
+    OBS_RELAY_STAGE_BEFORE_ENQUEUE = 0,  /* change committed, envelope built, outbox untouched */
+    OBS_RELAY_STAGE_AFTER_ENQUEUE,       /* outbox accepted the envelope, publication still
+                                          * pending */
+    OBS_RELAY_STAGE_AFTER_MARK           /* publication marked relayed / relayed_no_route; the
+                                          * outbox row is not yet delivered */
+} observation_relay_stage_t;
+
+/* Invoked on the relay pass for each row that reaches the stage; the return
+ * value is ignored. NULL clears. Like observation_evidence_set_stage_hook(),
+ * it is reachable only from code linked into the process (no configuration,
+ * environment or API path), so production cannot trigger it. The L11
+ * crash-boundary test raises SIGKILL from it. */
+typedef void (*observation_relay_stage_fn)(observation_relay_stage_t stage,
+                                           const observation_publication_t *publication,
+                                           void *ctx);
+void observation_relay_set_stage_hook(observation_relay_stage_fn fn, void *ctx);
+
 #endif /* LIGHTNVR_CORE_OBSERVATION_RELAY_H */
