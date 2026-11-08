@@ -4461,9 +4461,59 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
   - A lightNVR API outage leaves the YA-WAMF detection intact.
 - **validation**: A12 and A13 pass end to end. The supported-version matrix is
   updated.
-- **status**: Not Completed
+- **status**: Completed. lightNVR commit `817796c7`. No product fix was
+  needed in either repo. Nothing is pushed.
 - **log**:
-- **files edited/created**:
+  - **Mode**: host processes, as in X1. The lightNVR binary is
+    `build-int01-X3`, built from `bcf5290f` with X1's options (MQTT+SOD on,
+    LiteRT off, the apt FFmpeg header symlink dir via `CMAKE_C_FLAGS`).
+    YA-WAMF runs at `1cbbae74` with `LIGHTNVR__WRITEBACK_ENABLED=true`. The
+    new scenarios are in `p2_scenarios.py`, a mixin for `run_e2e.Suite`.
+    Two cameras were added: `feeder-wb` and `feeder-wb-outage`.
+  - **RED**: `--no-writeback --scenarios A1,A12,A13,A7-annotate`. A1 passed.
+    A12 and A13 timed out waiting for the annotation on lightNVR. A7-annotate
+    first failed on a harness assumption (see the gotchas). Kept as
+    `results/x3-host-20261108-red-nowriteback.json`.
+  - **GREEN**: the full suite passes 10/10 in 454 s
+    (`results/x3-host-20261108.json`): A1–A6 and A8 with write-back on, plus
+    the three below.
+
+    | A-ID | Evidence |
+    | --- | --- |
+    | A12 | **Both products:** YA-WAMF has `Dunnock` 0.93. lightNVR has `yawamf/species` `automated` with `input_revision` 2 and `annotation_revision` 1, in both the DB and GET. Detection results show `observation.classification`, while the detector keeps `bird` 0.90. **No loop:** the classification change is revision 3 and its UUIDv5 is on the broker. After it, there are 0 extra classifier calls, the intent columns are unchanged, and the job revision is unchanged. **Replays:** 30 MQTT replays and 5 identical PUTs give `200 changed:false`. A stale or future revision gives `409 revision_conflict`. There is still 1 row at revision 1, the observation stays at revision 3, and nothing new is published. **Owner:** `PATCH /api/events/{id}` to *Erithacus rubecula* gives `owner_confirmed` `European Robin` 1.0, revision 2. **Later automated result:** a PUT gives `409 owner_decision_locked`. YA-WAMF's detection was reverted to automated by SQL and its job re-queued; the job ended `terminal` with `dropped:owner_decision_locked`, and lightNVR is unchanged. |
+    | A13 | lightNVR was SIGTERMed for 47 s. The correction was saved, served by `GET /api/events?event_id=`, and its job was `retryable` with `retry:source_unreachable:request_error`. The row did not change during the outage. The job succeeded 14 s after restart, with `owner_confirmed` on lightNVR and in the enrichment. No classifier call, no duplicate row, and the intent is unchanged. |
+    | A7-annotate | A token without the action gets `403 forbidden` on both an existing and a new key. A token scoped to another camera gets `404 observation_not_found`. Neither writes a row or bumps the revision. The recipe token gets `201` and then `200 changed:false`. The audit results match. |
+
+  - **Docs**: the `YA_WAMF.md` matrix now has a P2 row marked tested and the
+    YA-WAMF minimum for write-back (`de28e1e4`). The P2 section notes the
+    known gap. Contract §18 rows are updated, and the README has the
+    scenarios and gotchas.
+  - **Not covered**: the "later automated result" in YA-WAMF is simulated.
+    No YA-WAMF path produces an automated result for a detection that is
+    already saved and also writes it back.
+  - **Finding (not fixed, follow-up for YA-WAMF W10)**:
+    `POST /api/events/{id}/reclassify` (owner, sets `manual_tagged`) and the
+    video classifier change the species without queuing a write-back. Only
+    `EventProcessor` and the PATCH/bulk manual-tag paths call
+    `classification_writeback_service.request`. lightNVR keeps the old
+    annotation until the owner edits or confirms.
+  - Run:
+    `../YetAnother-WhosAtMyFeeder/backend/.venv/bin/python tests/integration/yawamf_e2e/run_e2e.py --lightnvr-bin build-int01-X3/bin/lightnvr [--scenarios A1,A12,A13,A7-annotate] [--no-writeback]`
+  - **Gotchas**:
+    - A token's camera selector must *equal* one of its user's grant
+      selectors. A subset gives `403 API token scope exceeds live.view
+      authority`. The other-camera probe is therefore a second user,
+      `yawamf-east`.
+    - YA-WAMF has no `GET /api/events/{id}` (it answers 405); use
+      `?event_id=`.
+    - The write-back worker polls every 60 s and wakes on enqueue. The first
+      retry comes 30 s after a failure, and the second 120 s after that.
+    - `results/*.json` records `dirty_tracked: true`, because the harness
+      edits were not yet committed during the run.
+- **files edited/created**: `tests/integration/yawamf_e2e/p2_scenarios.py`
+  and `results/x3-host-20261108{.json,.classifier.jsonl,.detector.jsonl,.mqtt-capture.jsonl,-red-nowriteback.json}`
+  (new); `tests/integration/yawamf_e2e/run_e2e.py`, `README.md`;
+  `docs/integrations/YA_WAMF.md`, `docs/integrations/OBSERVATIONS_CONTRACT.md`
 
 ## Parallel Execution Groups
 
