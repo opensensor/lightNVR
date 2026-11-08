@@ -2910,9 +2910,154 @@ P2  L2 ── L13 (mig 0096 + db classifications + authz action)
 - **validation**: A replay test sends the same observation 10 times and gets
   one intent and one dispatch. A simulated crash after intent and before
   dispatch is recoverable and visible. W0 is green.
-- **status**: Not Completed
+- **status**: Completed (YA-WAMF commit `7fb42e41` on `feature/lightnvr-provider`, not pushed)
 - **log**:
-- **files edited/created**:
+  - **Intent lifecycle** (W2's columns and vocabularies; no Alembic revision):
+    - `SourceIngestion` computes the intent with
+      `notification_intent.single_shot_intent(origin, notify_mode, notify_on_insert)`:
+      - `recovery` always gives `suppressed_recovery`;
+      - `silent` gives `suppressed_policy`;
+      - `final`, `standard` and `realtime` give `dispatch`;
+      - any other mode follows `notify_on_insert`.
+    - `DetectionService.save_detection(notification_intent=…)` forwards it
+      to `upsert_if_higher_score`. Only the **insert** branch writes
+      `notification_intent` and `notification_intent_at`, before the same
+      commit, guarded by `notification_intent IS NULL`. So `was_inserted`
+      means the intent is newly recorded, and only then does a `dispatch`
+      enqueue. A Frigate save passes no intent and its upsert call is
+      unchanged.
+    - The orchestrator sees `notification_intent` on the event and takes
+      `_deliver_recorded_intent`, never the lifecycle `_should_notify`. It:
+      - re-reads `get_notification_state`; anything except
+        `dispatch` with no outcome is a no-op, so a double enqueue cannot
+        double send;
+      - records `skipped` for a hidden or unconfirmed row;
+      - does not wait for video, because a snapshot-only source has no
+        clip;
+      - sends with a `NotificationReport`, then calls
+        `record_outcome` once (`WHERE notification_intent IS NOT NULL AND
+        notification_outcome IS NULL`). `sent` also sets `notified_at`
+        (`DetectionRepository.record_notification_outcome`, which extends
+        `mark_notified`).
+    - Outcomes:
+      - `notify_detection` filters and cooldown give `skipped`;
+      - any channel sent gives `sent`;
+      - an ambiguous error gives `unknown`: `ReadTimeout`, `WriteTimeout`,
+        `RemoteProtocolError`, `ReadError`, `TimeoutError`,
+        `SMTPServerDisconnected`, or `CancelledError` (the dispatcher's
+        `wait_for` deadline hitting a send in flight);
+      - otherwise `failed` (for example `ConnectError` or an HTTP status);
+      - a queue-full drop records `failed` (`not_queued`).
+    - Transport results reach the report through a `ContextVar` that is set
+      only while the channel tasks are created. `_note_delivery` is called
+      in each `_send_*`. Frigate and Garden calls pass no report and are
+      unaffected.
+    - Every `unknown` is logged and recorded in `error_diagnostics_history`
+      (`reason_code=notification_delivery_unknown`, severity `error`) and
+      never retried.
+  - **Crash-recovery choice: surface, never resend** (delivery is at most
+    once, and exactly once is not promised).
+    - The lifecycle phase `notification_intent_reconcile` runs in `main.py`
+      after `db_init` and before the dispatcher, MQTT and source recovery.
+    - It calls `reconcile_interrupted_intents(started_before=<process start, naive UTC>)`,
+      which marks every `dispatch` intent with no outcome and recorded before
+      this start as `unknown`.
+    - Each one gets a diagnostics entry
+      (`notification_intent_interrupted`, severity `warning`), and the count
+      appears in `/health` under `notification_intents`
+      (`interrupted_at_startup`, `delivery_unknown`, `last_reconciled_at`).
+    - Rows recorded after the cutoff are left alone. A row cannot say
+      whether the crash came before or during the send, so resending could
+      duplicate the alert. A job dropped by `dispatcher.stop()` at shutdown
+      therefore also ends up `unknown`, although it was never sent.
+  - **Other changes**:
+    - **Frigate is untouched**: rows keep NULL intent, and `final` still
+      waits for `end`. A test asserts no `report` kwarg on the Frigate path.
+    - For a single-shot sighting, `notify_detection` gets `event_type="end"`,
+      so **email only on end** still emails: the first admission is also
+      the end.
+    - `notification_link`: with `link_target="frigate"`, a non-Frigate key
+      (`lnvr:`) falls back to the YA-WAMF detection link.
+    - Attachments: ingestion already passes the cached crop. The fallback
+      stays `media_cache`, then `source_access.fetch_event_snapshot_bytes`,
+      which goes through the provider. `snapshot_url` stays `""` for
+      lightNVR.
+  - **RED → GREEN**:
+    - `tests/test_lightnvr_notification_intent.py` (17 tests) first failed
+      at collection (`ImportError: notification_intent`).
+    - With a stub module, 16 of 17 failed. `final` mode got "awaited 0
+      times", intent columns were NULL, and the recovery, silent, crash,
+      timeout, deadline, refusal, sibling-cooldown and link tests all failed.
+      Only the Frigate-unchanged test passed, as intended.
+    - After the change, all 17 pass, plus `tests/pure/test_notification_intent_policy.py`
+      (25 cases).
+    - Covered:
+      - 10× replay gives one intent and one dispatch, also from a fresh
+        processor and with recovery overlap;
+      - `final` notifies once;
+      - recovery gives `suppressed_recovery` and no dispatch, including on a
+        later live message;
+      - `silent` gives `suppressed_policy`;
+      - a crash before dispatch gives `unknown` plus a diagnostic, with no
+        resend on a second sweep or a redelivery;
+      - the sweep ignores intents recorded after the cutoff;
+      - a queue drop gives `failed`;
+      - real `notify_detection` against a fake Telegram: `ReadTimeout`
+        gives `unknown` plus a diagnostic and no resend; a 0.2 s dispatcher
+        deadline mid-send gives `unknown`; `ConnectError` gives `failed`;
+        OK gives `sent` with `notified_at`;
+      - siblings with a 5 min cooldown give `sent` and `skipped`, and
+        without a cooldown both are `sent`.
+  - **Gates**:
+    - W0 46/46.
+    - Notification, ingestion and live-notification modules: 186 passed.
+    - Pure lane: 2217 passed, 4 skipped.
+    - Rest of the suite: 5686 passed, 56 skipped, 0 failed, run with W6's
+      and W8's in-flight hunks in the tree.
+    - `ruff check`/`ruff format` are clean on every W7 file. The repo-wide
+      `ruff check` flags only W6's in-flight `source_recovery_service.py`
+      (unused `HEAD_CURSOR`).
+    - `docs_consistency_check.py` and `dead_modules_check.py` are clean.
+  - **Commit hygiene**: the shared index already held W8's staged files. The
+    commit was therefore built in a private index
+    (`GIT_INDEX_FILE`, `read-tree HEAD`, `git add` W7 files, and
+    `git apply --cached` with only the three W7 hunks of `main.py`). W6's
+    `source_recovery` hunks in `main.py` stay unstaged, and W8's staged set
+    is untouched.
+  - **Gotchas**:
+    - **W9**: assert intent and outcome rows with the `INTENT` query in
+      `test_lightnvr_notification_intent.py`. Its fixtures are reused from
+      `test_lightnvr_ingestion` by module attribute (a direct import trips
+      ruff F811). `intent_status()` counters are process-global, so assert
+      deltas. For A4, check one `dispatch` row and one notify call.
+    - **W6**: recovery must call `process_source_observation(origin="recovery")`.
+      That is what records `suppressed_recovery`; nothing else is needed. A
+      recovered item for an already admitted row leaves the live row's
+      intent and outcome alone.
+    - **W8**: `/health.notification_intents` and the diagnostics reason
+      codes `notification_delivery_unknown` and
+      `notification_intent_interrupted` are there to surface. No UI was
+      added.
+    - **W10 / A13**: write-back retries never touch
+      `notification_intent`, and a re-save of an existing row cannot record
+      one (insert only). Do not call `_enqueue_notification_flow` from
+      write-back.
+    - **X1**: an unknown outcome is expected after a kill -9 during a send,
+      and also for jobs that were still queued at a graceful stop. Do not
+      treat it as a bug. Ambiguity is detected only from error type names,
+      so a new transport must return `DeliveryResult.error_type` with the
+      exception class name.
+- **files edited/created** (YA-WAMF):
+  - `backend/app/services/notification_intent.py` (new)
+  - `backend/app/services/notification_orchestrator.py`,
+    `notification_service.py`, `notification_links.py`,
+    `source_ingestion.py`, `event_processor.py`, `detection_service.py`,
+    `backend/app/repositories/detection_repository.py`, `backend/app/main.py`
+    (W7 hunks only)
+  - `backend/tests/test_lightnvr_notification_intent.py` (new),
+    `backend/tests/pure/test_notification_intent_policy.py` (new)
+  - `docs/features/notifications.md`,
+    `changelog.d/lightnvr-notification-intent.md` (new)
 
 #### W8: Settings, onboarding and health UI for source selection
 - **depends_on**: [W3, W5]
