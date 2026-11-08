@@ -20,12 +20,11 @@ const expected = [
   {id: 'getObservationSnapshot', method: 'get', path: '/api/observations/{id}/snapshot',
     route: '/api/observations/#/snapshot', handler: 'handle_get_observation_snapshot',
     auth: camera('snapshot.create')},
-  // P2: observations.annotate is not in the action catalog until L13, so the
-  // stub is authenticated-only; L14 switches it to camera observations.annotate.
+  // P2 (L14): authorized on the capture camera with observations.annotate.
   {id: 'putObservationClassification', method: 'put',
     path: '/api/observations/{id}/classifications/{namespace}/{name}',
     route: '/api/observations/#/classifications/#/#', handler: 'handle_put_observation_classification',
-    auth: {version: 1, kind: 'authenticated'}},
+    auth: camera('observations.annotate')},
 ];
 const schemas = ['Observation', 'ObservationEvidence', 'ObservationTransform', 'ObservationPage',
   'ObservationChangeEvent', 'ObservationClassification', 'IntegrationCapabilities', 'ObservationError'];
@@ -38,12 +37,10 @@ test('observation operations carry the frozen authorization mapping', async () =
     assert.equal(operation.operationId, op.id);
     assert.doesNotMatch(operation.operationId, /Evidence/);
     assert.deepEqual(operation['x-lightnvr-authorization'], op.auth, `authorization: ${op.id}`);
-    // L8 implemented the GET operations; only the P2 PUT stub still answers 501.
-    if (op.id === 'putObservationClassification') {
-      assert.ok(operation.responses['501'], `${op.id} documents the 501 stub response`);
-    } else {
-      assert.equal(operation.responses['501'], undefined, `${op.id} no longer returns 501`);
-    }
+    // L8 implemented the GET operations and L14 the PUT: none answers 501.
+    assert.equal(operation.responses['501'], undefined, `${op.id} no longer returns 501`);
+    assert.doesNotMatch(operation.description ?? '', /not yet implemented|until (task )?L14/,
+      `${op.id} carries no stub note`);
     assert.ok(doc['x-lightnvr-coverage'].covered_operations.includes(op.id), `coverage: ${op.id}`);
   }
   for (const name of schemas) assert.ok(doc.components.schemas[name], `missing schema ${name}`);
@@ -104,4 +101,10 @@ test('the observation schemas accept the contract examples', async () => {
     oldest_cursor: 'eyJ2IjoxfQ', oldest_observed_at: null,
   }), true);
   assert.equal(validators.validateApiError({error: 'Not implemented', code: 'not_implemented'}), true);
+  // P2 (L14): the closed PUT body and the 409 body with current.
+  const write = {classifier: 'yawamf', model_version: null, label: 'Black-capped Chickadee',
+    taxonomy_id: null, confidence: 0.93, classified_at: '2026-11-08T14:03:15.002Z',
+    input_asset_id: observation.evidence.asset_id, input_revision: 2, kind: 'automated'};
+  assert.equal(validators.validateObservationClassificationWrite(write), true);
+  assert.equal(validators.validateObservationClassificationWrite({...write, extra: 1}), false);
 });

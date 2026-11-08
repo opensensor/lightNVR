@@ -15,9 +15,10 @@ const enforcedKeys: Action[] = [
   'ptz.control', 'evidence.protect', 'recording.delete', 'camera.configure',
   'storage.configure', 'events.configure', 'users.manage', 'system.admin',
   'lpr.read', 'lpr.search', 'lpr.export', 'lpr.delete',
+  // INT_01 P2: enforced by the annotation PUT (L14).
+  'observations.annotate',
 ];
-// observations.annotate (INT_01 P2) is reported unenforced until the annotation PUT lands (L14).
-const unenforcedKeys: Action[] = ['audio.listen', 'audio.talk', 'fleet.execute_job', 'observations.annotate'];
+const unenforcedKeys: Action[] = ['audio.listen', 'audio.talk', 'fleet.execute_job'];
 
 test.describe('API token permission catalog @ui @users', () => {
   test.beforeEach(async ({ page }) => {
@@ -72,7 +73,7 @@ test.describe('API token permission catalog @ui @users', () => {
       await page.getByTitle('Manage API access').click();
       const dialog = page.getByRole('dialog', { name: 'API Access — admin' });
       await expect(dialog).toBeVisible();
-      await expect(dialog.locator('fieldset input[type="checkbox"]')).toHaveCount(16);
+      await expect(dialog.locator('fieldset input[type="checkbox"]')).toHaveCount(17);
       for (const key of enforcedKeys) {
         const checkbox = dialog.getByRole('checkbox', { name: new RegExp(`^${key.replace('.', '\\.')}`) });
         await checkbox.scrollIntoViewIfNeeded();

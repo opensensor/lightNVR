@@ -261,7 +261,8 @@ target_link_options(test_api_handlers_observations PRIVATE
     "-Wl,--wrap=httpd_evaluate_camera_identity_action"
     "-Wl,--wrap=authorization_filter_cameras"
     "-Wl,--wrap=http_serve_file"
-    "-Wl,--wrap=audit_log_append")
+    "-Wl,--wrap=audit_log_append"
+    "-Wl,--wrap=audit_log_operation")
 target_compile_definitions(test_api_handlers_observations PRIVATE
     OBS_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/integrations/observations")
 set_tests_properties(test_api_handlers_observations PROPERTIES TIMEOUT 60)

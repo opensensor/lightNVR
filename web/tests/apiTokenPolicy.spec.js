@@ -28,8 +28,8 @@ describe('scoped API token UI helpers', () => {
     { key: 'lpr.search', enforced: true },
     { key: 'lpr.export', enforced: true },
     { key: 'lpr.delete', enforced: true },
-    // INT_01 P2 bit 19: reported unenforced until the annotation PUT (L14) lands.
-    { key: 'observations.annotate', enforced: false, category: 'Integrations' },
+    // INT_01 P2 bit 19: enforced by the annotation PUT (L14).
+    { key: 'observations.annotate', enforced: true, category: 'Integrations' },
   ];
 
   test('offers the full enforced server catalog, including read and administration actions', () => {
@@ -50,16 +50,17 @@ describe('scoped API token UI helpers', () => {
       'lpr.search',
       'lpr.export',
       'lpr.delete',
+      'observations.annotate',
     ]);
   });
 
-  test('offers observations.annotate only once the server reports it enforced', () => {
-    expect(selectableTokenActions(actions).map((action) => action.key))
-      .not.toContain('observations.annotate');
-    const enforced = actions.map((action) => (action.key === 'observations.annotate'
-      ? { ...action, enforced: true } : action));
-    expect(selectableTokenActions(enforced).map((action) => action.key).slice(-1))
+  test('offers observations.annotate only while the server reports it enforced', () => {
+    expect(selectableTokenActions(actions).map((action) => action.key).slice(-1))
       .toEqual(['observations.annotate']);
+    const unenforced = actions.map((action) => (action.key === 'observations.annotate'
+      ? { ...action, enforced: false } : action));
+    expect(selectableTokenActions(unenforced).map((action) => action.key))
+      .not.toContain('observations.annotate');
   });
 
   test('requires explicit server enforcement instead of assuming old permissions are safe', () => {

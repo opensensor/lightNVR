@@ -627,7 +627,11 @@ returning an error.
   `reason` is present when either is false. Its values are
   `not_implemented`, `not_available_in_this_version`, `not_authorized`,
   `invalid_writer_namespace` and `reserved_writer_namespace`.
-- `observations.annotate` stays `supported: false` until L14 lands.
+- `observations.annotate` was `supported: false` (`not_available_in_this_version`)
+  before L14. Since L14 it is `supported: true`, and `authorized` is true when
+  the principal has a writer namespace and holds `observations.annotate` on at
+  least one camera. Otherwise `reason` is `reserved_writer_namespace` or
+  `invalid_writer_namespace` (no namespace; this wins) or `not_authorized`.
 - `principal.writer_namespace` is null when the principal has no valid
   namespace (§10.2).
 - `cameras` lists at most 1,024 cameras where the principal holds any of
@@ -763,7 +767,7 @@ Every error body has the form `{"error": "<human message>", "code": "<code>",
 | 409 | `owner_decision_locked` | PUT | `current` | drop the automated write |
 | 409 | `annotation_limit` | PUT | `limit` | permanent |
 | 422 | `evidence_mismatch` | PUT | `observation_asset_id`, `evidence_state` | drop with reason |
-| 501 | `not_implemented` | C2 stubs; PUT until L14 | | capability absent |
+| 501 | `not_implemented` | C2 stubs (the PUT until L14; no route returns it since) | | capability absent |
 | 503 | `service_unavailable` | all | `Retry-After` header | `TemporarilyUnreachable` |
 | 500 | `internal_error` | all | | `TemporarilyUnreachable` |
 
@@ -808,7 +812,7 @@ distinct A8 outcomes.
 | --- | --- | --- |
 | Metadata reads | Existing read-decision modes (`audit_log_authorization`) for `live.view` | as today |
 | Snapshot fetch | `audit_log_authorization` for `snapshot.create`, with `target_type = "observation"` and `target_uuid` = observation ID | camera_uuid, asset_id, outcome |
-| Annotation PUT (every outcome) | `audit_log_operation` with action `observations.annotate`, `target_type = "observation"` | camera_uuid, key, kind, `result` (`created\|updated\|noop\|revision_conflict\|owner_decision_locked\|evidence_mismatch\|namespace_forbidden`), annotation_revision before/after; the principal and `api_token_uuid` come from the standard audit columns |
+| Annotation PUT (every outcome) | `audit_log_operation` with action `observations.annotate`, operation `annotate`, `target_type = "observation"` | camera_uuid, key, kind, `result` (`created\|updated\|noop\|revision_conflict\|owner_decision_locked\|evidence_mismatch\|namespace_forbidden`, plus `forbidden`, `observation_not_found`, `invalid_request`, `annotation_limit` and `internal_error`), annotation_revision before/after (null when unknown); the principal and `api_token_uuid` come from the standard audit columns. The audit `outcome` is `success` for created/updated/noop, `denied` for forbidden, namespace_forbidden and a hidden observation's 404, `error` for 500 and `failure` otherwise. A malformed observation ID (400 before lookup) and 401 are not audited. |
 
 Image bytes, request bodies beyond the fields listed, tokens, cookies and
 authorization headers are never logged or audited.

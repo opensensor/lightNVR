@@ -29633,7 +29633,7 @@
     "/api/observations/{id}/classifications/{namespace}/{name}": {
       "put": {
         "operationId": "putObservationClassification",
-        "summary": "Put observation classification (P2)",
+        "summary": "Put observation classification",
         "tags": [
           "Integrations"
         ],
@@ -29653,9 +29653,15 @@
         ],
         "x-lightnvr-authorization": {
           "version": 1,
-          "kind": "authenticated"
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "observations.annotate",
+              "resource": "raw"
+            }
+          ]
         },
-        "description": "P2, not yet implemented: always returns 501 until task L14, and capabilities advertise observations.annotate as unsupported. L14 changes the authorization requirement to camera observations.annotate on the capture camera (contract \u00a712.1). The key is two path segments, {namespace}/{name}; namespace must equal the server-derived writer namespace of the authenticated user (contract \u00a710). Identical retries are no-ops. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.",
+        "description": "Create or update one classification annotation on an observation (contract \u00a710). Authorized with observations.annotate on the observation's capture-time camera (contract \u00a712.1); authorization is evaluated before the namespace and the body, so an observation the caller cannot see is an indistinguishable 404. The key is two path segments, {namespace}/{name}; namespace must equal the server-derived writer namespace of the authenticated user (D3, advertised as capabilities principal.writer_namespace). Identical retries are no-ops (200, changed=false). A stored change bumps the observation revision and publishes an io.lightnvr.detection.observation_changed.v1 event with change_cause classification. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.",
         "responses": {
           "200": {
             "description": "Annotation updated, or identical retry (changed=false).",
@@ -29688,7 +29694,7 @@
             }
           },
           "403": {
-            "description": "observations.annotate missing (forbidden) or namespace not the caller's (namespace_forbidden).",
+            "description": "live.view without observations.annotate on the capture camera (forbidden), or a key namespace or body writer field that is not the caller's derived namespace, or a key created by another user (namespace_forbidden).",
             "content": {
               "application/json": {
                 "schema": {
@@ -29698,7 +29704,7 @@
             }
           },
           "404": {
-            "description": "Unknown observation, no live.view on its capture camera, or the capture camera was deleted; indistinguishable (code observation_not_found).",
+            "description": "Unknown observation, neither live.view nor observations.annotate on its capture camera, or the capture camera was deleted; indistinguishable (code observation_not_found).",
             "content": {
               "application/json": {
                 "schema": {
@@ -29708,7 +29714,7 @@
             }
           },
           "409": {
-            "description": "revision_conflict, owner_decision_locked or annotation_limit; current carries the stored annotation.",
+            "description": "revision_conflict or owner_decision_locked (current carries the stored annotation when the key exists), or annotation_limit (limit).",
             "content": {
               "application/json": {
                 "schema": {
@@ -29718,7 +29724,7 @@
             }
           },
           "422": {
-            "description": "input_asset_id or input_revision does not match the observation evidence (code evidence_mismatch).",
+            "description": "input_asset_id, input_revision or the evidence state does not match the observation evidence (code evidence_mismatch, with observation_asset_id and evidence_state).",
             "content": {
               "application/json": {
                 "schema": {
@@ -29739,16 +29745,6 @@
           },
           "500": {
             "description": "Internal failure (code internal_error).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ObservationError"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this.",
             "content": {
               "application/json": {
                 "schema": {

@@ -355,6 +355,8 @@ void test_action_catalog_is_stable_and_complete(void) {
     TEST_ASSERT_EQUAL_STRING("lpr.delete", catalog[AUTHZ_LPR_DELETE].key);
     TEST_ASSERT_TRUE(catalog[AUTHZ_OBSERVATIONS_ANNOTATE].camera_scoped);
     TEST_ASSERT_FALSE(catalog[AUTHZ_OBSERVATIONS_ANNOTATE].destructive);
+    /* L14 routes the annotation PUT through the evaluator. */
+    TEST_ASSERT_TRUE(catalog[AUTHZ_OBSERVATIONS_ANNOTATE].enforced);
     for (int i = 0; i < count; i++) {
         TEST_ASSERT_EQUAL_INT(
             catalog[i].action,

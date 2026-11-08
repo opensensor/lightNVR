@@ -1743,8 +1743,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Put observation classification (P2)
-         * @description P2, not yet implemented: always returns 501 until task L14, and capabilities advertise observations.annotate as unsupported. L14 changes the authorization requirement to camera observations.annotate on the capture camera (contract §12.1). The key is two path segments, {namespace}/{name}; namespace must equal the server-derived writer namespace of the authenticated user (contract §10). Identical retries are no-ops. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.
+         * Put observation classification
+         * @description Create or update one classification annotation on an observation (contract §10). Authorized with observations.annotate on the observation's capture-time camera (contract §12.1); authorization is evaluated before the namespace and the body, so an observation the caller cannot see is an indistinguishable 404. The key is two path segments, {namespace}/{name}; namespace must equal the server-derived writer namespace of the authenticated user (D3, advertised as capabilities principal.writer_namespace). Identical retries are no-ops (200, changed=false). A stored change bumps the observation revision and publishes an io.lightnvr.detection.observation_changed.v1 event with change_cause classification. Contract: docs/integrations/OBSERVATIONS_CONTRACT.md.
          */
         put: operations["putObservationClassification"];
         post?: never;
@@ -17836,7 +17836,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description observations.annotate missing (forbidden) or namespace not the caller's (namespace_forbidden). */
+            /** @description live.view without observations.annotate on the capture camera (forbidden), or a key namespace or body writer field that is not the caller's derived namespace, or a key created by another user (namespace_forbidden). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -17845,7 +17845,7 @@ export interface operations {
                     "application/json": components["schemas"]["ObservationError"];
                 };
             };
-            /** @description Unknown observation, no live.view on its capture camera, or the capture camera was deleted; indistinguishable (code observation_not_found). */
+            /** @description Unknown observation, neither live.view nor observations.annotate on its capture camera, or the capture camera was deleted; indistinguishable (code observation_not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -17854,7 +17854,7 @@ export interface operations {
                     "application/json": components["schemas"]["ObservationError"];
                 };
             };
-            /** @description revision_conflict, owner_decision_locked or annotation_limit; current carries the stored annotation. */
+            /** @description revision_conflict or owner_decision_locked (current carries the stored annotation when the key exists), or annotation_limit (limit). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -17863,7 +17863,7 @@ export interface operations {
                     "application/json": components["schemas"]["ObservationError"];
                 };
             };
-            /** @description input_asset_id or input_revision does not match the observation evidence (code evidence_mismatch). */
+            /** @description input_asset_id, input_revision or the evidence state does not match the observation evidence (code evidence_mismatch, with observation_asset_id and evidence_state). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -17874,15 +17874,6 @@ export interface operations {
             };
             /** @description Internal failure (code internal_error). */
             500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ObservationError"];
-                };
-            };
-            /** @description Not implemented in this version (code not_implemented). Every observation route is registered as an authenticated 501 stub until its implementation lands; capabilities never advertise an operation that returns this. */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };

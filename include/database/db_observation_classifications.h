@@ -31,6 +31,7 @@
 #define LIGHTNVR_DATABASE_DB_OBSERVATION_CLASSIFICATIONS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "database/db_observations.h"
@@ -144,5 +145,17 @@ typedef struct {
  * DB_OBS_INVALID or DB_OBS_ERROR. */
 int db_observation_classifications_list(const char *observation_uuid,
                                         observation_classification_set_t *out);
+
+/* The same read for several observations (a history page) on one read-only
+ * connection and one prepared statement. visit is called once per UUID, in
+ * order, with that observation's set (valid only during the call); a non-zero
+ * return stops the walk and is returned. Returns DB_OBS_OK, DB_OBS_INVALID,
+ * DB_OBS_ERROR or the visitor's value. */
+typedef int (*observation_classification_visit_fn)(size_t index,
+                                                   const observation_classification_set_t *set,
+                                                   void *context);
+int db_observation_classifications_list_many(const char *const *observation_uuids, size_t count,
+                                             observation_classification_visit_fn visit,
+                                             void *context);
 
 #endif /* LIGHTNVR_DATABASE_DB_OBSERVATION_CLASSIFICATIONS_H */

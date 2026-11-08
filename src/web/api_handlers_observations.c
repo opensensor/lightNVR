@@ -16,9 +16,13 @@
  * httpd_authorize_* helpers: those write 403 themselves, which would let an
  * opaque observation ID reveal that it exists. Unknown and unauthorized IDs
  * are therefore byte-identical 404s. The only 403 for a single observation is
- * the D4 snapshot case, where the caller can already see the metadata.
+ * the D4 snapshot case, where the caller can already see the metadata, and
+ * the matching PUT case (live.view without observations.annotate).
  *
- * The PUT classification route stays a 501 stub until L14.
+ * The P2 classification PUT (section 10) authorizes observations.annotate on
+ * the capture camera before it looks at the namespace or the body, so neither
+ * leaks anything about an observation the caller cannot see. The writer
+ * namespace is derived from the authenticated user (D3), never the request.
  */
 
 #define _GNU_SOURCE
@@ -28,6 +32,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +43,7 @@
 #include "core/authorization.h"
 #include "core/config.h"
 #include "core/event_identity.h"
+#include "core/observation_diagnostics.h"
 #include "core/version.h"
 #include "database/db_auth.h"
 #include "database/db_fleet_query.h"
@@ -55,7 +61,7 @@
 #define OBS_QUERY_VALUE_SIZE 1024        /* query_string is 1,024 bytes (D1) */
 #define OBS_FILTER_CAMERAS_MAX 10
 #define OBS_CAPABILITY_CAMERAS_MAX 1024
-#define OBS_SNAPSHOT_RETRY_MAX 30
+#define OBS_SNAPSHOT_RETRY_MAX OBS_SNAPSHOT_RETRY_AFTER_MAX
 #define OBS_SNAPSHOT_CACHE_CONTROL "private, max-age=300"
 #define OBS_HISTORY_RETENTION_DEFAULT 30
 #define OBS_EVENT_TYPE "io.lightnvr.detection.observation_changed.v1"
@@ -180,6 +186,44 @@ static cJSON *text_or_null(const char *value) {
     return value && value[0] ? cJSON_CreateString(value) : cJSON_CreateNull();
 }
 
+/* Unlike time_or_null, 0 (the epoch) is a valid classifier time. */
+static cJSON *time_text(int64_t ms) {
+    char text[OBS_TIME_TEXT_SIZE];
+    if (ms < 0 || observation_format_time(ms, text, sizeof(text)) != 0) return cJSON_CreateNull();
+    return cJSON_CreateString(text);
+}
+
+cJSON *observation_classification_to_json(const observation_classification_t *annotation) {
+    if (!annotation) return NULL;
+    cJSON *json = cJSON_CreateObject();
+    if (!json) return NULL;
+    cJSON_AddStringToObject(json, "key", annotation->key);
+    cJSON_AddStringToObject(json, "writer_namespace", annotation->writer_namespace);
+    cJSON_AddStringToObject(json, "classifier", annotation->classifier);
+    cJSON_AddItemToObject(json, "model_version", text_or_null(annotation->model_version));
+    cJSON_AddStringToObject(json, "label", annotation->label);
+    cJSON_AddItemToObject(json, "taxonomy_id", text_or_null(annotation->taxonomy_id));
+    cJSON_AddNumberToObject(json, "confidence", annotation->confidence);
+    cJSON_AddItemToObject(json, "classified_at", time_text(annotation->classified_at_ms));
+    cJSON_AddStringToObject(json, "input_asset_id", annotation->input_asset_uuid);
+    cJSON_AddNumberToObject(json, "input_revision", annotation->input_revision);
+    cJSON_AddStringToObject(json, "kind", observation_classification_kind_name(annotation->kind));
+    cJSON_AddNumberToObject(json, "annotation_revision", annotation->annotation_revision);
+    cJSON_AddItemToObject(json, "created_at", time_text(annotation->created_at_ms));
+    cJSON_AddItemToObject(json, "updated_at", time_text(annotation->updated_at_ms));
+    /* writer_user_id is internal (D3) and never serialized. */
+    return json;
+}
+
+static bool add_annotations(cJSON *list, const observation_classification_t *items, int count) {
+    for (int i = 0; i < count; i++) {
+        cJSON *item = observation_classification_to_json(&items[i]);
+        if (!item) return false;
+        cJSON_AddItemToArray(list, item);
+    }
+    return true;
+}
+
 static cJSON *evidence_to_json(const observation_record_t *record) {
     const observation_asset_record_t *asset = &record->asset;
     cJSON *evidence = cJSON_CreateObject();
@@ -223,7 +267,8 @@ static cJSON *evidence_to_json(const observation_record_t *record) {
     return evidence;
 }
 
-cJSON *observation_record_to_json(const observation_record_t *record, const char *source) {
+cJSON *observation_record_to_json(const observation_record_t *record, const char *source,
+                                  const observation_classification_set_t *classifications) {
     if (!record || !source) return NULL;
     cJSON *root = cJSON_CreateObject();
     if (!root) return NULL;
@@ -277,13 +322,21 @@ cJSON *observation_record_to_json(const observation_record_t *record, const char
         cJSON_AddNullToObject(root, "recording_reference");
     }
     cJSON_AddNumberToObject(root, "revision", record->revision);
-    /* P1 has no annotations; L14 fills these lists (contract section 10.5). */
-    cJSON *classifications = cJSON_AddObjectToObject(root, "classifications");
-    if (classifications) {
-        cJSON_AddArrayToObject(classifications, "automated");
-        cJSON_AddArrayToObject(classifications, "owner_confirmed");
+    /* Contract section 10.5: split by kind, each ordered by updated_at desc
+     * (the DB read's order). */
+    cJSON *lists = cJSON_AddObjectToObject(root, "classifications");
+    bool listed = false;
+    if (lists) {
+        cJSON *automated = cJSON_AddArrayToObject(lists, "automated");
+        cJSON *owner = cJSON_AddArrayToObject(lists, "owner_confirmed");
+        listed = automated && owner;
+        if (listed && classifications)
+            listed = add_annotations(automated, classifications->automated,
+                                     classifications->automated_count) &&
+                     add_annotations(owner, classifications->owner_confirmed,
+                                     classifications->owner_confirmed_count);
     }
-    if (!detector || !evidence || !classifications) {
+    if (!detector || !evidence || !listed) {
         cJSON_Delete(root);
         return NULL;
     }
@@ -517,12 +570,15 @@ void handle_get_integration_capabilities(const http_request_t *req, http_respons
         return;
     }
 
-    fleet_camera_t *viewable = NULL, *snapshot = NULL;
-    int viewable_count = 0, snapshot_count = 0;
+    fleet_camera_t *viewable = NULL, *snapshot = NULL, *annotatable = NULL;
+    int viewable_count = 0, snapshot_count = 0, annotatable_count = 0;
     if (authorized_cameras(&user, AUTHZ_LIVE_VIEW, &viewable, &viewable_count) != 0 ||
-        authorized_cameras(&user, AUTHZ_SNAPSHOT_CREATE, &snapshot, &snapshot_count) != 0) {
+        authorized_cameras(&user, AUTHZ_SNAPSHOT_CREATE, &snapshot, &snapshot_count) != 0 ||
+        authorized_cameras(&user, AUTHZ_OBSERVATIONS_ANNOTATE, &annotatable,
+                           &annotatable_count) != 0) {
         free(viewable);
         free(snapshot);
+        free(annotatable);
         send_error(res, 500, "internal_error", "Authorization policy evaluation failed");
         return;
     }
@@ -546,19 +602,22 @@ void handle_get_integration_capabilities(const http_request_t *req, http_respons
         cJSON_AddStringToObject(src, "product_version", LIGHTNVR_VERSION_STRING);
 
         char writer[OBS_WRITER_NAMESPACE_SIZE];
+        int namespace_rc = observation_writer_namespace(user.username, writer);
         cJSON *principal = cJSON_AddObjectToObject(root, "principal");
         cJSON_AddItemToObject(principal, "writer_namespace",
-                              observation_writer_namespace(user.username, writer) == 0
-                                  ? cJSON_CreateString(writer) : cJSON_CreateNull());
+                              namespace_rc == 0 ? cJSON_CreateString(writer) : cJSON_CreateNull());
 
         cJSON *operations = cJSON_AddObjectToObject(root, "operations");
         add_operation(operations, "observations.history", true, viewable_count > 0,
                       "not_authorized");
         add_operation(operations, "observations.snapshot", true, snapshot_count > 0,
                       "not_authorized");
-        /* Supported once L14 lands. */
-        add_operation(operations, "observations.annotate", false, false,
-                      "not_available_in_this_version");
+        /* A principal without a writer namespace can never annotate, so that
+         * reason wins over a missing grant. */
+        add_operation(operations, "observations.annotate", true,
+                      namespace_rc == 0 && annotatable_count > 0,
+                      namespace_rc == -2 ? "reserved_writer_namespace"
+                      : namespace_rc != 0 ? "invalid_writer_namespace" : "not_authorized");
         add_operation(operations, "track_lifecycle", false, false, "not_implemented");
         add_operation(operations, "recorded_frame", false, false, "not_implemented");
         add_operation(operations, "event_clip", false, false, "not_implemented");
@@ -590,7 +649,8 @@ void handle_get_integration_capabilities(const http_request_t *req, http_respons
             cJSON_AddNullToObject(delivery, "topic");
         }
 
-        /* Cameras with live.view or snapshot.create, in fleet order. */
+        /* Cameras with live.view, snapshot.create or observations.annotate, in
+         * fleet order. */
         cJSON *cameras = cJSON_AddArrayToObject(root, "cameras");
         fleet_camera_t *all = NULL;
         int all_count = 0;
@@ -600,7 +660,8 @@ void handle_get_integration_capabilities(const http_request_t *req, http_respons
             const char *uuid = all[i].camera_uuid;
             bool live = camera_in(viewable, viewable_count, uuid);
             bool snap = camera_in(snapshot, snapshot_count, uuid);
-            if (!live && !snap) continue;
+            bool annotate = camera_in(annotatable, annotatable_count, uuid);
+            if (!live && !snap && !annotate) continue;
             cJSON *camera = cJSON_CreateObject();
             cJSON_AddStringToObject(camera, "camera_uuid", uuid);
             cJSON_AddBoolToObject(camera, "evidence_enabled",
@@ -608,6 +669,8 @@ void handle_get_integration_capabilities(const http_request_t *req, http_respons
             cJSON *actions = cJSON_AddArrayToObject(camera, "actions");
             if (live) cJSON_AddItemToArray(actions, cJSON_CreateString("live.view"));
             if (snap) cJSON_AddItemToArray(actions, cJSON_CreateString("snapshot.create"));
+            if (annotate)
+                cJSON_AddItemToArray(actions, cJSON_CreateString("observations.annotate"));
             cJSON_AddItemToArray(cameras, camera);
             listed++;
         }
@@ -616,6 +679,7 @@ void handle_get_integration_capabilities(const http_request_t *req, http_respons
     free(streams);
     free(viewable);
     free(snapshot);
+    free(annotatable);
     if (!ok) {
         cJSON_Delete(root);
         send_internal(res);
@@ -706,6 +770,21 @@ static void send_cursor_expired(http_response_t *res, const observation_page_t *
                                   : cJSON_CreateNull());
     }
     send_json(res, 410, body);
+}
+
+typedef struct {
+    const observation_page_t *page;
+    const char *source;
+    cJSON *items;
+} page_item_context_t;
+
+static int add_page_item(size_t index, const observation_classification_set_t *set,
+                         void *context) {
+    page_item_context_t *page = context;
+    cJSON *item = observation_record_to_json(&page->page->items[index], page->source, set);
+    if (!item) return 1;
+    cJSON_AddItemToArray(page->items, item);
+    return 0;
 }
 
 void handle_get_observations(const http_request_t *req, http_response_t *res) {
@@ -826,10 +905,15 @@ void handle_get_observations(const http_request_t *req, http_response_t *res) {
     cJSON *body = cJSON_CreateObject();
     cJSON *items = body ? cJSON_AddArrayToObject(body, "items") : NULL;
     bool ok = items != NULL;
-    for (size_t i = 0; ok && i < page.count; i++) {
-        cJSON *item = observation_record_to_json(&page.items[i], source);
-        if (item) cJSON_AddItemToArray(items, item);
-        else ok = false;
+    if (ok && page.count > 0) {
+        /* One read-only connection for the whole page's annotations. */
+        const char **ids = calloc(page.count, sizeof(*ids));
+        ok = ids != NULL;
+        for (size_t i = 0; ok && i < page.count; i++) ids[i] = page.items[i].uuid;
+        page_item_context_t context = {.page = &page, .source = source, .items = items};
+        ok = ok && db_observation_classifications_list_many(ids, page.count, add_page_item,
+                                                            &context) == DB_OBS_OK;
+        free(ids);
     }
     if (ok) {
         cJSON_AddStringToObject(body, "next_cursor", page.next_cursor);
@@ -903,7 +987,10 @@ void handle_get_observation(const http_request_t *req, http_response_t *res) {
     }
     audit_camera_decision(req, &user, AUTHZ_LIVE_VIEW, record->camera_uuid, &evaluation,
                           "allowed");
-    cJSON *body = observation_record_to_json(record, source);
+    observation_classification_set_t *set = calloc(1, sizeof(*set));
+    cJSON *body = set && db_observation_classifications_list(record->uuid, set) == DB_OBS_OK
+        ? observation_record_to_json(record, source, set) : NULL;
+    free(set);
     free(record);
     if (!body) {
         send_internal(res);
@@ -949,14 +1036,15 @@ static int64_t now_ms(void) {
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-/* Contract section 8.2 (provisional): 1 s while the asset is under 5 s old,
- * otherwise 2 s until the L3 queue exposes its depth (min(30, 2 x ahead)). */
+/* Contract section 8.2: 1 s while the asset is under 5 s old, otherwise
+ * min(30, 2 x queue items ahead). L3 exposes no per-asset queue position, so
+ * the whole evidence backlog (frames queued for encoding) stands in as an
+ * upper bound on the items ahead of this asset. */
 static int retry_after_seconds(const observation_asset_record_t *asset) {
-    int64_t age = now_ms() - asset->created_at_ms;
-    int seconds = age < 5000 ? 1 : 2;
-    if (seconds < 1) seconds = 1;
-    if (seconds > OBS_SNAPSHOT_RETRY_MAX) seconds = OBS_SNAPSHOT_RETRY_MAX;
-    return seconds;
+    observation_evidence_stats_t stats;
+    observation_evidence_get_stats(&stats);
+    return observation_snapshot_retry_after_seconds(now_ms() - asset->created_at_ms,
+                                                    stats.backlog_items);
 }
 
 static void send_evidence_unavailable(http_response_t *res, const char *reason) {
@@ -1091,10 +1179,464 @@ void handle_get_observation_snapshot(const http_request_t *req, http_response_t 
     free(record);
 }
 
-/* ---- PUT classification (L14) ----------------------------------------- */
+/* ---- PUT /api/observations/{id}/classifications/{namespace}/{name} ------ */
+
+#define OBS_PUT_PREFIX "/api/observations/"
+#define OBS_PUT_INFIX "/classifications/"
+#define OBS_ANNOTATE_ACTION "observations.annotate"
+
+typedef struct {
+    char id[OBS_UUID_SIZE];
+    char ns[OBS_CLS_NAMESPACE_SIZE];     /* "" when not a valid segment */
+    char name[OBS_CLS_NAMESPACE_SIZE];   /* "" when not a valid segment */
+} put_target_t;
+
+static void copy_segment(const char *start, size_t length, char out[OBS_CLS_NAMESPACE_SIZE]) {
+    out[0] = '\0';
+    if (length == 0 || length > OBS_CLS_SEGMENT_MAX) return;
+    memcpy(out, start, length);
+    out[length] = '\0';
+    if (!observation_classification_segment_is_valid(out)) out[0] = '\0';
+}
+
+/* Split the raw request path. False when the observation ID is not a UUID or
+ * the route shape is wrong; invalid key segments are left empty for the
+ * namespace (403) and name (400) checks. Segments are never percent-decoded,
+ * so an encoded '/' can only make a segment invalid. */
+static bool parse_put_path(const char *path, put_target_t *target) {
+    memset(target, 0, sizeof(*target));
+    size_t prefix = strlen(OBS_PUT_PREFIX), infix = strlen(OBS_PUT_INFIX);
+    if (!path || strncmp(path, OBS_PUT_PREFIX, prefix) != 0) return false;
+    const char *id = path + prefix;
+    const char *slash = strchr(id, '/');
+    if (!slash || slash - id != OBS_UUID_SIZE - 1 || strncmp(slash, OBS_PUT_INFIX, infix) != 0)
+        return false;
+    memcpy(target->id, id, OBS_UUID_SIZE - 1);
+    target->id[OBS_UUID_SIZE - 1] = '\0';
+    lowercase(target->id);
+    if (!lightnvr_uuid_is_valid(target->id)) return false;
+    const char *ns = slash + infix;
+    const char *separator = strchr(ns, '/');
+    if (!separator) return false;
+    copy_segment(ns, (size_t)(separator - ns), target->ns);
+    copy_segment(separator + 1, strlen(separator + 1), target->name);
+    return true;
+}
+
+typedef struct {
+    char classifier[OBS_CLS_CLASSIFIER_SIZE];
+    char model_version[OBS_CLS_MODEL_VERSION_SIZE];
+    char label[OBS_CLS_LABEL_SIZE];
+    char taxonomy_id[OBS_CLS_TAXONOMY_SIZE];
+    double confidence;
+    int64_t classified_at_ms;
+    char input_asset_uuid[OBS_UUID_SIZE];
+    int input_revision;
+    observation_classification_kind_t kind;
+    bool has_kind;
+    int expected_revision;
+} put_body_t;
+
+/* Well-formed UTF-8 without control characters. */
+static bool clean_utf8(const char *text) {
+    const unsigned char *p = (const unsigned char *)text;
+    while (*p) {
+        unsigned char c = *p;
+        int extra;
+        uint32_t code;
+        if (c < 0x80) {
+            if (c < 0x20 || c == 0x7f) return false;
+            p++;
+            continue;
+        } else if ((c & 0xe0) == 0xc0) {
+            extra = 1; code = c & 0x1f;
+        } else if ((c & 0xf0) == 0xe0) {
+            extra = 2; code = c & 0x0f;
+        } else if ((c & 0xf8) == 0xf0) {
+            extra = 3; code = c & 0x07;
+        } else {
+            return false;
+        }
+        for (int i = 1; i <= extra; i++) {
+            if ((p[i] & 0xc0) != 0x80) return false;
+            code = (code << 6) | (p[i] & 0x3f);
+        }
+        static const uint32_t minimum[] = {0, 0x80, 0x800, 0x10000};
+        if (code < minimum[extra] || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff))
+            return false;
+        p += extra + 1;
+    }
+    return true;
+}
+
+/* Text field: required (1..max bytes) or optional (absent, null or 0..max;
+ * "" is stored as null). */
+static bool body_text(const cJSON *body, const char *name, bool required, size_t max,
+                      char *out, size_t size) {
+    out[0] = '\0';
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(body, name);
+    if (!item) return !required;
+    if (!required && cJSON_IsNull(item)) return true;
+    if (!cJSON_IsString(item) || !item->valuestring) return false;
+    size_t length = strlen(item->valuestring);
+    if (length > max || (required && length == 0) || length >= size) return false;
+    if (!clean_utf8(item->valuestring)) return false;
+    memcpy(out, item->valuestring, length + 1);
+    return true;
+}
+
+static bool body_integer(const cJSON *body, const char *name, int minimum, int *out) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(body, name);
+    if (!cJSON_IsNumber(item)) return false;
+    double value = item->valuedouble;
+    if (!isfinite(value) || value != floor(value) || value < minimum || value > INT_MAX)
+        return false;
+    *out = (int)value;
+    return true;
+}
+
+/* Contract section 10.3. Returns NULL when valid, else the offending field. */
+static const char *parse_put_body(const cJSON *body, put_body_t *out) {
+    static const char *const allowed[] = {
+        "classifier", "model_version", "label", "taxonomy_id", "confidence", "classified_at",
+        "input_asset_id", "input_revision", "kind", "expected_revision", "writer_namespace",
+        "writer",
+    };
+    memset(out, 0, sizeof(*out));
+    const cJSON *item;
+    cJSON_ArrayForEach(item, body) {
+        bool known = false;
+        for (size_t i = 0; !known && i < sizeof(allowed) / sizeof(allowed[0]); i++)
+            known = item->string && strcmp(item->string, allowed[i]) == 0;
+        if (!known) return item->string ? item->string : "body";
+    }
+    if (!body_text(body, "classifier", true, OBS_CLS_CLASSIFIER_SIZE - 1, out->classifier,
+                   sizeof(out->classifier)))
+        return "classifier";
+    if (!body_text(body, "model_version", false, OBS_CLS_MODEL_VERSION_SIZE - 1,
+                   out->model_version, sizeof(out->model_version)))
+        return "model_version";
+    if (!body_text(body, "label", true, OBS_CLS_LABEL_SIZE - 1, out->label, sizeof(out->label)))
+        return "label";
+    if (!body_text(body, "taxonomy_id", false, OBS_CLS_TAXONOMY_SIZE - 1, out->taxonomy_id,
+                   sizeof(out->taxonomy_id)))
+        return "taxonomy_id";
+    item = cJSON_GetObjectItemCaseSensitive(body, "confidence");
+    if (!cJSON_IsNumber(item) || !isfinite(item->valuedouble) || item->valuedouble < 0.0 ||
+        item->valuedouble > 1.0)
+        return "confidence";
+    out->confidence = item->valuedouble;
+    item = cJSON_GetObjectItemCaseSensitive(body, "classified_at");
+    if (!cJSON_IsString(item) || observation_parse_time(item->valuestring,
+                                                        &out->classified_at_ms) != 0)
+        return "classified_at";
+    item = cJSON_GetObjectItemCaseSensitive(body, "input_asset_id");
+    if (!cJSON_IsString(item) || strlen(item->valuestring) != OBS_UUID_SIZE - 1)
+        return "input_asset_id";
+    memcpy(out->input_asset_uuid, item->valuestring, OBS_UUID_SIZE);
+    lowercase(out->input_asset_uuid);
+    if (!lightnvr_uuid_is_valid(out->input_asset_uuid)) return "input_asset_id";
+    if (!body_integer(body, "input_revision", 1, &out->input_revision)) return "input_revision";
+    item = cJSON_GetObjectItemCaseSensitive(body, "kind");
+    if (!cJSON_IsString(item) || observation_classification_kind_parse(item->valuestring,
+                                                                        &out->kind) != 0)
+        return "kind";
+    out->has_kind = true;
+    if (cJSON_GetObjectItemCaseSensitive(body, "expected_revision") &&
+        !body_integer(body, "expected_revision", 0, &out->expected_revision))
+        return "expected_revision";
+    return NULL;
+}
+
+typedef struct {
+    const http_request_t *req;
+    const user_t *user;
+    const char *observation_uuid;
+    const char *camera_uuid;        /* NULL before the observation is known */
+    char key[OBS_CLS_KEY_SIZE];     /* "" until both segments are valid */
+    const char *kind;               /* NULL until the body is parsed */
+} annotate_audit_t;
+
+/* Contract section 12.2: every outcome, with camera, key, kind, the result
+ * and the annotation revision before/after (-1 = unknown). Never the body,
+ * credentials or bytes; the principal and token come from the standard
+ * audit columns. */
+static void audit_annotation(const annotate_audit_t *audit, const char *outcome,
+                             const char *result, int before, int after) {
+    cJSON *context = cJSON_CreateObject();
+    if (context) {
+        cJSON_AddItemToObject(context, "camera_uuid", text_or_null(audit->camera_uuid));
+        cJSON_AddItemToObject(context, "key", text_or_null(audit->key));
+        cJSON_AddItemToObject(context, "kind", text_or_null(audit->kind));
+        cJSON_AddStringToObject(context, "result", result);
+        if (before >= 0) cJSON_AddNumberToObject(context, "annotation_revision_before", before);
+        else cJSON_AddNullToObject(context, "annotation_revision_before");
+        if (after >= 0) cJSON_AddNumberToObject(context, "annotation_revision_after", after);
+        else cJSON_AddNullToObject(context, "annotation_revision_after");
+    }
+    audit_log_operation(audit->req, audit->user, OBS_ANNOTATE_ACTION, "observation",
+                        audit->observation_uuid, "annotate", outcome, context);
+    cJSON_Delete(context);
+}
+
+static void send_annotation_error(http_response_t *res, int status, const char *code,
+                                  const char *message,
+                                  const observation_classification_result_t *result) {
+    cJSON *body = error_body(message, code);
+    if (body && result && result->has_annotation) {
+        cJSON *current = observation_classification_to_json(&result->annotation);
+        if (current) cJSON_AddItemToObject(body, "current", current);
+    }
+    send_json(res, status, body);
+}
+
+static void respond_to_put(const annotate_audit_t *audit, http_response_t *res, int rc,
+                           const observation_classification_result_t *result) {
+    int stored = result->has_annotation ? result->annotation.annotation_revision : -1;
+    switch (rc) {
+    case DB_OBS_CLS_CREATED:
+    case DB_OBS_CLS_UPDATED:
+    case DB_OBS_CLS_NOOP: {
+        bool changed = rc != DB_OBS_CLS_NOOP;
+        cJSON *body = cJSON_CreateObject();
+        cJSON *annotation = observation_classification_to_json(&result->annotation);
+        if (!body || !annotation) {
+            cJSON_Delete(body);
+            cJSON_Delete(annotation);
+            audit_annotation(audit, "error", "internal_error", -1, -1);
+            send_internal(res);
+            return;
+        }
+        cJSON_AddBoolToObject(body, "changed", changed);
+        cJSON_AddNumberToObject(body, "observation_revision", result->observation_revision);
+        cJSON_AddItemToObject(body, "annotation", annotation);
+        const char *name = rc == DB_OBS_CLS_CREATED ? "created"
+                         : rc == DB_OBS_CLS_UPDATED ? "updated" : "noop";
+        int before = rc == DB_OBS_CLS_CREATED ? -1
+                   : rc == DB_OBS_CLS_UPDATED ? stored - 1 : stored;
+        audit_annotation(audit, "success", name, before, stored);
+        send_json(res, rc == DB_OBS_CLS_CREATED ? 201 : 200, body);
+        return;
+    }
+    case DB_OBS_CLS_REVISION_CONFLICT:
+        audit_annotation(audit, "failure", "revision_conflict", stored, stored);
+        send_annotation_error(res, 409, "revision_conflict", "Annotation revision does not match",
+                              result);
+        return;
+    case DB_OBS_CLS_OWNER_LOCKED:
+        audit_annotation(audit, "failure", "owner_decision_locked", stored, stored);
+        send_annotation_error(res, 409, "owner_decision_locked",
+                              "An owner-confirmed annotation cannot be replaced by an automated one",
+                              result);
+        return;
+    case DB_OBS_CLS_EVIDENCE_MISMATCH: {
+        audit_annotation(audit, "failure", "evidence_mismatch", -1, -1);
+        cJSON *body = error_body("Annotation input does not match the observation evidence",
+                                 "evidence_mismatch");
+        if (body) {
+            cJSON_AddStringToObject(body, "observation_asset_id", result->observation_asset_uuid);
+            cJSON_AddStringToObject(body, "evidence_state",
+                                    observation_asset_state_name(result->evidence_state));
+        }
+        send_json(res, 422, body);
+        return;
+    }
+    case DB_OBS_CLS_WRITER_MISMATCH:
+        /* D3: another user created this key; its values are withheld. */
+        audit_annotation(audit, "denied", "namespace_forbidden", -1, -1);
+        send_error(res, 403, "namespace_forbidden", "Writer namespace not permitted");
+        return;
+    case DB_OBS_CLS_LIMIT: {
+        audit_annotation(audit, "failure", "annotation_limit", -1, -1);
+        cJSON *body = error_body("Annotation limit reached for this observation",
+                                 "annotation_limit");
+        if (body) cJSON_AddNumberToObject(body, "limit", result->limit);
+        send_json(res, 409, body);
+        return;
+    }
+    case DB_OBS_CLS_INVALID:
+        audit_annotation(audit, "failure", "invalid_request", -1, -1);
+        send_invalid(res, NULL, "Invalid annotation");
+        return;
+    case DB_OBS_CLS_NOT_FOUND:  /* pruned between the read and the write */
+        audit_annotation(audit, "failure", "observation_not_found", -1, -1);
+        send_not_found(res);
+        return;
+    default:
+        audit_annotation(audit, "error", "internal_error", -1, -1);
+        send_internal(res);
+        return;
+    }
+}
+
+/* Contract section 10.4 rule 1. Returns true when observations.annotate is
+ * held on the capture camera; otherwise writes 404 (nothing visible), 403
+ * (live.view without annotate) or 500, and audits the denial. */
+static bool authorize_annotation(const annotate_audit_t *audit, http_response_t *res,
+                                 const user_t *user, const char *camera_uuid) {
+    authorization_evaluation_t evaluation;
+    int rc = httpd_evaluate_camera_identity_action(user, AUTHZ_OBSERVATIONS_ANNOTATE,
+                                                   camera_uuid, NULL, &evaluation);
+    if (rc == 0 && evaluation.decision == AUTHZ_DECISION_ALLOW) return true;
+    if (rc < 0) {
+        audit_annotation(audit, "error", "internal_error", -1, -1);
+        send_internal(res);
+        return false;
+    }
+    if (rc > 0) {  /* capture camera deleted */
+        audit_annotation(audit, "denied", "observation_not_found", -1, -1);
+        send_not_found(res);
+        return false;
+    }
+    authorization_evaluation_t view;
+    int view_rc = httpd_evaluate_camera_identity_action(user, AUTHZ_LIVE_VIEW, camera_uuid, NULL,
+                                                        &view);
+    if (view_rc < 0) {
+        audit_annotation(audit, "error", "internal_error", -1, -1);
+        send_internal(res);
+    } else if (view_rc == 0 && view.decision == AUTHZ_DECISION_ALLOW) {
+        audit_annotation(audit, "denied", "forbidden", -1, -1);
+        send_error(res, 403, "forbidden", "Forbidden");
+    } else {
+        audit_annotation(audit, "denied", "observation_not_found", -1, -1);
+        send_not_found(res);
+    }
+    return false;
+}
+
+/* Rule 2 for an optional body field naming a writer. 0 = absent or the
+ * caller's own namespace, 1 = another namespace, -1 = not a string. */
+static int body_names_other_writer(const cJSON *body, const char *field, const char *writer) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(body, field);
+    if (!item) return 0;
+    if (!cJSON_IsString(item) || !item->valuestring) return -1;
+    return strcmp(item->valuestring, writer) == 0 ? 0 : 1;
+}
 
 void handle_put_observation_classification(const http_request_t *req, http_response_t *res) {
     user_t user;
     if (!authenticate(req, res, &user)) return;
-    send_error(res, 501, "not_implemented", "Not implemented in this version");
+    char source[OBS_SOURCE_TEXT_SIZE];
+    if (!installation_source(source)) {
+        send_unavailable(res);
+        return;
+    }
+    put_target_t target;
+    if (!parse_put_path(req->path, &target)) {
+        send_invalid(res, "id", "Observation ID must be a UUID");
+        return;
+    }
+    annotate_audit_t audit = {.req = req, .user = &user, .observation_uuid = target.id};
+    if (target.ns[0] && target.name[0])
+        snprintf(audit.key, sizeof(audit.key), "%s/%s", target.ns, target.name);
+
+    observation_record_t *record = calloc(1, sizeof(*record));
+    if (!record) {
+        send_internal(res);
+        return;
+    }
+    int rc = db_observation_get(target.id, record);
+    if (rc != DB_OBS_OK) {
+        if (rc == DB_OBS_NOT_FOUND) {
+            audit_annotation(&audit, "failure", "observation_not_found", -1, -1);
+            send_not_found(res);
+        } else {
+            audit_annotation(&audit, "error", "internal_error", -1, -1);
+            send_internal(res);
+        }
+        free(record);
+        return;
+    }
+    char camera_uuid[OBS_UUID_SIZE];
+    safe_strcpy(camera_uuid, record->camera_uuid, sizeof(camera_uuid), 0);
+    free(record);
+    audit.camera_uuid = camera_uuid;
+
+    /* 1: authorization on the capture camera, before anything else is read. */
+    if (!authorize_annotation(&audit, res, &user, camera_uuid)) return;
+
+    /* 2: the key namespace must be the caller's derived namespace (D3). */
+    char writer[OBS_WRITER_NAMESPACE_SIZE];
+    if (observation_writer_namespace(user.username, writer) != 0 || !target.ns[0] ||
+        strcmp(target.ns, writer) != 0) {
+        audit_annotation(&audit, "denied", "namespace_forbidden", -1, -1);
+        send_error(res, 403, "namespace_forbidden", "Writer namespace not permitted");
+        return;
+    }
+
+    /* 3: the closed, bounded body. */
+    if (!req->body || req->body_len == 0 || req->body_len > OBS_PUT_BODY_MAX) {
+        audit_annotation(&audit, "failure", "invalid_request", -1, -1);
+        send_invalid(res, "body", req->body_len > OBS_PUT_BODY_MAX
+                     ? "Request body is too large" : "Request body is required");
+        return;
+    }
+    cJSON *body = httpd_parse_json_body(req);
+    if (!cJSON_IsObject(body)) {
+        cJSON_Delete(body);
+        audit_annotation(&audit, "failure", "invalid_request", -1, -1);
+        send_invalid(res, "body", "Request body must be a JSON object");
+        return;
+    }
+    const char *writer_fields[] = {"writer_namespace", "writer"};
+    for (int i = 0; i < 2; i++) {
+        int other = body_names_other_writer(body, writer_fields[i], writer);
+        if (other == 1) {
+            cJSON_Delete(body);
+            audit_annotation(&audit, "denied", "namespace_forbidden", -1, -1);
+            send_error(res, 403, "namespace_forbidden", "Writer namespace not permitted");
+            return;
+        }
+        if (other < 0) {
+            cJSON_Delete(body);
+            audit_annotation(&audit, "failure", "invalid_request", -1, -1);
+            send_invalid(res, writer_fields[i], "Writer fields must be strings");
+            return;
+        }
+    }
+    if (!target.name[0]) {
+        cJSON_Delete(body);
+        audit_annotation(&audit, "failure", "invalid_request", -1, -1);
+        send_invalid(res, "name", "Annotation name must match ^[a-z0-9][a-z0-9_.-]{0,31}$");
+        return;
+    }
+    put_body_t fields;
+    const char *invalid = parse_put_body(body, &fields);
+    if (fields.has_kind) audit.kind = observation_classification_kind_name(fields.kind);
+    if (invalid) {
+        char field[64], message[128];
+        safe_strcpy(field, invalid, sizeof(field), 0);
+        cJSON_Delete(body);
+        snprintf(message, sizeof(message), "Invalid or unknown field: %s", field);
+        audit_annotation(&audit, "failure", "invalid_request", -1, -1);
+        send_invalid(res, field, message);
+        return;
+    }
+    cJSON_Delete(body);
+
+    /* 4-8 run in one DB transaction (L13). */
+    observation_classification_input_t input = {
+        .writer_namespace = writer,
+        .writer_user_id = user.id,
+        .name = target.name,
+        .classifier = fields.classifier,
+        .model_version = fields.model_version,
+        .label = fields.label,
+        .taxonomy_id = fields.taxonomy_id,
+        .confidence = fields.confidence,
+        .classified_at_ms = fields.classified_at_ms,
+        .input_asset_uuid = fields.input_asset_uuid,
+        .input_revision = fields.input_revision,
+        .kind = fields.kind,
+        .expected_revision = fields.expected_revision,
+    };
+    observation_classification_result_t *result = calloc(1, sizeof(*result));
+    if (!result) {
+        audit_annotation(&audit, "error", "internal_error", -1, -1);
+        send_internal(res);
+        return;
+    }
+    rc = db_observation_classification_put(target.id, &input, result);
+    respond_to_put(&audit, res, rc, result);
+    free(result);
 }

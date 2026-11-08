@@ -13,6 +13,7 @@
 
 #include <cjson/cJSON.h>
 
+#include "database/db_observation_classifications.h"
 #include "database/db_observations.h"
 #include "web/request_response.h"
 
@@ -36,7 +37,9 @@ void handle_get_observation_snapshot(const http_request_t *req, http_response_t 
 
 /**
  * PUT /api/observations/{id}/classifications/{namespace}/{name}
- * (putObservationClassification, P2).
+ * (putObservationClassification, P2; contract section 10). Authorized with
+ * observations.annotate on the observation's capture-time camera; the writer
+ * namespace is derived from the authenticated user (D3).
  */
 void handle_put_observation_classification(const http_request_t *req, http_response_t *res);
 
@@ -55,8 +58,16 @@ int observation_parse_time(const char *text, int64_t *ms);
  * -1 (invalid) or -2 (reserved) and leaves out empty. */
 int observation_writer_namespace(const char *username, char out[OBS_WRITER_NAMESPACE_SIZE]);
 
+#define OBS_PUT_BODY_MAX 4096          /* bound on the PUT classification body */
+
 /* Observation object (contract section 3) for one DB record. Never emits the
- * internal asset path. Returns NULL on allocation failure. */
-cJSON *observation_record_to_json(const observation_record_t *record, const char *source);
+ * internal asset path. classifications fills the section 10.5 lists (NULL =
+ * both empty). Returns NULL on allocation failure. */
+cJSON *observation_record_to_json(const observation_record_t *record, const char *source,
+                                  const observation_classification_set_t *classifications);
+
+/* Annotation object (contract section 10.3). Never emits writer_user_id.
+ * Returns NULL on allocation failure. */
+cJSON *observation_classification_to_json(const observation_classification_t *annotation);
 
 #endif /* LIGHTNVR_API_HANDLERS_OBSERVATIONS_H */

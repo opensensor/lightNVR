@@ -3,8 +3,8 @@
  * @brief INT_01 observation API handlers (contract
  *        docs/integrations/OBSERVATIONS_CONTRACT.md sections 7-9, 11, 12).
  *
- * Runs the GET handlers against a real migrated database populated through
- * the L2 DB layer. Authentication, the per-camera authorization decision,
+ * Runs the GET handlers and the P2 classification PUT (L14) against a real
+ * migrated database populated through the L2/L13 DB layer. Authentication, the per-camera authorization decision,
  * list filtering, file serving and audit appends are wrapped so each test
  * controls the principal's camera grants and observes what was served or
  * audited. Response bodies are compared with the shared C3 fixtures in
@@ -32,7 +32,10 @@
 #include "core/config.h"
 #include "core/event_identity.h"
 #include "database/db_auth.h"
+#include "core/event_envelope.h"
+#include "core/observation_relay.h"
 #include "database/db_core.h"
+#include "database/db_observation_classifications.h"
 #include "database/db_observations.h"
 #include "database/db_streams.h"
 #include "utils/strings.h"
@@ -50,10 +53,12 @@ typedef struct {
     char camera[OBS_UUID_SIZE];
     bool live_view;
     bool snapshot;
+    bool annotate;
 } grant_t;
 
 static bool authenticated = true;
 static char principal_name[64] = "YaWamf";
+static int principal_id = 42;
 static grant_t grants[4];
 static int grant_count;
 static bool evaluation_fails;
@@ -63,13 +68,14 @@ static char served_path[MAX_PATH_LENGTH];
 static char served_type[64];
 static char served_headers[512];
 
-#define MAX_AUDITS 16
+#define MAX_AUDITS 256
 typedef struct {
     char action[64];
     char target_type[32];
     char target_uuid[OBS_UUID_SIZE];
     char outcome[16];
     char details[1024];
+    char operation[48];
 } audit_record_t;
 static audit_record_t audits[MAX_AUDITS];
 static int audit_count;
@@ -78,7 +84,7 @@ int __wrap_httpd_check_action_access(const http_request_t *req, user_t *user) {
     (void)req;
     if (user) {
         memset(user, 0, sizeof(*user));
-        user->id = 42;
+        user->id = principal_id;
         safe_strcpy(user->username, principal_name, sizeof(user->username), 0);
     }
     return authenticated ? 1 : 0;
@@ -95,6 +101,7 @@ static bool granted(const char *camera, authorization_action_t action) {
     if (!grant) return false;
     if (action == AUTHZ_LIVE_VIEW) return grant->live_view;
     if (action == AUTHZ_SNAPSHOT_CREATE) return grant->snapshot;
+    if (action == AUTHZ_OBSERVATIONS_ANNOTATE) return grant->annotate;
     return false;
 }
 
@@ -146,6 +153,19 @@ void __wrap_audit_log_append(const http_request_t *req, const user_t *user,
     char *text = details ? cJSON_PrintUnformatted(details) : NULL;
     if (text) safe_strcpy(record->details, text, sizeof(record->details), 0);
     cJSON_free(text);
+}
+
+/* Calls from the handler file are intercepted; the context is kept as the
+ * record's details so tests can read the section 12.2 fields. */
+void __wrap_audit_log_operation(const http_request_t *req, const user_t *user,
+                                const char *action, const char *target_type,
+                                const char *target_uuid, const char *operation,
+                                const char *outcome, const cJSON *context) {
+    int before = audit_count;
+    __wrap_audit_log_append(req, user, action, target_type, target_uuid, outcome, context);
+    if (audit_count > before)
+        safe_strcpy(audits[before].operation, operation ? operation : "",
+                    sizeof(audits[before].operation), 0);
 }
 
 /* ---- fixture and request helpers -------------------------------------- */
@@ -221,8 +241,9 @@ typedef struct {
 
 static int dump_seq;
 
-static result_t call(handler_fn handler, http_method_t method, const char *path,
-                     const char *query, const char *if_none_match) {
+static result_t call_with_body(handler_fn handler, http_method_t method, const char *path,
+                               const char *query, const char *if_none_match,
+                               const char *body) {
     http_request_t request;
     result_t result;
     memset(&result, 0, sizeof(result));
@@ -237,6 +258,10 @@ static result_t call(handler_fn handler, http_method_t method, const char *path,
         safe_strcpy(request.headers[0].name, "If-None-Match", sizeof(request.headers[0].name), 0);
         safe_strcpy(request.headers[0].value, if_none_match, sizeof(request.headers[0].value), 0);
         request.num_headers = 1;
+    }
+    if (body) {
+        request.body = (void *)body;
+        request.body_len = strlen(body);
     }
     handler(&request, &result.response);
     if (result.response.body && result.response.body_length > 0) {
@@ -255,6 +280,11 @@ static result_t call(handler_fn handler, http_method_t method, const char *path,
         }
     }
     return result;
+}
+
+static result_t call(handler_fn handler, http_method_t method, const char *path,
+                     const char *query, const char *if_none_match) {
+    return call_with_body(handler, method, path, query, if_none_match, NULL);
 }
 
 static void release(result_t *result) {
@@ -376,12 +406,17 @@ static seeded_t seed(const char *camera, const char *label, observation_asset_st
     return out;
 }
 
-static void grant(const char *camera, bool live_view, bool snapshot) {
+static void grant_all(const char *camera, bool live_view, bool snapshot, bool annotate) {
     TEST_ASSERT_LESS_THAN(4, grant_count);
     safe_strcpy(grants[grant_count].camera, camera, OBS_UUID_SIZE, 0);
     grants[grant_count].live_view = live_view;
     grants[grant_count].snapshot = snapshot;
+    grants[grant_count].annotate = annotate;
     grant_count++;
+}
+
+static void grant(const char *camera, bool live_view, bool snapshot) {
+    grant_all(camera, live_view, snapshot, false);
 }
 
 static void obs_path(char *out, size_t size, const char *id, const char *suffix) {
@@ -393,6 +428,7 @@ static void obs_path(char *out, size_t size, const char *id, const char *suffix)
 void setUp(void) {
     authenticated = true;
     safe_strcpy(principal_name, "YaWamf", sizeof(principal_name), 0);
+    principal_id = 42;
     grant_count = 0;
     memset(grants, 0, sizeof(grants));
     evaluation_fails = false;
@@ -406,7 +442,7 @@ void setUp(void) {
 
 void tearDown(void) {}
 
-/* ---- authentication and the remaining stub ---------------------------- */
+/* ---- authentication ---------------------------------------------------- */
 
 static void test_every_route_requires_authentication(void) {
     authenticated = false;
@@ -424,14 +460,6 @@ static void test_every_route_requires_authentication(void) {
         expect_error(&result, 401, NULL);
         release(&result);
     }
-}
-
-static void test_put_classification_stays_not_implemented(void) {
-    result_t result = call(handle_put_observation_classification, HTTP_METHOD_PUT,
-                           "/api/observations/55555555-5555-4555-8555-555555555555/"
-                           "classifications/yawamf/species", NULL, NULL);
-    expect_error(&result, 501, "not_implemented");
-    release(&result);
 }
 
 /* ---- serialization conformance with the C3 fixtures -------------------- */
@@ -513,31 +541,71 @@ static void record_from_fixture(const cJSON *fixture, observation_record_t *reco
     asset->updated_at_ms = record->created_at_ms;
 }
 
+/* The DB row an annotation object (contract section 10.3) represents. */
+static void classification_from_json(const cJSON *json, observation_classification_t *out) {
+    memset(out, 0, sizeof(*out));
+    copy_str(out->key, sizeof(out->key), json, "key");
+    copy_str(out->writer_namespace, sizeof(out->writer_namespace), json, "writer_namespace");
+    out->writer_user_id = 42;
+    copy_str(out->classifier, sizeof(out->classifier), json, "classifier");
+    copy_str(out->model_version, sizeof(out->model_version), json, "model_version");
+    copy_str(out->label, sizeof(out->label), json, "label");
+    copy_str(out->taxonomy_id, sizeof(out->taxonomy_id), json, "taxonomy_id");
+    out->confidence = cJSON_GetObjectItem(json, "confidence")->valuedouble;
+    time_ms(str(json, "classified_at"), &out->classified_at_ms);
+    copy_str(out->input_asset_uuid, sizeof(out->input_asset_uuid), json, "input_asset_id");
+    out->input_revision = cJSON_GetObjectItem(json, "input_revision")->valueint;
+    TEST_ASSERT_EQUAL_INT(0, observation_classification_kind_parse(str(json, "kind"), &out->kind));
+    out->annotation_revision = cJSON_GetObjectItem(json, "annotation_revision")->valueint;
+    time_ms(str(json, "created_at"), &out->created_at_ms);
+    time_ms(str(json, "updated_at"), &out->updated_at_ms);
+}
+
+static void set_from_fixture(const cJSON *fixture, observation_classification_set_t *set) {
+    memset(set, 0, sizeof(*set));
+    const cJSON *lists = cJSON_GetObjectItem(fixture, "classifications");
+    const cJSON *item;
+    cJSON_ArrayForEach(item, cJSON_GetObjectItem(lists, "automated"))
+        classification_from_json(item, &set->automated[set->automated_count++]);
+    cJSON_ArrayForEach(item, cJSON_GetObjectItem(lists, "owner_confirmed"))
+        classification_from_json(item, &set->owner_confirmed[set->owner_confirmed_count++]);
+}
+
 static void test_serializer_reproduces_every_observation_fixture(void) {
     const char *files[] = {
         "observations/single-pending.json", "observations/single-ready.json",
         "observations/single-unavailable.json", "observations/single-expired.json",
         "observations/two-birds-object-0.json", "observations/two-birds-object-1.json",
         "observations/http-letterbox.json", "observations/onvif-no-matching-media.json",
+        "observations/single-ready-classified.json", "observations/single-owner-confirmed.json",
     };
     for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
         cJSON *fixture = load_fixture(files[i]);
-        /* P1 never returns annotations: compare against empty lists (L14 fills them). */
-        cJSON *classifications = cJSON_GetObjectItem(fixture, "classifications");
-        cJSON_ReplaceItemInObject(classifications, "automated", cJSON_CreateArray());
-        cJSON_ReplaceItemInObject(classifications, "owner_confirmed", cJSON_CreateArray());
         observation_record_t record;
         record_from_fixture(fixture, &record);
-        cJSON *actual = observation_record_to_json(&record, str(fixture, "source"));
+        observation_classification_set_t *set = calloc(1, sizeof(*set));
+        TEST_ASSERT_NOT_NULL(set);
+        set_from_fixture(fixture, set);
+        cJSON *actual = observation_record_to_json(&record, str(fixture, "source"), set);
+        free(set);
         TEST_ASSERT_NOT_NULL(actual);
         char *text = cJSON_PrintUnformatted(actual);
         TEST_ASSERT_NULL_MESSAGE(strstr(text, "never-serialized"), "asset path leaked");
         TEST_ASSERT_NULL_MESSAGE(strstr(text, "\"path\""), "path key leaked");
+        TEST_ASSERT_NULL_MESSAGE(strstr(text, "writer_user_id"), "writer user id leaked");
         cJSON_free(text);
         assert_json_equal(fixture, actual, files[i]);
         cJSON_Delete(actual);
         cJSON_Delete(fixture);
     }
+    /* NULL classifications: both lists present and empty. */
+    cJSON *fixture = load_fixture("observations/single-ready.json");
+    observation_record_t record;
+    record_from_fixture(fixture, &record);
+    cJSON *actual = observation_record_to_json(&record, str(fixture, "source"), NULL);
+    assert_json_equal(fixture, actual, "single-ready without annotations");
+    cJSON_Delete(actual);
+    cJSON_Delete(fixture);
 }
 
 static void test_time_and_namespace_helpers(void) {
@@ -1033,13 +1101,15 @@ static const cJSON *operation(const cJSON *json, const char *name) {
 }
 
 static void test_capabilities_document(void) {
-    grant(cam_a, true, true);
+    grant_all(cam_a, true, true, true);
     grant(cam_b, true, false);
+    grant_all(cam_c, false, false, true);  /* annotate alone still lists the camera */
     seed(cam_a, "bird", OBS_ASSET_PENDING);
     result_t result = call(handle_get_integration_capabilities, HTTP_METHOD_GET,
                            "/api/integrations/capabilities", NULL, NULL);
     TEST_ASSERT_EQUAL_INT(200, result.response.status_code);
-    cJSON *fixture = load_fixture("capabilities/p1.json");
+    /* P2 (L14): observations.annotate is supported and advertised per camera. */
+    cJSON *fixture = load_fixture("capabilities/p2.json");
     /* cameras is an array whose items are compared separately. */
     cJSON *fixture_cameras = cJSON_DetachItemFromObject(fixture, "cameras");
     cJSON *cameras = cJSON_DetachItemFromObject(result.json, "cameras");
@@ -1080,14 +1150,19 @@ static void test_capabilities_document(void) {
         str(delivery, "topic"));
 
     /* Only cameras with an observation action, with the actions held. */
-    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(cameras));
+    TEST_ASSERT_EQUAL_INT(3, cJSON_GetArraySize(cameras));
     const cJSON *camera;
     cJSON_ArrayForEach(camera, cameras) {
         assert_same_shape(cJSON_GetArrayItem(fixture_cameras, 0), camera, "cameras[]");
         const cJSON *actions = cJSON_GetObjectItem(camera, "actions");
         if (strcmp(str(camera, "camera_uuid"), cam_a) == 0) {
-            TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(actions));
+            assert_json_equal(cJSON_GetObjectItem(cJSON_GetArrayItem(fixture_cameras, 0),
+                                                  "actions"), actions, "cam_a actions");
             TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(camera, "evidence_enabled")));
+        } else if (strcmp(str(camera, "camera_uuid"), cam_c) == 0) {
+            TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(actions));
+            TEST_ASSERT_EQUAL_STRING("observations.annotate",
+                                     cJSON_GetArrayItem(actions, 0)->valuestring);
         } else {
             TEST_ASSERT_EQUAL_STRING(cam_b, str(camera, "camera_uuid"));
             TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(actions));
@@ -1116,12 +1191,664 @@ static void test_capabilities_scope_without_grants_or_namespace(void) {
         TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(op, "authorized")));
         TEST_ASSERT_EQUAL_STRING("not_authorized", str(op, "reason"));
     }
+    /* annotate is supported, but a reserved username has no writer namespace. */
+    const cJSON *annotate = operation(result.json, "observations.annotate");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(annotate, "supported")));
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(annotate, "authorized")));
+    TEST_ASSERT_EQUAL_STRING("reserved_writer_namespace", str(annotate, "reason"));
     TEST_ASSERT_EQUAL_INT(0, cJSON_GetArraySize(cJSON_GetObjectItem(result.json, "cameras")));
+    release(&result);
+
+    /* A valid namespace without the action anywhere: not_authorized. */
+    safe_strcpy(principal_name, "yawamf", sizeof(principal_name), 0);
+    grant(cam_a, true, true);
+    result = call(handle_get_integration_capabilities, HTTP_METHOD_GET,
+                  "/api/integrations/capabilities", NULL, NULL);
+    annotate = operation(result.json, "observations.annotate");
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(annotate, "authorized")));
+    TEST_ASSERT_EQUAL_STRING("not_authorized", str(annotate, "reason"));
+    release(&result);
+
+    /* The action held with an invalid username: invalid_writer_namespace. */
+    safe_strcpy(principal_name, "-bad", sizeof(principal_name), 0);
+    grant_count = 0;
+    grant_all(cam_a, true, true, true);
+    result = call(handle_get_integration_capabilities, HTTP_METHOD_GET,
+                  "/api/integrations/capabilities", NULL, NULL);
+    annotate = operation(result.json, "observations.annotate");
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(annotate, "authorized")));
+    TEST_ASSERT_EQUAL_STRING("invalid_writer_namespace", str(annotate, "reason"));
+    release(&result);
+    grant_count = 0;
+    safe_strcpy(principal_name, "system", sizeof(principal_name), 0);
+    result = call(handle_get_integration_capabilities, HTTP_METHOD_GET,
+                  "/api/integrations/capabilities", NULL, NULL);
     /* Empty history still has the oldest cursor; oldest_observed_at is null. */
     const cJSON *history = cJSON_GetObjectItem(result.json, "history");
     TEST_ASSERT_NOT_NULL(str(history, "oldest_cursor"));
     TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(history, "oldest_observed_at")));
     release(&result);
+}
+
+/* ---- PUT /api/observations/{id}/classifications/{ns}/{name} (L14) ------ */
+
+#define FIXTURE_OBSERVATION "55555555-5555-4555-8555-555555555555"
+#define FIXTURE_ASSET "88888888-8888-4888-8888-888888888888"
+
+static void put_path(char *out, size_t size, const char *id, const char *ns, const char *name) {
+    snprintf(out, size, "/api/observations/%s/classifications/%s/%s", id, ns, name);
+}
+
+static result_t put(const char *path, const char *body) {
+    return call_with_body(handle_put_observation_classification, HTTP_METHOD_PUT, path, NULL,
+                          NULL, body);
+}
+
+static int count_for(const char *sql, const char *uuid) {
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(), sql, -1, &stmt, NULL));
+    sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    int count = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+static int classification_rows(const char *observation) {
+    return count_for("SELECT count(*) FROM observation_classifications WHERE observation_uuid = ?;",
+                     observation);
+}
+
+static int publication_rows(const char *observation) {
+    return count_for("SELECT count(*) FROM observation_publications p JOIN observation_changes c "
+                     "ON c.seq = p.change_seq WHERE c.observation_uuid = ?;", observation);
+}
+
+static int revision_of(const char *observation) {
+    observation_record_t record;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_get(observation, &record));
+    return record.revision;
+}
+
+/* Replace every string equal to from (recursively). */
+static void substitute(cJSON *json, const char *from, const char *to) {
+    cJSON *item;
+    cJSON_ArrayForEach(item, json) {
+        if (cJSON_IsString(item) && strcmp(item->valuestring, from) == 0)
+            cJSON_SetValuestring(item, to);
+        else if (cJSON_IsObject(item) || cJSON_IsArray(item))
+            substitute(item, from, to);
+    }
+}
+
+/* Run a C3 classification exchange against a seeded observation: the
+ * fixture's observation and asset IDs are mapped to the seeded ones in the
+ * path, body and expected response. Returns the response; *expected is the
+ * mapped fixture response body. */
+static result_t put_exchange(const char *file, const seeded_t *seeded, cJSON **expected,
+                             int *status) {
+    cJSON *exchange = load_fixture(file);
+    const cJSON *request = cJSON_GetObjectItem(exchange, "request");
+    const cJSON *principal = cJSON_GetObjectItem(request, "principal");
+    safe_strcpy(principal_name, str(principal, "username"), sizeof(principal_name), 0);
+    char path[256];
+    const char *fixture_path = str(request, "path");
+    const char *at = strstr(fixture_path, FIXTURE_OBSERVATION);
+    TEST_ASSERT_NOT_NULL(at);
+    snprintf(path, sizeof(path), "%.*s%s%s", (int)(at - fixture_path), fixture_path,
+             seeded->observation, at + strlen(FIXTURE_OBSERVATION));
+    cJSON *body = cJSON_Duplicate(cJSON_GetObjectItem(request, "body"), true);
+    substitute(body, FIXTURE_ASSET, seeded->asset);
+    char *text = cJSON_PrintUnformatted(body);
+    cJSON_Delete(body);
+    result_t result = put(path, text);
+    cJSON_free(text);
+    const cJSON *response = cJSON_GetObjectItem(exchange, "response");
+    *status = cJSON_GetObjectItem(response, "status")->valueint;
+    *expected = cJSON_Duplicate(cJSON_GetObjectItem(response, "body"), true);
+    substitute(*expected, FIXTURE_ASSET, seeded->asset);
+    substitute(*expected, FIXTURE_OBSERVATION, seeded->observation);
+    cJSON_Delete(exchange);
+    return result;
+}
+
+/* created_at/updated_at are server times: check them, then align them with
+ * the fixture so the rest compares exactly. Returns a copy of the actual
+ * annotation (before alignment), or NULL when the body has none. */
+static cJSON *align_annotation_times(cJSON *expected, cJSON *actual) {
+    const char *keys[] = {"annotation", "current"};
+    for (int k = 0; k < 2; k++) {
+        cJSON *want = cJSON_GetObjectItem(expected, keys[k]);
+        cJSON *got = cJSON_GetObjectItem(actual, keys[k]);
+        if (!want) {
+            TEST_ASSERT_NULL_MESSAGE(got, keys[k]);
+            continue;
+        }
+        TEST_ASSERT_NOT_NULL_MESSAGE(got, keys[k]);
+        cJSON *copy = cJSON_Duplicate(got, true);
+        int64_t created = 0, updated = 0;
+        time_ms(str(got, "created_at"), &created);
+        time_ms(str(got, "updated_at"), &updated);
+        TEST_ASSERT_TRUE(updated >= created);
+        cJSON_ReplaceItemInObject(got, "created_at",
+                                  cJSON_CreateString(str(want, "created_at")));
+        cJSON_ReplaceItemInObject(got, "updated_at",
+                                  cJSON_CreateString(str(want, "updated_at")));
+        return copy;
+    }
+    return NULL;
+}
+
+static cJSON *run_exchange(const char *file, const seeded_t *seeded) {
+    cJSON *expected = NULL;
+    int status = 0;
+    result_t result = put_exchange(file, seeded, &expected, &status);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(status, result.response.status_code, file);
+    TEST_ASSERT_NOT_NULL_MESSAGE(result.json, file);
+    cJSON *annotation = align_annotation_times(expected, result.json);
+    assert_json_equal(expected, result.json, file);
+    cJSON_Delete(expected);
+    release(&result);
+    return annotation;
+}
+
+static const audit_record_t *last_annotate_audit(void) {
+    for (int i = audit_count - 1; i >= 0; i--)
+        if (strcmp(audits[i].action, "observations.annotate") == 0) return &audits[i];
+    return NULL;
+}
+
+static void expect_annotate_audit(const char *observation, const char *outcome,
+                                  const char *result_name) {
+    const audit_record_t *record = last_annotate_audit();
+    TEST_ASSERT_NOT_NULL_MESSAGE(record, result_name);
+    TEST_ASSERT_EQUAL_STRING("observation", record->target_type);
+    TEST_ASSERT_EQUAL_STRING(observation, record->target_uuid);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(outcome, record->outcome, result_name);
+    cJSON *details = cJSON_Parse(record->details);
+    TEST_ASSERT_NOT_NULL(details);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(result_name, str(details, "result"), record->details);
+    cJSON_Delete(details);
+}
+
+/* Fixtures 01-05 are one history: create, retry, stale write, owner
+ * correction and the automated re-run it locks out. */
+static void test_put_fixture_chain_create_retry_conflict_owner(void) {
+    grant_all(cam_a, true, false, true);
+    seeded_t seeded = seed(cam_a, "bird", OBS_ASSET_READY);
+    TEST_ASSERT_EQUAL_INT(2, revision_of(seeded.observation));
+
+    cJSON *created = run_exchange("classifications/01-create-automated.json", &seeded);
+    TEST_ASSERT_EQUAL_STRING(str(created, "created_at"), str(created, "updated_at"));
+    TEST_ASSERT_EQUAL_INT(3, revision_of(seeded.observation));
+    TEST_ASSERT_EQUAL_INT(1, classification_rows(seeded.observation));
+    expect_annotate_audit(seeded.observation, "success", "created");
+    int publications = publication_rows(seeded.observation);
+
+    /* 02: identical retry, nothing written and the revision is not bumped. */
+    cJSON *retried = run_exchange("classifications/02-retry-noop.json", &seeded);
+    assert_json_equal(created, retried, "retry returns the stored annotation");
+    TEST_ASSERT_EQUAL_INT(3, revision_of(seeded.observation));
+    TEST_ASSERT_EQUAL_INT(publications, publication_rows(seeded.observation));
+    expect_annotate_audit(seeded.observation, "success", "noop");
+
+    /* 03: a different result with a stale expected_revision. */
+    cJSON *conflict = run_exchange("classifications/03-revision-conflict.json", &seeded);
+    assert_json_equal(created, conflict, "409 current is the stored annotation");
+    TEST_ASSERT_EQUAL_INT(3, revision_of(seeded.observation));
+    expect_annotate_audit(seeded.observation, "failure", "revision_conflict");
+
+    /* 04: the owner correction replaces it. */
+    cJSON *owner = run_exchange("classifications/04-owner-confirm.json", &seeded);
+    TEST_ASSERT_EQUAL_STRING(str(created, "created_at"), str(owner, "created_at"));
+    TEST_ASSERT_EQUAL_INT(4, revision_of(seeded.observation));
+    TEST_ASSERT_EQUAL_INT(1, classification_rows(seeded.observation));
+    TEST_ASSERT_EQUAL_INT(publications + 1, publication_rows(seeded.observation));
+    expect_annotate_audit(seeded.observation, "success", "updated");
+
+    /* 05: an automated re-run never overrides the owner decision. */
+    cJSON *locked = run_exchange("classifications/05-owner-decision-locked.json", &seeded);
+    assert_json_equal(owner, locked, "409 current is the owner decision");
+    TEST_ASSERT_EQUAL_INT(4, revision_of(seeded.observation));
+    expect_annotate_audit(seeded.observation, "failure", "owner_decision_locked");
+
+    /* The detector fields are untouched. */
+    observation_record_t record;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_get(seeded.observation, &record));
+    TEST_ASSERT_EQUAL_STRING("bird", record.label);
+    TEST_ASSERT_EQUAL_FLOAT(0.87f, (float)record.confidence);
+
+    cJSON_Delete(created);
+    cJSON_Delete(retried);
+    cJSON_Delete(conflict);
+    cJSON_Delete(owner);
+    cJSON_Delete(locked);
+}
+
+static void test_put_fixture_rejections_write_nothing(void) {
+    grant_all(cam_a, true, false, true);
+    struct { const char *file; observation_asset_state_t state; const char *outcome;
+             const char *result; } cases[] = {
+        {"classifications/06-evidence-mismatch-asset.json", OBS_ASSET_READY, "failure",
+         "evidence_mismatch"},
+        {"classifications/07-evidence-mismatch-pending.json", OBS_ASSET_PENDING, "failure",
+         "evidence_mismatch"},
+        {"classifications/08-namespace-forbidden.json", OBS_ASSET_READY, "denied",
+         "namespace_forbidden"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        seeded_t seeded = seed(cam_a, "bird", cases[i].state);
+        int revision = revision_of(seeded.observation);
+        int publications = publication_rows(seeded.observation);
+        cJSON *annotation = run_exchange(cases[i].file, &seeded);
+        TEST_ASSERT_NULL(annotation);
+        TEST_ASSERT_EQUAL_INT(0, classification_rows(seeded.observation));
+        TEST_ASSERT_EQUAL_INT(revision, revision_of(seeded.observation));
+        TEST_ASSERT_EQUAL_INT(publications, publication_rows(seeded.observation));
+        expect_annotate_audit(seeded.observation, cases[i].outcome, cases[i].result);
+    }
+}
+
+static const char *body_for(const char *asset, const char *kind, int expected_revision,
+                            const char *label, const char *extra) {
+    static char buffer[2048];
+    snprintf(buffer, sizeof(buffer),
+             "{\"classifier\":\"yawamf\",\"model_version\":\"m1\",\"label\":\"%s\","
+             "\"taxonomy_id\":null,\"confidence\":0.5,"
+             "\"classified_at\":\"2026-11-08T14:03:15.002Z\",\"input_asset_id\":\"%s\","
+             "\"input_revision\":2,\"kind\":\"%s\",\"expected_revision\":%d%s}",
+             label, asset, kind, expected_revision, extra ? extra : "");
+    return buffer;
+}
+
+/* A7-annotate: a camera the caller cannot view looks like an unknown ID; a
+ * viewable camera without the action is a 403; nothing is written on denial. */
+static void test_put_authorization_on_capture_camera(void) {
+    seeded_t viewable = seed(cam_a, "bird", OBS_ASSET_READY);
+    seeded_t hidden = seed(cam_b, "bird", OBS_ASSET_READY);
+    seeded_t writable = seed(cam_c, "bird", OBS_ASSET_READY);
+    grant_all(cam_a, true, true, false);   /* live.view + snapshot, no annotate */
+    grant_all(cam_c, false, false, true);  /* annotate alone is sufficient */
+    char path[256];
+
+    put_path(path, sizeof(path), viewable.observation, "yawamf", "species");
+    result_t forbidden = put(path, body_for(viewable.asset, "automated", 0, "Robin", NULL));
+    expect_error(&forbidden, 403, "forbidden");
+    TEST_ASSERT_NULL(cJSON_GetObjectItem(forbidden.json, "current"));
+    expect_annotate_audit(viewable.observation, "denied", "forbidden");
+
+    cJSON *not_found = load_fixture("errors/observation-not-found.json");
+    put_path(path, sizeof(path), hidden.observation, "yawamf", "species");
+    result_t hidden_result = put(path, body_for(hidden.asset, "automated", 0, "Robin", NULL));
+    TEST_ASSERT_EQUAL_INT(404, hidden_result.response.status_code);
+    assert_json_equal(not_found, hidden_result.json, "hidden put body");
+    expect_annotate_audit(hidden.observation, "denied", "observation_not_found");
+    /* Authorization precedes namespace and body checks, so they leak nothing. */
+    put_path(path, sizeof(path), hidden.observation, "someone-else", "species");
+    result_t hidden_bad = put(path, "{not json");
+    TEST_ASSERT_EQUAL_INT(404, hidden_bad.response.status_code);
+    TEST_ASSERT_EQUAL_MEMORY(hidden_result.response.body, hidden_bad.response.body,
+                             hidden_result.response.body_length);
+
+    put_path(path, sizeof(path), "00000000-0000-4000-8000-000000000000", "yawamf", "species");
+    result_t unknown = put(path, body_for(hidden.asset, "automated", 0, "Robin", NULL));
+    TEST_ASSERT_EQUAL_INT(404, unknown.response.status_code);
+    TEST_ASSERT_EQUAL_size_t(unknown.response.body_length, hidden_result.response.body_length);
+    TEST_ASSERT_EQUAL_MEMORY(unknown.response.body, hidden_result.response.body,
+                             unknown.response.body_length);
+
+    TEST_ASSERT_EQUAL_INT(0, classification_rows(viewable.observation));
+    TEST_ASSERT_EQUAL_INT(0, classification_rows(hidden.observation));
+    TEST_ASSERT_EQUAL_INT(2, revision_of(viewable.observation));
+    TEST_ASSERT_EQUAL_INT(2, revision_of(hidden.observation));
+
+    put_path(path, sizeof(path), writable.observation, "yawamf", "species");
+    result_t allowed = put(path, body_for(writable.asset, "automated", 0, "Robin", NULL));
+    TEST_ASSERT_EQUAL_INT(201, allowed.response.status_code);
+    TEST_ASSERT_EQUAL_INT(1, classification_rows(writable.observation));
+
+    evaluation_fails = true;
+    put_path(path, sizeof(path), writable.observation, "yawamf", "other");
+    result_t failure = put(path, body_for(writable.asset, "automated", 0, "Robin", NULL));
+    expect_error(&failure, 500, "internal_error");
+    TEST_ASSERT_EQUAL_INT(1, classification_rows(writable.observation));
+    expect_annotate_audit(writable.observation, "error", "internal_error");
+
+    cJSON_Delete(not_found);
+    release(&forbidden);
+    release(&hidden_result);
+    release(&hidden_bad);
+    release(&unknown);
+    release(&allowed);
+    release(&failure);
+}
+
+static void test_put_namespace_rules(void) {
+    grant_all(cam_a, true, false, true);
+    seeded_t seeded = seed(cam_a, "bird", OBS_ASSET_READY);
+    char path[256];
+    put_path(path, sizeof(path), seeded.observation, "yawamf", "species");
+
+    /* A body naming another writer is refused, before body validation. */
+    const char *other[] = {",\"writer_namespace\":\"frigate-bridge\"", ",\"writer\":\"owner\""};
+    for (int i = 0; i < 2; i++) {
+        result_t result = put(path, body_for(seeded.asset, "automated", 0, "Robin", other[i]));
+        expect_error(&result, 403, "namespace_forbidden");
+        release(&result);
+    }
+    /* Reserved and invalid usernames have no namespace at all. */
+    const char *names[][2] = {{"system", "system"}, {"Lightnvr", "lightnvr"}, {"-bad", "bad"}};
+    for (int i = 0; i < 3; i++) {
+        safe_strcpy(principal_name, names[i][0], sizeof(principal_name), 0);
+        char own[256];
+        put_path(own, sizeof(own), seeded.observation, names[i][1], "species");
+        result_t result = put(own, body_for(seeded.asset, "automated", 0, "Robin", NULL));
+        expect_error(&result, 403, "namespace_forbidden");
+        release(&result);
+    }
+    TEST_ASSERT_EQUAL_INT(0, classification_rows(seeded.observation));
+
+    /* Naming the caller's own namespace is accepted and ignored. */
+    safe_strcpy(principal_name, "YaWamf", sizeof(principal_name), 0);
+    result_t own = put(path, body_for(seeded.asset, "automated", 0, "Robin",
+                                      ",\"writer_namespace\":\"yawamf\",\"writer\":\"yawamf\""));
+    TEST_ASSERT_EQUAL_INT(201, own.response.status_code);
+    const cJSON *annotation = cJSON_GetObjectItem(own.json, "annotation");
+    TEST_ASSERT_EQUAL_STRING("yawamf/species", str(annotation, "key"));
+    TEST_ASSERT_EQUAL_STRING("yawamf", str(annotation, "writer_namespace"));
+    TEST_ASSERT_NULL(cJSON_GetObjectItem(annotation, "writer_user_id"));
+    release(&own);
+
+    /* D3: a later user reusing the username cannot touch the key, and the
+     * stored values are withheld. */
+    principal_id = 43;
+    result_t reused = put(path, body_for(seeded.asset, "automated", 1, "Sparrow", NULL));
+    expect_error(&reused, 403, "namespace_forbidden");
+    TEST_ASSERT_NULL(cJSON_GetObjectItem(reused.json, "current"));
+    TEST_ASSERT_NULL(strstr((const char *)reused.response.body, "Robin"));
+    expect_annotate_audit(seeded.observation, "denied", "namespace_forbidden");
+    release(&reused);
+    TEST_ASSERT_EQUAL_INT(3, revision_of(seeded.observation));
+}
+
+static void test_put_validates_the_closed_body(void) {
+    grant_all(cam_a, true, false, true);
+    seeded_t seeded = seed(cam_a, "bird", OBS_ASSET_READY);
+    char path[256];
+    put_path(path, sizeof(path), seeded.observation, "yawamf", "species");
+    char long65[66], long129[130];
+    memset(long65, 'a', 65); long65[65] = '\0';
+    memset(long129, 'a', 129); long129[129] = '\0';
+    char long65_json[80], long129_json[150];
+    snprintf(long65_json, sizeof(long65_json), "\"%s\"", long65);
+    snprintf(long129_json, sizeof(long129_json), "\"%s\"", long129);
+    /* {field, raw JSON value or NULL to remove the field} */
+    const char *cases[][2] = {
+        {"classifier", NULL}, {"classifier", "\"\""}, {"classifier", long65_json},
+        {"classifier", "5"}, {"model_version", long65_json}, {"model_version", "5"},
+        {"label", NULL}, {"label", "\"\""}, {"label", long129_json}, {"label", "\"\\u0000x\""},
+        {"label", "\"\xff\xfe\""}, {"taxonomy_id", long65_json}, {"taxonomy_id", "true"},
+        {"confidence", NULL}, {"confidence", "1.5"}, {"confidence", "-0.1"},
+        {"confidence", "\"0.5\""}, {"classified_at", NULL}, {"classified_at", "\"yesterday\""},
+        {"classified_at", "5"}, {"input_asset_id", NULL}, {"input_asset_id", "\"nope\""},
+        {"input_revision", NULL}, {"input_revision", "0"}, {"input_revision", "1.5"},
+        {"input_revision", "\"2\""}, {"input_revision", "3000000000"}, {"kind", NULL},
+        {"kind", "\"manual\""}, {"expected_revision", "-1"}, {"expected_revision", "1.5"},
+        {"expected_revision", "null"}, {"writer_namespace", "5"}, {"extra", "1"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        cJSON *body = cJSON_Parse(body_for(seeded.asset, "automated", 0, "Robin", NULL));
+        TEST_ASSERT_NOT_NULL(body);
+        cJSON_DeleteItemFromObject(body, cases[i][0]);
+        if (cases[i][1]) {
+            cJSON *value = cJSON_Parse(cases[i][1]);
+            if (!value) {  /* invalid UTF-8 or embedded NUL: splice the raw text */
+                char *text = cJSON_PrintUnformatted(body);
+                char raw[1024];
+                snprintf(raw, sizeof(raw), "%.*s,\"%s\":%s}", (int)strlen(text) - 1, text,
+                         cases[i][0], cases[i][1]);
+                cJSON_free(text);
+                cJSON_Delete(body);
+                result_t result = put(path, raw);
+                char message[160];
+                snprintf(message, sizeof(message), "raw %s=%s", cases[i][0], cases[i][1]);
+                TEST_ASSERT_EQUAL_INT_MESSAGE(400, result.response.status_code, message);
+                TEST_ASSERT_EQUAL_STRING_MESSAGE("invalid_request", str(result.json, "code"),
+                                                 message);
+                release(&result);
+                continue;
+            }
+            cJSON_AddItemToObject(body, cases[i][0], value);
+        }
+        char *text = cJSON_PrintUnformatted(body);
+        cJSON_Delete(body);
+        result_t result = put(path, text);
+        cJSON_free(text);
+        char message[160];
+        snprintf(message, sizeof(message), "%s=%s", cases[i][0],
+                 cases[i][1] ? cases[i][1] : "(absent)");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(400, result.response.status_code, message);
+        TEST_ASSERT_EQUAL_STRING_MESSAGE("invalid_request", str(result.json, "code"), message);
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(cases[i][0], str(result.json, "field"), message);
+        release(&result);
+    }
+    const char *documents[] = {NULL, "", "not json", "[]", "null", "{\"classifier\":"};
+    for (size_t i = 0; i < sizeof(documents) / sizeof(documents[0]); i++) {
+        result_t result = put(path, documents[i]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(400, result.response.status_code,
+                                      documents[i] ? documents[i] : "(no body)");
+        TEST_ASSERT_EQUAL_STRING("invalid_request", str(result.json, "code"));
+        release(&result);
+    }
+    /* Oversized bodies are refused without parsing. */
+    char *large = malloc(OBS_PUT_BODY_MAX + 64);
+    TEST_ASSERT_NOT_NULL(large);
+    snprintf(large, OBS_PUT_BODY_MAX + 64, "{\"classifier\":\"%*s\"}", OBS_PUT_BODY_MAX, "x");
+    result_t oversized = put(path, large);
+    free(large);
+    expect_error(&oversized, 400, "invalid_request");
+    release(&oversized);
+    /* Path segments follow ^[a-z0-9][a-z0-9_.-]{0,31}$. */
+    const char *names[] = {"Species", "-species", "a-name-that-is-longer-than-32-bytes", "sp%2Fx"};
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        char bad[256];
+        put_path(bad, sizeof(bad), seeded.observation, "yawamf", names[i]);
+        result_t result = put(bad, body_for(seeded.asset, "automated", 0, "Robin", NULL));
+        expect_error(&result, 400, "invalid_request");
+        TEST_ASSERT_EQUAL_STRING_MESSAGE("name", str(result.json, "field"), names[i]);
+        release(&result);
+    }
+    char bad_id[256];
+    put_path(bad_id, sizeof(bad_id), "not-a-uuid", "yawamf", "species");
+    result_t malformed = put(bad_id, body_for(seeded.asset, "automated", 0, "Robin", NULL));
+    expect_error(&malformed, 400, "invalid_request");
+    release(&malformed);
+
+    TEST_ASSERT_EQUAL_INT(0, classification_rows(seeded.observation));
+    TEST_ASSERT_EQUAL_INT(2, revision_of(seeded.observation));
+    expect_annotate_audit(seeded.observation, "failure", "invalid_request");
+
+    /* Optional fields may be absent; uppercase UUIDs are normalized. */
+    char upper[OBS_UUID_SIZE];
+    safe_strcpy(upper, seeded.asset, sizeof(upper), 0);
+    for (char *p = upper; *p; p++) if (*p >= 'a' && *p <= 'f') *p = (char)(*p - 32);
+    char minimal[512];
+    snprintf(minimal, sizeof(minimal),
+             "{\"classifier\":\"yawamf\",\"label\":\"Robin\",\"confidence\":1,"
+             "\"classified_at\":\"2026-11-08T16:03:15+02:00\",\"input_asset_id\":\"%s\","
+             "\"input_revision\":2,\"kind\":\"owner_confirmed\"}", upper);
+    result_t created = put(path, minimal);
+    TEST_ASSERT_EQUAL_INT(201, created.response.status_code);
+    const cJSON *annotation = cJSON_GetObjectItem(created.json, "annotation");
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(annotation, "model_version")));
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(annotation, "taxonomy_id")));
+    TEST_ASSERT_EQUAL_STRING(seeded.asset, str(annotation, "input_asset_id"));
+    TEST_ASSERT_EQUAL_STRING("2026-11-08T14:03:15.000Z", str(annotation, "classified_at"));
+    release(&created);
+}
+
+static void test_put_update_limit_and_absent_key_conflict(void) {
+    grant_all(cam_a, true, false, true);
+    seeded_t seeded = seed(cam_a, "bird", OBS_ASSET_READY);
+    char path[256];
+
+    /* expected_revision on a key that does not exist: 409 without current. */
+    put_path(path, sizeof(path), seeded.observation, "yawamf", "species");
+    result_t absent = put(path, body_for(seeded.asset, "automated", 3, "Robin", NULL));
+    expect_error(&absent, 409, "revision_conflict");
+    TEST_ASSERT_NULL(cJSON_GetObjectItem(absent.json, "current"));
+    release(&absent);
+
+    result_t created = put(path, body_for(seeded.asset, "automated", 0, "Robin", NULL));
+    TEST_ASSERT_EQUAL_INT(201, created.response.status_code);
+    release(&created);
+    /* An automated update with the right revision: 200 changed=true. */
+    result_t updated = put(path, body_for(seeded.asset, "automated", 1, "American Robin", NULL));
+    TEST_ASSERT_EQUAL_INT(200, updated.response.status_code);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(updated.json, "changed")));
+    TEST_ASSERT_EQUAL_INT(4, cJSON_GetObjectItem(updated.json, "observation_revision")->valueint);
+    const cJSON *annotation = cJSON_GetObjectItem(updated.json, "annotation");
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetObjectItem(annotation, "annotation_revision")->valueint);
+    TEST_ASSERT_EQUAL_STRING("American Robin", str(annotation, "label"));
+    release(&updated);
+
+    for (int i = 1; i < OBS_CLS_MAX_PER_OBSERVATION; i++) {
+        char name[16];
+        snprintf(name, sizeof(name), "k%d", i);
+        put_path(path, sizeof(path), seeded.observation, "yawamf", name);
+        result_t result = put(path, body_for(seeded.asset, "automated", 0, "Robin", NULL));
+        TEST_ASSERT_EQUAL_INT(201, result.response.status_code);
+        release(&result);
+    }
+    put_path(path, sizeof(path), seeded.observation, "yawamf", "ninth");
+    result_t limited = put(path, body_for(seeded.asset, "automated", 0, "Robin", NULL));
+    expect_error(&limited, 409, "annotation_limit");
+    TEST_ASSERT_EQUAL_INT(8, cJSON_GetObjectItem(limited.json, "limit")->valueint);
+    expect_annotate_audit(seeded.observation, "failure", "annotation_limit");
+    release(&limited);
+    TEST_ASSERT_EQUAL_INT(8, classification_rows(seeded.observation));
+}
+
+/* Section 10.5: GET and history items carry the annotations split by kind. */
+static void test_get_and_list_include_classifications(void) {
+    grant_all(cam_a, true, false, true);
+    seeded_t seeded = seed(cam_a, "bird", OBS_ASSET_READY);
+    seeded_t plain = seed(cam_a, "bird", OBS_ASSET_READY);
+    char path[256];
+    put_path(path, sizeof(path), seeded.observation, "yawamf", "species");
+    result_t automated = put(path, body_for(seeded.asset, "automated", 0, "Robin", NULL));
+    TEST_ASSERT_EQUAL_INT(201, automated.response.status_code);
+    put_path(path, sizeof(path), seeded.observation, "yawamf", "owner");
+    result_t owner = put(path, body_for(seeded.asset, "owner_confirmed", 0, "Wren", NULL));
+    TEST_ASSERT_EQUAL_INT(201, owner.response.status_code);
+
+    obs_path(path, sizeof(path), seeded.observation, NULL);
+    result_t got = call(handle_get_observation, HTTP_METHOD_GET, path, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(200, got.response.status_code);
+    TEST_ASSERT_EQUAL_INT(4, cJSON_GetObjectItem(got.json, "revision")->valueint);
+    const cJSON *lists = cJSON_GetObjectItem(got.json, "classifications");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(cJSON_GetObjectItem(lists, "automated")));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(cJSON_GetObjectItem(lists, "owner_confirmed")));
+    assert_json_equal(cJSON_GetObjectItem(automated.json, "annotation"),
+                      cJSON_GetArrayItem(cJSON_GetObjectItem(lists, "automated"), 0),
+                      "GET automated");
+    assert_json_equal(cJSON_GetObjectItem(owner.json, "annotation"),
+                      cJSON_GetArrayItem(cJSON_GetObjectItem(lists, "owner_confirmed"), 0),
+                      "GET owner_confirmed");
+    /* The original detector label and confidence stay visible. */
+    TEST_ASSERT_EQUAL_STRING("bird", str(got.json, "label"));
+
+    result_t page = call(handle_get_observations, HTTP_METHOD_GET, "/api/observations", NULL,
+                         NULL);
+    TEST_ASSERT_EQUAL_INT(200, page.response.status_code);
+    TEST_ASSERT_EQUAL_INT(2, item_count(&page));
+    const cJSON *item;
+    cJSON_ArrayForEach(item, cJSON_GetObjectItem(page.json, "items")) {
+        const cJSON *item_lists = cJSON_GetObjectItem(item, "classifications");
+        if (strcmp(str(item, "id"), seeded.observation) == 0) {
+            assert_json_equal(lists, item_lists, "history item classifications");
+        } else {
+            TEST_ASSERT_EQUAL_STRING(plain.observation, str(item, "id"));
+            TEST_ASSERT_EQUAL_INT(0, cJSON_GetArraySize(cJSON_GetObjectItem(item_lists,
+                                                                            "automated")));
+            TEST_ASSERT_EQUAL_INT(0, cJSON_GetArraySize(cJSON_GetObjectItem(item_lists,
+                                                                            "owner_confirmed")));
+        }
+    }
+    release(&automated);
+    release(&owner);
+    release(&got);
+    release(&page);
+}
+
+/* The classification change is staged for the relay (MQTT) with the
+ * section 5.4 message ID, which a retry neither changes nor duplicates. */
+static void test_put_stages_a_classification_change_with_stable_message_id(void) {
+    grant_all(cam_a, true, false, true);
+    seeded_t seeded = seed(cam_a, "bird", OBS_ASSET_READY);
+    char path[256];
+    put_path(path, sizeof(path), seeded.observation, "yawamf", "species");
+    const char *body = body_for(seeded.asset, "automated", 0, "Robin", NULL);
+    char body_copy[2048];
+    safe_strcpy(body_copy, body, sizeof(body_copy), 0);
+    result_t created = put(path, body_copy);
+    TEST_ASSERT_EQUAL_INT(201, created.response.status_code);
+    TEST_ASSERT_EQUAL_INT(3, cJSON_GetObjectItem(created.json, "observation_revision")->valueint);
+
+    observation_publication_t *pending = calloc(64, sizeof(*pending));
+    TEST_ASSERT_NOT_NULL(pending);
+    int count = db_observation_pending_publications(pending, 64);
+    TEST_ASSERT_GREATER_OR_EQUAL(1, count);
+    const observation_publication_t *publication = NULL;
+    for (int i = 0; i < count; i++)
+        if (strcmp(pending[i].observation_uuid, seeded.observation) == 0 &&
+            pending[i].revision == 3)
+            publication = &pending[i];
+    TEST_ASSERT_NOT_NULL(publication);
+    TEST_ASSERT_EQUAL_INT(OBS_CAUSE_CLASSIFICATION, publication->cause);
+    char expected_id[OBS_UUID_SIZE];
+    TEST_ASSERT_EQUAL_INT(0, observation_message_id(source, seeded.observation, 3, expected_id));
+    TEST_ASSERT_EQUAL_STRING(expected_id, publication->message_id);
+
+    char error[256] = "";
+    event_envelope_t first, second;
+    TEST_ASSERT_EQUAL_INT(0, observation_relay_build_envelope(publication, source, &first, error,
+                                                              sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(0, observation_relay_build_envelope(publication, source, &second, error,
+                                                              sizeof(error)));
+    TEST_ASSERT_EQUAL_STRING(expected_id, first.id);
+    TEST_ASSERT_EQUAL_STRING(first.id, second.id);
+    TEST_ASSERT_EQUAL_STRING("classification",
+                             str(first.data, "change_cause"));
+    event_envelope_clear(&first);
+    event_envelope_clear(&second);
+
+    /* A retry after a lost response stages nothing new. */
+    int publications = publication_rows(seeded.observation);
+    result_t retried = put(path, body_copy);
+    TEST_ASSERT_EQUAL_INT(200, retried.response.status_code);
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(retried.json, "changed")));
+    TEST_ASSERT_EQUAL_INT(publications, publication_rows(seeded.observation));
+    TEST_ASSERT_EQUAL_INT(3, revision_of(seeded.observation));
+
+    /* Audit context: camera, key, kind, result and the annotation revisions;
+     * never the request body beyond those fields. */
+    const audit_record_t *record = last_annotate_audit();
+    TEST_ASSERT_NOT_NULL(record);
+    TEST_ASSERT_EQUAL_STRING("annotate", record->operation);
+    cJSON *details = cJSON_Parse(record->details);
+    TEST_ASSERT_EQUAL_STRING(cam_a, str(details, "camera_uuid"));
+    TEST_ASSERT_EQUAL_STRING("yawamf/species", str(details, "key"));
+    TEST_ASSERT_EQUAL_STRING("automated", str(details, "kind"));
+    TEST_ASSERT_EQUAL_STRING("noop", str(details, "result"));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItem(details, "annotation_revision_before")->valueint);
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItem(details, "annotation_revision_after")->valueint);
+    TEST_ASSERT_NULL(strstr(record->details, "Robin"));
+    cJSON_Delete(details);
+
+    free(pending);
+    release(&created);
+    release(&retried);
 }
 
 int main(void) {
@@ -1143,7 +1870,6 @@ int main(void) {
     make_camera("feeder-west", cam_b);
     make_camera("yard", cam_c);
     RUN_TEST(test_every_route_requires_authentication);
-    RUN_TEST(test_put_classification_stays_not_implemented);
     RUN_TEST(test_time_and_namespace_helpers);
     RUN_TEST(test_serializer_reproduces_every_observation_fixture);
     RUN_TEST(test_capabilities_scope_without_grants_or_namespace);
@@ -1160,6 +1886,14 @@ int main(void) {
     RUN_TEST(test_snapshot_pending_unavailable_expired);
     RUN_TEST(test_snapshot_authorization_d4);
     RUN_TEST(test_capabilities_document);
+    RUN_TEST(test_put_fixture_chain_create_retry_conflict_owner);
+    RUN_TEST(test_put_fixture_rejections_write_nothing);
+    RUN_TEST(test_put_authorization_on_capture_camera);
+    RUN_TEST(test_put_namespace_rules);
+    RUN_TEST(test_put_validates_the_closed_body);
+    RUN_TEST(test_put_update_limit_and_absent_key_conflict);
+    RUN_TEST(test_get_and_list_include_classifications);
+    RUN_TEST(test_put_stages_a_classification_change_with_stable_message_id);
     int result = UNITY_END();
 
     event_identity_shutdown();

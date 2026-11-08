@@ -21,6 +21,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
@@ -425,6 +426,33 @@ int db_observation_classification_put(const char *observation_uuid,
 
 /* ---- reads ------------------------------------------------------------- */
 
+#define CLS_LIST_SQL \
+    "SELECT " CLS_COLUMNS " FROM observation_classifications " \
+    "WHERE observation_uuid = ? ORDER BY updated_at_ms DESC, key ASC;"
+
+/* One observation's annotations through an already prepared CLS_LIST_SQL. */
+static int list_with(sqlite3_stmt *stmt, const char *observation_uuid,
+                     observation_classification_set_t *out) {
+    memset(out, 0, sizeof(*out));
+    sqlite3_reset(stmt);
+    sqlite3_clear_bindings(stmt);
+    sqlite3_bind_text(stmt, 1, observation_uuid, -1, SQLITE_TRANSIENT);
+    int step;
+    while ((step = sqlite3_step(stmt)) == SQLITE_ROW) {
+        observation_classification_t row;
+        read_annotation(stmt, &row);
+        if (row.kind == OBS_CLS_KIND_OWNER_CONFIRMED) {
+            if (out->owner_confirmed_count < OBS_CLS_MAX_PER_OBSERVATION)
+                out->owner_confirmed[out->owner_confirmed_count++] = row;
+        } else if (out->automated_count < OBS_CLS_MAX_PER_OBSERVATION) {
+            out->automated[out->automated_count++] = row;
+        }
+    }
+    if (step == SQLITE_DONE) return DB_OBS_OK;
+    memset(out, 0, sizeof(*out));
+    return DB_OBS_ERROR;
+}
+
 int db_observation_classifications_list(const char *observation_uuid,
                                         observation_classification_set_t *out) {
     if (!out || !lightnvr_uuid_is_valid(observation_uuid)) return DB_OBS_INVALID;
@@ -433,28 +461,46 @@ int db_observation_classifications_list(const char *observation_uuid,
     if (db_open_readonly_connection(&db) != 0) return DB_OBS_ERROR;
     sqlite3_stmt *stmt = NULL;
     int rc = DB_OBS_ERROR;
-    if (sqlite3_prepare_v2(db, "SELECT " CLS_COLUMNS " FROM observation_classifications "
-                           "WHERE observation_uuid = ? ORDER BY updated_at_ms DESC, key ASC;",
-                           -1, &stmt, NULL) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, observation_uuid, -1, SQLITE_TRANSIENT);
-        int step;
-        while ((step = sqlite3_step(stmt)) == SQLITE_ROW) {
-            observation_classification_t row;
-            read_annotation(stmt, &row);
-            if (row.kind == OBS_CLS_KIND_OWNER_CONFIRMED) {
-                if (out->owner_confirmed_count < OBS_CLS_MAX_PER_OBSERVATION)
-                    out->owner_confirmed[out->owner_confirmed_count++] = row;
-            } else if (out->automated_count < OBS_CLS_MAX_PER_OBSERVATION) {
-                out->automated[out->automated_count++] = row;
-            }
-        }
-        if (step == SQLITE_DONE) rc = DB_OBS_OK;
+    if (sqlite3_prepare_v2(db, CLS_LIST_SQL, -1, &stmt, NULL) == SQLITE_OK)
+        rc = list_with(stmt, observation_uuid, out);
+    if (rc != DB_OBS_OK) log_error("Failed to list classifications: %s", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    db_close_readonly_connection(db);
+    return rc;
+}
+
+int db_observation_classifications_list_many(const char *const *observation_uuids, size_t count,
+                                             observation_classification_visit_fn visit,
+                                             void *context) {
+    if (!visit || (count > 0 && !observation_uuids)) return DB_OBS_INVALID;
+    for (size_t i = 0; i < count; ++i)
+        if (!lightnvr_uuid_is_valid(observation_uuids[i])) return DB_OBS_INVALID;
+    if (count == 0) return DB_OBS_OK;
+    observation_classification_set_t *set = malloc(sizeof(*set));
+    if (!set) return DB_OBS_ERROR;
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
+        free(set);
+        return DB_OBS_ERROR;
     }
-    if (rc != DB_OBS_OK) {
+    sqlite3_stmt *stmt = NULL;
+    int rc = DB_OBS_ERROR;
+    if (sqlite3_prepare_v2(db, CLS_LIST_SQL, -1, &stmt, NULL) == SQLITE_OK) {
+        rc = DB_OBS_OK;
+        for (size_t i = 0; rc == DB_OBS_OK && i < count; ++i) {
+            if (list_with(stmt, observation_uuids[i], set) != DB_OBS_OK) {
+                log_error("Failed to list classifications: %s", sqlite3_errmsg(db));
+                rc = DB_OBS_ERROR;
+                break;
+            }
+            int visited = visit(i, set, context);
+            if (visited != 0) rc = visited;
+        }
+    } else {
         log_error("Failed to list classifications: %s", sqlite3_errmsg(db));
-        memset(out, 0, sizeof(*out));
     }
     sqlite3_finalize(stmt);
     db_close_readonly_connection(db);
+    free(set);
     return rc;
 }
