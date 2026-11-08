@@ -266,6 +266,8 @@ pub mod src__utils__memory;
 pub mod src__utils__strings;
 #[path = "generated/src__utils__uuid.rs"]
 pub mod src__utils__uuid;
+#[path = "generated/src__utils__webrtc_candidates.rs"]
+pub mod src__utils__webrtc_candidates;
 #[path = "generated/src__utils__yaml_redact.rs"]
 pub mod src__utils__yaml_redact;
 #[path = "generated/src__utils__yaml_validate.rs"]

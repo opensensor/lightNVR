@@ -2379,6 +2379,7 @@ unsafe extern "C" fn send_soap_request(
                             security_header,
                             request_body,
                         );
+                        curl_easy_setopt(curl, CURLoption::CURLOPT_POSTFIELDS, soap_envelope);
                         res = curl_easy_perform(curl);
                         if res.0 != CURLcode::CURLE_OK.0 {
                             _log_message_ctx(

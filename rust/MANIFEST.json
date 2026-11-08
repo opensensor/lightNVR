@@ -849,6 +849,13 @@
       "adapted": false
     },
     {
+      "c": "src/utils/webrtc_candidates.c",
+      "c_sha256": "961c8789cdf82f307d0b2eee249cc5c21c7c4449bf01fc74dcbfb53ffb9d1b12",
+      "rust": "generated/src__utils__webrtc_candidates.rs",
+      "rust_sha256": "ab4d35cb737d0f5a66833ac0687cf57a532ce14d802d443aec4224db5283a9cc",
+      "adapted": false
+    },
+    {
       "c": "src/utils/yaml_redact.c",
       "c_sha256": "06600470e4cb5bd23ee628cf719c9e164c3471cb8d35c187a7cd53d47eeda8b7",
       "rust": "generated/src__utils__yaml_redact.rs",
@@ -983,9 +990,9 @@
     },
     {
       "c": "src/video/go2rtc/go2rtc_process.c",
-      "c_sha256": "ed93fc0b359ad4bbd87fac1402a9d2e0976bbff71ea380b511f9170362832693",
+      "c_sha256": "344729f507e07ef96a241c8792d42983cf25754e045d3ebf72ca85d77437de2f",
       "rust": "generated/src__video__go2rtc__go2rtc_process.rs",
-      "rust_sha256": "88fa47fce6f4d057029661aa748930f95b1b121e6a9c47eeecba3489fbdfb3d0",
+      "rust_sha256": "0567802515d0a74aa9db498f01d49e2ef6e8575e2259445076bbc10be748c3ac",
       "adapted": false
     },
     {
@@ -1123,9 +1130,9 @@
     },
     {
       "c": "src/video/onvif_device_management.c",
-      "c_sha256": "188f1608f481dbb72c42c91986a3519745c7119215325b43e6952c0f3b5f1c1f",
+      "c_sha256": "03675d19724215c86418b8e120c89dd1ae5a54fd95b1c3fb6443bbecdb18a99c",
       "rust": "generated/src__video__onvif_device_management.rs",
-      "rust_sha256": "add7ff47b94814990734891b101955e927258814a53f8654b6040b495076538b",
+      "rust_sha256": "43c2bed250a0e30b82ed3a541d5665f26beac74c61d29874a599670c6516764b",
       "adapted": false
     },
     {
