@@ -903,15 +903,13 @@ unsafe extern "C" fn remove_asset_file(
         ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
     ) != 0 as ::core::ffi::c_int
     {
-        if !stored.is_null() && *stored as ::core::ffi::c_int != 0 {
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_WARN,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"Observation asset path is outside the evidence tree; not deleting\0".as_ptr()
-                    as *const ::core::ffi::c_char,
-            );
-        }
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Observation asset path is outside the evidence tree; not deleting\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
         return 0 as ::core::ffi::c_int;
     }
     return remove_file(&raw mut path as *mut ::core::ffi::c_char, deleted);
