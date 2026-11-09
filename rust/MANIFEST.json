@@ -171,9 +171,9 @@
     },
     {
       "c": "src/core/observation_retention.c",
-      "c_sha256": "3fedd57071758c46bce550dffd1e51ecc4699fd0e677422510c7dc879bd55c9a",
+      "c_sha256": "e3bc51243a40f846d04b17122fc2a54e40b2d3c30e02b2f2c0a32157cbe42345",
       "rust": "generated/src__core__observation_retention.rs",
-      "rust_sha256": "82b1b6793249c1e34090a3f4ac79946a40528d13deb6a6f003fa84cdc363511c",
+      "rust_sha256": "d016fffa43a8b9e332dce57e020f68aa32269268c0500c2d9c7189e04c27a460",
       "adapted": false
     },
     {

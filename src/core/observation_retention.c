@@ -124,8 +124,7 @@ static int remove_asset_file(const char *root, const char *stored, int *deleted)
     if (!stored || !*stored) return 0;
     char path[OBS_PATH_SIZE];
     if (resolve_asset_path(root, stored, path, sizeof(path)) != 0) {
-        if (stored && *stored)
-            log_warn("Observation asset path is outside the evidence tree; not deleting");
+        log_warn("Observation asset path is outside the evidence tree; not deleting");
         /* A corrupt path is never a file this subsystem may remove. */
         return 0;
     }
