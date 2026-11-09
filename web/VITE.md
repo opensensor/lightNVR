@@ -69,6 +69,15 @@ Vite compiles `.ts` and `.tsx` with Oxc using the same Preact JSX settings as
 `.jsx`, and only strips types. `npm run typecheck` is what checks them, and CI
 runs it in `static-analysis.yml`.
 
+Typechecking uses TypeScript 7.0.2 through the `@typescript/native` npm alias,
+which supplies `tsc`. The `typescript` alias supplies the TypeScript 6 compatibility
+API (and `tsc6`) required by `typescript-eslint`. This follows Microsoft's
+[side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0).
+Keep both aliases until the linter supports the native compiler API. The root
+package retains TypeScript 5.9 for the OpenAPI generator's compiler API and peer
+dependency; contract tests check generated types with both the root compiler and
+the frontend's TypeScript 7 compiler. Node typings use 26 to match `.nvmrc`.
+
 - `tsconfig.base.json` holds the shared strict options. Do not relax them.
 - `tsconfig.json` covers `js/**`; Vite's client types come from `js/env.d.ts`.
 - `tsconfig.tests.json` covers TS tests under `tests/` with Jest and Node types.

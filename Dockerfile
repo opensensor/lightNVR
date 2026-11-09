@@ -6,7 +6,7 @@ ARG SQLITE_AUTOCONF_VERSION=3540100
 ARG LIBUV_VERSION=1.53.0
 ARG LLHTTP_VERSION=9.4.3
 ARG LLHTTP_TARBALL_SHA256=1eb813c7437b31a87496a1cd3ed79f00746720f5e7e29c79b42c02cb69f36c39
-ARG NODE_MAJOR=24
+ARG NODE_MAJOR=26
 ARG DEB_BUILD=false
 
 FROM debian:${DEBIAN_SUITE}-slim AS target-sysroot
@@ -59,8 +59,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 COPY --from=target-sysroot / /opt/target-sysroot/
 
 # Install build dependencies including Node.js and target FFmpeg dev libraries.
-# Node.js comes from NodeSource so every Debian suite uses the Node 24 LTS
-# baseline required by the Babel 8 web test toolchain.
+# Node.js comes from NodeSource so every Debian suite uses the Node 26 LTS
+# baseline used by the web toolchain.
 # sid ships Go 1.26+/FFmpeg 9.x; trixie ships Go 1.24+/FFmpeg 7.x.
 #
 # ARMv7 is cross-compiled on the x86_64 runner. Compiling LiteRT/XNNPACK under

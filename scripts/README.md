@@ -132,7 +132,7 @@ sudo systemctl start lightnvr
 
 **Building C backend:** GCC/Clang, CMake, libsqlite3-dev, libuv1-dev
 
-**Building web frontend:** Node.js (v24.11+ and <25), npm
+**Building web frontend:** Node.js (v26.13+ and <27), npm
 
 **Screenshot capture:** Node.js, Playwright, Chromium
 

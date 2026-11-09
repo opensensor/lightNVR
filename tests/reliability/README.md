@@ -250,7 +250,7 @@ preparation. It does not claim to have recompiled those executables.
 
 The manual workflow `.github/workflows/reliability-qualification.yml` runs only
 through **workflow_dispatch**. It adds no push/PR or branch-protection check.
-It installs coherent Debian sid dependencies, Node 24 and Go matching `go.mod`,
+It installs coherent Debian sid dependencies, Node 26 and Go matching `go.mod`,
 then builds and runs as an unprivileged user. Its private `TMPDIR` isolates
 storage-fault results. Current Go patch tests and the native reconciliation test
 run before interrupted-recording, storage-fault, reconnect/lifecycle and genuine

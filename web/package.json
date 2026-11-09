@@ -4,7 +4,7 @@
   "description": "LightNVR Web Interface",
   "type": "module",
   "engines": {
-    "node": ">=24.11.0 <25"
+    "node": ">=26.13.0 <27"
   },
   "scripts": {
     "start": "vite",
@@ -28,7 +28,7 @@
     "dayjs": "^1.11.23",
     "hls.js": "^1.7.4",
     "htm": "^3.1.1",
-    "preact": "^11.1.1",
+    "preact": "^11.2.0",
     "qrcode": "^1.5.4",
     "swagger-ui-dist": "5.34.1",
     "tailwindcss": "^4.3.5",
@@ -36,14 +36,15 @@
     "webrtc-adapter": "^9.0.6"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.10",
+    "@babel/core": "^8.1.0",
     "@babel/plugin-transform-react-jsx": "8.0.1",
     "@babel/preset-env": "^8.0.7",
     "@babel/preset-typescript": "8.0.7",
     "@prefresh/vite": "^4.0.1",
     "@sentry/vite-plugin": "^11.11.0",
     "@types/jest": "30.0.0",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@vitejs/plugin-legacy": "^8.2.4",
     "autoprefixer": "^10.6.2",
     "babel-jest": "^30.5.2",
@@ -55,7 +56,7 @@
     "postcss": "^8.5.32",
     "postcss-import": "^17.0.1",
     "selenium-webdriver": "^4.52.0",
-    "typescript": "6.0.3",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "8.72.1",
     "vite": "^8.3.6",
     "vite-plugin-compression": "^0.5.1"

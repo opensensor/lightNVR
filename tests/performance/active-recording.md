@@ -1,6 +1,6 @@
 # Bounded active recording measurement
 
-From the repository root, with a Release native build, Node 24, Linux `/proc`,
+From the repository root, with a Release native build, Node 26, Linux `/proc`,
 and FFmpeg/ffprobe with libx264:
 
 ```sh
