@@ -114,12 +114,6 @@ static uint8_t *make_rgb(int width, int height) {
     return buf;
 }
 
-static int64_t now_ns(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
-}
-
 static observation_evidence_stats_t stats(void) {
     observation_evidence_stats_t s;
     observation_evidence_get_stats(&s);
@@ -420,18 +414,17 @@ static void test_queue_saturation_drops_without_blocking(void) {
         observation_evidence_submit(&batch, make_rgb(64, 48), 64, 48, NULL, asset));
     wait_stalled();
 
-    /* The item being processed still holds its reservation: 2 more fit. */
+    /* The item being processed still holds its reservation: 2 more fit.
+     * Submissions must return while the worker remains stalled. CTest's
+     * timeout catches a producer waiting for worker progress; the Release
+     * performance harness owns the sub-millisecond wall-clock budget. */
     int accepted = 1, dropped = 0;
-    int64_t worst_ns = 0;
     char dropped_asset[OBS_UUID_SIZE] = "";
     for (int i = 0; i < 6; ++i) {
         observation_batch_input_t b = make_batch(cam_a, 1);
         uint8_t *rgb = make_rgb(64, 48);
-        int64_t start = now_ns();
         observation_evidence_result_t rc =
             observation_evidence_submit(&b, rgb, 64, 48, NULL, asset);
-        int64_t elapsed = now_ns() - start;
-        if (elapsed > worst_ns) worst_ns = elapsed;
         if (rc == OBS_EVIDENCE_ACCEPTED) accepted++;
         else {
             TEST_ASSERT_EQUAL_INT(OBS_EVIDENCE_DROPPED_QUEUE_FULL, rc);
@@ -442,7 +435,6 @@ static void test_queue_saturation_drops_without_blocking(void) {
     }
     TEST_ASSERT_EQUAL_INT(3, accepted);
     TEST_ASSERT_EQUAL_INT(4, dropped);
-    TEST_ASSERT_TRUE_MESSAGE(worst_ns < 1000000, "submit took over 1 ms");
 
     /* Another camera has its own depth. */
     observation_batch_input_t other = make_batch(cam_b, 1);
@@ -469,7 +461,10 @@ static void test_queue_saturation_drops_without_blocking(void) {
 /* X2 (A11): every admission that reaches the queue is timed into a
  * fixed-bucket histogram, so the saturation gate can prove from the running
  * binary that producers never wait on I/O. The configured limits and the
- * per-camera high-water mark are reported so "limits hold" is checkable too. */
+ * per-camera high-water mark are reported so "limits hold" is checkable too.
+ * Check metric consistency here, including under sanitizers. Scheduling and
+ * instrumentation affect wall time (especially lazy worker startup); the
+ * Release evidence gate in tests/performance/observations enforces < 1 ms. */
 static void test_submit_latency_histogram_and_limits(void) {
     observation_evidence_config_t config;
     memset(&config, 0, sizeof(config));
@@ -518,11 +513,23 @@ static void test_submit_latency_histogram_and_limits(void) {
     TEST_ASSERT_EQUAL_UINT64(s.submit_latency_count, in_buckets);
     TEST_ASSERT_TRUE(s.submit_latency_max_ns > 0);
     TEST_ASSERT_TRUE(s.submit_latency_sum_ns >= s.submit_latency_max_ns);
-    TEST_ASSERT_TRUE_MESSAGE(s.submit_latency_max_ns < 1000000, "a submit took over 1 ms");
+    TEST_ASSERT_TRUE(s.submit_latency_sum_ns <=
+                     s.submit_latency_count * s.submit_latency_max_ns);
     /* Bounds are strictly increasing and end at the +Inf bucket. */
     for (int i = 1; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 1; ++i)
         TEST_ASSERT_TRUE(observation_evidence_submit_latency_bounds_ns[i] >
                          observation_evidence_submit_latency_bounds_ns[i - 1]);
+    /* The maximum belongs to the highest occupied bucket, including +Inf. */
+    int max_bucket = OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 1;
+    for (int i = 0; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS - 1; ++i) {
+        if (s.submit_latency_max_ns <= observation_evidence_submit_latency_bounds_ns[i]) {
+            max_bucket = i;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(s.submit_latency_bucket[max_bucket] > 0);
+    for (int i = max_bucket + 1; i < OBS_EVIDENCE_SUBMIT_LATENCY_BUCKETS; ++i)
+        TEST_ASSERT_EQUAL_UINT64(0, s.submit_latency_bucket[i]);
     TEST_ASSERT_EQUAL_UINT32(2, s.camera_high_water_items);
     TEST_ASSERT_TRUE(s.high_water_items <= s.limit_items);
     TEST_ASSERT_TRUE(s.high_water_bytes <= s.limit_bytes);
