@@ -151,6 +151,45 @@ test('native generator rejects malformed validator names with validation errors'
   }
 });
 
+test('reserved-word schema names retain their prefixed public validator names', async () => {
+  const doc=JSON.parse(await readFile(source,'utf8'));
+  const names=['class','default','await','yield','Class','with_underscore'];
+  for(const name of names)doc.components.schemas[name]={type:'string'};
+  doc['x-lightnvr-validators']=names;
+  const candidate=path.join(directory,'reserved-validator-names.json');
+  await writeFile(candidate,JSON.stringify(doc));
+  const generated=await generateArtifacts(candidate,'web');
+  const modulePath=path.join(directory,'reserved-validators.mjs');
+  await writeFile(modulePath,generated.get(webPaths[1]));
+  const module=await import(pathToFileURL(modulePath));
+  assert.deepEqual(Object.keys(module).sort(),names.map(name=>`validate${name}`).sort());
+  for(const name of names){
+    const validate=module[`validate${name}`];
+    assert.equal(validate('valid'),true);
+    assert.equal(validate(null),false);
+    assert.match(generated.get(webPaths[2]),new RegExp(`export declare const validate${name}:`));
+    assert.ok(generated.get(webPaths[2]).includes(`components["schemas"]["${name}"]`));
+  }
+});
+
+test('web generation rejects unsafe selected schema names before interpolation', async () => {
+  const original=JSON.parse(await readFile(source,'utf8'));
+  for(const name of ['with-dash','with/slash','with~tilde','1Thing','_Thing','$Thing',"Thing);throw new Error('injected');//"]){
+    for(const explicit of [true,false]){
+      const doc=structuredClone(original);
+      doc.components.schemas[name]={type:'string'};
+      if(explicit)doc['x-lightnvr-validators']=[name];
+      else delete doc['x-lightnvr-validators'];
+      const candidate=path.join(directory,'unsafe-validator-name.json');
+      await writeFile(candidate,JSON.stringify(doc));
+      await assert.rejects(generateArtifacts(candidate,'web'),error=>{
+        assert.match(String(error.stderr),/Validator names must identify named component schemas/);
+        return true;
+      });
+    }
+  }
+});
+
 test('native generator reads UTF-8 schemas even under an ASCII locale', async () => {
   const doc = JSON.parse(await readFile(source, 'utf8'));
   doc.info.description = 'Camera café 🐱';

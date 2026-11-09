@@ -62,6 +62,9 @@ export async function generateArtifacts(source, target = 'all') {
   }
   if (target !== 'native') {
     const doc = JSON.parse(await readFile(source, 'utf8'));
+    // validateSource rejects selected names outside [A-Za-z][A-Za-z0-9_]*,
+    // including when this list defaults to all components. Keep names intact:
+    // the __contract_ and validate prefixes also make reserved words safe.
     const names = [...(doc['x-lightnvr-validators'] || Object.keys(doc.components?.schemas || {}))].sort();
     files.set(webPaths[0], astToString(await openapiTS(doc, {alphabetize: true, defaultNonNullable: false})));
     // Runtime consumers need validity, not an exhaustive payload error report.
