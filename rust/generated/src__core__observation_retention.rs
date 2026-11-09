@@ -97,8 +97,10 @@ unsafe extern "C" {
     unsafe fn pthread_mutex_trylock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_lock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_unlock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
-    unsafe fn rename(
+    unsafe fn renameat(
+        __oldfd: ::core::ffi::c_int,
         __old: *const ::core::ffi::c_char,
+        __newfd: ::core::ffi::c_int,
         __new: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
     unsafe fn fclose(__stream: *mut FILE) -> ::core::ffi::c_int;
@@ -130,7 +132,6 @@ unsafe extern "C" {
         __buf: *const ::core::ffi::c_void,
         __n: size_t,
     ) -> ssize_t;
-    unsafe fn unlink(__name: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn unlinkat(
         __fd: ::core::ffi::c_int,
         __name: *const ::core::ffi::c_char,
@@ -692,6 +693,9 @@ pub const SQLITE_STATIC: sqlite3_destructor_type = None;
 pub const OBS_UUID_SIZE: ::core::ffi::c_int = 37 as ::core::ffi::c_int;
 pub const OBS_RETENTION_DIR: [::core::ffi::c_char; 13] =
     unsafe { ::core::mem::transmute::<[u8; 13], [::core::ffi::c_char; 13]>(*b"observations\0") };
+pub const OBS_CURSOR_HEAD_FILE: [::core::ffi::c_char; 18] = unsafe {
+    ::core::mem::transmute::<[u8; 18], [::core::ffi::c_char; 18]>(*b".cursor_head.json\0")
+};
 pub const OBS_RETENTION_INTERVAL_SEC: ::core::ffi::c_int = 300 as ::core::ffi::c_int;
 pub const OBS_RETENTION_MAX_EVICTIONS: ::core::ffi::c_int = 256 as ::core::ffi::c_int;
 pub const OBS_RETENTION_MAX_PRUNED_CHANGES: ::core::ffi::c_int = 5000 as ::core::ffi::c_int;
@@ -704,7 +708,7 @@ pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
 pub const O_RDONLY: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const O_WRONLY: ::core::ffi::c_int = 0o1 as ::core::ffi::c_int;
 pub const O_CREAT: ::core::ffi::c_int = 0o100 as ::core::ffi::c_int;
-pub const O_TRUNC: ::core::ffi::c_int = 0o1000 as ::core::ffi::c_int;
+pub const O_EXCL: ::core::ffi::c_int = 0o200 as ::core::ffi::c_int;
 pub const __O_DIRECTORY: ::core::ffi::c_int = 0o200000 as ::core::ffi::c_int;
 pub const __O_NOFOLLOW: ::core::ffi::c_int = 0o400000 as ::core::ffi::c_int;
 pub const O_DIRECTORY: ::core::ffi::c_int = __O_DIRECTORY;
@@ -845,9 +849,13 @@ unsafe extern "C" fn resolve_asset_path(
             .offset(1 as ::core::ffi::c_int as isize);
     } else if strncmp(
         stored,
-        b"observations/\0".as_ptr() as *const ::core::ffi::c_char,
-        ::core::mem::size_of::<[::core::ffi::c_char; 13]>(),
+        OBS_RETENTION_DIR.as_ptr(),
+        ::core::mem::size_of::<[::core::ffi::c_char; 13]>().wrapping_sub(1 as size_t),
     ) == 0 as ::core::ffi::c_int
+        && *stored.offset(
+            ::core::mem::size_of::<[::core::ffi::c_char; 13]>().wrapping_sub(1usize) as isize,
+        ) as ::core::ffi::c_int
+            == '/' as ::core::ffi::c_int
     {
         rel = stored.offset(::core::mem::size_of::<[::core::ffi::c_char; 13]>() as isize);
     }
@@ -1033,8 +1041,6 @@ pub unsafe extern "C" fn observation_cursor_head_write(
     mut head_seq: int64_t,
 ) -> ::core::ffi::c_int {
     let mut root: [::core::ffi::c_char; 1024] = [0; 1024];
-    let mut path: [::core::ffi::c_char; 1024] = [0; 1024];
-    let mut tmp: [::core::ffi::c_char; 1024] = [0; 1024];
     if !lightnvr_uuid_is_valid(epoch_uuid)
         || head_seq < 0 as int64_t
         || root_dir(
@@ -1042,21 +1048,6 @@ pub unsafe extern "C" fn observation_cursor_head_write(
             &raw mut root as *mut ::core::ffi::c_char,
             ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
         ) != 0 as ::core::ffi::c_int
-    {
-        return -1 as ::core::ffi::c_int;
-    }
-    if snprintf(
-        &raw mut path as *mut ::core::ffi::c_char,
-        ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
-        b"%s/.cursor_head.json\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw mut root as *mut ::core::ffi::c_char,
-    ) >= ::core::mem::size_of::<[::core::ffi::c_char; 1024]>() as ::core::ffi::c_int
-        || snprintf(
-            &raw mut tmp as *mut ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
-            b"%s/.cursor_head.json.tmp\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw mut root as *mut ::core::ffi::c_char,
-        ) >= ::core::mem::size_of::<[::core::ffi::c_char; 1024]>() as ::core::ffi::c_int
     {
         return -1 as ::core::ffi::c_int;
     }
@@ -1071,12 +1062,21 @@ pub unsafe extern "C" fn observation_cursor_head_write(
         epoch_uuid,
         head_seq as ::core::ffi::c_longlong,
     );
-    let mut fd: ::core::ffi::c_int = open(
-        &raw mut tmp as *mut ::core::ffi::c_char,
-        O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+    let mut dfd: ::core::ffi::c_int = open(
+        &raw mut root as *mut ::core::ffi::c_char,
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC,
+    );
+    if dfd < 0 as ::core::ffi::c_int {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut fd: ::core::ffi::c_int = openat(
+        dfd,
+        b".cursor_head.json.tmp\0".as_ptr() as *const ::core::ffi::c_char,
+        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
         0o640 as ::core::ffi::c_int,
     );
     if fd < 0 as ::core::ffi::c_int {
+        close(dfd);
         return -1 as ::core::ffi::c_int;
     }
     let mut rc: ::core::ffi::c_int = if write(
@@ -1094,15 +1094,21 @@ pub unsafe extern "C" fn observation_cursor_head_write(
         rc = -1 as ::core::ffi::c_int;
     }
     if rc == 0 as ::core::ffi::c_int
-        && rename(
-            &raw mut tmp as *mut ::core::ffi::c_char,
-            &raw mut path as *mut ::core::ffi::c_char,
+        && renameat(
+            dfd,
+            b".cursor_head.json.tmp\0".as_ptr() as *const ::core::ffi::c_char,
+            dfd,
+            OBS_CURSOR_HEAD_FILE.as_ptr(),
         ) != 0 as ::core::ffi::c_int
     {
         rc = -1 as ::core::ffi::c_int;
     }
     if rc != 0 as ::core::ffi::c_int {
-        unlink(&raw mut tmp as *mut ::core::ffi::c_char);
+        unlinkat(
+            dfd,
+            b".cursor_head.json.tmp\0".as_ptr() as *const ::core::ffi::c_char,
+            0 as ::core::ffi::c_int,
+        );
         _log_message_ctx(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
@@ -1110,6 +1116,10 @@ pub unsafe extern "C" fn observation_cursor_head_write(
             b"Failed to write observation cursor head sidecar\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
+        close(dfd);
+        return -1 as ::core::ffi::c_int;
+    }
+    if close(dfd) != 0 as ::core::ffi::c_int {
         return -1 as ::core::ffi::c_int;
     }
     fsync_dir(&raw mut root as *mut ::core::ffi::c_char);
