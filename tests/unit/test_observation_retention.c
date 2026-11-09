@@ -36,6 +36,8 @@ static char cam_a[OBS_UUID_SIZE];
 static char cam_b[OBS_UUID_SIZE];
 static int64_t now_ms;
 static const char *failed_unlink_path;
+static const char *swap_unlink_path, *swap_parent, *swap_moved, *swap_target;
+static bool swap_completed;
 static atomic_int retention_passes;
 
 int __real_db_observations_prune(int64_t before_ms, int batch, observation_prune_result_t *out);
@@ -51,6 +53,29 @@ int __wrap_unlink(const char *path) {
         return -1;
     }
     return __real_unlink(path);
+}
+
+static bool matches_unlinkat(int fd, const char *name, const char *path) {
+    struct stat actual, expected;
+    return path && fstatat(fd, name, &actual, AT_SYMLINK_NOFOLLOW) == 0 &&
+        lstat(path, &expected) == 0 && actual.st_dev == expected.st_dev &&
+        actual.st_ino == expected.st_ino;
+}
+
+int __real_unlinkat(int fd, const char *name, int flags);
+int __wrap_unlinkat(int fd, const char *name, int flags) {
+    if (flags == 0 && matches_unlinkat(fd, name, failed_unlink_path)) {
+        errno = EIO;
+        return -1;
+    }
+    if (flags == 0 && matches_unlinkat(fd, name, swap_unlink_path)) {
+        swap_unlink_path = NULL;
+        /* Swap the pathname after traversal has opened its parent. */
+        if (rename(swap_parent, swap_moved) != 0 || symlink(swap_target, swap_parent) != 0)
+            return -1;
+        swap_completed = true;
+    }
+    return __real_unlinkat(fd, name, flags);
 }
 
 /* ---- helpers ---------------------------------------------------------- */
@@ -218,6 +243,8 @@ static void startup(observation_reconcile_result_t *result) {
 
 void setUp(void) {
     failed_unlink_path = NULL;
+    swap_unlink_path = NULL;
+    swap_completed = false;
     atomic_store(&retention_passes, 0);
     exec_sql("DELETE FROM object_observations; DELETE FROM observation_assets; "
              "DELETE FROM observation_changes; DELETE FROM recordings;");
@@ -229,7 +256,10 @@ void setUp(void) {
     TEST_ASSERT_EQUAL_INT(0, db_set_system_setting("observation_history_retention_days", "30"));
     observation_retention_reset_for_testing();
 }
-void tearDown(void) { failed_unlink_path = NULL; }
+void tearDown(void) {
+    failed_unlink_path = NULL;
+    swap_unlink_path = NULL;
+}
 
 /* ---- startup reconciliation ------------------------------------------- */
 
@@ -455,6 +485,122 @@ static void test_periodic_run_waits_for_startup_reconciliation(void) {
     TEST_ASSERT_EQUAL_INT(1, observation_retention_run(storage, now_ms, &result));
     TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(old.insert.asset_uuid).state);
     TEST_ASSERT_TRUE(exists(old.abs));
+}
+
+static void test_failed_restart_disables_retention_until_reconciled(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t old = make_ready(cam_a, now_ms - 8 * DAY_MS, 10, 1);
+    char blocked[512];
+    snprintf(blocked, sizeof(blocked), "%s/observations/%s.tmp", storage, OBS_CURSOR_HEAD_FILE);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(blocked, 0700));
+    TEST_ASSERT_EQUAL_INT(-1, observation_retention_startup(storage, &rec));
+    TEST_ASSERT_FALSE(observation_retention_startup_done());
+    observation_retention_result_t result;
+    TEST_ASSERT_EQUAL_INT(1, observation_retention_run(storage, now_ms, &result));
+    observation_retention_maintenance_tick();
+    TEST_ASSERT_EQUAL_INT(0, atomic_load(&retention_passes));
+    TEST_ASSERT_TRUE(exists(old.abs));
+
+    TEST_ASSERT_EQUAL_INT(0, rmdir(blocked));
+    startup(&rec);
+    TEST_ASSERT_EQUAL_INT(-1, observation_retention_startup(NULL, &rec));
+    TEST_ASSERT_FALSE(observation_retention_startup_done());
+    TEST_ASSERT_EQUAL_INT(1, observation_retention_run(storage, now_ms, &result));
+    startup(&rec);
+    result = run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(1, result.assets_expired);
+    TEST_ASSERT_FALSE(exists(old.abs));
+}
+
+static void test_retention_preserves_outside_targets_of_parent_and_leaf_symlinks(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t parent = make_ready(cam_a, now_ms - 8 * DAY_MS, 10, 1);
+    ready_asset_t leaf = make_ready(cam_b, now_ms - 8 * DAY_MS, 10, 1);
+    char original[512], outside[512], outside_file[512];
+    snprintf(original, sizeof(original), "%s/observations/%s/2026-11-08", storage, cam_a);
+    snprintf(outside, sizeof(outside), "%s/outside-retention", storage);
+    snprintf(outside_file, sizeof(outside_file), "%s/outside-retention-leaf.jpg", storage);
+    rm_tree(outside);
+    TEST_ASSERT_EQUAL_INT(0, rename(original, outside));
+    TEST_ASSERT_EQUAL_INT(0, symlink(outside, original));
+    TEST_ASSERT_EQUAL_INT(0, rename(leaf.abs, outside_file));
+    TEST_ASSERT_EQUAL_INT(0, symlink(outside_file, leaf.abs));
+
+    observation_retention_result_t result = run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(2, result.assets_expired);
+    TEST_ASSERT_EQUAL_INT(1, result.files_deleted);  /* Only the leaf link. */
+    TEST_ASSERT_TRUE(exists(parent.abs));
+    TEST_ASSERT_TRUE(exists(outside_file));
+    TEST_ASSERT_FALSE(exists(leaf.abs));
+    rm_tree(outside);
+    TEST_ASSERT_EQUAL_INT(0, unlink(outside_file));
+}
+
+static void test_retention_parent_swap_cannot_redirect_unlink(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t old = make_ready(cam_a, now_ms - 8 * DAY_MS, 10, 1);
+    char parent[512], moved[512], outside[512], outside_file[1024], moved_file[1024];
+    snprintf(parent, sizeof(parent), "%s/observations/%s/2026-11-08", storage, cam_a);
+    snprintf(moved, sizeof(moved), "%s/retention-moved", storage);
+    snprintf(outside, sizeof(outside), "%s/retention-swap-target", storage);
+    snprintf(outside_file, sizeof(outside_file), "%s/%s.jpg", outside, old.insert.asset_uuid);
+    snprintf(moved_file, sizeof(moved_file), "%s/%s.jpg", moved, old.insert.asset_uuid);
+    rm_tree(moved);
+    write_file(outside_file, 20);
+    swap_unlink_path = old.abs;
+    swap_parent = parent;
+    swap_moved = moved;
+    swap_target = outside;
+
+    observation_retention_result_t result = run_retention(now_ms);
+    TEST_ASSERT_TRUE(swap_completed);
+    TEST_ASSERT_EQUAL_INT(1, result.files_deleted);
+    TEST_ASSERT_FALSE(exists(moved_file));
+    TEST_ASSERT_TRUE(exists(outside_file));
+    rm_tree(moved);
+    rm_tree(outside);
+}
+
+static void test_retention_accepts_path_forms_and_symlinked_root(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    char root[512], real[512];
+    snprintf(root, sizeof(root), "%s/observations", storage);
+    snprintf(real, sizeof(real), "%s/retention-real-root", storage);
+    rm_tree(real);
+    TEST_ASSERT_EQUAL_INT(0, rename(root, real));
+    TEST_ASSERT_EQUAL_INT(0, symlink(real, root));
+    ready_asset_t assets[3];
+    for (int i = 0; i < 3; ++i) assets[i] = make_ready(cam_a, now_ms - 8 * DAY_MS, 10, 1);
+    set_asset_path(assets[1].insert.asset_uuid, assets[1].rel + strlen("observations/"));
+    set_asset_path(assets[2].insert.asset_uuid, assets[2].abs);
+
+    observation_retention_result_t result = run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(3, result.files_deleted);
+    for (int i = 0; i < 3; ++i) {
+        TEST_ASSERT_FALSE(exists(assets[i].abs));
+        TEST_ASSERT_EQUAL_STRING("", asset_of(assets[i].insert.asset_uuid).path);
+    }
+    TEST_ASSERT_EQUAL_INT(0, unlink(root));
+    rm_tree(real);
+}
+
+static void test_retention_missing_root_clears_completed_cleanup(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    ready_asset_t old = make_ready(cam_a, now_ms - 8 * DAY_MS, 10, 1);
+    char root[512];
+    snprintf(root, sizeof(root), "%s/observations", storage);
+    rm_tree(root);
+
+    observation_retention_result_t result = run_retention(now_ms);
+    TEST_ASSERT_EQUAL_INT(1, result.assets_expired);
+    TEST_ASSERT_EQUAL_INT(0, result.files_deleted);
+    TEST_ASSERT_EQUAL_STRING("", asset_of(old.insert.asset_uuid).path);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_EXPIRED, asset_of(old.insert.asset_uuid).state);
 }
 
 /* ---- age and byte budgets ---------------------------------------------- */
@@ -763,6 +909,11 @@ int main(void) {
     RUN_TEST(test_startup_rejects_symlink_parents_and_nonregular_leaves);
     RUN_TEST(test_maintenance_drains_partial_age_pages_and_serializes_ticks);
     RUN_TEST(test_periodic_run_waits_for_startup_reconciliation);
+    RUN_TEST(test_failed_restart_disables_retention_until_reconciled);
+    RUN_TEST(test_retention_preserves_outside_targets_of_parent_and_leaf_symlinks);
+    RUN_TEST(test_retention_parent_swap_cannot_redirect_unlink);
+    RUN_TEST(test_retention_accepts_path_forms_and_symlinked_root);
+    RUN_TEST(test_retention_missing_root_clears_completed_cleanup);
     RUN_TEST(test_age_budget_expires_media_and_keeps_metadata);
     RUN_TEST(test_shared_asset_survives_until_last_reference_expires);
     RUN_TEST(test_byte_budget_evicts_oldest_and_protected_assets_flip_the_flag);

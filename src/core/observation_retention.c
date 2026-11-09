@@ -108,71 +108,53 @@ static int resolve_asset_path(const char *root, const char *stored, char *out, s
     return (n > 0 && (size_t)n < size) ? 0 : -1;
 }
 
-/* Unlink a regular file; a missing file is success. Never follows a
- * symlink to its target (unlink removes the link itself). */
-static int remove_file(const char *path, int *deleted) {
-    if (unlink(path) == 0) {
-        if (deleted) ++*deleted;
-        return 0;
-    }
-    if (errno == ENOENT || errno == ENOTDIR) return 0;
-    log_warn("Failed to delete observation evidence file %s: %s", path, strerror(errno));
-    return -1;
-}
-
+/* Resolve parents through directory descriptors, never following symlinks
+ * below the trusted root. A missing path is already cleaned up. The leaf is
+ * unlinked relative to its open parent, so replacing that parent's pathname
+ * cannot redirect deletion to another directory. */
 static int remove_file_under_root(const char *root, const char *rel, int *deleted) {
-    int root_fd = -1;
-    int dir_fd = -1;
-    int next_fd = -1;
-    int rc = -1;
-
     char work[OBS_PATH_SIZE];
     int n = snprintf(work, sizeof(work), "%s", rel);
     if (n <= 0 || (size_t)n >= sizeof(work)) return -1;
 
-    root_fd = open(root, O_RDONLY | O_DIRECTORY);
-    if (root_fd < 0) {
+    /* As in the startup sweep, the configured evidence root may be a symlink. */
+    int dir_fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dir_fd < 0) {
+        if (errno == ENOENT || errno == ENOTDIR) return 0;
         log_warn("Failed to open observation root %s: %s", root, strerror(errno));
         return -1;
     }
-    dir_fd = root_fd;
 
-    char *p = work;
+    int rc = -1;
+    char *part = work;
     for (;;) {
-        char *slash = strchr(p, '/');
+        char *slash = strchr(part, '/');
         if (!slash) break;
         *slash = '\0';
-        next_fd = openat(dir_fd, p, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
-        *slash = '/';
+        int next_fd = openat(dir_fd, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
         if (next_fd < 0) {
-            if (errno == ENOENT || errno == ENOTDIR) {
-                rc = 0;
-                goto done;
-            }
-            log_warn("Failed to traverse observation evidence path component %s: %s", p, strerror(errno));
+            if (errno == ENOENT || errno == ENOTDIR) rc = 0;
+            else log_warn("Failed to traverse observation evidence path %s/%s: %s",
+                          root, rel, strerror(errno));
             goto done;
         }
-        if (dir_fd != root_fd) close(dir_fd);
+        close(dir_fd);
         dir_fd = next_fd;
-        next_fd = -1;
-        p = slash + 1;
+        part = slash + 1;
     }
 
-    if (unlinkat(dir_fd, p, 0) == 0) {
+    /* unlinkat removes a leaf symlink itself, never its target. */
+    if (unlinkat(dir_fd, part, 0) == 0) {
         if (deleted) ++*deleted;
         rc = 0;
-        goto done;
-    }
-    if (errno == ENOENT || errno == ENOTDIR) {
+    } else if (errno == ENOENT || errno == ENOTDIR) {
         rc = 0;
-        goto done;
+    } else {
+        log_warn("Failed to delete observation evidence file %s/%s: %s", root, rel, strerror(errno));
     }
-    log_warn("Failed to delete observation evidence file %s/%s: %s", root, rel, strerror(errno));
 
 done:
-    if (next_fd >= 0) close(next_fd);
-    if (dir_fd >= 0 && dir_fd != root_fd) close(dir_fd);
-    if (root_fd >= 0) close(root_fd);
+    close(dir_fd);
     return rc;
 }
 
@@ -185,13 +167,7 @@ static int remove_asset_file(const char *root, const char *stored, int *deleted)
         return 0;
     }
 
-    size_t root_len = strlen(root);
-    if (strncmp(path, root, root_len) != 0 || path[root_len] != '/') {
-        log_warn("Resolved observation asset path is invalid; not deleting");
-        return 0;
-    }
-
-    return remove_file_under_root(root, path + root_len + 1, deleted);
+    return remove_file_under_root(root, path + strlen(root) + 1, deleted);
 }
 
 static int fsync_dir(const char *dir) {
@@ -522,12 +498,14 @@ int observation_retention_startup(const char *storage_path,
     observation_reconcile_result_t local;
     if (!result) result = &local;
     memset(result, 0, sizeof(*result));
-    char root[OBS_PATH_SIZE];
-    if (root_dir(storage_path, root, sizeof(root)) != 0) return -1;
-
     pthread_mutex_lock(&g_run_mutex);
-    int rc = 0;
     atomic_store(&g_startup_done, 0);
+    char root[OBS_PATH_SIZE];
+    if (root_dir(storage_path, root, sizeof(root)) != 0) {
+        pthread_mutex_unlock(&g_run_mutex);
+        return -1;
+    }
+    int rc = 0;
     /* Before any transition here advances the head (section 7.6). */
     if (observation_cursor_head_reconcile(storage_path, &result->epoch_regenerated) != 0) {
         log_warn("Observation cursor head reconciliation failed");
