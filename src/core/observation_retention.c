@@ -193,28 +193,39 @@ static void copy_text(sqlite3_stmt *stmt, int column, char *out, size_t size) {
 
 int observation_cursor_head_write(const char *storage_path, const char *epoch_uuid,
                                   int64_t head_seq) {
-    char root[OBS_PATH_SIZE], path[OBS_PATH_SIZE], tmp[OBS_PATH_SIZE];
+    char root[OBS_PATH_SIZE];
     if (!lightnvr_uuid_is_valid(epoch_uuid) || head_seq < 0 ||
         root_dir(storage_path, root, sizeof(root)) != 0)
-        return -1;
-    if (snprintf(path, sizeof(path), "%s/" OBS_CURSOR_HEAD_FILE, root) >= (int)sizeof(path) ||
-        snprintf(tmp, sizeof(tmp), "%s/" OBS_CURSOR_HEAD_FILE ".tmp", root) >= (int)sizeof(tmp))
         return -1;
     if (mkdir_recursive(root) != 0) return -1;
 
     char body[160];
     int len = snprintf(body, sizeof(body), "{\"epoch\":\"%s\",\"head_seq\":%lld}\n",
                        epoch_uuid, (long long)head_seq);
-    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0640);
-    if (fd < 0) return -1;
-    int rc = (write(fd, body, (size_t)len) == len && fsync(fd) == 0) ? 0 : -1;
-    if (close(fd) != 0) rc = -1;
-    if (rc == 0 && rename(tmp, path) != 0) rc = -1;
-    if (rc != 0) {
-        unlink(tmp);
-        log_warn("Failed to write observation cursor head sidecar");
+
+    int dfd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dfd < 0) return -1;
+
+    int fd = openat(dfd, OBS_CURSOR_HEAD_FILE ".tmp",
+                    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0640);
+    if (fd < 0) {
+        (void)close(dfd);
         return -1;
     }
+
+    int rc = (write(fd, body, (size_t)len) == len && fsync(fd) == 0) ? 0 : -1;
+    if (close(fd) != 0) rc = -1;
+    if (rc == 0 &&
+        renameat(dfd, OBS_CURSOR_HEAD_FILE ".tmp", dfd, OBS_CURSOR_HEAD_FILE) != 0)
+        rc = -1;
+    if (rc != 0) {
+        (void)unlinkat(dfd, OBS_CURSOR_HEAD_FILE ".tmp", 0);
+        log_warn("Failed to write observation cursor head sidecar");
+        (void)close(dfd);
+        return -1;
+    }
+
+    if (close(dfd) != 0) return -1;
     (void)fsync_dir(root);
     return 0;
 }
