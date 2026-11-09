@@ -24,6 +24,7 @@ export async function startMqttSink(port = 0) {
      case 3:{
       if(body.length<2){socket.destroy();return;}
       const length=body.readUInt16BE(0),qos=(header>>1)&3;
+      if(qos===3){socket.destroy();return;}
       if(body.length<2+length+(qos?2:0)){socket.destroy();return;}
       const topic=body.subarray(2,2+length).toString();
       const payload=Buffer.from(body.subarray(2+length+(qos?2:0)));
