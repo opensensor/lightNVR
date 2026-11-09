@@ -110,14 +110,14 @@
       "c": "src/core/main.c",
       "c_sha256": "59908b4c043fd28ec02d3579e0a231c718b897fdd85e1cbf1937c01204a5ee4e",
       "rust": "generated/src__core__main.rs",
-      "rust_sha256": "efc023df43ba422f2b8dc5256be3950c3b3e37395c22aadd4d094529ec67020e",
+      "rust_sha256": "0c78a50cdaf829eb0b9665090453c5a119e998947967ac28c74d568ac357c61e",
       "adapted": true
     },
     {
       "c": "src/core/mqtt_client.c",
       "c_sha256": "f7477e6e8ff86a1c49b829d9022f563995bb83b041266233957ed946002154eb",
       "rust": "generated/src__core__mqtt_client.rs",
-      "rust_sha256": "27274503fc9212604f926473bd3ee441b768f0c503db77788d29554149f6c714",
+      "rust_sha256": "05398d5b04c03a36d70ac0e3a9cfe2d08db21b894c9a53b8197adeefaa878111",
       "adapted": false
     },
     {
@@ -131,7 +131,7 @@
       "c": "src/core/mqtt_destination_client.c",
       "c_sha256": "9b2060609243d94f5124c2e8bc62dae63144e2b1a174c5841df24b185d6239b8",
       "rust": "generated/src__core__mqtt_destination_client.rs",
-      "rust_sha256": "cab75871b0bf568e010015feb62604719d684716f048d20b57456e27258ed1f1",
+      "rust_sha256": "ef1480d9fceada72d7fabc761ac919682399d674d411b713b8886af8c1d1eb1e",
       "adapted": false
     },
     {
@@ -992,7 +992,7 @@
       "c": "src/video/go2rtc/go2rtc_process.c",
       "c_sha256": "d72bae07e428f1d517be3564141b6ba44e5ebbc6453dc1452395c709a5a7eeff",
       "rust": "generated/src__video__go2rtc__go2rtc_process.rs",
-      "rust_sha256": "8af4336ab4e1bcabd6f4329b6f35f55a3ef33d17d5035a5eb4b61e639b84682a",
+      "rust_sha256": "3222917cd32780473e4ea65712516fcc935043287a02340705c97b2e99dfd7b3",
       "adapted": false
     },
     {
@@ -1538,7 +1538,7 @@
       "c": "src/web/api_handlers_observations.c",
       "c_sha256": "4c274aef79b6a4c73a9ad11e85c06a0e255b6608b863adc7ba39755764926d6d",
       "rust": "generated/src__web__api_handlers_observations.rs",
-      "rust_sha256": "fcd979c2d6e4587136dbe45b2cc3ac650162084059feb9934e2905ba0efa1356",
+      "rust_sha256": "ca8317adc12f755c33598d60b4af46469cc83c622b9dfefd36a83f5fafdec14c",
       "adapted": false
     },
     {
@@ -1734,7 +1734,7 @@
       "c": "src/web/api_handlers_system.c",
       "c_sha256": "d1ace8b40b7b50385014fd926a778c20d19a0bde2ba59ab9043712b3b2913b17",
       "rust": "generated/src__web__api_handlers_system.rs",
-      "rust_sha256": "f41d8f8ecf79188e123fdd33a838df2fb7dac44613ba3b1af17237ab73589fa3",
+      "rust_sha256": "8ee0033400c97b4ea8b5cbebcd8bfd0e70851ac5950c4e227cbc3daf6ccb118a",
       "adapted": true
     },
     {

@@ -672,7 +672,7 @@ pub const EVENT_DESTINATION_STATUS_DESTINATION_PLACEHOLDER: [::core::ffi::c_char
     ::core::mem::transmute::<[u8; 19], [::core::ffi::c_char; 19]>(*b"{destination_uuid}\0")
 };
 pub const LIGHTNVR_VERSION_STRING: [::core::ffi::c_char; 7] =
-    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.47.3\0") };
+    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.0\0") };
 pub const MOSQ_LOG_WARNING: ::core::ffi::c_int =
     (1 as ::core::ffi::c_int) << 2 as ::core::ffi::c_int;
 pub const MOSQ_LOG_ERR: ::core::ffi::c_int = (1 as ::core::ffi::c_int) << 3 as ::core::ffi::c_int;

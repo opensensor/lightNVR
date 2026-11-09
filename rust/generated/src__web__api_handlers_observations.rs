@@ -1108,7 +1108,7 @@ pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
 pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
 pub const LIGHTNVR_VERSION_STRING: [::core::ffi::c_char; 7] =
-    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.47.3\0") };
+    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.0\0") };
 pub const LOG_COMPONENT: [::core::ffi::c_char; 16] =
     unsafe { ::core::mem::transmute::<[u8; 16], [::core::ffi::c_char; 16]>(*b"ObservationsAPI\0") };
 pub const OBS_SOURCE_TEXT_SIZE: ::core::ffi::c_int = 128 as ::core::ffi::c_int;
