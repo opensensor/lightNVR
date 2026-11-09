@@ -51,7 +51,7 @@ export async function ok(server: Server, route: string, identity: Identity=admin
 }
 export async function createUser(server: Server, name: string, extra: Json={}): Promise<Identity> {
   const password='ContractMatrix123!';
-  const user=await ok(server,'/api/auth/users',admin,'POST',{username:name,password,role:2,is_active:true,...extra});
+  const user=await ok(server,'/api/auth/users',admin,'POST',{...extra,username:name,password,role:2,is_active:true});
   return {id:user.id,username:name,password,recordingReplay:true,recordingActions:['export'],headers:{Authorization:basic({username:name,password})}};
 }
 export async function role(server: Server, name: string, actions: string[]) {
