@@ -867,29 +867,96 @@ unsafe extern "C" fn resolve_asset_path(
         -1 as ::core::ffi::c_int
     };
 }
-unsafe extern "C" fn remove_file(
-    mut path: *const ::core::ffi::c_char,
+unsafe extern "C" fn remove_file_under_root(
+    mut root: *const ::core::ffi::c_char,
+    mut rel: *const ::core::ffi::c_char,
     mut deleted: *mut ::core::ffi::c_int,
 ) -> ::core::ffi::c_int {
-    if unlink(path) == 0 as ::core::ffi::c_int {
-        if !deleted.is_null() {
-            *deleted += 1;
-        }
-        return 0 as ::core::ffi::c_int;
-    }
-    if *__errno_location() == ENOENT || *__errno_location() == ENOTDIR {
-        return 0 as ::core::ffi::c_int;
-    }
-    _log_message_ctx(
-        log_level_t::LOG_LEVEL_WARN,
-        LOG_COMPONENT,
-        _log_stream_name,
-        b"Failed to delete observation evidence file %s: %s\0".as_ptr()
-            as *const ::core::ffi::c_char,
-        path,
-        strerror(*__errno_location()),
+    let mut work: [::core::ffi::c_char; 1024] = [0; 1024];
+    let mut n: ::core::ffi::c_int = snprintf(
+        &raw mut work as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
+        b"%s\0".as_ptr() as *const ::core::ffi::c_char,
+        rel,
     );
-    return -1 as ::core::ffi::c_int;
+    if n <= 0 as ::core::ffi::c_int
+        || n as size_t >= ::core::mem::size_of::<[::core::ffi::c_char; 1024]>()
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut dir_fd: ::core::ffi::c_int = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if dir_fd < 0 as ::core::ffi::c_int {
+        if *__errno_location() == ENOENT || *__errno_location() == ENOTDIR {
+            return 0 as ::core::ffi::c_int;
+        }
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to open observation root %s: %s\0".as_ptr() as *const ::core::ffi::c_char,
+            root,
+            strerror(*__errno_location()),
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut rc: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut part: *mut ::core::ffi::c_char = &raw mut work as *mut ::core::ffi::c_char;
+    '_done: {
+        loop {
+            let mut slash: *mut ::core::ffi::c_char = strchr(part, '/' as ::core::ffi::c_int);
+            if slash.is_null() {
+                break;
+            }
+            *slash = '\0' as ::core::ffi::c_char;
+            let mut next_fd: ::core::ffi::c_int = openat(
+                dir_fd,
+                part,
+                O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+            );
+            if next_fd < 0 as ::core::ffi::c_int {
+                if *__errno_location() == ENOENT || *__errno_location() == ENOTDIR {
+                    rc = 0 as ::core::ffi::c_int;
+                } else {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Failed to traverse observation evidence path %s/%s: %s\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        root,
+                        rel,
+                        strerror(*__errno_location()),
+                    );
+                }
+                break '_done;
+            } else {
+                close(dir_fd);
+                dir_fd = next_fd;
+                part = slash.offset(1 as ::core::ffi::c_int as isize);
+            }
+        }
+        if unlinkat(dir_fd, part, 0 as ::core::ffi::c_int) == 0 as ::core::ffi::c_int {
+            if !deleted.is_null() {
+                *deleted += 1;
+            }
+            rc = 0 as ::core::ffi::c_int;
+        } else if *__errno_location() == ENOENT || *__errno_location() == ENOTDIR {
+            rc = 0 as ::core::ffi::c_int;
+        } else {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Failed to delete observation evidence file %s/%s: %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                root,
+                rel,
+                strerror(*__errno_location()),
+            );
+        }
+    }
+    close(dir_fd);
+    return rc;
 }
 unsafe extern "C" fn remove_asset_file(
     mut root: *const ::core::ffi::c_char,
@@ -916,7 +983,13 @@ unsafe extern "C" fn remove_asset_file(
         );
         return 0 as ::core::ffi::c_int;
     }
-    return remove_file(&raw mut path as *mut ::core::ffi::c_char, deleted);
+    return remove_file_under_root(
+        root,
+        (&raw mut path as *mut ::core::ffi::c_char)
+            .offset(strlen(root) as isize)
+            .offset(1 as ::core::ffi::c_int as isize),
+        deleted,
+    );
 }
 unsafe extern "C" fn fsync_dir(mut dir: *const ::core::ffi::c_char) -> ::core::ffi::c_int {
     let mut fd: ::core::ffi::c_int = open(dir, O_RDONLY | O_DIRECTORY);
@@ -1705,6 +1778,11 @@ pub unsafe extern "C" fn observation_retention_startup(
         0 as ::core::ffi::c_int,
         ::core::mem::size_of::<observation_reconcile_result_t>(),
     );
+    pthread_mutex_lock(&raw mut g_run_mutex);
+    ::core::intrinsics::atomic_store::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut g_startup_done,
+        0 as ::core::ffi::c_int,
+    );
     let mut root: [::core::ffi::c_char; 1024] = [0; 1024];
     if root_dir(
         storage_path,
@@ -1712,9 +1790,9 @@ pub unsafe extern "C" fn observation_retention_startup(
         ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
     ) != 0 as ::core::ffi::c_int
     {
+        pthread_mutex_unlock(&raw mut g_run_mutex);
         return -1 as ::core::ffi::c_int;
     }
-    pthread_mutex_lock(&raw mut g_run_mutex);
     let mut rc: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     if observation_cursor_head_reconcile(storage_path, &raw mut (*result).epoch_regenerated)
         != 0 as ::core::ffi::c_int
