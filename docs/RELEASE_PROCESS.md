@@ -207,7 +207,7 @@ When you push a tag, GitHub Actions automatically:
    releases.
 
 2. **Builds web assets** during the Docker build:
-   - Installs Node.js 24.x LTS
+   - Installs Node.js 26.x LTS
    - Runs `npm ci --ignore-scripts` from the committed lockfile
    - Runs `npm run build` to build with Vite
    - Copies built assets to `/var/lib/lightnvr/www/` in the runtime image
@@ -324,10 +324,10 @@ If the Docker build fails to find web assets:
 
 ### Local build doesn't match Docker build
 
-This can happen if you have different Node.js versions. The Docker build uses Node.js 24.x LTS. To match locally:
+This can happen if you have different Node.js versions. The Docker build uses Node.js 26.x LTS. To match locally:
 
 ```bash
-# Install the version pinned in .nvmrc (Node.js 24.x LTS)
+# Install the version pinned in .nvmrc (Node.js 26.x LTS)
 nvm install
 nvm use
 

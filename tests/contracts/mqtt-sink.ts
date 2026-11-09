@@ -9,7 +9,7 @@ export async function startMqttSink(port = 0) {
   sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
   let buffered=Buffer.alloc(0);
   socket.on('data',chunk=>{
-   buffered=Buffer.concat([buffered,chunk]);
+   buffered=Buffer.concat([buffered,typeof chunk==='string'?Buffer.from(chunk):chunk]);
    while(buffered.length>=2){
     let remaining=0,multiplier=1,end=1;
     for(;end<buffered.length&&end<=4;end++){

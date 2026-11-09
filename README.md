@@ -85,7 +85,7 @@ environment variables and upgrades are covered in the [Docker guide](docs/DOCKER
 | **Home Assistant** | Add [opensensor/lightnvr-hassio-addons](https://github.com/opensensor/lightnvr-hassio-addons) under *Settings → Add-ons → Add-on Store → ⋮ → Repositories*, then install LightNVR. See [Home Assistant](docs/HOME_ASSISTANT.md). |
 | **Debian / Ubuntu** | `.deb` packages for amd64, arm64 and armhf are attached to each [release](https://github.com/opensensor/lightNVR/releases). |
 | **Windows** | [Podman + WSL2](docs/WINDOWS_PODMAN.md) |
-| **From source** | [Build guide](docs/BUILD.md): FFmpeg ≥ 7.1, Node.js 24, CMake. Required for embedded targets. |
+| **From source** | [Build guide](docs/BUILD.md): FFmpeg ≥ 7.1, Node.js 26, CMake. Required for embedded targets. |
 
 ### First login
 

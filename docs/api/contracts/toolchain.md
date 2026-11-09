@@ -1,14 +1,15 @@
 # Contract toolchain
 
-T3 installs exact versions without changing any pre-existing locked package
-version: Redocly CLI 2.75.0, openapi-typescript 7.13.0, Ajv 8.20.0,
+The contract tooling pins exact versions: Redocly CLI 2.76.0,
+openapi-typescript 7.13.0, Ajv 8.20.0,
 ajv-formats 3.0.1, esbuild 0.28.2, root TypeScript 5.9.3 and Node types
-24.19.2. The docs-only web dependency is swagger-ui-dist 5.34.1.
-The application retains TypeScript 6.0.3 and its existing dependencies.
+26.6.6. The docs-only web dependency is swagger-ui-dist 5.34.1.
+The application checks types with TypeScript 7.0.2 through `@typescript/native`;
+its `typescript` alias provides the TypeScript 6 compatibility API for ESLint.
 
 Root TypeScript is 5.9.3 because openapi-typescript 7.13.0 declares a `^5.x`
 peer dependency. No force/legacy-peer-deps override is used. Generated declarations
-are independently compiled with **both** root TS 5.9.3 and application TS 6.0.3,
+are independently compiled with **both** root TS 5.9.3 and application TS 7.0.2,
 with strict mode and library checking enabled. The root compiler also checks all
 contract TS/config files via `tests/contracts/tsconfig.json`; existing integration
 and load test typing remains the separate T18 task.

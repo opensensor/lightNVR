@@ -7,7 +7,7 @@ fixture binary, then run from the repository root:
 node tests/performance/browser-startup.ts --binary build/mobile-review/bin/lightnvr --output build/browser-startup --samples 3
 ```
 
-The output directory must be new. Requires Node 24, Playwright Chromium,
+The output directory must be new. Requires Node 26, Playwright Chromium,
 FFmpeg/ffprobe with libx264 and the native fixture dependencies. All media,
 credentials and configuration belong to the isolated loopback fixture.
 

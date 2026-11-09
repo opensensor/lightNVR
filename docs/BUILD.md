@@ -41,7 +41,7 @@ sudo apt-get install -y \
 - `libmbedtls-dev` is **required** for ONVIF and authentication.
 - `libmosquitto-dev` (≥ 2.0) and `libyaml-dev` are optional. Without them CMake prints a
   warning and builds without MQTT, or without go2rtc override validation.
-- Building the web UI needs **Node.js 24** (the version in `.nvmrc`). Distribution packages
+- Building the web UI needs **Node.js 26** (the version in `.nvmrc`). Distribution packages
   are often older; use [NodeSource](https://github.com/nodesource/distributions) or
   [nvm](https://github.com/nvm-sh/nvm).
 

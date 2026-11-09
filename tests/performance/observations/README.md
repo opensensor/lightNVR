@@ -113,7 +113,7 @@ node tests/performance/observations/compare.mjs repeat \
   build/perf-observations/disabled-run1/results.json build/perf-observations/disabled-run2/results.json
 ```
 
-The harness needs Node 24, ffmpeg/ffprobe with libx264, go2rtc on `PATH` (or
+The harness needs Node 26, ffmpeg/ffprobe with libx264, go2rtc on `PATH` (or
 `--go2rtc`), `findmnt`/`lsblk`, and Linux `/proc`. Use `--keep` to keep the
 fixture directory (server log, DB, media).
 

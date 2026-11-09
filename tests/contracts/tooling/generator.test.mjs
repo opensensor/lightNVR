@@ -101,7 +101,7 @@ test('generated declarations accept unknown and narrow correctly under strict TS
   await writeFile(path.join(directory,'consumer.ts'),positive);
   const config={compilerOptions:{strict:true,noEmit:true,skipLibCheck:false,target:'ES2022',module:'ESNext',moduleResolution:'Bundler',types:[],rootDir:'.'},files:['consumer.ts']};
   await writeFile(path.join(directory,'tsconfig.json'),JSON.stringify(config));
-  for(const compiler of ['node_modules/typescript/bin/tsc','web/node_modules/typescript/bin/tsc']) {
+  for(const compiler of ['node_modules/typescript/bin/tsc','web/node_modules/@typescript/native/bin/tsc']) {
     const run=()=>spawnSync(process.execPath,[path.join(root,compiler),'-p',path.join(directory,'tsconfig.json')],{encoding:'utf8'});
     const good=run();assert.equal(good.status,0,good.stdout);
     await writeFile(path.join(directory,'consumer.ts'),positive+"const wrong: components['schemas']['Fixture'] = {identity:{id:'synthetic'},count:'zero',variant:1}; void wrong;\n");
