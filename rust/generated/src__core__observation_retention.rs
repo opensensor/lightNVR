@@ -124,7 +124,6 @@ unsafe extern "C" {
         __buf: *mut stat,
         __flag: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
-    unsafe fn lstat(__file: *const ::core::ffi::c_char, __buf: *mut stat) -> ::core::ffi::c_int;
     unsafe fn close(__fd: ::core::ffi::c_int) -> ::core::ffi::c_int;
     unsafe fn write(
         __fd: ::core::ffi::c_int,
@@ -188,6 +187,11 @@ unsafe extern "C" {
     unsafe fn strchr(
         __s: *const ::core::ffi::c_char,
         __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
+    unsafe fn strtok_r(
+        __s: *mut ::core::ffi::c_char,
+        __delim: *const ::core::ffi::c_char,
+        __save_ptr: *mut *mut ::core::ffi::c_char,
     ) -> *mut ::core::ffi::c_char;
     unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
     unsafe fn strerror(__errnum: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
@@ -1518,6 +1522,88 @@ unsafe extern "C" fn page_by_state(
     db_close_readonly_connection(db);
     return count;
 }
+unsafe extern "C" fn asset_is_regular_nofollow(
+    mut root: *const ::core::ffi::c_char,
+    mut stored: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    let mut path: [::core::ffi::c_char; 1024] = [0; 1024];
+    if resolve_asset_path(
+        root,
+        stored,
+        &raw mut path as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
+    ) != 0 as ::core::ffi::c_int
+    {
+        return 0 as ::core::ffi::c_int;
+    }
+    let mut dfd: ::core::ffi::c_int = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if dfd < 0 as ::core::ffi::c_int {
+        return 0 as ::core::ffi::c_int;
+    }
+    let mut save: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut part: *mut ::core::ffi::c_char = strtok_r(
+        (&raw mut path as *mut ::core::ffi::c_char)
+            .offset(strlen(root) as isize)
+            .offset(1 as ::core::ffi::c_int as isize),
+        b"/\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut save,
+    );
+    if part.is_null() {
+        close(dfd);
+        return 0 as ::core::ffi::c_int;
+    }
+    let mut ok: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    loop {
+        let mut next: *mut ::core::ffi::c_char = strtok_r(
+            ::core::ptr::null_mut::<::core::ffi::c_char>(),
+            b"/\0".as_ptr() as *const ::core::ffi::c_char,
+            &raw mut save,
+        );
+        if !next.is_null() {
+            let mut nfd: ::core::ffi::c_int =
+                openat(dfd, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            if nfd < 0 as ::core::ffi::c_int {
+                break;
+            }
+            close(dfd);
+            dfd = nfd;
+            part = next;
+        } else {
+            let mut st: stat = stat {
+                st_dev: 0,
+                st_ino: 0,
+                st_nlink: 0,
+                st_mode: 0,
+                st_uid: 0,
+                st_gid: 0,
+                __pad0: 0,
+                st_rdev: 0,
+                st_size: 0,
+                st_blksize: 0,
+                st_blocks: 0,
+                st_atim: timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                st_mtim: timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                st_ctim: timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                __glibc_reserved: [0; 3],
+            };
+            ok = (fstatat(dfd, part, &raw mut st, AT_SYMLINK_NOFOLLOW) == 0 as ::core::ffi::c_int
+                && st.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t)
+                as ::core::ffi::c_int;
+            break;
+        }
+    }
+    close(dfd);
+    return ok;
+}
 unsafe extern "C" fn reconcile_state(
     mut root: *const ::core::ffi::c_char,
     mut from: observation_asset_state_t,
@@ -1550,46 +1636,12 @@ unsafe extern "C" fn reconcile_state(
                     ::core::ptr::null::<::core::ffi::c_char>();
                 if from.0 == observation_asset_state_t::OBS_ASSET_PENDING.0 {
                     reason = b"interrupted\0".as_ptr() as *const ::core::ffi::c_char;
-                } else {
-                    let mut path: [::core::ffi::c_char; 1024] = [0; 1024];
-                    let mut st: stat = stat {
-                        st_dev: 0,
-                        st_ino: 0,
-                        st_nlink: 0,
-                        st_mode: 0,
-                        st_uid: 0,
-                        st_gid: 0,
-                        __pad0: 0,
-                        st_rdev: 0,
-                        st_size: 0,
-                        st_blksize: 0,
-                        st_blocks: 0,
-                        st_atim: timespec {
-                            tv_sec: 0,
-                            tv_nsec: 0,
-                        },
-                        st_mtim: timespec {
-                            tv_sec: 0,
-                            tv_nsec: 0,
-                        },
-                        st_ctim: timespec {
-                            tv_sec: 0,
-                            tv_nsec: 0,
-                        },
-                        __glibc_reserved: [0; 3],
-                    };
-                    if resolve_asset_path(
-                        root,
-                        &raw mut (*rows.offset(i as isize)).path as *mut ::core::ffi::c_char,
-                        &raw mut path as *mut ::core::ffi::c_char,
-                        ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
-                    ) != 0 as ::core::ffi::c_int
-                        || lstat(&raw mut path as *mut ::core::ffi::c_char, &raw mut st)
-                            != 0 as ::core::ffi::c_int
-                        || !(st.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t)
-                    {
-                        reason = b"write_failed\0".as_ptr() as *const ::core::ffi::c_char;
-                    }
+                } else if asset_is_regular_nofollow(
+                    root,
+                    &raw mut (*rows.offset(i as isize)).path as *mut ::core::ffi::c_char,
+                ) == 0
+                {
+                    reason = b"write_failed\0".as_ptr() as *const ::core::ffi::c_char;
                 }
                 if !reason.is_null() {
                     let mut rc: ::core::ffi::c_int = db_observation_asset_transition(
@@ -2175,15 +2227,16 @@ unsafe extern "C" fn enforce_camera(
         - (*camera).max_age_days as int64_t as ::core::ffi::c_longlong * DAY_MS)
         as int64_t;
     if *budget > 0 as ::core::ffi::c_int {
+        let mut want: ::core::ffi::c_int = if *budget < OBS_PAGE {
+            *budget
+        } else {
+            OBS_PAGE
+        };
         let mut n: ::core::ffi::c_int = query_rows(
             EVICTION_CANDIDATES.as_ptr(),
             &raw mut (*camera).camera_uuid as *mut ::core::ffi::c_char,
             cutoff,
-            if *budget < OBS_PAGE {
-                *budget
-            } else {
-                OBS_PAGE
-            },
+            want,
             rows,
         );
         if n < 0 as ::core::ffi::c_int {
@@ -2201,12 +2254,12 @@ unsafe extern "C" fn enforce_camera(
             }
             i += 1;
         }
-        if n == OBS_PAGE {
+        if n == want {
             (*result).more_work = r#true != 0;
         }
     }
     while (*camera).retained_bytes > (*camera).max_bytes && *budget > 0 as ::core::ffi::c_int {
-        let mut want: ::core::ffi::c_int = if *budget < OBS_PAGE {
+        let mut want_0: ::core::ffi::c_int = if *budget < OBS_PAGE {
             *budget
         } else {
             OBS_PAGE
@@ -2215,7 +2268,7 @@ unsafe extern "C" fn enforce_camera(
             EVICTION_CANDIDATES.as_ptr(),
             &raw mut (*camera).camera_uuid as *mut ::core::ffi::c_char,
             INT64_MAX as int64_t,
-            want,
+            want_0,
             rows,
         );
         if n_0 < 0 as ::core::ffi::c_int {
@@ -2237,7 +2290,7 @@ unsafe extern "C" fn enforce_camera(
             }
             i_0 += 1;
         }
-        if n_0 < want {
+        if n_0 < want_0 {
             break;
         }
     }
@@ -2438,8 +2491,7 @@ unsafe extern "C" fn publish_status(
     }
     free(old as *mut ::core::ffi::c_void);
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn observation_retention_run(
+unsafe extern "C" fn retention_run_locked(
     mut storage_path: *const ::core::ffi::c_char,
     mut now_ms: int64_t,
     mut result: *mut observation_retention_result_t,
@@ -2482,7 +2534,6 @@ pub unsafe extern "C" fn observation_retention_run(
     if rows.is_null() {
         return -1 as ::core::ffi::c_int;
     }
-    pthread_mutex_lock(&raw mut g_run_mutex);
     let mut budget: ::core::ffi::c_int = OBS_RETENTION_MAX_EVICTIONS;
     let mut rc: ::core::ffi::c_int = prune_history(now_ms, result);
     if rc == 0 as ::core::ffi::c_int {
@@ -2524,7 +2575,6 @@ pub unsafe extern "C" fn observation_retention_run(
         cameras = ::core::ptr::null_mut::<observation_retention_camera_status_t>();
     }
     free(cameras as *mut ::core::ffi::c_void);
-    pthread_mutex_unlock(&raw mut g_run_mutex);
     free(rows as *mut ::core::ffi::c_void);
     let mut meta: observation_meta_t = observation_meta_t {
         epoch_uuid: [0; 37],
@@ -2577,6 +2627,17 @@ pub unsafe extern "C" fn observation_retention_run(
     };
 }
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn observation_retention_run(
+    mut storage_path: *const ::core::ffi::c_char,
+    mut now_ms: int64_t,
+    mut result: *mut observation_retention_result_t,
+) -> ::core::ffi::c_int {
+    pthread_mutex_lock(&raw mut g_run_mutex);
+    let mut rc: ::core::ffi::c_int = retention_run_locked(storage_path, now_ms, result);
+    pthread_mutex_unlock(&raw mut g_run_mutex);
+    return rc;
+}
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn observation_retention_maintenance_tick() {
     if ::core::intrinsics::atomic_load::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
         &raw mut g_startup_done,
@@ -2584,11 +2645,13 @@ pub unsafe extern "C" fn observation_retention_maintenance_tick() {
     {
         return;
     }
+    pthread_mutex_lock(&raw mut g_run_mutex);
     let mut now: time_t = time(::core::ptr::null_mut::<time_t>());
     if !g_more_work
         && g_last_tick != 0 as time_t
         && now - g_last_tick < OBS_RETENTION_INTERVAL_SEC as time_t
     {
+        pthread_mutex_unlock(&raw mut g_run_mutex);
         return;
     }
     g_last_tick = now;
@@ -2602,12 +2665,13 @@ pub unsafe extern "C" fn observation_retention_maintenance_tick() {
         more_work: false,
         oldest_seq: 0,
     };
-    let mut rc: ::core::ffi::c_int = observation_retention_run(
+    let mut rc: ::core::ffi::c_int = retention_run_locked(
         &raw mut g_config.storage_path as *mut ::core::ffi::c_char,
         wall_ms(),
         &raw mut result,
     );
     g_more_work = rc == 0 as ::core::ffi::c_int && result.more_work as ::core::ffi::c_int != 0;
+    pthread_mutex_unlock(&raw mut g_run_mutex);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn observation_retention_budget_exhausted(

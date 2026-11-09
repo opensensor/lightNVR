@@ -381,6 +381,45 @@ static int page_by_state(const char *state, const char *after, asset_row_t *rows
     return count;
 }
 
+static int asset_is_regular_nofollow(const char *root, const char *stored) {
+    /* Preserve all supported stored-path forms and reject traversal, empty
+     * segments, wrong extensions and truncation before walking the tree. */
+    char path[OBS_PATH_SIZE];
+    if (resolve_asset_path(root, stored, path, sizeof(path)) != 0) return 0;
+
+    int dfd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dfd < 0) return 0;
+
+    char *save = NULL;
+    char *part = strtok_r(path + strlen(root) + 1, "/", &save);
+    if (!part) {
+        close(dfd);
+        return 0;
+    }
+
+    int ok = 0;
+    for (;;) {
+        char *next = strtok_r(NULL, "/", &save);
+        if (next) {
+            int nfd = openat(dfd, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            if (nfd < 0) break;
+            close(dfd);
+            dfd = nfd;
+            part = next;
+            continue;
+        }
+
+        /* Inspect the leaf without opening it: a corrupt row can point to a
+         * FIFO or device, which must neither block startup nor be read. */
+        struct stat st;
+        ok = fstatat(dfd, part, &st, AT_SYMLINK_NOFOLLOW) == 0 && S_ISREG(st.st_mode);
+        break;
+    }
+
+    close(dfd);
+    return ok;
+}
+
 static int reconcile_state(const char *root, observation_asset_state_t from,
                            observation_reconcile_result_t *result) {
     asset_row_t *rows = calloc(OBS_PAGE, sizeof(*rows));
@@ -395,10 +434,7 @@ static int reconcile_state(const char *root, observation_asset_state_t from,
             if (from == OBS_ASSET_PENDING) {
                 reason = "interrupted";
             } else {
-                char path[OBS_PATH_SIZE];
-                struct stat st;
-                if (resolve_asset_path(root, rows[i].path, path, sizeof(path)) != 0 ||
-                    lstat(path, &st) != 0 || !S_ISREG(st.st_mode))
+                if (!asset_is_regular_nofollow(root, rows[i].path))
                     reason = "write_failed";
             }
             if (!reason) continue;
@@ -661,8 +697,8 @@ static int enforce_camera(const char *root, int64_t now_ms,
     /* Age budget. */
     int64_t cutoff = now_ms - (int64_t)camera->max_age_days * DAY_MS;
     if (*budget > 0) {
-        int n = query_rows(EVICTION_CANDIDATES, camera->camera_uuid, cutoff,
-                           *budget < OBS_PAGE ? *budget : OBS_PAGE, rows);
+        int want = *budget < OBS_PAGE ? *budget : OBS_PAGE;
+        int n = query_rows(EVICTION_CANDIDATES, camera->camera_uuid, cutoff, want, rows);
         if (n < 0) return -1;
         for (int i = 0; i < n; ++i) {
             --*budget;
@@ -670,7 +706,7 @@ static int enforce_camera(const char *root, int64_t now_ms,
             if (rc < 0) return -1;
             if (rc > 0) camera->retained_bytes -= rows[i].bytes;
         }
-        if (n == OBS_PAGE) result->more_work = true;
+        if (n == want) result->more_work = true;
     }
 
     /* Byte budget: oldest unprotected first. */
@@ -789,8 +825,9 @@ static void publish_status(observation_retention_camera_status_t *cameras, int c
     free(old);
 }
 
-int observation_retention_run(const char *storage_path, int64_t now_ms,
-                              observation_retention_result_t *result) {
+/* Caller holds g_run_mutex, including admission and scheduling state for ticks. */
+static int retention_run_locked(const char *storage_path, int64_t now_ms,
+                                observation_retention_result_t *result) {
     observation_retention_result_t local;
     if (!result) result = &local;
     memset(result, 0, sizeof(*result));
@@ -800,7 +837,6 @@ int observation_retention_run(const char *storage_path, int64_t now_ms,
 
     asset_row_t *rows = calloc(OBS_PAGE, sizeof(*rows));
     if (!rows) return -1;
-    pthread_mutex_lock(&g_run_mutex);
     int budget = OBS_RETENTION_MAX_EVICTIONS;
     int rc = prune_history(now_ms, result);
     if (rc == 0) rc = retry_terminal_files(root, &budget, result, rows);
@@ -816,7 +852,6 @@ int observation_retention_run(const char *storage_path, int64_t now_ms,
         cameras = NULL;
     }
     free(cameras);
-    pthread_mutex_unlock(&g_run_mutex);
     free(rows);
 
     observation_meta_t meta;
@@ -834,15 +869,29 @@ int observation_retention_run(const char *storage_path, int64_t now_ms,
     return rc == 0 ? 0 : -1;
 }
 
+int observation_retention_run(const char *storage_path, int64_t now_ms,
+                              observation_retention_result_t *result) {
+    pthread_mutex_lock(&g_run_mutex);
+    int rc = retention_run_locked(storage_path, now_ms, result);
+    pthread_mutex_unlock(&g_run_mutex);
+    return rc;
+}
+
 void observation_retention_maintenance_tick(void) {
     if (!atomic_load(&g_startup_done)) return;
+    pthread_mutex_lock(&g_run_mutex);
     time_t now = time(NULL);
-    if (!g_more_work && g_last_tick != 0 && now - g_last_tick < OBS_RETENTION_INTERVAL_SEC)
+    if (!g_more_work && g_last_tick != 0 && now - g_last_tick < OBS_RETENTION_INTERVAL_SEC) {
+        pthread_mutex_unlock(&g_run_mutex);
         return;
+    }
     g_last_tick = now;
+
     observation_retention_result_t result;
-    int rc = observation_retention_run(g_config.storage_path, wall_ms(), &result);
+    int rc = retention_run_locked(g_config.storage_path, wall_ms(), &result);
+
     g_more_work = rc == 0 && result.more_work;
+    pthread_mutex_unlock(&g_run_mutex);
 }
 
 /* ---- budget flag -------------------------------------------------------- */
