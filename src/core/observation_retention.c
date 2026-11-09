@@ -464,6 +464,7 @@ int observation_retention_startup(const char *storage_path,
 
     pthread_mutex_lock(&g_run_mutex);
     int rc = 0;
+    atomic_store(&g_startup_done, 0);
     /* Before any transition here advances the head (section 7.6). */
     if (observation_cursor_head_reconcile(storage_path, &result->epoch_regenerated) != 0) {
         log_warn("Observation cursor head reconciliation failed");
