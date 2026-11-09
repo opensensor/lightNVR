@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {access} from 'node:fs/promises';
+import {access, mkdtemp, writeFile, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import {reservePort, startFixture} from './fixture-server.mjs';
 
 test('occupied port fails without disturbing its owner', async () => {
@@ -31,6 +33,19 @@ test('startup failures retain diagnostic directory', async () => {
   await assert.rejects(startFixture({binary:'/nonexistent/lightnvr-contract-test'}), error => {
     assert.match(error.message, /ENOENT/); assert.match(error.message, /fixture: \/tmp\/lightnvr-contract-/); return true;
   });
+});
+
+test('startup errors include native logs before a fixture can be returned', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'lightnvr-startup-test-'));
+  const binary = path.join(directory, 'exit-during-startup');
+  try {
+    await writeFile(binary, '#!/bin/sh\necho "native startup diagnostic" >&2\nexit 0\n', {mode: 0o700});
+    await assert.rejects(startFixture({binary}), error => {
+      assert.match(error.message, /Server exited during startup \(0\/null\)/);
+      assert.match(error.message, /Native startup log:\nnative startup diagnostic/);
+      return true;
+    });
+  } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
 test('unexpected native signal is reported as failure and retains logs', {timeout: 45000}, async () => {

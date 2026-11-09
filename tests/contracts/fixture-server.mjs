@@ -109,6 +109,10 @@ export async function startFixture(options = {}) {
   } catch (error) {
     await fixture.stop({failed: true}).catch(stopError => { error.message += `; ${stopError.message}`; });
     error.message += `; fixture: ${directory}`;
+    // Startup can fail before the caller receives a fixture to attach logs from.
+    // Include them in the error so CI retains the cause when its tmpfs disappears.
+    const startupLog = await readFile(fixture.logPath, 'utf8').catch(() => '');
+    if (startupLog) error.message += `\nNative startup log:\n${startupLog}`;
     throw error;
   }
 
