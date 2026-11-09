@@ -2,6 +2,7 @@
  * evidence (contract sections 4.2, 4.5, 7.6 and 14), against a real migrated
  * database and a temporary storage directory. */
 #define _GNU_SOURCE
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
@@ -38,6 +39,9 @@ static int64_t now_ms;
 static const char *failed_unlink_path;
 static const char *swap_unlink_path, *swap_parent, *swap_moved, *swap_target;
 static bool swap_completed;
+static bool fail_sidecar_rename, fail_sidecar_dir_sync;
+static bool swap_sidecar_on_rename, sidecar_dir_synced;
+static const char *sidecar_root, *sidecar_moved, *sidecar_outside;
 static atomic_int retention_passes;
 
 int __real_db_observations_prune(int64_t before_ms, int batch, observation_prune_result_t *out);
@@ -76,6 +80,30 @@ int __wrap_unlinkat(int fd, const char *name, int flags) {
         swap_completed = true;
     }
     return __real_unlinkat(fd, name, flags);
+}
+
+int __real_renameat(int oldfd, const char *oldname, int newfd, const char *newname);
+int __wrap_renameat(int oldfd, const char *oldname, int newfd, const char *newname) {
+    if (strcmp(newname, OBS_CURSOR_HEAD_FILE) == 0) {
+        if (fail_sidecar_rename) { errno = EIO; return -1; }
+        if (swap_sidecar_on_rename && !swap_completed) {
+            if (rename(sidecar_root, sidecar_moved) != 0 ||
+                symlink(sidecar_outside, sidecar_root) != 0) return -1;
+            swap_completed = true;
+        }
+    }
+    return __real_renameat(oldfd, oldname, newfd, newname);
+}
+
+int __real_fsync(int fd);
+int __wrap_fsync(int fd) {
+    struct stat actual, expected;
+    if (fstat(fd, &actual) == 0 && S_ISDIR(actual.st_mode)) {
+        if (fail_sidecar_dir_sync) { errno = EIO; return -1; }
+        if (swap_sidecar_on_rename && swap_completed && stat(sidecar_moved, &expected) == 0)
+            sidecar_dir_synced = actual.st_dev == expected.st_dev && actual.st_ino == expected.st_ino;
+    }
+    return __real_fsync(fd);
 }
 
 /* ---- helpers ---------------------------------------------------------- */
@@ -245,6 +273,8 @@ void setUp(void) {
     failed_unlink_path = NULL;
     swap_unlink_path = NULL;
     swap_completed = false;
+    fail_sidecar_rename = fail_sidecar_dir_sync = false;
+    swap_sidecar_on_rename = sidecar_dir_synced = false;
     atomic_store(&retention_passes, 0);
     exec_sql("DELETE FROM object_observations; DELETE FROM observation_assets; "
              "DELETE FROM observation_changes; DELETE FROM recordings;");
@@ -259,6 +289,7 @@ void setUp(void) {
 void tearDown(void) {
     failed_unlink_path = NULL;
     swap_unlink_path = NULL;
+    fail_sidecar_rename = fail_sidecar_dir_sync = swap_sidecar_on_rename = false;
 }
 
 /* ---- startup reconciliation ------------------------------------------- */
@@ -492,7 +523,8 @@ static void test_failed_restart_disables_retention_until_reconciled(void) {
     startup(&rec);
     ready_asset_t old = make_ready(cam_a, now_ms - 8 * DAY_MS, 10, 1);
     char blocked[512];
-    snprintf(blocked, sizeof(blocked), "%s/observations/%s.tmp", storage, OBS_CURSOR_HEAD_FILE);
+    snprintf(blocked, sizeof(blocked), "%s/observations/%s", storage, OBS_CURSOR_HEAD_FILE);
+    TEST_ASSERT_EQUAL_INT(0, unlink(blocked));
     TEST_ASSERT_EQUAL_INT(0, mkdir(blocked, 0700));
     TEST_ASSERT_EQUAL_INT(-1, observation_retention_startup(storage, &rec));
     TEST_ASSERT_FALSE(observation_retention_startup_done());
@@ -843,6 +875,125 @@ static void test_recording_deletion_leaves_assets_intact(void) {
 
 /* ---- D9 cursor head sidecar -------------------------------------------- */
 
+static void test_cursor_head_write_recovers_with_stale_temporary_files(void) {
+    char tmp[512];
+    snprintf(tmp, sizeof(tmp), "%s/observations/%s.tmp", storage, OBS_CURSOR_HEAD_FILE);
+    write_file(tmp, 7);  /* A crash before rename in an older build. */
+    snprintf(tmp, sizeof(tmp), "%s/observations/%s.66666666-6666-4666-8666-666666666666.tmp",
+             storage, OBS_CURSOR_HEAD_FILE);
+    write_file(tmp, 9);  /* An interrupted write with a unique name. */
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    observation_meta_t meta;
+    TEST_ASSERT_EQUAL_INT(DB_OBS_OK, db_observation_meta_get(&meta));
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_write(storage, meta.epoch_uuid, 42));
+    char epoch[OBS_UUID_SIZE];
+    int64_t head = -1;
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_read(storage, epoch, &head));
+    TEST_ASSERT_EQUAL_STRING(meta.epoch_uuid, epoch);
+    TEST_ASSERT_EQUAL_INT64(42, head);
+}
+
+static void assert_marker_untouched(const char *path) {
+    FILE *f = fopen(path, "rb");
+    TEST_ASSERT_NOT_NULL(f);
+    unsigned char bytes[8];
+    size_t count = fread(bytes, 1, sizeof(bytes), f);
+    fclose(f);
+    TEST_ASSERT_EQUAL_UINT(7, count);
+    for (size_t i = 0; i < count; ++i) TEST_ASSERT_EQUAL_HEX8(0xAB, bytes[i]);
+}
+
+static void test_cursor_head_write_does_not_overwrite_link_targets(void) {
+    char target[512], tmp[512], final[512];
+    snprintf(target, sizeof(target), "%s/sidecar-link-target", storage);
+    snprintf(tmp, sizeof(tmp), "%s/observations/%s.tmp", storage, OBS_CURSOR_HEAD_FILE);
+    snprintf(final, sizeof(final), "%s/observations/%s", storage, OBS_CURSOR_HEAD_FILE);
+    write_file(target, 7);
+    write_file(final, 1);  /* Create the evidence root. */
+    for (int hardlink = 0; hardlink < 2; ++hardlink) {
+        TEST_ASSERT_EQUAL_INT(0, unlink(final));
+        TEST_ASSERT_EQUAL_INT(0, hardlink ? link(target, tmp) : symlink(target, tmp));
+        TEST_ASSERT_EQUAL_INT(0, hardlink ? link(target, final) : symlink(target, final));
+        TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_write(storage, cam_a, 42 + hardlink));
+        assert_marker_untouched(target);
+        char epoch[OBS_UUID_SIZE];
+        int64_t head;
+        TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_read(storage, epoch, &head));
+        TEST_ASSERT_EQUAL_STRING(cam_a, epoch);
+        TEST_ASSERT_EQUAL_INT64(42 + hardlink, head);
+        TEST_ASSERT_EQUAL_INT(0, unlink(tmp));
+    }
+    TEST_ASSERT_EQUAL_INT(0, unlink(target));
+}
+
+static void assert_only_cursor_head_remains(void) {
+    char root[512];
+    snprintf(root, sizeof(root), "%s/observations", storage);
+    DIR *d = opendir(root);
+    TEST_ASSERT_NOT_NULL(d);
+    int extra = 0;
+    struct dirent *entry;
+    while ((entry = readdir(d))) {
+        if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..") &&
+            strcmp(entry->d_name, OBS_CURSOR_HEAD_FILE)) ++extra;
+    }
+    closedir(d);
+    TEST_ASSERT_EQUAL_INT(0, extra);
+}
+
+static void test_cursor_head_write_failure_cleans_temp_and_preserves_previous_head(void) {
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_write(storage, cam_a, 41));
+    fail_sidecar_rename = true;
+    int rc = observation_cursor_head_write(storage, cam_a, 42);
+    fail_sidecar_rename = false;
+    TEST_ASSERT_EQUAL_INT(-1, rc);
+    char epoch[OBS_UUID_SIZE];
+    int64_t head;
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_read(storage, epoch, &head));
+    TEST_ASSERT_EQUAL_INT64(41, head);
+    assert_only_cursor_head_remains();
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_write(storage, cam_a, 42));
+    assert_only_cursor_head_remains();
+    fail_sidecar_dir_sync = true;
+    rc = observation_cursor_head_write(storage, cam_a, 43);
+    fail_sidecar_dir_sync = false;
+    TEST_ASSERT_EQUAL_INT(-1, rc);  /* A rename alone does not prove durability. */
+    assert_only_cursor_head_remains();
+}
+
+static void test_cursor_head_rename_and_sync_stay_in_opened_root(void) {
+    char root[512], moved[512], outside[512], outside_file[1024], moved_file[1024];
+    snprintf(root, sizeof(root), "%s/observations", storage);
+    snprintf(moved, sizeof(moved), "%s/sidecar-moved", storage);
+    snprintf(outside, sizeof(outside), "%s/sidecar-outside", storage);
+    snprintf(outside_file, sizeof(outside_file), "%s/%s", outside, OBS_CURSOR_HEAD_FILE);
+    snprintf(moved_file, sizeof(moved_file), "%s/%s", moved, OBS_CURSOR_HEAD_FILE);
+    write_file(outside_file, 7);
+    sidecar_root = root;
+    sidecar_moved = moved;
+    sidecar_outside = outside;
+    swap_sidecar_on_rename = true;
+    int rc = observation_cursor_head_write(storage, cam_a, 42);
+    swap_sidecar_on_rename = false;
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_TRUE(swap_completed);
+    TEST_ASSERT_TRUE(sidecar_dir_synced);
+    TEST_ASSERT_TRUE(exists(moved_file));
+    assert_marker_untouched(outside_file);
+    TEST_ASSERT_EQUAL_INT(0, unlink(root));
+    /* A trusted root configured as a symlink remains supported. */
+    TEST_ASSERT_EQUAL_INT(0, symlink(moved, root));
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_write(storage, cam_a, 43));
+    char epoch[OBS_UUID_SIZE];
+    int64_t head;
+    TEST_ASSERT_EQUAL_INT(0, observation_cursor_head_read(storage, epoch, &head));
+    TEST_ASSERT_EQUAL_INT64(43, head);
+    TEST_ASSERT_EQUAL_INT(0, unlink(root));
+    rm_tree(moved);
+    rm_tree(outside);
+}
+
 static void test_cursor_head_sidecar_detects_rewind(void) {
     insert_batch(cam_a, now_ms, 1, 0);
     observation_meta_t meta;
@@ -921,6 +1072,10 @@ int main(void) {
     RUN_TEST(test_failed_expiry_unlink_is_retried_without_restart);
     RUN_TEST(test_prune_preserves_failed_unlink_for_retry);
     RUN_TEST(test_recording_deletion_leaves_assets_intact);
+    RUN_TEST(test_cursor_head_write_recovers_with_stale_temporary_files);
+    RUN_TEST(test_cursor_head_write_does_not_overwrite_link_targets);
+    RUN_TEST(test_cursor_head_write_failure_cleans_temp_and_preserves_previous_head);
+    RUN_TEST(test_cursor_head_rename_and_sync_stay_in_opened_root);
     RUN_TEST(test_cursor_head_sidecar_detects_rewind);
     int result = UNITY_END();
 

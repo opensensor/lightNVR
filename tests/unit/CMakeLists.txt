@@ -168,7 +168,8 @@ add_layer2_test(test_observation_crash_boundaries CI_UNIT CI_SANITIZER)
 set_tests_properties(test_observation_crash_boundaries PROPERTIES TIMEOUT 180)
 add_layer2_test(test_observation_retention CI_UNIT CI_SANITIZER)
 target_link_options(test_observation_retention PRIVATE
-    "-Wl,--wrap=unlink" "-Wl,--wrap=unlinkat" "-Wl,--wrap=db_observations_prune")
+    "-Wl,--wrap=unlink" "-Wl,--wrap=unlinkat" "-Wl,--wrap=db_observations_prune"
+    "-Wl,--wrap=renameat" "-Wl,--wrap=fsync")
 set_tests_properties(test_observation_retention PROPERTIES TIMEOUT 60)
 add_layer2_test_with_ffmpeg(test_observation_diagnostics CI_UNIT CI_SANITIZER)
 set_tests_properties(test_observation_diagnostics PROPERTIES TIMEOUT 60)
