@@ -4,6 +4,7 @@ ARG DEBIAN_SUITE=sid
 ARG SQLITE_YEAR=2026
 ARG SQLITE_AUTOCONF_VERSION=3540100
 ARG LIBUV_VERSION=1.53.0
+ARG LIBUV_TARBALL_SHA256=8f68f56f06d1f22f3aa0a71a1d77a646e055cf8ab22e849e0d7f299f6e2b5d0f
 ARG LLHTTP_VERSION=9.4.3
 ARG LLHTTP_TARBALL_SHA256=1eb813c7437b31a87496a1cd3ed79f00746720f5e7e29c79b42c02cb69f36c39
 ARG NODE_MAJOR=26
@@ -169,6 +170,7 @@ RUN if [ "$DEB_BUILD" != "true" ]; then \
 RUN if [ "$DEB_BUILD" != "true" ]; then \
     cd /tmp && \
     wget -q "https://github.com/libuv/libuv/archive/refs/tags/v${LIBUV_VERSION}.tar.gz" -O libuv.tar.gz && \
+    echo "${LIBUV_TARBALL_SHA256}  libuv.tar.gz" | sha256sum -c - && \
     tar -xzf libuv.tar.gz && \
     cd "libuv-${LIBUV_VERSION}" && \
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
