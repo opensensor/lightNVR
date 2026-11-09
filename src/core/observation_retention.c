@@ -381,6 +381,59 @@ static int page_by_state(const char *state, const char *after, asset_row_t *rows
     return count;
 }
 
+static int asset_is_regular_nofollow(const char *root, const char *rel_path) {
+    if (!root || !*root || !rel_path || !*rel_path) return 0;
+
+    int dfd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dfd < 0) return 0;
+
+    char tmp[OBS_PATH_SIZE];
+    safe_strcpy(tmp, rel_path, sizeof(tmp), 0);
+
+    char *save = NULL;
+    char *part = strtok_r(tmp, "/", &save);
+    if (!part || !*part) {
+        close(dfd);
+        return 0;
+    }
+
+    int ok = 0;
+    while (part && *part) {
+        if (strcmp(part, ".") == 0 || strcmp(part, "..") == 0) {
+            ok = 0;
+            goto out;
+        }
+
+        char *next = strtok_r(NULL, "/", &save);
+        if (next && *next) {
+            int nfd = openat(dfd, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            if (nfd < 0) {
+                ok = 0;
+                goto out;
+            }
+            close(dfd);
+            dfd = nfd;
+            part = next;
+            continue;
+        }
+
+        int ffd = openat(dfd, part, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        if (ffd < 0) {
+            ok = 0;
+            goto out;
+        }
+
+        struct stat st;
+        ok = (fstat(ffd, &st) == 0 && S_ISREG(st.st_mode)) ? 1 : 0;
+        close(ffd);
+        goto out;
+    }
+
+out:
+    close(dfd);
+    return ok;
+}
+
 static int reconcile_state(const char *root, observation_asset_state_t from,
                            observation_reconcile_result_t *result) {
     asset_row_t *rows = calloc(OBS_PAGE, sizeof(*rows));
@@ -395,10 +448,7 @@ static int reconcile_state(const char *root, observation_asset_state_t from,
             if (from == OBS_ASSET_PENDING) {
                 reason = "interrupted";
             } else {
-                char path[OBS_PATH_SIZE];
-                struct stat st;
-                if (resolve_asset_path(root, rows[i].path, path, sizeof(path)) != 0 ||
-                    lstat(path, &st) != 0 || !S_ISREG(st.st_mode))
+                if (!asset_is_regular_nofollow(root, rows[i].path))
                     reason = "write_failed";
             }
             if (!reason) continue;
