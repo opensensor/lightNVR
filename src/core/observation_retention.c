@@ -100,7 +100,8 @@ static int resolve_asset_path(const char *root, const char *stored, char *out, s
     if (stored[0] == '/') {
         if (strncmp(stored, root, root_len) != 0 || stored[root_len] != '/') return -1;
         rel = stored + root_len + 1;
-    } else if (strncmp(stored, OBS_RETENTION_DIR "/", sizeof(OBS_RETENTION_DIR)) == 0) {
+    } else if (strncmp(stored, OBS_RETENTION_DIR, sizeof(OBS_RETENTION_DIR) - 1) == 0 &&
+               stored[sizeof(OBS_RETENTION_DIR) - 1] == '/') {
         rel = stored + sizeof(OBS_RETENTION_DIR);
     }
     if (!safe_relative(rel)) return -1;
