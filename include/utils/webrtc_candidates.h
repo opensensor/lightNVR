@@ -22,7 +22,8 @@
  * Duplicates collapse. Output strings are safe inside a double-quoted YAML scalar.
  *
  * @return number of candidates written (0 when the list is empty or NULL),
- *         or -1 when any entry is invalid or there are more than max entries.
+ *         or -1 when any entry is invalid, there are more than max entries,
+ *         or a nonempty list is given with NULL output or nonpositive max.
  */
 int go2rtc_parse_external_candidates(const char *list, int port,
                                      char out[][GO2RTC_CANDIDATE_SIZE], int max);

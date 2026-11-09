@@ -244,6 +244,34 @@ void test_external_candidates_parse_valid_and_reject_invalid(void) {
     }
 }
 
+void test_external_candidates_output_bounds(void) {
+    char out[2][GO2RTC_CANDIDATE_SIZE];
+    memset(out, 'X', sizeof(out));
+    char original[sizeof(out)];
+    memcpy(original, out, sizeof(out));
+
+    /* No candidates means no output storage is needed. */
+    const char *empty[] = {NULL, "", " ,;\t\n\r "};
+    for (size_t i = 0; i < sizeof(empty) / sizeof(empty[0]); i++) {
+        TEST_ASSERT_EQUAL_INT(0, go2rtc_parse_external_candidates(empty[i], 8555, NULL, 1));
+        TEST_ASSERT_EQUAL_INT(0, go2rtc_parse_external_candidates(empty[i], 8555, NULL, 0));
+        TEST_ASSERT_EQUAL_INT(0, go2rtc_parse_external_candidates(empty[i], 8555, out, -1));
+    }
+
+    TEST_ASSERT_EQUAL_INT(-1, go2rtc_parse_external_candidates(" ,; 203.0.113.7", 8555, NULL, 1));
+    TEST_ASSERT_EQUAL_INT(-1, go2rtc_parse_external_candidates("203.0.113.7", 8555, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(-1, go2rtc_parse_external_candidates("203.0.113.7", 8555, out, 0));
+    TEST_ASSERT_EQUAL_INT(-1, go2rtc_parse_external_candidates("203.0.113.7", 8555, out, -1));
+    TEST_ASSERT_EQUAL_MEMORY(original, out, sizeof(out));
+
+    /* A duplicate at capacity is valid, but a new entry cannot overwrite the sentinel. */
+    TEST_ASSERT_EQUAL_INT(1, go2rtc_parse_external_candidates("203.0.113.7,203.0.113.7:8555", 8555, out, 1));
+    TEST_ASSERT_EQUAL_STRING("203.0.113.7:8555", out[0]);
+    TEST_ASSERT_EQUAL_MEMORY(original + GO2RTC_CANDIDATE_SIZE, out[1], GO2RTC_CANDIDATE_SIZE);
+    TEST_ASSERT_EQUAL_INT(-1, go2rtc_parse_external_candidates("203.0.113.7,203.0.113.8", 8555, out, 1));
+    TEST_ASSERT_EQUAL_MEMORY(original + GO2RTC_CANDIDATE_SIZE, out[1], GO2RTC_CANDIDATE_SIZE);
+}
+
 void test_generate_startup_config_writes_db_override_file(void) {
     load_default_config(&g_config);
     g_config.go2rtc_api_port = 31984;
@@ -620,6 +648,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_generate_startup_config_uses_saved_webrtc_settings);
     RUN_TEST(test_generate_startup_config_writes_one_candidate_per_external_ip);
     RUN_TEST(test_external_candidates_parse_valid_and_reject_invalid);
+    RUN_TEST(test_external_candidates_output_bounds);
     RUN_TEST(test_generate_startup_config_writes_db_override_file);
     RUN_TEST(test_override_publication_preserves_old_file_on_io_failure_and_recovers);
     RUN_TEST(test_audio_policy_keeps_db_override_dormant);

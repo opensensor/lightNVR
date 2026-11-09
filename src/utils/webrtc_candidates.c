@@ -102,18 +102,13 @@ int go2rtc_parse_external_candidates(const char *list, int port,
                                      char out[][GO2RTC_CANDIDATE_SIZE], int max) {
     if (!list) return 0;
 
-    const char *scan = list;
-    while (*scan == ',' || *scan == ';' || *scan == ' ' || *scan == '\t' || *scan == '\n' || *scan == '\r') scan++;
-    if (!*scan) return 0;
-
-    if (!out || max <= 0) return -1;
-
     if (port <= 0 || port > 65535) port = 8555;
     int count = 0;
     const char *p = list;
     for (;;) {
         while (*p == ',' || *p == ';' || *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
         if (!*p) break;
+        if (!out || max <= 0) return -1;
         const char *start = p;
         while (*p && *p != ',' && *p != ';' && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') p++;
         size_t n = (size_t)(p - start);
