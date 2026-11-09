@@ -1,7 +1,8 @@
-import {readFile, writeFile, mkdir, readdir, rm} from 'node:fs/promises';
+import {readFile, writeFile, mkdir, readdir, mkdtemp, rm} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import os from 'node:os';
 import openapiTS, {astToString} from 'openapi-typescript';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
