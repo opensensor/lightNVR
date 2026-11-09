@@ -30,9 +30,22 @@ test('two real servers own independent ports, files and lifetimes', {timeout: 90
 });
 
 test('startup failures retain diagnostic directory', async () => {
-  await assert.rejects(startFixture({binary:'/nonexistent/lightnvr-contract-test'}), error => {
-    assert.match(error.message, /ENOENT/); assert.match(error.message, /fixture: \/tmp\/lightnvr-contract-/); return true;
-  });
+  let retainedDirectory;
+  try {
+    await assert.rejects(startFixture({binary:'/nonexistent/lightnvr-contract-test'}), error => {
+      assert.match(error.message, /ENOENT/);
+      const marker = '; fixture: ';
+      assert.ok(error.message.includes(marker));
+      const directory = error.message.slice(error.message.lastIndexOf(marker) + marker.length);
+      assert.equal(path.dirname(directory), path.resolve(tmpdir()));
+      assert.match(path.basename(directory), /^lightnvr-contract-[A-Za-z0-9]+$/);
+      retainedDirectory = directory;
+      return true;
+    });
+    await access(retainedDirectory);
+  } finally {
+    if (retainedDirectory) await rm(retainedDirectory, {recursive: true, force: true});
+  }
 });
 
 test('startup errors include native logs before a fixture can be returned', async () => {
