@@ -164,6 +164,12 @@ fixture directory (server log, DB, media).
 
    `--require-saturation` also requires `queue_full` drops.
 
+   The 1 ms wall-clock budget belongs to this Release performance gate.
+   `test_observation_evidence` checks admission while the encoder worker is
+   stalled, queue limits, and latency histogram consistency without a wall-clock
+   budget, so sanitizer instrumentation and runner scheduling do not fail those
+   functional checks.
+
 ## Committed baseline (C4, 2026-11-08, feature disabled)
 
 The data is in `results/2026-11-08-disabled-run{1,2}.json`, and
