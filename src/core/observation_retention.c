@@ -661,8 +661,8 @@ static int enforce_camera(const char *root, int64_t now_ms,
     /* Age budget. */
     int64_t cutoff = now_ms - (int64_t)camera->max_age_days * DAY_MS;
     if (*budget > 0) {
-        int n = query_rows(EVICTION_CANDIDATES, camera->camera_uuid, cutoff,
-                           *budget < OBS_PAGE ? *budget : OBS_PAGE, rows);
+        int want = *budget < OBS_PAGE ? *budget : OBS_PAGE;
+        int n = query_rows(EVICTION_CANDIDATES, camera->camera_uuid, cutoff, want, rows);
         if (n < 0) return -1;
         for (int i = 0; i < n; ++i) {
             --*budget;
@@ -670,7 +670,7 @@ static int enforce_camera(const char *root, int64_t now_ms,
             if (rc < 0) return -1;
             if (rc > 0) camera->retained_bytes -= rows[i].bytes;
         }
-        if (n == OBS_PAGE) result->more_work = true;
+        if (n == want) result->more_work = true;
     }
 
     /* Byte budget: oldest unprotected first. */
