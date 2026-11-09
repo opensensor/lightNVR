@@ -31,7 +31,7 @@ test('two real servers own independent ports, files and lifetimes', {timeout: 90
 
 test('startup failures retain diagnostic directory', async () => {
   await assert.rejects(startFixture({binary:'/nonexistent/lightnvr-contract-test'}), error => {
-    assert.match(error.message, /ENOENT/); assert.match(error.message, /fixture: \/tmp\/lightnvr-contract-/); return true;
+    assert.match(error.message, /ENOENT/); assert.match(error.message, /fixture: .*lightnvr-contract-/); return true;
   });
 });
 
