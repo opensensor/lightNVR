@@ -273,6 +273,9 @@ pub unsafe extern "C" fn go2rtc_parse_external_candidates(
         if *p == 0 {
             break;
         }
+        if out.is_null() || max <= 0 as ::core::ffi::c_int {
+            return -1 as ::core::ffi::c_int;
+        }
         let mut start: *const ::core::ffi::c_char = p;
         while *p as ::core::ffi::c_int != 0
             && *p as ::core::ffi::c_int != ',' as ::core::ffi::c_int

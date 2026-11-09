@@ -850,9 +850,9 @@
     },
     {
       "c": "src/utils/webrtc_candidates.c",
-      "c_sha256": "6214c6a856ab0b5a569527e9a1f5014583e4801b936f0fd9acc5963aafe21726",
+      "c_sha256": "a8937545c1e4d919949e92ecf986577d36cd7f42550636fb954f6dfe4ba8f693",
       "rust": "generated/src__utils__webrtc_candidates.rs",
-      "rust_sha256": "4585f1efcf3438ad75ab3f71f0b7ab5732e04801d1111ccd2e7121a1bf313b5a",
+      "rust_sha256": "b54d79b389293b512663fc17114d8114f34930802af76d51b95c6f2c246edc0d",
       "adapted": false
     },
     {
