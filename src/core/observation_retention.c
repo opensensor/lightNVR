@@ -381,55 +381,41 @@ static int page_by_state(const char *state, const char *after, asset_row_t *rows
     return count;
 }
 
-static int asset_is_regular_nofollow(const char *root, const char *rel_path) {
-    if (!root || !*root || !rel_path || !*rel_path) return 0;
+static int asset_is_regular_nofollow(const char *root, const char *stored) {
+    /* Preserve all supported stored-path forms and reject traversal, empty
+     * segments, wrong extensions and truncation before walking the tree. */
+    char path[OBS_PATH_SIZE];
+    if (resolve_asset_path(root, stored, path, sizeof(path)) != 0) return 0;
 
     int dfd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (dfd < 0) return 0;
 
-    char tmp[OBS_PATH_SIZE];
-    safe_strcpy(tmp, rel_path, sizeof(tmp), 0);
-
     char *save = NULL;
-    char *part = strtok_r(tmp, "/", &save);
-    if (!part || !*part) {
+    char *part = strtok_r(path + strlen(root) + 1, "/", &save);
+    if (!part) {
         close(dfd);
         return 0;
     }
 
     int ok = 0;
-    while (part && *part) {
-        if (strcmp(part, ".") == 0 || strcmp(part, "..") == 0) {
-            ok = 0;
-            goto out;
-        }
-
+    for (;;) {
         char *next = strtok_r(NULL, "/", &save);
-        if (next && *next) {
+        if (next) {
             int nfd = openat(dfd, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-            if (nfd < 0) {
-                ok = 0;
-                goto out;
-            }
+            if (nfd < 0) break;
             close(dfd);
             dfd = nfd;
             part = next;
             continue;
         }
 
-        int ffd = openat(dfd, part, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-        if (ffd < 0) {
-            ok = 0;
-            goto out;
-        }
-
+        /* Inspect the leaf without opening it: a corrupt row can point to a
+         * FIFO or device, which must neither block startup nor be read. */
         struct stat st;
-        ok = (fstat(ffd, &st) == 0 && S_ISREG(st.st_mode)) ? 1 : 0;
-        close(ffd);
-        goto out;
+        ok = fstatat(dfd, part, &st, AT_SYMLINK_NOFOLLOW) == 0 && S_ISREG(st.st_mode);
+        break;
     }
 
-out:
     close(dfd);
     return ok;
 }
@@ -839,8 +825,9 @@ static void publish_status(observation_retention_camera_status_t *cameras, int c
     free(old);
 }
 
-int observation_retention_run(const char *storage_path, int64_t now_ms,
-                              observation_retention_result_t *result) {
+/* Caller holds g_run_mutex, including admission and scheduling state for ticks. */
+static int retention_run_locked(const char *storage_path, int64_t now_ms,
+                                observation_retention_result_t *result) {
     observation_retention_result_t local;
     if (!result) result = &local;
     memset(result, 0, sizeof(*result));
@@ -850,7 +837,6 @@ int observation_retention_run(const char *storage_path, int64_t now_ms,
 
     asset_row_t *rows = calloc(OBS_PAGE, sizeof(*rows));
     if (!rows) return -1;
-    pthread_mutex_lock(&g_run_mutex);
     int budget = OBS_RETENTION_MAX_EVICTIONS;
     int rc = prune_history(now_ms, result);
     if (rc == 0) rc = retry_terminal_files(root, &budget, result, rows);
@@ -866,7 +852,6 @@ int observation_retention_run(const char *storage_path, int64_t now_ms,
         cameras = NULL;
     }
     free(cameras);
-    pthread_mutex_unlock(&g_run_mutex);
     free(rows);
 
     observation_meta_t meta;
@@ -884,22 +869,27 @@ int observation_retention_run(const char *storage_path, int64_t now_ms,
     return rc == 0 ? 0 : -1;
 }
 
+int observation_retention_run(const char *storage_path, int64_t now_ms,
+                              observation_retention_result_t *result) {
+    pthread_mutex_lock(&g_run_mutex);
+    int rc = retention_run_locked(storage_path, now_ms, result);
+    pthread_mutex_unlock(&g_run_mutex);
+    return rc;
+}
+
 void observation_retention_maintenance_tick(void) {
     if (!atomic_load(&g_startup_done)) return;
-    time_t now = time(NULL);
-
     pthread_mutex_lock(&g_run_mutex);
+    time_t now = time(NULL);
     if (!g_more_work && g_last_tick != 0 && now - g_last_tick < OBS_RETENTION_INTERVAL_SEC) {
         pthread_mutex_unlock(&g_run_mutex);
         return;
     }
     g_last_tick = now;
-    pthread_mutex_unlock(&g_run_mutex);
 
     observation_retention_result_t result;
-    int rc = observation_retention_run(g_config.storage_path, wall_ms(), &result);
+    int rc = retention_run_locked(g_config.storage_path, wall_ms(), &result);
 
-    pthread_mutex_lock(&g_run_mutex);
     g_more_work = rc == 0 && result.more_work;
     pthread_mutex_unlock(&g_run_mutex);
 }

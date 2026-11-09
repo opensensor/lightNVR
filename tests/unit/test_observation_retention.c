@@ -7,6 +7,7 @@
 #include <ftw.h>
 #include <pthread.h>
 #include <sqlite3.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,7 @@
 #include <unistd.h>
 
 #include "unity.h"
+#include "core/config.h"
 #include "core/event_identity.h"
 #include "core/observation_retention.h"
 #include "core/path_utils.h"
@@ -34,6 +36,13 @@ static char cam_a[OBS_UUID_SIZE];
 static char cam_b[OBS_UUID_SIZE];
 static int64_t now_ms;
 static const char *failed_unlink_path;
+static atomic_int retention_passes;
+
+int __real_db_observations_prune(int64_t before_ms, int batch, observation_prune_result_t *out);
+int __wrap_db_observations_prune(int64_t before_ms, int batch, observation_prune_result_t *out) {
+    atomic_fetch_add(&retention_passes, 1);
+    return __real_db_observations_prune(before_ms, batch, out);
+}
 
 int __real_unlink(const char *path);
 int __wrap_unlink(const char *path) {
@@ -172,6 +181,13 @@ static void set_protected(const char *asset, int value) {
     exec_sql(sql);
 }
 
+static void set_asset_path(const char *asset, const char *path) {
+    char sql[2048];
+    snprintf(sql, sizeof(sql), "UPDATE observation_assets SET path = '%s' WHERE uuid = '%s';",
+             path, asset);
+    exec_sql(sql);
+}
+
 static void set_budget(const char *camera, int days, int64_t bytes) {
     char sql[256];
     snprintf(sql, sizeof(sql),
@@ -202,6 +218,7 @@ static void startup(observation_reconcile_result_t *result) {
 
 void setUp(void) {
     failed_unlink_path = NULL;
+    atomic_store(&retention_passes, 0);
     exec_sql("DELETE FROM object_observations; DELETE FROM observation_assets; "
              "DELETE FROM observation_changes; DELETE FROM recordings;");
     char dir[512];
@@ -328,13 +345,108 @@ static void test_startup_sweep_follows_a_symlinked_evidence_root(void) {
     snprintf(tmp, sizeof(tmp), "%s/%s/2026-11-08/%s.jpg.tmp", real, cam_a, uuid);
     write_file(tmp, 10);
     TEST_ASSERT_EQUAL_INT(0, symlink(real, root));
+    ready_asset_t healthy = make_ready(cam_a, now_ms, 10, 1);
 
     observation_reconcile_result_t result;
     startup(&result);
     TEST_ASSERT_EQUAL_INT(1, result.tmp_files_deleted);
     TEST_ASSERT_FALSE(exists(tmp));
+    TEST_ASSERT_EQUAL_INT(0, result.ready_missing);
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(healthy.insert.asset_uuid).state);
     TEST_ASSERT_EQUAL_INT(0, unlink(root));
     rm_tree(real);
+}
+
+static void test_startup_preserves_all_supported_asset_path_forms(void) {
+    ready_asset_t assets[3];
+    for (int i = 0; i < 3; ++i) assets[i] = make_ready(cam_a, now_ms, 10, 1);
+    set_asset_path(assets[1].insert.asset_uuid, assets[1].rel + strlen("observations/"));
+    set_asset_path(assets[2].insert.asset_uuid, assets[2].abs);
+    observation_reconcile_result_t result;
+    startup(&result);
+    TEST_ASSERT_EQUAL_INT(0, result.ready_missing);
+    TEST_ASSERT_EQUAL_INT(0, result.stale_files_deleted);
+    for (int i = 0; i < 3; ++i) {
+        TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(assets[i].insert.asset_uuid).state);
+        TEST_ASSERT_TRUE(exists(assets[i].abs));
+    }
+}
+
+static void test_startup_rejects_symlink_parents_and_nonregular_leaves(void) {
+    ready_asset_t parent = make_ready(cam_a, now_ms, 10, 1);
+    ready_asset_t leaf = make_ready(cam_b, now_ms, 10, 1);
+    ready_asset_t fifo = make_ready(cam_b, now_ms, 10, 1);
+    ready_asset_t directory = make_ready(cam_b, now_ms, 10, 1);
+    ready_asset_t wrong_extension = make_ready(cam_b, now_ms, 10, 1);
+    char original_dir[512], outside_dir[512], outside_file[512], png[1024];
+    snprintf(original_dir, sizeof(original_dir), "%s/observations/%s/2026-11-08", storage, cam_a);
+    snprintf(outside_dir, sizeof(outside_dir), "%s/outside-reconcile", storage);
+    snprintf(outside_file, sizeof(outside_file), "%s/outside-leaf.jpg", storage);
+    rm_tree(outside_dir);
+    TEST_ASSERT_EQUAL_INT(0, rename(original_dir, outside_dir));
+    TEST_ASSERT_EQUAL_INT(0, symlink(outside_dir, original_dir));
+    TEST_ASSERT_EQUAL_INT(0, rename(leaf.abs, outside_file));
+    TEST_ASSERT_EQUAL_INT(0, symlink(outside_file, leaf.abs));
+    TEST_ASSERT_EQUAL_INT(0, unlink(fifo.abs));
+    TEST_ASSERT_EQUAL_INT(0, mkfifo(fifo.abs, 0600));
+    TEST_ASSERT_EQUAL_INT(0, unlink(directory.abs));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(directory.abs, 0700));
+    snprintf(png, sizeof(png), "%s.png", wrong_extension.abs);
+    TEST_ASSERT_EQUAL_INT(0, rename(wrong_extension.abs, png));
+    set_asset_path(wrong_extension.insert.asset_uuid, png);
+
+    observation_reconcile_result_t result;
+    startup(&result);  /* Must not block opening the FIFO. */
+    TEST_ASSERT_EQUAL_INT(5, result.ready_missing);
+    const ready_asset_t *assets[] = {&parent, &leaf, &fifo, &directory, &wrong_extension};
+    for (size_t i = 0; i < sizeof(assets) / sizeof(assets[0]); ++i) {
+        observation_asset_record_t asset = asset_of(assets[i]->insert.asset_uuid);
+        TEST_ASSERT_EQUAL_INT(OBS_ASSET_UNAVAILABLE, asset.state);
+        TEST_ASSERT_EQUAL_STRING("write_failed", asset.reason);
+    }
+    TEST_ASSERT_TRUE(exists(parent.abs));  /* The outside target survives. */
+    TEST_ASSERT_TRUE(exists(outside_file));
+    TEST_ASSERT_TRUE(exists(leaf.abs));
+    TEST_ASSERT_TRUE(exists(fifo.abs));
+    TEST_ASSERT_TRUE(exists(png));
+    rm_tree(outside_dir);
+    TEST_ASSERT_EQUAL_INT(0, unlink(outside_file));
+}
+
+static void *maintenance_tick_thread(void *arg) {
+    pthread_barrier_wait(arg);
+    observation_retention_maintenance_tick();
+    return NULL;
+}
+
+static void test_maintenance_drains_partial_age_pages_and_serializes_ticks(void) {
+    observation_reconcile_result_t rec;
+    startup(&rec);
+    /* Cameras are visited in UUID order: the first uses one eviction, leaving
+     * a 255-entry query for the second, whose last old asset needs another pass. */
+    const char *first = strcmp(cam_a, cam_b) < 0 ? cam_a : cam_b;
+    const char *second = first == cam_a ? cam_b : cam_a;
+    (void)make_ready(first, now_ms - 8 * DAY_MS, 1, 1);
+    for (int i = 0; i < OBS_RETENTION_MAX_EVICTIONS; ++i)
+        (void)make_ready(second, now_ms - 8 * DAY_MS, 1, 1);
+    observation_retention_maintenance_tick();
+    TEST_ASSERT_EQUAL_INT(1, scalar64("SELECT count(*) FROM observation_assets WHERE state = 'ready';"));
+    TEST_ASSERT_EQUAL_INT(1, atomic_load(&retention_passes));
+
+    pthread_t threads[8];
+    pthread_barrier_t barrier;
+    TEST_ASSERT_EQUAL_INT(0, pthread_barrier_init(&barrier, NULL, 8));
+    for (int i = 0; i < 8; ++i)
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&threads[i], NULL, maintenance_tick_thread, &barrier));
+    for (int i = 0; i < 8; ++i) TEST_ASSERT_EQUAL_INT(0, pthread_join(threads[i], NULL));
+    TEST_ASSERT_EQUAL_INT(0, pthread_barrier_destroy(&barrier));
+    TEST_ASSERT_EQUAL_INT(0, scalar64("SELECT count(*) FROM observation_assets WHERE state = 'ready';"));
+    TEST_ASSERT_EQUAL_INT(2, atomic_load(&retention_passes));
+
+    ready_asset_t later = make_ready(first, now_ms - 8 * DAY_MS, 1, 1);
+    observation_retention_maintenance_tick();
+    TEST_ASSERT_EQUAL_INT(OBS_ASSET_READY, asset_of(later.insert.asset_uuid).state);
+    TEST_ASSERT_EQUAL_INT(2, atomic_load(&retention_passes));
 }
 
 static void test_periodic_run_waits_for_startup_reconciliation(void) {
@@ -639,6 +751,7 @@ int main(void) {
     if (init_database(db_path) != 0) return 1;
     if (event_identity_init() != 0) return 1;
     now_ms = (int64_t)time(NULL) * 1000;
+    safe_strcpy(g_config.storage_path, storage, sizeof(g_config.storage_path), 0);
 
     UNITY_BEGIN();
     make_camera("cam_a", cam_a);
@@ -646,6 +759,9 @@ int main(void) {
     RUN_TEST(test_startup_reconciles_interrupted_missing_and_orphan_files);
     RUN_TEST(test_startup_sweep_does_not_follow_symlinks_below_root);
     RUN_TEST(test_startup_sweep_follows_a_symlinked_evidence_root);
+    RUN_TEST(test_startup_preserves_all_supported_asset_path_forms);
+    RUN_TEST(test_startup_rejects_symlink_parents_and_nonregular_leaves);
+    RUN_TEST(test_maintenance_drains_partial_age_pages_and_serializes_ticks);
     RUN_TEST(test_periodic_run_waits_for_startup_reconciliation);
     RUN_TEST(test_age_budget_expires_media_and_keeps_metadata);
     RUN_TEST(test_shared_asset_survives_until_last_reference_expires);
