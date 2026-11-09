@@ -56,6 +56,13 @@ test('native Python and web generation are deterministic; drift check fails with
   execFileSync('python3',[path.join(root,'scripts/contracts/generate_native.py'),'--source',source,'--output',path.join(directory,'direct.h')]);
   assert.equal(await readFile(path.join(directory,'direct.h'),'utf8'),artifacts.get(nativePath));
   await checkArtifacts(again,directory);
+  for(const [target,count] of [['all',4],['native',1],['web',3]]) {
+    const checked=spawnSync(process.execPath,[path.join(root,'scripts/contracts/generate.mjs'),
+      '--check',`--target=${target}`,'--source',source,'--output-root',directory],{encoding:'utf8'});
+    assert.equal(checked.status,0,checked.stderr);
+    assert.match(checked.stdout,new RegExp(`Checked ${count} contract artifacts`));
+    await checkArtifacts(artifacts,directory);
+  }
   const corrupt = path.join(directory,webPaths[0]);
   await writeFile(corrupt,'deliberate drift\n');
   const result=spawnSync(process.execPath,[path.join(root,'scripts/contracts/generate.mjs'),'--check','--source',source,'--output-root',directory],{encoding:'utf8'});

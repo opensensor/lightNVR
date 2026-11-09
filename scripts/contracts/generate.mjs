@@ -145,9 +145,7 @@ async function main() {
   }
   const files = await generateArtifacts(source, target);
   if (check) {
-    const temp = await mkdtemp(path.join(os.tmpdir(), 'lightnvr-contract-check-'));
-    try { await writeArtifacts(files, temp); await checkArtifacts(files, outputRoot); }
-    finally { await rm(temp, {recursive: true, force: true}); }
+    await checkArtifacts(files, outputRoot);
   } else await writeArtifacts(files, outputRoot);
   console.log(`${check ? 'Checked' : 'Generated'} ${files.size} contract artifacts (${target})`);
 }
