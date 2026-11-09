@@ -72,7 +72,13 @@ export async function token(server: Server, owner: Identity=admin, scope: unknow
 export function database(server: Server, sql: string, values: SQLInputValue[]=[]): void {
   expect(path.basename(server.directory)).toMatch(/^lightnvr-contract-/);
   const db=new DatabaseSync(path.join(server.directory,'lightnvr.db'));
-  try { db.exec('PRAGMA busy_timeout=3000'); db.prepare(sql).run(...values); } finally {db.close();}
+  try {
+    db.exec('PRAGMA busy_timeout=3000');
+    const statement=db.prepare(sql);
+    // run() also reads lastInsertRowid; large-ID fixtures need exact BigInt results.
+    statement.setReadBigInts(true);
+    statement.run(...values);
+  } finally {db.close();}
 }
 export function operationIds(doc: Json): string[] {
   return Object.values(doc.paths).flatMap((item:any)=>Object.values(item).filter((op:any)=>op && typeof op.operationId==='string').map((op:any)=>op.operationId)).sort();
