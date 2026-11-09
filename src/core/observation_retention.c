@@ -120,6 +120,62 @@ static int remove_file(const char *path, int *deleted) {
     return -1;
 }
 
+static int remove_file_under_root(const char *root, const char *rel, int *deleted) {
+    int root_fd = -1;
+    int dir_fd = -1;
+    int next_fd = -1;
+    int rc = -1;
+
+    char work[OBS_PATH_SIZE];
+    int n = snprintf(work, sizeof(work), "%s", rel);
+    if (n <= 0 || (size_t)n >= sizeof(work)) return -1;
+
+    root_fd = open(root, O_RDONLY | O_DIRECTORY);
+    if (root_fd < 0) {
+        log_warn("Failed to open observation root %s: %s", root, strerror(errno));
+        return -1;
+    }
+    dir_fd = root_fd;
+
+    char *p = work;
+    for (;;) {
+        char *slash = strchr(p, '/');
+        if (!slash) break;
+        *slash = '\0';
+        next_fd = openat(dir_fd, p, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        *slash = '/';
+        if (next_fd < 0) {
+            if (errno == ENOENT || errno == ENOTDIR) {
+                rc = 0;
+                goto done;
+            }
+            log_warn("Failed to traverse observation evidence path component %s: %s", p, strerror(errno));
+            goto done;
+        }
+        if (dir_fd != root_fd) close(dir_fd);
+        dir_fd = next_fd;
+        next_fd = -1;
+        p = slash + 1;
+    }
+
+    if (unlinkat(dir_fd, p, 0) == 0) {
+        if (deleted) ++*deleted;
+        rc = 0;
+        goto done;
+    }
+    if (errno == ENOENT || errno == ENOTDIR) {
+        rc = 0;
+        goto done;
+    }
+    log_warn("Failed to delete observation evidence file %s/%s: %s", root, rel, strerror(errno));
+
+done:
+    if (next_fd >= 0) close(next_fd);
+    if (dir_fd >= 0 && dir_fd != root_fd) close(dir_fd);
+    if (root_fd >= 0) close(root_fd);
+    return rc;
+}
+
 static int remove_asset_file(const char *root, const char *stored, int *deleted) {
     if (!stored || !*stored) return 0;
     char path[OBS_PATH_SIZE];
@@ -128,7 +184,14 @@ static int remove_asset_file(const char *root, const char *stored, int *deleted)
         /* A corrupt path is never a file this subsystem may remove. */
         return 0;
     }
-    return remove_file(path, deleted);
+
+    size_t root_len = strlen(root);
+    if (strncmp(path, root, root_len) != 0 || path[root_len] != '/') {
+        log_warn("Resolved observation asset path is invalid; not deleting");
+        return 0;
+    }
+
+    return remove_file_under_root(root, path + root_len + 1, deleted);
 }
 
 static int fsync_dir(const char *dir) {
