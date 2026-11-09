@@ -837,12 +837,21 @@ int observation_retention_run(const char *storage_path, int64_t now_ms,
 void observation_retention_maintenance_tick(void) {
     if (!atomic_load(&g_startup_done)) return;
     time_t now = time(NULL);
-    if (!g_more_work && g_last_tick != 0 && now - g_last_tick < OBS_RETENTION_INTERVAL_SEC)
+
+    pthread_mutex_lock(&g_run_mutex);
+    if (!g_more_work && g_last_tick != 0 && now - g_last_tick < OBS_RETENTION_INTERVAL_SEC) {
+        pthread_mutex_unlock(&g_run_mutex);
         return;
+    }
     g_last_tick = now;
+    pthread_mutex_unlock(&g_run_mutex);
+
     observation_retention_result_t result;
     int rc = observation_retention_run(g_config.storage_path, wall_ms(), &result);
+
+    pthread_mutex_lock(&g_run_mutex);
     g_more_work = rc == 0 && result.more_work;
+    pthread_mutex_unlock(&g_run_mutex);
 }
 
 /* ---- budget flag -------------------------------------------------------- */
