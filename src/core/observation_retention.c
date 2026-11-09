@@ -170,14 +170,6 @@ static int remove_asset_file(const char *root, const char *stored, int *deleted)
     return remove_file_under_root(root, path + strlen(root) + 1, deleted);
 }
 
-static int fsync_dir(const char *dir) {
-    int fd = open(dir, O_RDONLY | O_DIRECTORY);
-    if (fd < 0) return -1;
-    int rc = fsync(fd);
-    close(fd);
-    return rc;
-}
-
 static int64_t wall_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -193,30 +185,52 @@ static void copy_text(sqlite3_stmt *stmt, int column, char *out, size_t size) {
 
 int observation_cursor_head_write(const char *storage_path, const char *epoch_uuid,
                                   int64_t head_seq) {
-    char root[OBS_PATH_SIZE], path[OBS_PATH_SIZE], tmp[OBS_PATH_SIZE];
+    char root[OBS_PATH_SIZE];
     if (!lightnvr_uuid_is_valid(epoch_uuid) || head_seq < 0 ||
         root_dir(storage_path, root, sizeof(root)) != 0)
         return -1;
-    if (snprintf(path, sizeof(path), "%s/" OBS_CURSOR_HEAD_FILE, root) >= (int)sizeof(path) ||
-        snprintf(tmp, sizeof(tmp), "%s/" OBS_CURSOR_HEAD_FILE ".tmp", root) >= (int)sizeof(tmp))
-        return -1;
+    /* The reader still builds the final pathname in an OBS_PATH_SIZE buffer. */
+    if (strlen(root) + sizeof("/" OBS_CURSOR_HEAD_FILE) > OBS_PATH_SIZE) return -1;
     if (mkdir_recursive(root) != 0) return -1;
 
     char body[160];
     int len = snprintf(body, sizeof(body), "{\"epoch\":\"%s\",\"head_seq\":%lld}\n",
                        epoch_uuid, (long long)head_seq);
-    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0640);
-    if (fd < 0) return -1;
-    int rc = (write(fd, body, (size_t)len) == len && fsync(fd) == 0) ? 0 : -1;
-    if (close(fd) != 0) rc = -1;
-    if (rc == 0 && rename(tmp, path) != 0) rc = -1;
-    if (rc != 0) {
-        unlink(tmp);
-        log_warn("Failed to write observation cursor head sidecar");
+
+    /* Each attempt owns a fresh name. A crash-left temporary file or another
+     * writer must not block future checkpoints or be truncated/unlinked. */
+    char uuid[LIGHTNVR_UUID_STRING_SIZE];
+    char tmp[sizeof(OBS_CURSOR_HEAD_FILE) + LIGHTNVR_UUID_STRING_SIZE + 5];
+    if (lightnvr_uuid_generate_v4(uuid) != 0) return -1;
+    snprintf(tmp, sizeof(tmp), "%s.%s.tmp", OBS_CURSOR_HEAD_FILE, uuid);
+
+    int dfd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dfd < 0) return -1;
+
+    int fd = openat(dfd, tmp,
+                    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0640);
+    if (fd < 0) {
+        (void)close(dfd);
         return -1;
     }
-    (void)fsync_dir(root);
-    return 0;
+
+    int rc = (write(fd, body, (size_t)len) == len && fsync(fd) == 0) ? 0 : -1;
+    if (close(fd) != 0) rc = -1;
+    if (rc == 0 &&
+        renameat(dfd, tmp, dfd, OBS_CURSOR_HEAD_FILE) != 0)
+        rc = -1;
+    if (rc != 0) {
+        (void)unlinkat(dfd, tmp, 0);
+        log_warn("Failed to write observation cursor head sidecar");
+        (void)close(dfd);
+        return -1;
+    }
+
+    /* Sync the same directory used for creation and rename, even if its
+     * configured pathname was replaced while writing. */
+    rc = fsync(dfd);
+    if (close(dfd) != 0) rc = -1;
+    return rc;
 }
 
 int observation_cursor_head_read(const char *storage_path, char epoch_uuid[OBS_UUID_SIZE],
