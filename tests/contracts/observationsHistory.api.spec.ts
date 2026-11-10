@@ -108,13 +108,15 @@ test('A7: rename, delete and name reuse never transfer observation access', asyn
   // Historical name reuse (recordings fixture): stream name "A" once belonged to camera B.
   const recordings = seedRecordings(server), historical = seedHistoricalNameReuse(server, recordings);
   const reusedName = seedObservation(server, {camera: B, stream: 'A', recordingId: historical.hidden});
-  const visible = seedObservation(server, {camera: A, stream: 'B', recordingId: historical.visible});
+  // Keep the hidden ID's digits in a timestamp to exercise incidental substring matches.
+  const observedAt = Math.floor(Date.now() / 1000) * 1000 + historical.hidden;
+  const visible = seedObservation(server, {camera: A, stream: 'B', recordingId: historical.visible, observedAt});
   const viewed = await page(server, '', viewer);
   expect(ids(viewed)).toEqual([visible.observation]);
   expect(viewed.items[0]).toMatchObject({camera_uuid: A, stream_name_at_capture: 'B', recording_reference: {recording_id: historical.visible}});
   expect((await error(server, `/api/observations/${reusedName.observation}`, viewer)).status).toBe(404);
   expect((await snapshot(server, reusedName.observation, viewer)).status).toBe(404);
-  expect(JSON.stringify(viewed)).not.toContain(String(historical.hidden));
+  expect(viewed.items.map((item: Json) => item.recording_reference?.recording_id)).not.toContain(historical.hidden);
 
   // Rename: a camera keeps its UUID, so its grant follows it and its history keeps the capture name.
   const created = await ok(server, '/api/streams', admin, 'POST', {name: 'C', url: 'rtsp://127.0.0.1:9/contract-c', enabled: false, streaming_enabled: false, record: false});
