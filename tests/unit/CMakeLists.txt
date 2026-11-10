@@ -284,6 +284,7 @@ set_tests_properties(test_floor_plan_background_publication PROPERTIES TIMEOUT 3
 add_layer3_test(test_delete_stream_launch_failure CI_UNIT CI_SANITIZER)
 target_link_options(test_delete_stream_launch_failure PRIVATE
     "-Wl,--wrap=pthread_create" "-Wl,--wrap=free"
+    "-Wl,--wrap=delete_stream_config_internal"
     "-Wl,--wrap=go2rtc_integration_full_start"
     "-Wl,--wrap=go2rtc_integration_unregister_stream")
 set_tests_properties(test_delete_stream_launch_failure PROPERTIES TIMEOUT 15)

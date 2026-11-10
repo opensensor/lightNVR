@@ -18,6 +18,8 @@
 #include "web/request_response.h"
 
 static bool inject_failure, capture_success;
+static bool lookup_before_delete, fail_database_delete;
+static unsigned deletion_lookups;
 static unsigned launch_attempts, task_frees;
 static void *failed_task;
 static void *(*captured_worker)(void *);
@@ -45,6 +47,17 @@ bool __wrap_go2rtc_integration_unregister_stream(const char *name) {
     backend_calls++;
     return true;
 }
+int __real_delete_stream_config_internal(const char *, bool);
+int __wrap_delete_stream_config_internal(const char *name, bool permanent) {
+    if (lookup_before_delete) {
+        /* Model a reader between runtime removal and database deletion. The
+         * lookup hydrates a missing runtime slot from the still-present row. */
+        deletion_lookups++;
+        TEST_ASSERT_NOT_NULL(get_stream_by_name(name));
+    }
+    if (fail_database_delete) return -1;
+    return __real_delete_stream_config_internal(name, permanent);
+}
 void __real_free(void *);
 void __wrap_free(void *allocation) {
     if (allocation && allocation == failed_task) {
@@ -56,6 +69,8 @@ void __wrap_free(void *allocation) {
 
 void setUp(void) {
     inject_failure = capture_success = false;
+    lookup_before_delete = fail_database_delete = false;
+    deletion_lookups = 0;
     launch_attempts = task_frees = 0;
     failed_task = NULL;
     captured_worker = NULL;
@@ -85,6 +100,7 @@ void setUp(void) {
 }
 void tearDown(void) {
     inject_failure = capture_success = false;
+    lookup_before_delete = fail_database_delete = false;
     if (failed_task) free(failed_task);
     http_response_free(&response);
     shutdown_stream_manager();
@@ -150,6 +166,30 @@ static void assert_successful_handoff(bool permanent) {
 }
 static void test_soft_delete_successful_handoff(void) { assert_successful_handoff(false); }
 static void test_permanent_delete_successful_handoff(void) { assert_successful_handoff(true); }
+static void test_reader_during_permanent_delete_cannot_resurrect_camera(void) {
+    assert_successful_handoff(true);
+    lookup_before_delete = true;
+    captured_worker(failed_task);
+    lookup_before_delete = false;
+    TEST_ASSERT_EQUAL_UINT(1, deletion_lookups);
+    TEST_ASSERT_EQUAL_UINT(1, task_frees);
+    TEST_ASSERT_EQUAL_UINT(1, backend_calls);
+    stream_config_t persisted = {0};
+    TEST_ASSERT_NOT_EQUAL(0, get_stream_config_by_name(original_config.name, &persisted));
+    TEST_ASSERT_NULL(get_stream_by_name(original_config.name));
+    TEST_ASSERT_EQUAL_INT(0, get_total_stream_count());
+}
+static void test_database_delete_failure_keeps_runtime_camera(void) {
+    assert_successful_handoff(true);
+    fail_database_delete = true;
+    captured_worker(failed_task);
+    fail_database_delete = false;
+    TEST_ASSERT_EQUAL_UINT(1, task_frees);
+    TEST_ASSERT_EQUAL_UINT(0, backend_calls);
+    /* Check before any lookup can reload the missing runtime slot. */
+    TEST_ASSERT_EQUAL_INT(1, get_total_stream_count());
+    assert_unchanged();
+}
 static void queued_name_reuse(bool refresh) {
     if (refresh) {
         strcat(request.path, "/refresh");
@@ -196,6 +236,8 @@ int main(void) {
     if (mkdir(g_config.storage_path, 0700) != 0) return 1;
     if (init_database_ex(path, DB_INIT_NO_CHECK | DB_INIT_NO_BACKUP) != 0) return 1;
     UNITY_BEGIN();
+    RUN_TEST(test_reader_during_permanent_delete_cannot_resurrect_camera);
+    RUN_TEST(test_database_delete_failure_keeps_runtime_camera);
     RUN_TEST(test_queued_delete_rejects_reused_camera_name);
     RUN_TEST(test_queued_refresh_rejects_reused_camera_name);
     RUN_TEST(test_soft_delete_launch_failure);

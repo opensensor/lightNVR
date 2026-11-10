@@ -721,8 +721,8 @@ int remove_stream(stream_handle_t handle) {
     safe_strcpy(stream_name, s->config.name, MAX_STREAM_NAME, 0);
 
     // Note: Database deletion and go2rtc unregistration are handled by the caller
-    // (handle_delete_stream) which calls delete_stream_config_internal() and
-    // go2rtc_integration_unregister_stream() after remove_stream() returns.
+    // (handle_delete_stream), which persists deletion before clearing this slot
+    // and calls go2rtc_integration_unregister_stream() afterwards.
 
     // Clear the stream slot
     pthread_mutex_lock(&s->mutex);

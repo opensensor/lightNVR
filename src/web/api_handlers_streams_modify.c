@@ -2483,18 +2483,20 @@ static void *delete_stream_worker(void *arg) {
         }
     }
 
-    // Delete stream from memory
-    if (remove_stream(stream) != 0) {
-        log_error("Failed to delete stream from memory: %s", task->stream_id);
-        free(task);
-        return NULL;
-    }
-
-    // Delete the stream from the database (permanently or just disable)
+    // Persist deletion before clearing the runtime slot. get_stream_by_name()
+    // reloads missing streams from the database, so clearing memory first lets
+    // a concurrent reader resurrect the camera while its row still exists.
     if (delete_stream_config_internal(task->stream_id, task->permanent_delete) != 0) {
         log_error("Failed to %s stream configuration in database for %s",
                 task->permanent_delete ? "permanently delete" : "disable",
                 task->stream_id);
+        free(task);
+        return NULL;
+    }
+
+    // Delete stream from memory only after the database change succeeds.
+    if (remove_stream(stream) != 0) {
+        log_error("Failed to delete stream from memory: %s", task->stream_id);
         free(task);
         return NULL;
     }
