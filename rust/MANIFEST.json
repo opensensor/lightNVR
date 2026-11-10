@@ -171,9 +171,9 @@
     },
     {
       "c": "src/core/observation_retention.c",
-      "c_sha256": "60fec30b56042d2799175f7bb7b29d38b490da558e550b9de60d8817d0b6bd48",
+      "c_sha256": "6f4b11e31ab9e389250fe928b71ee22d62c24a248c17bdd0a73906d65d13f97a",
       "rust": "generated/src__core__observation_retention.rs",
-      "rust_sha256": "562d245806a553cb094b200dc4e2b311d46b01272d3ac1da7b256ce3bd5df565",
+      "rust_sha256": "e3244547a405c39ec3c2b59fac9404093bc36185dc4d19d537afe146cf78d703",
       "adapted": false
     },
     {
@@ -1284,7 +1284,7 @@
     },
     {
       "c": "src/video/stream_manager.c",
-      "c_sha256": "8a7ba155f5171768bd19288b575872e1c62e8c6b47c900652ea48e053c551911",
+      "c_sha256": "ba5a746926ec439e9909f633a102045ca7e17005b8be7f3b62c5e2bbb33fe71a",
       "rust": "generated/src__video__stream_manager.rs",
       "rust_sha256": "71d9f40b9e3e68260aadd14b865d726189ccb82526b7b3ea4e056d5a490b8a2b",
       "adapted": false
@@ -1718,9 +1718,9 @@
     },
     {
       "c": "src/web/api_handlers_streams_modify.c",
-      "c_sha256": "aa206ab944c6c2d3520a88b4be83cce735ab132e27e90357ddbac8b32bd6d2c4",
+      "c_sha256": "3b262545e1ff91105faffcb99bf9668cccdf1410b77c5d82f1096d81c0eede6b",
       "rust": "generated/src__web__api_handlers_streams_modify.rs",
-      "rust_sha256": "07007e007b588b62625e98ac6d71e3f43ac6108534fceca20ae2dcfad963915a",
+      "rust_sha256": "79bfc3e4e56a5b1a8f0572b3026154058e5dd6cadc77efad08fbd3f983e4230e",
       "adapted": false
     },
     {

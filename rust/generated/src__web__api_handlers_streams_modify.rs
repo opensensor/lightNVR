@@ -6004,17 +6004,6 @@ unsafe extern "C" fn delete_stream_worker(
             );
         }
     }
-    if remove_stream(stream) != 0 as ::core::ffi::c_int {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT.as_ptr(),
-            _log_stream_name,
-            b"Failed to delete stream from memory: %s\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw mut (*task).stream_id as *mut ::core::ffi::c_char,
-        );
-        free(task as *mut ::core::ffi::c_void);
-        return NULL;
-    }
     if delete_stream_config_internal(
         &raw mut (*task).stream_id as *mut ::core::ffi::c_char,
         (*task).permanent_delete,
@@ -6031,6 +6020,17 @@ unsafe extern "C" fn delete_stream_worker(
             } else {
                 b"disable\0".as_ptr() as *const ::core::ffi::c_char
             },
+            &raw mut (*task).stream_id as *mut ::core::ffi::c_char,
+        );
+        free(task as *mut ::core::ffi::c_void);
+        return NULL;
+    }
+    if remove_stream(stream) != 0 as ::core::ffi::c_int {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT.as_ptr(),
+            _log_stream_name,
+            b"Failed to delete stream from memory: %s\0".as_ptr() as *const ::core::ffi::c_char,
             &raw mut (*task).stream_id as *mut ::core::ffi::c_char,
         );
         free(task as *mut ::core::ffi::c_void);

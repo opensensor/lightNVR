@@ -162,6 +162,7 @@ unsafe extern "C" {
         src_size: size_t,
     ) -> ::core::ffi::c_int;
     unsafe fn lightnvr_uuid_is_valid(value: *const ::core::ffi::c_char) -> bool;
+    unsafe fn lightnvr_uuid_generate_v4(output: *mut ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn observation_evidence_set_budget_exhausted(
         camera_uuid: *const ::core::ffi::c_char,
         exhausted: bool,
@@ -720,6 +721,7 @@ pub const CLOCK_REALTIME: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const DAY_MS: ::core::ffi::c_longlong = 86400000 as ::core::ffi::c_longlong;
+pub const OBS_PATH_SIZE: ::core::ffi::c_int = 1024 as ::core::ffi::c_int;
 pub const OBS_WALK_MAX_DEPTH: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
 pub const OBS_PAGE: ::core::ffi::c_int = 256 as ::core::ffi::c_int;
 static mut g_run_mutex: pthread_mutex_t = pthread_mutex_t {
@@ -849,13 +851,9 @@ unsafe extern "C" fn resolve_asset_path(
             .offset(1 as ::core::ffi::c_int as isize);
     } else if strncmp(
         stored,
-        OBS_RETENTION_DIR.as_ptr(),
-        ::core::mem::size_of::<[::core::ffi::c_char; 13]>().wrapping_sub(1 as size_t),
+        b"observations/\0".as_ptr() as *const ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 13]>(),
     ) == 0 as ::core::ffi::c_int
-        && *stored.offset(
-            ::core::mem::size_of::<[::core::ffi::c_char; 13]>().wrapping_sub(1usize) as isize,
-        ) as ::core::ffi::c_int
-            == '/' as ::core::ffi::c_int
     {
         rel = stored.offset(::core::mem::size_of::<[::core::ffi::c_char; 13]>() as isize);
     }
@@ -999,15 +997,6 @@ unsafe extern "C" fn remove_asset_file(
         deleted,
     );
 }
-unsafe extern "C" fn fsync_dir(mut dir: *const ::core::ffi::c_char) -> ::core::ffi::c_int {
-    let mut fd: ::core::ffi::c_int = open(dir, O_RDONLY | O_DIRECTORY);
-    if fd < 0 as ::core::ffi::c_int {
-        return -1 as ::core::ffi::c_int;
-    }
-    let mut rc: ::core::ffi::c_int = fsync(fd);
-    close(fd);
-    return rc;
-}
 unsafe extern "C" fn wall_ms() -> int64_t {
     let mut ts: timespec = timespec {
         tv_sec: 0,
@@ -1051,6 +1040,12 @@ pub unsafe extern "C" fn observation_cursor_head_write(
     {
         return -1 as ::core::ffi::c_int;
     }
+    if strlen(&raw mut root as *mut ::core::ffi::c_char)
+        .wrapping_add(::core::mem::size_of::<[::core::ffi::c_char; 19]>())
+        > OBS_PATH_SIZE as size_t
+    {
+        return -1 as ::core::ffi::c_int;
+    }
     if mkdir_recursive(&raw mut root as *mut ::core::ffi::c_char) != 0 as ::core::ffi::c_int {
         return -1 as ::core::ffi::c_int;
     }
@@ -1062,6 +1057,20 @@ pub unsafe extern "C" fn observation_cursor_head_write(
         epoch_uuid,
         head_seq as ::core::ffi::c_longlong,
     );
+    let mut uuid: [::core::ffi::c_char; 37] = [0; 37];
+    let mut tmp: [::core::ffi::c_char; 60] = [0; 60];
+    if lightnvr_uuid_generate_v4(&raw mut uuid as *mut ::core::ffi::c_char)
+        != 0 as ::core::ffi::c_int
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    snprintf(
+        &raw mut tmp as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 60]>(),
+        b"%s.%s.tmp\0".as_ptr() as *const ::core::ffi::c_char,
+        OBS_CURSOR_HEAD_FILE.as_ptr(),
+        &raw mut uuid as *mut ::core::ffi::c_char,
+    );
     let mut dfd: ::core::ffi::c_int = open(
         &raw mut root as *mut ::core::ffi::c_char,
         O_RDONLY | O_DIRECTORY | O_CLOEXEC,
@@ -1071,7 +1080,7 @@ pub unsafe extern "C" fn observation_cursor_head_write(
     }
     let mut fd: ::core::ffi::c_int = openat(
         dfd,
-        b".cursor_head.json.tmp\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut tmp as *mut ::core::ffi::c_char,
         O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
         0o640 as ::core::ffi::c_int,
     );
@@ -1096,7 +1105,7 @@ pub unsafe extern "C" fn observation_cursor_head_write(
     if rc == 0 as ::core::ffi::c_int
         && renameat(
             dfd,
-            b".cursor_head.json.tmp\0".as_ptr() as *const ::core::ffi::c_char,
+            &raw mut tmp as *mut ::core::ffi::c_char,
             dfd,
             OBS_CURSOR_HEAD_FILE.as_ptr(),
         ) != 0 as ::core::ffi::c_int
@@ -1106,7 +1115,7 @@ pub unsafe extern "C" fn observation_cursor_head_write(
     if rc != 0 as ::core::ffi::c_int {
         unlinkat(
             dfd,
-            b".cursor_head.json.tmp\0".as_ptr() as *const ::core::ffi::c_char,
+            &raw mut tmp as *mut ::core::ffi::c_char,
             0 as ::core::ffi::c_int,
         );
         _log_message_ctx(
@@ -1119,11 +1128,11 @@ pub unsafe extern "C" fn observation_cursor_head_write(
         close(dfd);
         return -1 as ::core::ffi::c_int;
     }
+    rc = fsync(dfd);
     if close(dfd) != 0 as ::core::ffi::c_int {
-        return -1 as ::core::ffi::c_int;
+        rc = -1 as ::core::ffi::c_int;
     }
-    fsync_dir(&raw mut root as *mut ::core::ffi::c_char);
-    return 0 as ::core::ffi::c_int;
+    return rc;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn observation_cursor_head_read(
