@@ -49,6 +49,53 @@ names and supported codec/input presets; raw command fragments, local file/devic
 inputs, and arbitrary filter/query parameters are rejected. The supported synthetic
 `virtual?video=...` test patterns accept only validated pattern parameters.
 
+### Upgrade shows the setup wizard or no recordings
+
+Images including 0.45.1 declared separate Docker `VOLUME` paths for
+`/var/lib/lightnvr/data/database`, `recordings`, and `models`. If your existing
+Compose file binds only the parent `/var/lib/lightnvr/data`, Docker creates
+anonymous volumes at those child paths. They hide the original database and
+recordings, so LightNVR sees an empty installation even after ownership is fixed.
+The host files are not deleted by this mount behavior. See [discussion #946](https://github.com/opensensor/lightNVR/discussions/946).
+
+Inspect the affected container (replace `lightnvr` with its name):
+
+```bash
+docker inspect lightnvr --format '{{range .Mounts}}{{println .Type .Source "->" .Destination}}{{end}}'
+```
+
+A parent `bind` plus child `volume` entries at those three paths confirms the
+mount conflict. Stop the container and back up the original configuration and
+database directory, including any SQLite `-wal` and `-shm` files, before recovery.
+Preserve any new data written into the anonymous volumes as well; do not run
+`docker compose down -v` or prune volumes during recovery.
+
+For an affected image, explicitly bind the existing child directories. For
+example, if `/mnt/user/nvr-recording` is your existing data root and contains
+`database/lightnvr.db`, `recordings/`, and `models/`, use:
+
+```yaml
+volumes:
+  - /mnt/user/appdata/lightnvr/config:/etc/lightnvr
+  - /mnt/user/nvr-recording:/var/lib/lightnvr/data
+  - /mnt/user/nvr-recording/database:/var/lib/lightnvr/data/database
+  - /mnt/user/nvr-recording/recordings:/var/lib/lightnvr/data/recordings
+  - /mnt/user/nvr-recording/models:/var/lib/lightnvr/data/models
+```
+
+Verify these host paths contain the original data before starting; binding a
+missing path creates an empty directory. Keep the existing `[database] path`,
+`[storage] path`, and `mp4_path` in `lightnvr.ini`, and check for a `DB_PATH`
+environment override. Recreate the container to apply the mounts:
+
+```bash
+docker compose up -d --force-recreate lightnvr
+```
+
+A restart alone does not change mounts. Current source declares only the parent
+data volume again, allowing both legacy parent binds and explicit child mounts.
+Containers that already have anonymous child mounts must still be recreated
+with the corrected mounts; updating the image alone may retain those volumes.
 
 *Verified against LightNVR 0.37.x.*
 

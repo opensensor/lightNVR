@@ -472,7 +472,10 @@ USER 10001:10001
 
 # Define volumes for persistent data only
 # Note: Do NOT mount /var/lib/lightnvr directly as it will overwrite web assets
-VOLUME ["/etc/lightnvr", "/var/lib/lightnvr/data/database", "/var/lib/lightnvr/data/recordings", "/var/lib/lightnvr/data/models"]
+# Keep the parent data volume for existing deployments. Declaring child volumes
+# creates anonymous mounts that hide data inside an existing parent bind (#946).
+# Compose can still explicitly mount database, recordings and models separately.
+VOLUME ["/etc/lightnvr", "/var/lib/lightnvr/data"]
 
 # Expose ports
 EXPOSE 8080 8554 8555 8555/udp

@@ -130,8 +130,10 @@ USER 10001:10001
 # Volume for configuration and data persistence
 # /etc/lightnvr - Configuration files
 # /var/lib/lightnvr/data - Persistent data (database, recordings, models, etc.)
+# Declare only the parent: implicit child volumes hide legacy data binds (#946).
+# Explicit child mounts in Compose remain supported.
 VOLUME /etc/lightnvr
-VOLUME /var/lib/lightnvr/data/database /var/lib/lightnvr/data/recordings /var/lib/lightnvr/data/models
+VOLUME /var/lib/lightnvr/data
 
 # Command to start the service
 CMD ["/bin/lightnvr", "-c", "/etc/lightnvr/lightnvr.ini"]
