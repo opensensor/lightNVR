@@ -158,6 +158,10 @@ volumes:
 Then start it:
 
 ```bash
+# The recordings bind mount must be writable by the container's runtime user.
+mkdir -p ./data/recordings
+sudo chown -R 10001:10001 ./data/recordings
+
 # Pull the image and start the container
 docker compose up -d
 
@@ -260,7 +264,7 @@ NFS volumes may have different permission models than local filesystems. If you 
      config:
        driver_opts:
          type: "nfs"
-         o: "nfsvers=4,addr=192.168.1.100,rw,nolock"  # Add nolock if needed
+         o: "nfsvers=4,addr=192.168.1.100,rw"
          device: ":/volume1/docker/lightnvr/config"
    ```
 
