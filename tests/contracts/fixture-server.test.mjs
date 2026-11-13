@@ -29,6 +29,7 @@ test('occupied port fails without disturbing its owner', async () => {
 test('two real servers own independent ports, files and lifetimes', {timeout: 90000}, async () => {
   const fixtures = [];
   let failed = true;
+  let primaryError;
   try {
     // Sequential initialization still leaves both real processes alive together.
     fixtures.push(await startFixture());
@@ -41,14 +42,19 @@ test('two real servers own independent ports, files and lifetimes', {timeout: 90
     assert.equal((await b.json('/api/streams')).length,2);
     await access(b.directory);
     failed = false;
+  } catch (error) {
+    primaryError = error;
   } finally {
     const stopResults = await Promise.allSettled(fixtures.map(fixture => fixture.stop({failed})));
     const stopErrors = stopResults
       .filter(result => result.status === 'rejected')
       .map(result => result.reason);
     if (stopErrors.length > 0) {
-      throw new AggregateError(stopErrors, 'Failed to stop one or more fixtures');
+      throw new AggregateError(primaryError ? [primaryError, ...stopErrors] : stopErrors, 'Failed to stop one or more fixtures');
     }
+  }
+  if (primaryError) {
+    throw primaryError;
   }
 });
 
