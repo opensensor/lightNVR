@@ -240,7 +240,11 @@ test('A5: cursor pages are stable, deduplicated and recover pending -> ready aft
     seen.push(...ids(last));
     cursor = last.next_cursor;
     pages++;
-  } while (last.has_more && pages < 10);
+    if (pages >= 10 && last.has_more) {
+      throw new Error('Pagination did not terminate within 10 pages');
+    }
+  } while (last.has_more);
+  expect(last.has_more).toBe(false);
   expect(seen).toEqual(order);
   expect(last.items.every((item: Json) => item.evidence.state === 'pending')).toBe(true);
   const tail = cursor;
