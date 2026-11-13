@@ -283,7 +283,7 @@ target_link_options(test_floor_plan_background_publication PRIVATE -Wl,--wrap=mk
 set_tests_properties(test_floor_plan_background_publication PROPERTIES TIMEOUT 30)
 add_layer3_test(test_delete_stream_launch_failure CI_UNIT CI_SANITIZER)
 target_link_options(test_delete_stream_launch_failure PRIVATE
-    "-Wl,--wrap=pthread_create" "-Wl,--wrap=free"
+    "-Wl,--wrap=pthread_create" "-Wl,--wrap=pthread_detach" "-Wl,--wrap=free"
     "-Wl,--wrap=delete_stream_config_internal"
     "-Wl,--wrap=go2rtc_integration_full_start"
     "-Wl,--wrap=go2rtc_integration_unregister_stream")

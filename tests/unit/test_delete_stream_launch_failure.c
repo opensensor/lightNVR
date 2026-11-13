@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include "unity.h"
@@ -24,12 +25,14 @@ static unsigned launch_attempts, task_frees;
 static void *failed_task;
 static void *(*captured_worker)(void *);
 static unsigned backend_calls;
+static uintptr_t next_fake_thread = 1, last_fake_thread;
 static stream_handle_t original_stream;
 static stream_config_t original_config, original_persisted;
 static http_request_t request;
 static http_response_t response;
 
 int __real_pthread_create(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);
+int __real_pthread_detach(pthread_t);
 int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
                           void *(*callback)(void *), void *argument) {
     if (!inject_failure && !capture_success) return __real_pthread_create(thread, attr, callback, argument);
@@ -38,8 +41,17 @@ int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
     captured_worker = callback;
     /* Capture a successful handoff without starting a worker in this fixture.
      * These controls test the handler response, not asynchronous completion. */
-    if (capture_success) return 0;
+    if (capture_success) {
+        if (thread == NULL) return EINVAL;
+        last_fake_thread = next_fake_thread++;
+        *thread = (pthread_t)last_fake_thread;
+        return 0;
+    }
     return EAGAIN; /* POSIX failure: callback is never scheduled. */
+}
+int __wrap_pthread_detach(pthread_t thread) {
+    if ((uintptr_t)thread == last_fake_thread && last_fake_thread != 0) return 0;
+    return __real_pthread_detach(thread);
 }
 bool __wrap_go2rtc_integration_full_start(void) { backend_calls++; return false; }
 bool __wrap_go2rtc_integration_unregister_stream(const char *name) {
@@ -75,6 +87,7 @@ void setUp(void) {
     failed_task = NULL;
     captured_worker = NULL;
     backend_calls = 0;
+    last_fake_thread = 0;
     g_config.web_auth_enabled = false;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM streams", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(0, init_stream_state_manager(4));
@@ -219,8 +232,9 @@ static void queued_name_reuse(bool refresh) {
     TEST_ASSERT_NOT_NULL(original_stream);
     TEST_ASSERT_EQUAL_INT(0, get_stream_config(original_stream, &original_config));
     void *task = failed_task;
-    failed_task = NULL;
     captured_worker(task);
+    TEST_ASSERT_EQUAL_UINT(1, task_frees);
+    TEST_ASSERT_NULL(failed_task);
     TEST_ASSERT_EQUAL_UINT(0, backend_calls);
     assert_unchanged();
 }
