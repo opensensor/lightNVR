@@ -166,8 +166,9 @@ static void assert_successful_handoff(bool permanent) {
 }
 static void test_soft_delete_successful_handoff(void) { assert_successful_handoff(false); }
 static void test_permanent_delete_successful_handoff(void) { assert_successful_handoff(true); }
-static void test_reader_during_permanent_delete_cannot_resurrect_camera(void) {
+static void test_reader_at_runtime_database_transition_cannot_resurrect_camera(void) {
     assert_successful_handoff(true);
+    /* Trigger the simulated reader lookup at the delete transition hook used by the worker path. */
     lookup_before_delete = true;
     captured_worker(failed_task);
     lookup_before_delete = false;
@@ -236,7 +237,7 @@ int main(void) {
     if (mkdir(g_config.storage_path, 0700) != 0) return 1;
     if (init_database_ex(path, DB_INIT_NO_CHECK | DB_INIT_NO_BACKUP) != 0) return 1;
     UNITY_BEGIN();
-    RUN_TEST(test_reader_during_permanent_delete_cannot_resurrect_camera);
+    RUN_TEST(test_reader_at_runtime_database_transition_cannot_resurrect_camera);
     RUN_TEST(test_database_delete_failure_keeps_runtime_camera);
     RUN_TEST(test_queued_delete_rejects_reused_camera_name);
     RUN_TEST(test_queued_refresh_rejects_reused_camera_name);
