@@ -492,12 +492,14 @@ and password-authenticated APIs until that succeeds. You then sign in again with
 password; MFA, when enabled, follows on that sign-in.
 
 To avoid the default ever being valid, set `password` in the `[web]` section *before*
-the first start. In the default Compose setup (named volumes), edit/populate
-`/var/lib/lightnvr/data/config/lightnvr.ini` in the config volume. If you want to manage
-config from the host, first switch Compose to a `./config` bind mount, then edit
-`./config/lightnvr.ini`. The admin account is created with that password instead. The
-setting is only read when the account is created; afterwards users are managed from the
-**Users** page.
+the first start. In the default Compose setup (named volumes), set it in
+`/etc/lightnvr/lightnvr.ini` inside the mounted config volume, and make sure that file is
+populated before the container is started for the first time (for example, by starting a
+temporary container with the config volume mounted and writing `lightnvr.ini` there). If
+you want to manage config from the host, first switch Compose to a `./config` bind mount,
+then edit `./config/lightnvr.ini`. The admin account is created with that password
+instead. The setting is only read when the account is created; afterwards users are
+managed from the **Users** page.
 
 Existing accounts are not flagged during an upgrade. API-key authentication and demo
 mode remain available while a freshly bootstrapped administrator is awaiting a password
@@ -521,7 +523,7 @@ webrtc:
 
 ### Customizing WebRTC
 
-Edit `./config/go2rtc/go2rtc.yaml`:
+Edit `/etc/lightnvr/go2rtc/go2rtc.yaml` in the container's named config volume (for example via `docker compose exec`):
 
 ```yaml
 webrtc:
@@ -534,6 +536,8 @@ webrtc:
   candidates:
     - "YOUR_PUBLIC_IP:8555"
 ```
+
+If you intentionally switched Compose to use a prepared host `./config` bind mount, edit `./config/go2rtc/go2rtc.yaml` instead.
 
 Restart the container to apply changes:
 ```bash
@@ -718,6 +722,9 @@ docker compose down
 # the web assets. Only the first three should persist.
 mkdir -p ./data
 mv ./old-volume/database ./old-volume/recordings ./old-volume/models ./data/ 2>/dev/null
+
+# Ensure migrated content is writable by the non-root runtime user (UID:GID 10001:10001)
+sudo chown -R 10001:10001 ./data
 
 # Then point the volume at the data subdirectory:
 #   - ./data:/var/lib/lightnvr/data
