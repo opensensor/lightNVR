@@ -41,7 +41,15 @@ test('two real servers own independent ports, files and lifetimes', {timeout: 90
     assert.equal((await b.json('/api/streams')).length,2);
     await access(b.directory);
     failed = false;
-  } finally { for (const fixture of fixtures) await fixture.stop({failed}); }
+  } finally {
+    const stopResults = await Promise.allSettled(fixtures.map(fixture => fixture.stop({failed})));
+    const stopErrors = stopResults
+      .filter(result => result.status === 'rejected')
+      .map(result => result.reason);
+    if (stopErrors.length > 0) {
+      throw new AggregateError(stopErrors, 'Failed to stop one or more fixtures');
+    }
+  }
 });
 
 test('startup failures retain diagnostic directory', async () => {
