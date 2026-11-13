@@ -5,6 +5,7 @@ ARG LIBUV_VERSION=1.53.0
 ARG LLHTTP_VERSION=9.4.3
 ARG SQLITE_TGZ_SHA256=926ef8d3eab93fbf6e06011901273eec076b25594a4e1cdadd50c987f4f6d64e
 ARG LIBUV_TGZ_SHA256=279f3f67a24bb9921fe999ca6cd5e332fade8d515873ef9ba054b70e70a31d9e
+ARG LLHTTP_TGZ_SHA256=1eb813c7437b31a87496a1cd3ed79f00746720f5e7e29c79b42c02cb69f36c39
 
 FROM alpine:3.24 AS builder
 
@@ -14,6 +15,7 @@ ARG LIBUV_VERSION
 ARG LLHTTP_VERSION
 ARG SQLITE_TGZ_SHA256
 ARG LIBUV_TGZ_SHA256
+ARG LLHTTP_TGZ_SHA256
 
 RUN apk add --no-cache \
     git cmake build-base pkgconfig \
@@ -50,18 +52,18 @@ RUN cd /tmp && \
     pkg-config --modversion libuv
 
 # Build upstream llhttp so container builds use the latest parser without relying on distro lag
-RUN mkdir -p /tmp/llhttp/include /tmp/llhttp/src /usr/include && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/include/llhttp.h" -O /tmp/llhttp/include/llhttp.h && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/llhttp.c" -O /tmp/llhttp/src/llhttp.c && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/api.c" -O /tmp/llhttp/src/api.c && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/http.c" -O /tmp/llhttp/src/http.c && \
-    cc -O2 -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/llhttp.c -o /tmp/llhttp/llhttp.o && \
-    cc -O2 -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/api.c -o /tmp/llhttp/api.o && \
-    cc -O2 -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/http.c -o /tmp/llhttp/http.o && \
-    cc -shared -Wl,-soname,libllhttp.so.9 -o /usr/lib/libllhttp.so.${LLHTTP_VERSION} /tmp/llhttp/llhttp.o /tmp/llhttp/api.o /tmp/llhttp/http.o && \
+RUN cd /tmp && \
+    wget -q "https://github.com/nodejs/llhttp/archive/refs/tags/release/v${LLHTTP_VERSION}.tar.gz" -O llhttp.tar.gz && \
+    echo "${LLHTTP_TGZ_SHA256}  llhttp.tar.gz" | sha256sum -c - && \
+    tar -xzf llhttp.tar.gz && \
+    cd "llhttp-release-v${LLHTTP_VERSION}" && \
+    cc -O2 -fPIC -Iinclude -c src/llhttp.c -o /tmp/llhttp.o && \
+    cc -O2 -fPIC -Iinclude -c src/api.c -o /tmp/api.o && \
+    cc -O2 -fPIC -Iinclude -c src/http.c -o /tmp/http.o && \
+    cc -shared -Wl,-soname,libllhttp.so.9 -o /usr/lib/libllhttp.so.${LLHTTP_VERSION} /tmp/llhttp.o /tmp/api.o /tmp/http.o && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so.9 && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so && \
-    install -m 644 /tmp/llhttp/include/llhttp.h /usr/include/llhttp.h && \
+    install -m 644 include/llhttp.h /usr/include/llhttp.h && \
     printf 'prefix=/usr\nexec_prefix=${prefix}\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: libllhttp\nDescription: llhttp parser\nVersion: %s\nLibs: -L${libdir} -lllhttp\nCflags: -I${includedir}\n' "$LLHTTP_VERSION" > /usr/lib/pkgconfig/libllhttp.pc && \
     pkg-config --modversion libllhttp
 
