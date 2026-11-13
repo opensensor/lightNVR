@@ -51,14 +51,20 @@ test('startup failures retain diagnostic directory', async () => {
 test('startup errors include native logs before a fixture can be returned', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'lightnvr-startup-test-'));
   const binary = path.join(directory, 'exit-during-startup');
+  let retainedDirectory;
   try {
     await writeFile(binary, '#!/bin/sh\necho "native startup diagnostic" >&2\nexit 0\n', {mode: 0o700});
     await assert.rejects(startFixture({binary}), error => {
       assert.match(error.message, /Server exited during startup \(0\/null\)/);
       assert.match(error.message, /Native startup log:\nnative startup diagnostic/);
+      const marker = '; fixture: ';
+      if (error.message.includes(marker)) retainedDirectory = error.message.slice(error.message.lastIndexOf(marker) + marker.length);
       return true;
     });
-  } finally { await rm(directory, {recursive: true, force: true}); }
+  } finally {
+    await rm(directory, {recursive: true, force: true});
+    if (retainedDirectory) await rm(retainedDirectory, {recursive: true, force: true});
+  }
 });
 
 test('unexpected native signal is reported as failure and retains logs', {timeout: 45000}, async () => {
