@@ -540,7 +540,7 @@ webrtc:
     - urls: [stun:stun.l.google.com:19302]
   candidates:
     - "*:8555"
-    - stun:stun.l.google.com:19302
+    - stun:8555
 ```
 
 ### Customizing WebRTC
