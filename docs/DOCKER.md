@@ -307,11 +307,11 @@ volumes:
       o: "nfsvers=4,addr=${IpAddressNFS},rw"
       device: ":/${NFSVolumePath}/${SystemId}/lightnvr-config"
 
-  data:
+  recordings:
     driver_opts:
       type: "nfs"
       o: "nfsvers=4,addr=${IpAddressNFS},rw"
-      device: ":/${NFSVolumePath}/${SystemId}/lightnvr-data"
+      device: ":/${NFSVolumePath}/${SystemId}/lightnvr-recordings"
 ```
 
 **Note**: `nolock` is not a fix for filesystem ownership or permission errors, and it does not disable NFSv4 locking. If you see permission issues, verify UID:GID mapping (`10001:10001`), NFS export permissions, and server-side ACLs on the NAS.
