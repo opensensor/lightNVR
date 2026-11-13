@@ -3,6 +3,9 @@ ARG SQLITE_YEAR=2026
 ARG SQLITE_AUTOCONF_VERSION=3540100
 ARG LIBUV_VERSION=1.53.0
 ARG LLHTTP_VERSION=9.4.3
+ARG SQLITE_TGZ_SHA256
+ARG LIBUV_TGZ_SHA256
+ARG LLHTTP_TGZ_SHA256
 
 FROM alpine:3.24 AS builder
 
@@ -10,6 +13,9 @@ ARG SQLITE_YEAR
 ARG SQLITE_AUTOCONF_VERSION
 ARG LIBUV_VERSION
 ARG LLHTTP_VERSION
+ARG SQLITE_TGZ_SHA256
+ARG LIBUV_TGZ_SHA256
+ARG LLHTTP_TGZ_SHA256
 
 RUN apk update && apk add --no-cache \
     git cmake build-base pkgconfig \
@@ -25,7 +31,8 @@ RUN apk update && apk add --no-cache \
 
 # Build upstream SQLite because Alpine stable can lag the latest SQLite security fixes
 RUN cd /tmp && \
-    wget -q "https://www.sqlite.org/${SQLITE_YEAR}/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" && \
+    wget -q "https://www.sqlite.org/${SQLITE_YEAR}/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" -O "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" && \
+    echo "${SQLITE_TGZ_SHA256}  sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" | sha256sum -c - && \
     tar -xzf "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" && \
     cd "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}" && \
     ./configure --prefix=/usr --disable-static && \
@@ -36,6 +43,7 @@ RUN cd /tmp && \
 # Build upstream libuv because distro packages can lag the latest stable release
 RUN cd /tmp && \
     wget -q "https://github.com/libuv/libuv/archive/refs/tags/v${LIBUV_VERSION}.tar.gz" -O libuv.tar.gz && \
+    echo "${LIBUV_TGZ_SHA256}  libuv.tar.gz" | sha256sum -c - && \
     tar -xzf libuv.tar.gz && \
     cd "libuv-${LIBUV_VERSION}" && \
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr && \
