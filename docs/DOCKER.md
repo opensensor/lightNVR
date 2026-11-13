@@ -521,7 +521,7 @@ webrtc:
 
 ### Customizing WebRTC
 
-Edit `./config/go2rtc/go2rtc.yaml`:
+Edit `/etc/lightnvr/go2rtc/go2rtc.yaml` in the container's named config volume (for example via `docker compose exec`):
 
 ```yaml
 webrtc:
@@ -534,6 +534,8 @@ webrtc:
   candidates:
     - "YOUR_PUBLIC_IP:8555"
 ```
+
+If you intentionally switched Compose to use a prepared host `./config` bind mount, edit `./config/go2rtc/go2rtc.yaml` instead.
 
 Restart the container to apply changes:
 ```bash
