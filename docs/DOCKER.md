@@ -35,8 +35,9 @@ take effect only when the container starts as root. In recordings, only director
 changed: segments written by root stay root-owned but remain readable and can be
 deleted by retention. This run needs the default `CHOWN`, `DAC_OVERRIDE`, `FOWNER`,
 `SETUID` and `SETGID` capabilities, so do not combine it with `cap_drop: ALL`. NFS exports
-with `root_squash` must be fixed on the server. Remove `user: "0:0"` afterwards
-to return to a start without root.
+with `root_squash` must be fixed on the server. Afterwards, stop starting as root:
+if you use the default runtime IDs, remove `user: "0:0"`; if you set custom
+`PUID`/`PGID`, replace it with `user: "<PUID>:<PGID>"` (for example `user: "99:100"`).
 
 Change an existing `pid_file = /var/run/lightnvr.pid` to
 `pid_file = /var/run/lightnvr/lightnvr.pid` in `lightnvr.ini`.
@@ -490,10 +491,13 @@ the default password to be replaced immediately after login and blocks the rest 
 and password-authenticated APIs until that succeeds. You then sign in again with the new
 password; MFA, when enabled, follows on that sign-in.
 
-To avoid the default ever being valid, set `password` in the `[web]` section of
-`config/lightnvr.ini` *before* the first start — the admin account is then created with
-that password instead. The setting is only read when the account is created; afterwards
-users are managed from the **Users** page.
+To avoid the default ever being valid, set `password` in the `[web]` section *before*
+the first start. In the default Compose setup (named volumes), edit/populate
+`/var/lib/lightnvr/data/config/lightnvr.ini` in the config volume. If you want to manage
+config from the host, first switch Compose to a `./config` bind mount, then edit
+`./config/lightnvr.ini`. The admin account is created with that password instead. The
+setting is only read when the account is created; afterwards users are managed from the
+**Users** page.
 
 Existing accounts are not flagged during an upgrade. API-key authentication and demo
 mode remain available while a freshly bootstrapped administrator is awaiting a password
@@ -540,8 +544,9 @@ docker compose restart
 
 If running behind NAT/firewall, forward these ports:
 
-- **8555/TCP** - WebRTC signaling
-- **8555/UDP** - WebRTC media
+- **8555/TCP** - WebRTC media (ICE-TCP fallback)
+- **8555/UDP** - WebRTC media (preferred ICE transport)
+- **Dashboard HTTP(S) port** (for example `8080`, or your reverse-proxy HTTPS port) - WebRTC signaling via LightNVR's authenticated proxy
 
 ## Troubleshooting
 
@@ -734,6 +739,10 @@ git submodule update --init --recursive
 
 # Build image
 docker build --pull -t lightnvr:local .
+
+# Prepare bind-mount directories for non-root runtime (UID:GID 10001:10001)
+mkdir -p ./config ./data
+sudo chown -R 10001:10001 ./config ./data
 
 # Run locally built image
 docker run -d \
