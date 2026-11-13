@@ -30,7 +30,7 @@ jobs:
     name: Check documentation links
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check links and referenced paths
         run: python3 scripts/check_docs_links.py
