@@ -252,10 +252,12 @@ test('A5: cursor pages are stable, deduplicated and recover pending -> ready aft
   expect(decodeCursor(tail).seq).toBe(meta(server).head);
 
   // Filtered walk (camera A only): B's change is scanned and skipped, so cursors still advance.
+  const trailingExcluded = seedObservation(server, {camera: B, state: 'pending', observedAt: Date.now() - 59000});
   const filtered = await page(server, `?camera_uuid=${A}&limit=10`);
-  expect(ids(filtered)).toEqual(order.filter((_, i) => i !== 2));
-  expect(filtered.next_cursor).toBe(tail);
+  expect(ids(filtered)).toEqual([...order, trailingExcluded.observation].filter((id, i) => i !== 2 && id !== trailingExcluded.observation));
+  expect(decodeCursor(filtered.next_cursor).seq).toBe(meta(server).head);
   expect(filtered.has_more).toBe(false);
+  expect(await page(server, `?cursor=${filtered.next_cursor}`)).toEqual({items: [], next_cursor: filtered.next_cursor, has_more: false});
 
   // Nothing new: an empty page that keeps the cursor. `head` starts at the same place.
   const idle = await page(server, `?cursor=${tail}`);
