@@ -655,11 +655,17 @@ environment:
 
 ### Custom Configuration Path
 
-Mount a custom config file. Before first start, prepare the bind-mounted data directory for UID:GID `10001:10001`:
+Mount a custom config file. Before first start, prepare both bind-mounted paths for UID:GID `10001:10001`:
 
 ```bash
 mkdir -p ./data
 sudo chown -R 10001:10001 ./data
+
+# Create the custom config file before mounting it with -v
+sudo install -o 10001 -g 10001 -m 640 /dev/null /path/to/custom/lightnvr.ini
+# If the file already exists, fix ownership/permissions instead:
+# sudo chown 10001:10001 /path/to/custom/lightnvr.ini
+# sudo chmod 640 /path/to/custom/lightnvr.ini
 ```
 
 ```bash
