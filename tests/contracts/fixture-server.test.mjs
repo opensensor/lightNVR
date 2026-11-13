@@ -3,11 +3,26 @@ import assert from 'node:assert/strict';
 import {access, mkdtemp, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import net from 'node:net';
 import {reservePort, startFixture} from './fixture-server.mjs';
+
+async function assertAcceptsConnection(port) {
+  await new Promise((resolve, reject) => {
+    const socket = net.connect({host: '127.0.0.1', port});
+    socket.once('connect', () => {
+      socket.end();
+      resolve();
+    });
+    socket.once('error', reject);
+  });
+}
 
 test('occupied port fails without disturbing its owner', async () => {
   const owner = await reservePort();
-  try { await assert.rejects(startFixture({port: owner.port}), /EADDRINUSE/); }
+  try {
+    await assert.rejects(startFixture({port: owner.port}), /EADDRINUSE/);
+    await assertAcceptsConnection(owner.port);
+  }
   finally { await owner.release(); }
 });
 
@@ -51,14 +66,24 @@ test('startup failures retain diagnostic directory', async () => {
 test('startup errors include native logs before a fixture can be returned', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'lightnvr-startup-test-'));
   const binary = path.join(directory, 'exit-during-startup');
+  let retainedDirectory;
   try {
     await writeFile(binary, '#!/bin/sh\necho "native startup diagnostic" >&2\nexit 0\n', {mode: 0o700});
     await assert.rejects(startFixture({binary}), error => {
       assert.match(error.message, /Server exited during startup \(0\/null\)/);
       assert.match(error.message, /Native startup log:\nnative startup diagnostic/);
+      const match = error.message.match(/; fixture: ([^\n]+)/);
+      assert.ok(match);
+      retainedDirectory = match[1];
+      assert.equal(path.dirname(retainedDirectory), path.resolve(tmpdir()));
+      assert.match(path.basename(retainedDirectory), /^lightnvr-contract-[A-Za-z0-9]+$/);
       return true;
     });
-  } finally { await rm(directory, {recursive: true, force: true}); }
+    await access(retainedDirectory);
+  } finally {
+    await rm(directory, {recursive: true, force: true});
+    if (retainedDirectory) await rm(retainedDirectory, {recursive: true, force: true});
+  }
 });
 
 test('unexpected native signal is reported as failure and retains logs', {timeout: 45000}, async () => {
