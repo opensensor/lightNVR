@@ -207,6 +207,7 @@ test('A8: pending, expired, unavailable, unknown and expired-cursor outcomes are
   // Resuming from oldest_cursor works and never re-serves the pruned gap.
   const resumed = await page(server, `?cursor=${c.body.oldest_cursor}`);
   expect(resumed.items.length).toBeGreaterThan(0);
+  expect(ids(resumed)).toEqual([expired.observation, unavailable.observation, ready.observation]);
 
   const invalid = await error(server, '/api/observations?cursor=not-a-cursor');
   expect(invalid.status).toBe(400);
@@ -240,7 +241,11 @@ test('A5: cursor pages are stable, deduplicated and recover pending -> ready aft
     seen.push(...ids(last));
     cursor = last.next_cursor;
     pages++;
-  } while (last.has_more && pages < 10);
+    if (pages >= 10 && last.has_more) {
+      throw new Error('Pagination did not terminate within 10 pages');
+    }
+  } while (last.has_more);
+  expect(last.has_more).toBe(false);
   expect(seen).toEqual(order);
   expect(last.items.every((item: Json) => item.evidence.state === 'pending')).toBe(true);
   const tail = cursor;
