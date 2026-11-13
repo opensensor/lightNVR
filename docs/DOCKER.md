@@ -551,20 +551,16 @@ If running behind NAT/firewall, forward these ports:
 
 **Causes:**
 1. Mounted `/var/lib/lightnvr` directly (overwrote web assets)
-2. Web assets not copied during initialization
 
 **Solution:**
 ```bash
-# Stop container
+# Stop and remove container so mount changes apply cleanly
 docker compose down
 
-# Remove incorrect volume mount
-# Edit docker-compose.yml to use /var/lib/lightnvr/data instead
+# Fix incorrect volume mount
+# Edit docker-compose.yml to use /var/lib/lightnvr/data instead of /var/lib/lightnvr
 
-# Remove web directory to force re-initialization
-rm -rf ./data/web
-
-# Start container
+# Recreate container with corrected mounts
 docker compose up -d
 ```
 
