@@ -35,8 +35,9 @@ take effect only when the container starts as root. In recordings, only director
 changed: segments written by root stay root-owned but remain readable and can be
 deleted by retention. This run needs the default `CHOWN`, `DAC_OVERRIDE`, `FOWNER`,
 `SETUID` and `SETGID` capabilities, so do not combine it with `cap_drop: ALL`. NFS exports
-with `root_squash` must be fixed on the server. Remove `user: "0:0"` afterwards
-to return to a start without root.
+with `root_squash` must be fixed on the server. Afterwards, stop starting as root:
+if you use the default runtime IDs, remove `user: "0:0"`; if you set custom
+`PUID`/`PGID`, replace it with `user: "<PUID>:<PGID>"` (for example `user: "99:100"`).
 
 Change an existing `pid_file = /var/run/lightnvr.pid` to
 `pid_file = /var/run/lightnvr/lightnvr.pid` in `lightnvr.ini`.
