@@ -27,7 +27,7 @@ jobs:
       from_tag: ${{ steps.generate.outputs.from_tag }}
       to_tag: ${{ steps.generate.outputs.to_tag }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           filter: blob:none

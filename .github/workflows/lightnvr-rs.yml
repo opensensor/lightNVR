@@ -52,7 +52,7 @@ jobs:
     env:
       SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Test exactly the commit associated with this run. A queued run must
           # not certify a newer branch head; pushes below use explicit refspecs.
