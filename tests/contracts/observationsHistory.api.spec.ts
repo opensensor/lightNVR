@@ -207,8 +207,7 @@ test('A8: pending, expired, unavailable, unknown and expired-cursor outcomes are
   // Resuming from oldest_cursor works and never re-serves the pruned gap.
   const resumed = await page(server, `?cursor=${c.body.oldest_cursor}`);
   expect(resumed.items.length).toBeGreaterThan(0);
-  const resumedFrom = decodeCursor(c.body.oldest_cursor);
-  expect(resumed.items[0].seq).toBeGreaterThan(resumedFrom.seq);
+  expect(ids(resumed)).toEqual([expired.observation, unavailable.observation, ready.observation]);
 
   const invalid = await error(server, '/api/observations?cursor=not-a-cursor');
   expect(invalid.status).toBe(400);
