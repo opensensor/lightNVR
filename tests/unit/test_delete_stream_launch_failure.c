@@ -121,13 +121,13 @@ void tearDown(void) {
     g_config.web_auth_enabled = false;
 }
 static void assert_unchanged(void) {
+    TEST_ASSERT_EQUAL_INT(1, get_total_stream_count());
     TEST_ASSERT_EQUAL_PTR(original_stream, get_stream_by_name(original_config.name));
     stream_config_t runtime = {0}, persisted = {0};
     TEST_ASSERT_EQUAL_INT(0, get_stream_config(original_stream, &runtime));
     TEST_ASSERT_EQUAL_MEMORY(&original_config, &runtime, sizeof(runtime));
     TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(original_config.name, &persisted));
     TEST_ASSERT_EQUAL_MEMORY(&original_persisted, &persisted, sizeof(persisted));
-    TEST_ASSERT_EQUAL_INT(1, get_total_stream_count());
 }
 static void assert_failed_launch(bool permanent) {
     strcpy(request.query_string, permanent ? "permanent=true" : "");
