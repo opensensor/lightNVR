@@ -655,7 +655,12 @@ environment:
 
 ### Custom Configuration Path
 
-Mount a custom config file:
+Mount a custom config file. Before first start, prepare the bind-mounted data directory for UID:GID `10001:10001`:
+
+```bash
+mkdir -p ./data
+sudo chown -R 10001:10001 ./data
+```
 
 ```bash
 docker run -d \
