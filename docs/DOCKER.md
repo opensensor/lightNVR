@@ -746,7 +746,7 @@ docker compose down
 # Your old volume held database/, recordings/ and models/ at its root, alongside
 # the web assets. Only the first three should persist.
 mkdir -p ./data
-mv ./old-volume/database ./old-volume/recordings ./old-volume/models ./data/ 2>/dev/null
+sudo mv ./old-volume/database ./old-volume/recordings ./old-volume/models ./data/ || exit 1
 
 # Ensure migrated content is writable by the non-root runtime user (UID:GID 10001:10001)
 sudo chown -R 10001:10001 ./data
