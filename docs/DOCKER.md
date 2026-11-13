@@ -98,7 +98,7 @@ data volume again, allowing both legacy parent binds and explicit child mounts.
 Containers that already have anonymous child mounts must still be recreated
 with the corrected mounts; updating the image alone may retain those volumes.
 
-*Verified against LightNVR 0.37.x.*
+*Verified against LightNVR 0.45.1 (including 0.44+ runtime and volume behavior changes).*
 
 This guide provides comprehensive information about deploying LightNVR using Docker.
 
@@ -584,12 +584,17 @@ docker compose up -d
 
 **Solution:**
 ```bash
-# Verify volume mounts
-docker inspect lightnvr | grep -A 10 Mounts
+# Verify volume mounts (shows each source -> destination mount)
+docker inspect -f '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' lightnvr
 
-# Should show:
-# /etc/lightnvr
-# /var/lib/lightnvr/data
+# A healthy deployment can use either layout:
+# 1) Recommended split mounts:
+#    /etc/lightnvr
+#    /var/lib/lightnvr/data/database
+#    /var/lib/lightnvr/data/recordings
+#    /var/lib/lightnvr/data/models
+# 2) Legacy parent data mount:
+#    /etc/lightnvr and /var/lib/lightnvr/data
 ```
 
 ### WebRTC Not Working
@@ -655,11 +660,14 @@ environment:
 
 ### Custom Configuration Path
 
-Mount a custom config file. Before first start, prepare the bind-mounted data directory for UID:GID `10001:10001`:
+Mount an existing custom config file. Before first start, prepare both bind-mounted paths for UID:GID `10001:10001`. The source file must contain a valid LightNVR configuration; an empty file prevents the entrypoint from creating its default configuration.
 
 ```bash
 mkdir -p ./data
 sudo chown -R 10001:10001 ./data
+
+# Copy your existing config to the bind-mount source. -D creates its parent directory.
+sudo install -D -o 10001 -g 10001 -m 640 /path/to/existing/lightnvr.ini /path/to/custom/lightnvr.ini
 ```
 
 ```bash
