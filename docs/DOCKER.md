@@ -719,6 +719,9 @@ docker compose down
 mkdir -p ./data
 mv ./old-volume/database ./old-volume/recordings ./old-volume/models ./data/ 2>/dev/null
 
+# Ensure migrated content is writable by the non-root runtime user (UID:GID 10001:10001)
+sudo chown -R 10001:10001 ./data
+
 # Then point the volume at the data subdirectory:
 #   - ./data:/var/lib/lightnvr/data
 docker compose up -d
