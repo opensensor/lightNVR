@@ -166,8 +166,9 @@ static void assert_successful_handoff(bool permanent) {
 }
 static void test_soft_delete_successful_handoff(void) { assert_successful_handoff(false); }
 static void test_permanent_delete_successful_handoff(void) { assert_successful_handoff(true); }
-static void test_reader_during_permanent_delete_cannot_resurrect_camera(void) {
+static void test_reader_at_runtime_database_transition_cannot_resurrect_camera(void) {
     assert_successful_handoff(true);
+    /* Trigger the simulated reader lookup at the delete transition hook used by the worker path. */
     lookup_before_delete = true;
     captured_worker(failed_task);
     lookup_before_delete = false;
