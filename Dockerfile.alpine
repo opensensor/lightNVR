@@ -15,7 +15,7 @@ ARG LLHTTP_VERSION
 ARG SQLITE_TGZ_SHA256
 ARG LIBUV_TGZ_SHA256
 
-RUN apk update && apk add --no-cache \
+RUN apk add --no-cache \
     git cmake build-base pkgconfig \
     ffmpeg-dev \
     curl-dev \
