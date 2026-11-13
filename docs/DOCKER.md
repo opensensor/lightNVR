@@ -284,12 +284,12 @@ If recordings are not being created:
 1. **Check write permissions**: The container logs will show write permission test results on startup
 2. **Verify NFS mount**: Ensure the NFS volume is actually mounted inside the container:
    ```bash
-   docker exec lightnvr-latest ls -la /var/lib/lightnvr/data/recordings/mp4
+   docker exec lightnvr ls -la /var/lib/lightnvr/data/recordings/mp4
    ```
 3. **Check available space**: Ensure your NAS has sufficient free space
 4. **Review logs**: Check for "Failed to open input" or "Operation not permitted" errors:
    ```bash
-   docker logs lightnvr-latest | grep -i error
+   docker logs lightnvr | grep -i error
    ```
 
 #### Example NFS Configuration
@@ -601,12 +601,14 @@ docker inspect lightnvr | grep -A 10 Mounts
 
 **Solution:**
 
-The most common fix is setting your host machine's local IP as `external_ip` in `./config/lightnvr.ini`:
+The most common fix is setting your host machine's local IP as `external_ip` in `/etc/lightnvr/lightnvr.ini` (default Compose/named-volume setup):
 
 ```ini
 [go2rtc]
 external_ip = 192.168.1.100  ; Replace with your machine's local IP
 ```
+
+If your deployment explicitly bind-mounts `./config` to `/etc/lightnvr`, edit `./config/lightnvr.ini` on the host instead.
 
 To find your local IP:
 ```bash
@@ -661,6 +663,13 @@ docker run -d \
 ```
 
 ### Running Multiple Instances
+
+Before starting, create the bind-mount directories and set ownership for the non-root runtime user:
+
+```bash
+mkdir -p ./config-1 ./data-1 ./config-2 ./data-2
+sudo chown -R 10001:10001 ./config-1 ./data-1 ./config-2 ./data-2
+```
 
 ```yaml
 services:
