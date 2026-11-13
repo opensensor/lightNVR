@@ -219,8 +219,9 @@ static void queued_name_reuse(bool refresh) {
     TEST_ASSERT_NOT_NULL(original_stream);
     TEST_ASSERT_EQUAL_INT(0, get_stream_config(original_stream, &original_config));
     void *task = failed_task;
-    failed_task = NULL;
     captured_worker(task);
+    TEST_ASSERT_EQUAL_UINT(1, task_frees);
+    TEST_ASSERT_NULL(failed_task);
     TEST_ASSERT_EQUAL_UINT(0, backend_calls);
     assert_unchanged();
 }
