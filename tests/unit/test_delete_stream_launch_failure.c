@@ -237,7 +237,7 @@ int main(void) {
     if (mkdir(g_config.storage_path, 0700) != 0) return 1;
     if (init_database_ex(path, DB_INIT_NO_CHECK | DB_INIT_NO_BACKUP) != 0) return 1;
     UNITY_BEGIN();
-    RUN_TEST(test_reader_during_permanent_delete_cannot_resurrect_camera);
+    RUN_TEST(test_reader_at_runtime_database_transition_cannot_resurrect_camera);
     RUN_TEST(test_database_delete_failure_keeps_runtime_camera);
     RUN_TEST(test_queued_delete_rejects_reused_camera_name);
     RUN_TEST(test_queued_refresh_rejects_reused_camera_name);
