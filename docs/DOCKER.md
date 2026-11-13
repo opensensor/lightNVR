@@ -735,6 +735,10 @@ git submodule update --init --recursive
 # Build image
 docker build --pull -t lightnvr:local .
 
+# Prepare bind-mount directories for non-root runtime (UID:GID 10001:10001)
+mkdir -p ./config ./data
+sudo chown -R 10001:10001 ./config ./data
+
 # Run locally built image
 docker run -d \
   --name lightnvr \
