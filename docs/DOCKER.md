@@ -7,9 +7,9 @@ WebRTC, MSE, HLS and snapshots use LightNVR’s authenticated proxy on the dashb
 For HTTPS, follow [Reverse Proxy](REVERSE_PROXY.md). The gateway only needs access to
 LightNVR's web port; it does not need to share go2rtc's network namespace.
 
-The repository Compose file uses named volumes for config, database, models, and
-recordings. Existing deployments must retain or migrate their config, database, and
-models before switching volume layouts; otherwise
+The repository Compose file uses named volumes for config, database, and models,
+and a bind mount only for `./data/recordings`. Before the first start, prepare that
+recordings directory for UID:GID 10001:10001. Existing deployments must retain or
 migrate their config, database, and models before switching volume layouts; otherwise
 Docker creates empty volumes and the recorder appears unconfigured. Stop the recorder
 and back up the data before migrating. You can keep existing mounts during migration,
