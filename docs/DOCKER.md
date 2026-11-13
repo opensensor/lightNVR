@@ -98,7 +98,7 @@ data volume again, allowing both legacy parent binds and explicit child mounts.
 Containers that already have anonymous child mounts must still be recreated
 with the corrected mounts; updating the image alone may retain those volumes.
 
-*Verified against LightNVR 0.37.x.*
+*Verified against LightNVR 0.45.1 (including 0.44+ runtime and volume behavior changes).*
 
 This guide provides comprehensive information about deploying LightNVR using Docker.
 
