@@ -275,13 +275,20 @@ test('A5: cursor pages are stable, deduplicated and recover pending -> ready aft
   expect(ready.status).toBe(200);
   expect(ready.bytes.equals(bytes)).toBe(true);
 
-  // limit counts observations after dedup: limit 1 returns one observation even though
-  // the page would otherwise have to include its later changes.
-  const one = await page(server, `?cursor=${tail}&limit=1`);
-  expect(ids(one)).toEqual([seeded[1].observation]);
-  expect(one.has_more).toBe(true);
-  const rest = await page(server, `?cursor=${one.next_cursor}&limit=10`);
-  expect(ids(rest)).toEqual([seeded[3], seeded[4]].map(s => s.observation));
+  // limit counts observations after dedup: walk with limit 1 across page boundaries
+  // and ensure each recovered observation appears exactly once.
+  const expectedRecoveredIds = [seeded[1], seeded[3], seeded[4]].map(s => s.observation);
+  const seenRecoveredIds: string[] = [];
+  let recoveryCursor = tail;
+  for (let i = 0; i < expectedRecoveredIds.length; i++) {
+    const p = await page(server, `?cursor=${recoveryCursor}&limit=1`);
+    expect(ids(p).length).toBe(1);
+    seenRecoveredIds.push(ids(p)[0]);
+    recoveryCursor = p.next_cursor;
+    expect(p.has_more).toBe(i < expectedRecoveredIds.length - 1);
+  }
+  expect(seenRecoveredIds).toEqual(expectedRecoveredIds);
+  expect(decodeCursor(recoveryCursor).seq).toBe(meta(server).head);
 
   // Re-reading from the beginning still yields every observation once (current state).
   const replay = await page(server, '?limit=500');
