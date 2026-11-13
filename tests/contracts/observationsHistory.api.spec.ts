@@ -101,6 +101,7 @@ test('A7: list, get and snapshot are isolated per camera for policies and scoped
   const imageOnly = await viewerOf(server, 'image_only', A, ['snapshot.create']);
   expect(ids(await page(server, '', imageOnly))).toEqual([]);
   expect((await error(server, `/api/observations/${onA.observation}`, imageOnly)).status).toBe(404);
+  expect((await snapshot(server, onA.observation, imageOnly)).json).toEqual(unknown.body);
 });
 
 test('A7: rename, delete and name reuse never transfer observation access', async ({server}) => {
