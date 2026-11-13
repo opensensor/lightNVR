@@ -72,10 +72,14 @@ test('startup errors include native logs before a fixture can be returned', asyn
     await assert.rejects(startFixture({binary}), error => {
       assert.match(error.message, /Server exited during startup \(0\/null\)/);
       assert.match(error.message, /Native startup log:\nnative startup diagnostic/);
-      const marker = '; fixture: ';
-      if (error.message.includes(marker)) retainedDirectory = error.message.slice(error.message.lastIndexOf(marker) + marker.length);
+      const match = error.message.match(/; fixture: ([^\n]+)/);
+      assert.ok(match);
+      retainedDirectory = match[1];
+      assert.equal(path.dirname(retainedDirectory), path.resolve(tmpdir()));
+      assert.match(path.basename(retainedDirectory), /^lightnvr-contract-[A-Za-z0-9]+$/);
       return true;
     });
+    await access(retainedDirectory);
   } finally {
     await rm(directory, {recursive: true, force: true});
     if (retainedDirectory) await rm(retainedDirectory, {recursive: true, force: true});
