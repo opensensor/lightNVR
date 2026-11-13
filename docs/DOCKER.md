@@ -662,6 +662,13 @@ docker run -d \
 
 ### Running Multiple Instances
 
+Before starting, create the bind-mount directories and set ownership for the non-root runtime user:
+
+```bash
+mkdir -p ./config-1 ./data-1 ./config-2 ./data-2
+sudo chown -R 10001:10001 ./config-1 ./data-1 ./config-2 ./data-2
+```
+
 ```yaml
 services:
   lightnvr-1:
