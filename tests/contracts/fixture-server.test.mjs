@@ -3,11 +3,26 @@ import assert from 'node:assert/strict';
 import {access, mkdtemp, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import net from 'node:net';
 import {reservePort, startFixture} from './fixture-server.mjs';
+
+async function assertAcceptsConnection(port) {
+  await new Promise((resolve, reject) => {
+    const socket = net.connect({host: '127.0.0.1', port});
+    socket.once('connect', () => {
+      socket.end();
+      resolve();
+    });
+    socket.once('error', reject);
+  });
+}
 
 test('occupied port fails without disturbing its owner', async () => {
   const owner = await reservePort();
-  try { await assert.rejects(startFixture({port: owner.port}), /EADDRINUSE/); }
+  try {
+    await assert.rejects(startFixture({port: owner.port}), /EADDRINUSE/);
+    await assertAcceptsConnection(owner.port);
+  }
   finally { await owner.release(); }
 });
 
