@@ -673,6 +673,7 @@ sudo install -D -o 10001 -g 10001 -m 640 /path/to/existing/lightnvr.ini /path/to
 ```bash
 docker run -d \
   --name lightnvr \
+  -p 8080:8080 \
   -v /path/to/custom/lightnvr.ini:/etc/lightnvr/lightnvr.ini \
   -v ./data:/var/lib/lightnvr/data \
   ghcr.io/opensensor/lightnvr:latest
