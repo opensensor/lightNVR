@@ -1205,7 +1205,7 @@ pub const GO2RTC_FFMPEG_H264: [::core::ffi::c_char; 215] = unsafe {
 };
 pub const CLOCK_MONOTONIC: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const LIGHTNVR_VERSION_STRING: [::core::ffi::c_char; 7] =
-    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.1\0") };
+    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.2\0") };
 pub const GO2RTC_MAX_EXTERNAL_CANDIDATES: ::core::ffi::c_int = 8 as ::core::ffi::c_int;
 pub const GO2RTC_BASE_PATH: [::core::ffi::c_char; 8] =
     unsafe { ::core::mem::transmute::<[u8; 8], [::core::ffi::c_char; 8]>(*b"/go2rtc\0") };
