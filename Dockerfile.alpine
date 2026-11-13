@@ -125,7 +125,8 @@ RUN addgroup -g 10001 -S lightnvr && adduser -u 10001 -S -D -H -G lightnvr light
       /var/lib/lightnvr/data/models /var/log/lightnvr /var/run/lightnvr && \
     chmod -R go-w /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
     chown -R 10001:10001 /etc/lightnvr /var/lib/lightnvr/data \
-      /var/log/lightnvr /var/run/lightnvr
+      /var/log/lightnvr /var/run/lightnvr && \
+    chmod 755 /var/lib/lightnvr
 
 USER 10001:10001
 
