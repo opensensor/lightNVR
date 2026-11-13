@@ -63,7 +63,11 @@ test('startup errors include native logs before a fixture can be returned', asyn
 
 test('unexpected native signal is reported as failure and retains logs', {timeout: 45000}, async () => {
   const fixture = await startFixture({seed:false});
-  process.kill(fixture.pid,'SIGKILL');
-  await assert.rejects(fixture.stop(), /Native fixture failed/);
-  await access(fixture.logPath);
+  try {
+    process.kill(fixture.pid,'SIGKILL');
+    await assert.rejects(fixture.stop(), /Native fixture failed/);
+    await access(fixture.logPath);
+  } finally {
+    if (fixture.directory) await rm(fixture.directory, {recursive: true, force: true});
+  }
 });
