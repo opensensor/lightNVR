@@ -140,7 +140,7 @@ services:
     volumes:
       - lightnvr-config:/etc/lightnvr
       - lightnvr-database:/var/lib/lightnvr/data/database
-      - lightnvr-recordings:/var/lib/lightnvr/data/recordings
+      - ./data/recordings:/var/lib/lightnvr/data/recordings
       - lightnvr-models:/var/lib/lightnvr/data/models
     security_opt:
       - no-new-privileges:true
@@ -152,13 +152,16 @@ services:
 volumes:
   lightnvr-config:
   lightnvr-database:
-  lightnvr-recordings:
   lightnvr-models:
 ```
 
 Then start it:
 
 ```bash
+# The recordings bind mount must be writable by the container's runtime user.
+mkdir -p ./data/recordings
+sudo chown -R 10001:10001 ./data/recordings
+
 # Pull the image and start the container
 docker compose up -d
 
@@ -261,7 +264,7 @@ NFS volumes may have different permission models than local filesystems. If you 
      config:
        driver_opts:
          type: "nfs"
-         o: "nfsvers=4,addr=192.168.1.100,rw,nolock"  # Add nolock if needed
+         o: "nfsvers=4,addr=192.168.1.100,rw"
          device: ":/volume1/docker/lightnvr/config"
    ```
 
@@ -301,17 +304,17 @@ volumes:
   config:
     driver_opts:
       type: "nfs"
-      o: "nfsvers=4,addr=${IpAddressNFS},rw,nolock"
+      o: "nfsvers=4,addr=${IpAddressNFS},rw"
       device: ":/${NFSVolumePath}/${SystemId}/lightnvr-config"
 
   data:
     driver_opts:
       type: "nfs"
-      o: "nfsvers=4,addr=${IpAddressNFS},rw,nolock"
+      o: "nfsvers=4,addr=${IpAddressNFS},rw"
       device: ":/${NFSVolumePath}/${SystemId}/lightnvr-data"
 ```
 
-**Note**: The `nolock` option can help with some NFS permission issues but may reduce file locking safety. Use with caution in production environments.
+**Note**: `nolock` is not a fix for filesystem ownership or permission errors, and it does not disable NFSv4 locking. If you see permission issues, verify UID:GID mapping (`10001:10001`), NFS export permissions, and server-side ACLs on the NAS.
 
 ### Web Assets
 
