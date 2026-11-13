@@ -87,6 +87,7 @@ void setUp(void) {
     failed_task = NULL;
     captured_worker = NULL;
     backend_calls = 0;
+    last_fake_thread = 0;
     g_config.web_auth_enabled = false;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM streams", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(0, init_stream_state_manager(4));
