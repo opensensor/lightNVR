@@ -540,8 +540,9 @@ docker compose restart
 
 If running behind NAT/firewall, forward these ports:
 
-- **8555/TCP** - WebRTC signaling
-- **8555/UDP** - WebRTC media
+- **8555/TCP** - WebRTC media (ICE-TCP fallback)
+- **8555/UDP** - WebRTC media (preferred ICE transport)
+- **Dashboard HTTP(S) port** (for example `8080`, or your reverse-proxy HTTPS port) - WebRTC signaling via LightNVR's authenticated proxy
 
 ## Troubleshooting
 
