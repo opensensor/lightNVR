@@ -284,12 +284,12 @@ If recordings are not being created:
 1. **Check write permissions**: The container logs will show write permission test results on startup
 2. **Verify NFS mount**: Ensure the NFS volume is actually mounted inside the container:
    ```bash
-   docker exec lightnvr-latest ls -la /var/lib/lightnvr/data/recordings/mp4
+   docker exec lightnvr ls -la /var/lib/lightnvr/data/recordings/mp4
    ```
 3. **Check available space**: Ensure your NAS has sufficient free space
 4. **Review logs**: Check for "Failed to open input" or "Operation not permitted" errors:
    ```bash
-   docker logs lightnvr-latest | grep -i error
+   docker logs lightnvr | grep -i error
    ```
 
 #### Example NFS Configuration
