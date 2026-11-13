@@ -584,12 +584,17 @@ docker compose up -d
 
 **Solution:**
 ```bash
-# Verify volume mounts
-docker inspect lightnvr | grep -A 10 Mounts
+# Verify volume mounts (shows each source -> destination mount)
+docker inspect -f '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' lightnvr
 
-# Should show:
-# /etc/lightnvr
-# /var/lib/lightnvr/data
+# A healthy deployment can use either layout:
+# 1) Recommended split mounts, including:
+#    /etc/lightnvr
+#    /var/lib/lightnvr/data
+#    /var/lib/lightnvr/models
+#    /var/lib/lightnvr/data/recordings (bind mount)
+# 2) Legacy parent data mount:
+#    /var/lib/lightnvr
 ```
 
 ### WebRTC Not Working
