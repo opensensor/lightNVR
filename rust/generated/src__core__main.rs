@@ -2873,7 +2873,7 @@ unsafe fn main_0(
         LOG_COMPONENT,
         _log_stream_name,
         b"LightNVR v%s starting up\0".as_ptr() as *const ::core::ffi::c_char,
-        b"0.48.0\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.48.1\0".as_ptr() as *const ::core::ffi::c_char,
     );
     if init_shutdown_coordinator() != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -5483,7 +5483,7 @@ pub const ENOENT: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const EINTR: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
 pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
 pub const LIGHTNVR_VERSION_STRING: [::core::ffi::c_char; 7] =
-    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.0\0") };
+    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.1\0") };
 pub const LIGHTNVR_BUILD_DATE: [::core::ffi::c_char; 27] = unsafe {
     ::core::mem::transmute::<[u8; 27], [::core::ffi::c_char; 27]>(*crate::build_info::LIGHTNVR_BUILD_DATE)
 };

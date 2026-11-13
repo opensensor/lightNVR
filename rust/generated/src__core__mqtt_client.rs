@@ -1142,7 +1142,7 @@ pub const O_WRONLY: ::core::ffi::c_int = 0o1 as ::core::ffi::c_int;
 pub const O_CREAT: ::core::ffi::c_int = 0o100 as ::core::ffi::c_int;
 pub const O_TRUNC: ::core::ffi::c_int = 0o1000 as ::core::ffi::c_int;
 pub const LIGHTNVR_VERSION_STRING: [::core::ffi::c_char; 7] =
-    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.0\0") };
+    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.1\0") };
 pub const O_CLOEXEC: ::core::ffi::c_int = __O_CLOEXEC;
 pub const MOSQ_LOG_INFO: ::core::ffi::c_int = 1;
 pub const MOSQ_LOG_NOTICE: ::core::ffi::c_int = 2;
