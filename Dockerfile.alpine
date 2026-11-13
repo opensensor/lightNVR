@@ -49,9 +49,9 @@ RUN mkdir -p /tmp/llhttp/include /tmp/llhttp/src /usr/include && \
     wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/llhttp.c" -O /tmp/llhttp/src/llhttp.c && \
     wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/api.c" -O /tmp/llhttp/src/api.c && \
     wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/http.c" -O /tmp/llhttp/src/http.c && \
-    cc -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/llhttp.c -o /tmp/llhttp/llhttp.o && \
-    cc -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/api.c -o /tmp/llhttp/api.o && \
-    cc -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/http.c -o /tmp/llhttp/http.o && \
+    cc -O2 -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/llhttp.c -o /tmp/llhttp/llhttp.o && \
+    cc -O2 -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/api.c -o /tmp/llhttp/api.o && \
+    cc -O2 -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/http.c -o /tmp/llhttp/http.o && \
     cc -shared -Wl,-soname,libllhttp.so.9 -o /usr/lib/libllhttp.so.${LLHTTP_VERSION} /tmp/llhttp/llhttp.o /tmp/llhttp/api.o /tmp/llhttp/http.o && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so.9 && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so && \
