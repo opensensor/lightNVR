@@ -49,11 +49,8 @@ test('two real servers own independent ports, files and lifetimes', {timeout: 90
     const stopErrors = stopResults
       .filter(result => result.status === 'rejected')
       .map(result => result.reason);
-    if (primaryError) {
-      stopErrors.push(primaryError);
-    }
     if (stopErrors.length > 0) {
-      throw new AggregateError(stopErrors, 'Failed to stop one or more fixtures');
+      throw new AggregateError(primaryError ? [primaryError, ...stopErrors] : stopErrors, 'Failed to stop one or more fixtures');
     }
   }
   if (primaryError) {
