@@ -492,12 +492,14 @@ and password-authenticated APIs until that succeeds. You then sign in again with
 password; MFA, when enabled, follows on that sign-in.
 
 To avoid the default ever being valid, set `password` in the `[web]` section *before*
-the first start. In the default Compose setup (named volumes), edit/populate
-`/var/lib/lightnvr/data/config/lightnvr.ini` in the config volume. If you want to manage
-config from the host, first switch Compose to a `./config` bind mount, then edit
-`./config/lightnvr.ini`. The admin account is created with that password instead. The
-setting is only read when the account is created; afterwards users are managed from the
-**Users** page.
+the first start. In the default Compose setup (named volumes), set it in
+`/etc/lightnvr/lightnvr.ini` inside the mounted config volume, and make sure that file is
+populated before the container is started for the first time (for example, by starting a
+temporary container with the config volume mounted and writing `lightnvr.ini` there). If
+you want to manage config from the host, first switch Compose to a `./config` bind mount,
+then edit `./config/lightnvr.ini`. The admin account is created with that password
+instead. The setting is only read when the account is created; afterwards users are
+managed from the **Users** page.
 
 Existing accounts are not flagged during an upgrade. API-key authentication and demo
 mode remain available while a freshly bootstrapped administrator is awaiting a password
