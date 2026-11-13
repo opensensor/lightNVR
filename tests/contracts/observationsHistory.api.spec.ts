@@ -101,7 +101,9 @@ test('A7: list, get and snapshot are isolated per camera for policies and scoped
   const imageOnly = await viewerOf(server, 'image_only', A, ['snapshot.create']);
   expect(ids(await page(server, '', imageOnly))).toEqual([]);
   expect((await error(server, `/api/observations/${onA.observation}`, imageOnly)).status).toBe(404);
-  expect((await snapshot(server, onA.observation, imageOnly)).json).toEqual(unknown.body);
+  const imageOnlySnapshot = await snapshot(server, onA.observation, imageOnly);
+  expect(imageOnlySnapshot.status).toBe(200);
+  expect(imageOnlySnapshot.bytes.equals(onA.bytes!)).toBe(true);
 });
 
 test('A7: rename, delete and name reuse never transfer observation access', async ({server}) => {
@@ -253,12 +255,10 @@ test('A5: cursor pages are stable, deduplicated and recover pending -> ready aft
   expect(decodeCursor(tail).seq).toBe(meta(server).head);
 
   // Filtered walk (camera A only): B's change is scanned and skipped, so cursors still advance.
-  const trailingExcluded = seedObservation(server, {camera: B, state: 'pending', observedAt: Date.now() - 59000});
   const filtered = await page(server, `?camera_uuid=${A}&limit=10`);
-  expect(ids(filtered)).toEqual([...order, trailingExcluded.observation].filter((id, i) => i !== 2 && id !== trailingExcluded.observation));
-  expect(decodeCursor(filtered.next_cursor).seq).toBe(meta(server).head);
+  expect(ids(filtered)).toEqual(order.filter((_, i) => i !== 2));
+  expect(filtered.next_cursor).toBe(tail);
   expect(filtered.has_more).toBe(false);
-  expect(await page(server, `?cursor=${filtered.next_cursor}`)).toEqual({items: [], next_cursor: filtered.next_cursor, has_more: false});
 
   // Nothing new: an empty page that keeps the cursor. `head` starts at the same place.
   const idle = await page(server, `?cursor=${tail}`);
@@ -297,4 +297,16 @@ test('A5: cursor pages are stable, deduplicated and recover pending -> ready aft
   const replay = await page(server, '?limit=500');
   expect(ids(replay)).toEqual(order);
   expect(replay.items.find((item: Json) => item.id === seeded[1].observation).evidence.state).toBe('ready');
+});
+
+test('A5: filtered cursor advances past a trailing excluded camera change', async ({server}) => {
+  const A = server.cameras.A.camera_uuid, B = server.cameras.B.camera_uuid;
+  const included = seedObservation(server, {camera: A, state: 'pending'});
+  seedObservation(server, {camera: B, state: 'pending'});
+
+  const filtered = await page(server, `?camera_uuid=${A}&limit=10`);
+  expect(ids(filtered)).toEqual([included.observation]);
+  expect(decodeCursor(filtered.next_cursor).seq).toBe(meta(server).head);
+  expect(filtered.has_more).toBe(false);
+  expect(await page(server, `?camera_uuid=${A}&cursor=${filtered.next_cursor}`)).toEqual({items: [], next_cursor: filtered.next_cursor, has_more: false});
 });
