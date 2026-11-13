@@ -601,12 +601,14 @@ docker inspect lightnvr | grep -A 10 Mounts
 
 **Solution:**
 
-The most common fix is setting your host machine's local IP as `external_ip` in `./config/lightnvr.ini`:
+The most common fix is setting your host machine's local IP as `external_ip` in `/etc/lightnvr/lightnvr.ini` (default Compose/named-volume setup):
 
 ```ini
 [go2rtc]
 external_ip = 192.168.1.100  ; Replace with your machine's local IP
 ```
+
+If your deployment explicitly bind-mounts `./config` to `/etc/lightnvr`, edit `./config/lightnvr.ini` on the host instead.
 
 To find your local IP:
 ```bash
