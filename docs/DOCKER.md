@@ -140,7 +140,7 @@ services:
     volumes:
       - lightnvr-config:/etc/lightnvr
       - lightnvr-database:/var/lib/lightnvr/data/database
-      - lightnvr-recordings:/var/lib/lightnvr/data/recordings
+      - ./data/recordings:/var/lib/lightnvr/data/recordings
       - lightnvr-models:/var/lib/lightnvr/data/models
     security_opt:
       - no-new-privileges:true
@@ -152,7 +152,6 @@ services:
 volumes:
   lightnvr-config:
   lightnvr-database:
-  lightnvr-recordings:
   lightnvr-models:
 ```
 
