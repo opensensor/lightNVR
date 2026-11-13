@@ -588,13 +588,13 @@ docker compose up -d
 docker inspect -f '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' lightnvr
 
 # A healthy deployment can use either layout:
-# 1) Recommended split mounts, including:
+# 1) Recommended split mounts:
 #    /etc/lightnvr
-#    /var/lib/lightnvr/data
-#    /var/lib/lightnvr/models
-#    /var/lib/lightnvr/data/recordings (bind mount)
+#    /var/lib/lightnvr/data/database
+#    /var/lib/lightnvr/data/recordings
+#    /var/lib/lightnvr/data/models
 # 2) Legacy parent data mount:
-#    /var/lib/lightnvr
+#    /etc/lightnvr and /var/lib/lightnvr/data
 ```
 
 ### WebRTC Not Working
@@ -660,17 +660,14 @@ environment:
 
 ### Custom Configuration Path
 
-Mount a custom config file. Before first start, prepare both bind-mounted paths for UID:GID `10001:10001`:
+Mount an existing custom config file. Before first start, prepare both bind-mounted paths for UID:GID `10001:10001`. The source file must contain a valid LightNVR configuration; an empty file prevents the entrypoint from creating its default configuration.
 
 ```bash
 mkdir -p ./data
 sudo chown -R 10001:10001 ./data
 
-# Create the custom config file before mounting it with -v
-sudo install -o 10001 -g 10001 -m 640 /dev/null /path/to/custom/lightnvr.ini
-# If the file already exists, fix ownership/permissions instead:
-# sudo chown 10001:10001 /path/to/custom/lightnvr.ini
-# sudo chmod 640 /path/to/custom/lightnvr.ini
+# Copy your existing config to the bind-mount source. -D creates its parent directory.
+sudo install -D -o 10001 -g 10001 -m 640 /path/to/existing/lightnvr.ini /path/to/custom/lightnvr.ini
 ```
 
 ```bash
