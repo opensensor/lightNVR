@@ -297,9 +297,25 @@ If recordings are not being created:
 
 #### Example NFS Configuration
 
-Here's a complete example for Synology NAS with Traefik:
+For a Synology NAS, this Compose example keeps configuration and recordings on NFS,
+and the database and models in local Docker volumes. Create the two NFS directories
+on the NAS and grant UID:GID `10001:10001` write access before starting the container.
 
 ```yaml
+services:
+  lightnvr:
+    image: ghcr.io/opensensor/lightnvr:latest
+    ports:
+      - "8080:8080"
+      - "8554:8554"
+      - "8555:8555"
+      - "8555:8555/udp"
+    volumes:
+      - config:/etc/lightnvr
+      - database:/var/lib/lightnvr/data/database
+      - recordings:/var/lib/lightnvr/data/recordings
+      - models:/var/lib/lightnvr/data/models
+
 volumes:
   config:
     driver_opts:
@@ -307,11 +323,14 @@ volumes:
       o: "nfsvers=4,addr=${IpAddressNFS},rw"
       device: ":/${NFSVolumePath}/${SystemId}/lightnvr-config"
 
-  data:
+  recordings:
     driver_opts:
       type: "nfs"
       o: "nfsvers=4,addr=${IpAddressNFS},rw"
-      device: ":/${NFSVolumePath}/${SystemId}/lightnvr-data"
+      device: ":/${NFSVolumePath}/${SystemId}/lightnvr-recordings"
+
+  database:
+  models:
 ```
 
 **Note**: `nolock` is not a fix for filesystem ownership or permission errors, and it does not disable NFSv4 locking. If you see permission issues, verify UID:GID mapping (`10001:10001`), NFS export permissions, and server-side ACLs on the NAS.
@@ -673,6 +692,7 @@ sudo install -D -o 10001 -g 10001 -m 640 /path/to/existing/lightnvr.ini /path/to
 ```bash
 docker run -d \
   --name lightnvr \
+  -p 8080:8080 \
   -v /path/to/custom/lightnvr.ini:/etc/lightnvr/lightnvr.ini \
   -v ./data:/var/lib/lightnvr/data \
   ghcr.io/opensensor/lightnvr:latest
@@ -738,7 +758,9 @@ services:
 ## Migration from Previous Versions
 
 If you're upgrading from an older version that mounted `/var/lib/lightnvr` directly, change
-the mount to `/var/lib/lightnvr/data` and move your existing content down one level:
+the mount to `/var/lib/lightnvr/data` and move your existing content down one level.
+Back up the old volume first. The destination directories must not already exist;
+otherwise `mv` can place the old directories inside them.
 
 ```bash
 docker compose down
@@ -746,7 +768,14 @@ docker compose down
 # Your old volume held database/, recordings/ and models/ at its root, alongside
 # the web assets. Only the first three should persist.
 mkdir -p ./data
-mv ./old-volume/database ./old-volume/recordings ./old-volume/models ./data/ 2>/dev/null
+# Check all sources and destinations before moving any data.
+for dir in database recordings models; do
+  if [ ! -d "./old-volume/$dir" ] || [ -e "./data/$dir" ]; then
+    echo "Check ./old-volume/$dir and ./data/$dir before migrating" >&2
+    exit 1
+  fi
+done
+sudo mv ./old-volume/database ./old-volume/recordings ./old-volume/models ./data/ || exit 1
 
 # Ensure migrated content is writable by the non-root runtime user (UID:GID 10001:10001)
 sudo chown -R 10001:10001 ./data
