@@ -478,6 +478,7 @@ if(NOT LLHTTP_FOUND)
                 "${LLHTTP_LOCAL_PATH}"
                 SHOW_PROGRESS
                 STATUS LLHTTP_DOWNLOAD_STATUS
+                TLS_VERIFY ON
                 ${LLHTTP_HASH_ARGS}
             )
             list(GET LLHTTP_DOWNLOAD_STATUS 0 LLHTTP_STATUS_CODE)
@@ -773,7 +774,15 @@ if(ENABLE_SENTRY)
         GIT_REPOSITORY https://github.com/getsentry/sentry-native.git
         GIT_TAG af9e9367913edf07f54e4f2f9655ce96af0c1681 # 0.17.5
         GIT_SUBMODULES "")
-    FetchContent_MakeAvailable(sentry_native)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.14")
+        FetchContent_MakeAvailable(sentry_native)
+    else()
+        FetchContent_GetProperties(sentry_native)
+        if(NOT sentry_native_POPULATED)
+            FetchContent_Populate(sentry_native)
+            add_subdirectory(${sentry_native_SOURCE_DIR} ${sentry_native_BINARY_DIR})
+        endif()
+    endif()
     target_link_libraries(lightnvr_lib PUBLIC sentry::sentry)
     target_compile_definitions(lightnvr_lib PUBLIC ENABLE_SENTRY=1)
     target_compile_options(lightnvr_lib PRIVATE -g -fdebug-prefix-map=${CMAKE_SOURCE_DIR}=.)
