@@ -747,13 +747,13 @@ target_include_directories(lightnvr_lib PRIVATE ${HTTP_BACKEND_INCLUDE_DIRS})
 # test binaries and utilities automatically receive the libraries needed
 # by objects pulled from lightnvr_lib.
 target_link_libraries(lightnvr_lib PUBLIC
-        ${HTTP_BACKEND_LIBS}
+        PkgConfig::HTTP_BACKEND
         inih_lib
         faac_lib
-        ${FFMPEG_LIBRARIES}
-        ${SQLITE_LIBRARIES}
-        ${CURL_LIBRARIES}
-        ${CJSON_LIBRARIES}
+        PkgConfig::FFMPEG
+        PkgConfig::SQLITE
+        PkgConfig::CURL
+        PkgConfig::CJSON
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
         pthread
