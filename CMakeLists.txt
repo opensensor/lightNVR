@@ -370,10 +370,10 @@ if(ENABLE_LITERT)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/video/detection/litert_engine.cc"
     )
     # TFLite public headers (and the Abseil/FlatBuffers they pull in) require
-    # C++17, but the project default is C++14. Linking the tensorflow-lite
-    # target propagates cxx_std_17, yet make the requirement explicit on our
-    # own engine source so it compiles correctly regardless of propagation.
-    set_source_files_properties(${LITERT_ENGINE_SOURCES} PROPERTIES CXX_STANDARD 17)
+    # C++17, but the project default is C++14. Require C++17 on our library
+    # target explicitly when LiteRT is enabled so this does not depend solely
+    # on transitive propagation from tensorflow-lite.
+    target_compile_features(lightnvr_lib PRIVATE cxx_std_17)
     message(STATUS "LiteRT engine enabled (XNNPACK=${LITERT_WITH_XNNPACK}, GPU=${LITERT_WITH_GPU})")
 else()
     message(STATUS "LiteRT engine disabled (set -DENABLE_LITERT=ON to enable)")
