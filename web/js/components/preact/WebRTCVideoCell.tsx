@@ -632,6 +632,7 @@ export function WebRTCVideoCell({
                   `after ${videoDataCheckCount * VIDEO_DATA_CHECK_INTERVAL_MS / 1000}s ` +
                   `(attempt ${noDataReconnectAttemptsRef.current}/${MAX_NO_DATA_RECONNECT_ATTEMPTS})`
                 );
+                lastFrame.capture(); // failure teardown: keep the last frame (#974)
                 setRetryCount(prev => prev + 1);
                 return; // Stop check chain; the retry useEffect run starts fresh
               }
@@ -768,6 +769,7 @@ export function WebRTCVideoCell({
           connectionRefreshRequestedRef.current = true;
           reconnectAttemptsRef.current++;
           console.log(`Retrying local WebRTC player for stream ${stream.name} (attempt ${reconnectAttemptsRef.current}/3)`);
+          lastFrame.capture(); // failure teardown: keep the last frame (#974)
           setRetryCount(prev => prev + 1);
         } else {
           setError(t('live.webrtcIceConnectionFailed'));
@@ -1134,9 +1136,6 @@ export function WebRTCVideoCell({
         audioContextRef.current = null;
       }
       analyserRef.current = null;
-
-      // Keep the last decoded frame before the video source is reset (#974).
-      lastFrame.capture();
 
       // Clean up video element
       if (videoRef.current && videoRef.current.srcObject) {

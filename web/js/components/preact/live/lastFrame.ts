@@ -4,8 +4,10 @@
  * When a tile cannot play, the area behind its error overlay shows the most
  * recent image of the camera instead of plain black:
  *
- *   1. The tile's own last decoded frame, captured once from the <video>
- *      element when playback fails (before the cell tears the element down).
+ *   1. The tile's own last decoded frame, drawn once from the <video> element
+ *      when playback fails (before the cell tears the element down). Only
+ *      failure paths capture, and the JPEG is encoded only once the tile is
+ *      actually in its error state, so healthy tiles never pay for it.
  *   2. Otherwise the thumbnail of the camera's newest completed recording
  *      (frame index 2, about 1 s before the end; index 0 when that fails).
  *
@@ -204,7 +206,10 @@ export interface LastFrameControllerDeps {
 }
 
 export interface LastFrameController {
-  /** Capture the current frame before the cell tears the video down. */
+  /**
+   * Capture the current frame on a failure teardown, before the cell resets
+   * the video. Only the canvas draw happens here; encoding waits for setError.
+   */
   capture(video: CapturableVideo | null | undefined): boolean;
   setError(hasError: boolean, video?: CapturableVideo | null): void;
   setEnabled(enabled: boolean): void;
@@ -221,6 +226,9 @@ export interface LastFrameController {
  * Capture is armed by playback: after a frame is captured, no further capture
  * happens until the video plays again, so a retry cycle never re-stamps an old
  * frozen frame with a new time.
+ *
+ * A captured canvas is held unencoded until the tile enters its error state;
+ * if playback resumes first it is simply dropped, with no JPEG encode.
  */
 export function createLastFrameController(
   onChange: (image: LastFrameImage | null) => void,
@@ -240,6 +248,7 @@ export function createLastFrameController(
   let armed = false;
   let disposed = false;
   let frame: LastFrameImage | null = null;
+  let heldCanvas: { canvas: HTMLCanvasElement; capturedAt: number } | null = null;
   let framePending = false;
   let frameToken = 0;
   let recording: { image: LastFrameImage | null; fetchedAt: number } | null = null;
@@ -259,6 +268,7 @@ export function createLastFrameController(
   const dropFrame = () => {
     frameToken++;
     framePending = false;
+    heldCanvas = null;
     if (frame) {
       try { revokeObjectURL(frame.url); } catch { /* already gone */ }
       frame = null;
@@ -273,7 +283,7 @@ export function createLastFrameController(
 
   const requestRecording = () => {
     if (disposed || !enabled || !inError || !streamName) return;
-    if (frame || framePending || recordingInFlight) return;
+    if (frame || framePending || heldCanvas || recordingInFlight) return;
     if (recording && now() - recording.fetchedAt < LAST_FRAME_RECORDING_TTL_MS) return;
     recordingInFlight = true;
     const token = ++recordingToken;
@@ -288,14 +298,12 @@ export function createLastFrameController(
       });
   };
 
-  const tryCapture = (video: CapturableVideo | null | undefined): boolean => {
-    if (disposed || !enabled || !armed || !video) return false;
-    const canvas = captureFrame(video);
-    if (!canvas) return false;
-    armed = false;
-    dropFrame();
+  /** Encode the held canvas; only called once the tile is in error. */
+  const encodeHeld = () => {
+    if (!heldCanvas) return;
+    const { canvas, capturedAt } = heldCanvas;
+    heldCanvas = null;
     const token = frameToken;
-    const capturedAt = now();
     framePending = true;
     Promise.resolve()
       .then(() => toBlob(canvas))
@@ -314,6 +322,16 @@ export function createLastFrameController(
           requestRecording();
         }
       });
+  };
+
+  const tryCapture = (video: CapturableVideo | null | undefined): boolean => {
+    if (disposed || !enabled || !armed || !video) return false;
+    const canvas = captureFrame(video);
+    if (!canvas) return false;
+    armed = false;
+    dropFrame();
+    heldCanvas = { canvas, capturedAt: now() };
+    if (inError) encodeHeld();
     return true;
   };
 
@@ -325,8 +343,9 @@ export function createLastFrameController(
     setError(hasError, video) {
       if (hasError === inError) return;
       if (hasError) {
-        tryCapture(video);
         inError = true;
+        tryCapture(video);
+        encodeHeld();
         requestRecording();
       } else {
         inError = false;

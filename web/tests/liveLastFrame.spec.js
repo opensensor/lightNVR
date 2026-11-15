@@ -271,6 +271,38 @@ describe('last frame controller', () => {
     expect(t.deps.loadRecordingFallback).not.toHaveBeenCalled();
   });
 
+  test('a failure-teardown capture is not encoded while the tile is still healthy', async () => {
+    const t = setup();
+    t.controller.recovered();
+    const capturedAt = t.at();
+    expect(t.controller.capture(playingVideo)).toBe(true);
+    await flush();
+    // Only the canvas draw happened; no JPEG encode, no object URL, nothing shown.
+    expect(t.deps.toBlob).not.toHaveBeenCalled();
+    expect(t.deps.createObjectURL).not.toHaveBeenCalled();
+    expect(t.latest()).toBeNull();
+    t.advance(3000);
+    t.controller.setError(true, { videoWidth: 0, videoHeight: 0, readyState: 0 });
+    await flush();
+    expect(t.deps.toBlob).toHaveBeenCalledTimes(1);
+    expect(t.latest()).toEqual({ url: 'blob:frame-1', capturedAt, source: 'frame' });
+  });
+
+  test('a capture followed by recovery is dropped without ever being encoded', async () => {
+    const t = setup();
+    t.controller.recovered();
+    t.controller.capture(playingVideo);
+    t.controller.recovered(); // the reconnect played again before any error
+    await flush();
+    expect(t.deps.toBlob).not.toHaveBeenCalled();
+    expect(t.latest()).toBeNull();
+    // A later outage on a reset video falls back to the recording, not the stale canvas.
+    t.controller.setError(true, { videoWidth: 0, videoHeight: 0, readyState: 0 });
+    await flush();
+    expect(t.deps.toBlob).not.toHaveBeenCalled();
+    expect(t.latest()).toEqual(RECORDING_IMAGE);
+  });
+
   test('a tile that never played falls back to the newest recording', async () => {
     const t = setup();
     t.controller.setError(true, { videoWidth: 0, videoHeight: 0, readyState: 0 });
@@ -429,5 +461,35 @@ describe('last frame controller', () => {
     expect(t.deps.revokeObjectURL).toHaveBeenCalledWith('blob:frame-1');
     expect(t.deps.loadRecordingFallback).toHaveBeenLastCalledWith('porch');
     expect(t.latest()).toEqual(RECORDING_IMAGE);
+  });
+});
+
+describe('cells capture only on failure paths', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const read = (name) => fs.readFileSync(path.join(__dirname, '../js/components/preact', name), 'utf8');
+  const between = (source, start, end) => {
+    const from = source.indexOf(start);
+    expect(from).toBeGreaterThanOrEqual(0);
+    const to = source.indexOf(end, from + start.length);
+    expect(to).toBeGreaterThan(from);
+    return source.slice(from, to);
+  };
+
+  // These teardowns also run on healthy setting changes (audioDisabled,
+  // useSubStream, ...), so they must never capture (#975 review).
+  test('generic teardown paths do not capture', () => {
+    expect(between(read('MSEVideoCell.tsx'), 'const cleanup = () => {', '\n  };')).not.toContain('lastFrame.capture');
+    expect(between(read('WebRTCVideoCell.tsx'), 'const cleanupWebRTCResources = () => {', 'return cleanupWebRTCResources'))
+      .not.toContain('lastFrame.capture');
+    expect(between(read('HLSVideoCell.tsx'), '// Destroy HLS.js instance', 'hlsPlayerRef.current = null;'))
+      .not.toContain('lastFrame.capture');
+  });
+
+  test('failure paths still capture before the video is reset', () => {
+    const count = (name) => (read(name).match(/lastFrame\.capture\(\)/g) || []).length;
+    expect(count('MSEVideoCell.tsx')).toBe(3);
+    expect(count('HLSVideoCell.tsx')).toBe(2);
+    expect(count('WebRTCVideoCell.tsx')).toBe(2);
   });
 });

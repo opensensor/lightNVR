@@ -576,7 +576,6 @@ export function HLSVideoCell({
 
       // Destroy HLS.js instance
       recoveringRef.current = false;
-      lastFrame.capture(); // before the video is reset (#974)
       if (hlsPlayerRef.current) {
         hlsPlayerRef.current.destroy();
         hlsPlayerRef.current = null;

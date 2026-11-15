@@ -17,9 +17,10 @@ export interface LastFrameState {
   /** Image to show behind the error overlay, or null for the plain overlay. */
   image: LastFrameImage | null;
   /**
-   * Capture the current frame. Call it at the top of the cell's teardown path,
-   * before the video's source is reset; it is a no-op unless the video has
-   * played since the last capture.
+   * Capture the current frame. Call it only on a failure path, right before
+   * the cell resets the video's source (never on healthy teardown such as a
+   * settings change). It is a no-op unless the video has played since the
+   * last capture, and the image is only encoded if the tile enters error.
    */
   capture: () => boolean;
 }

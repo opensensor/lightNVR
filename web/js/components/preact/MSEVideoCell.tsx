@@ -461,6 +461,7 @@ export function MSEVideoCell({
       autoRetryTimeoutRef.current = setTimeout(() => {
         autoRetryTimeoutRef.current = null;
         if (videoRef.current) {
+          lastFrame.capture(); // failure teardown: keep the last frame (#974)
           cleanup();
           initMSE();
         }
@@ -484,6 +485,7 @@ export function MSEVideoCell({
     reconnectTimeoutRef.current = setTimeout(() => {
       reconnectTimeoutRef.current = null;
       if (videoRef.current) {
+        lastFrame.capture(); // failure teardown: keep the last frame (#974)
         cleanup();
         initMSE();
       }
@@ -494,9 +496,6 @@ export function MSEVideoCell({
    * Cleanup resources
    */
   const cleanup = () => {
-    // Keep the last decoded frame before the video source is reset (#974).
-    lastFrame.capture();
-
     // Clear timeouts
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -728,6 +727,7 @@ export function MSEVideoCell({
       setIsLoading(false);
       // Let transport fallback/auto-retry own recovery instead of silently
       // reconnecting to the same unsupported video forever.
+      lastFrame.capture(); // failure teardown: keep the last frame (#974)
       cleanup();
     };
 
