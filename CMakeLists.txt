@@ -675,7 +675,7 @@ message(STATUS "Excluding main.c and tools from ROOT_SOURCES")
 
 # Collect video sources from src/video, then exclude motion_detection_optimized.c,
 # detection_thread_pool.c, and the original hls_writer_thread.c (since we're using our split version).
-file(GLOB VIDEO_SOURCES "src/video/*.c")
+file(GLOB VIDEO_SOURCES CONFIGURE_DEPENDS "src/video/*.c")
 
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
@@ -686,9 +686,9 @@ file(GLOB HLS_SOURCES CONFIGURE_DEPENDS "src/video/hls/*.c")
 # hls_unified_thread.c is added explicitly via HLS_UNIFIED_THREAD_SOURCES below.
 # Exclude it here to avoid duplicate source listing.
 list(FILTER HLS_SOURCES EXCLUDE REGEX ".*hls_unified_thread\\.c$")
-file(GLOB TELEMETRY_SOURCES "src/telemetry/*.c")
-file(GLOB HEALTH_COLLECTOR_SOURCES "src/telemetry/collectors/*.c")
-file(GLOB HEALTH_PROVIDER_SOURCES "src/telemetry/providers/*.c")
+file(GLOB TELEMETRY_SOURCES CONFIGURE_DEPENDS "src/telemetry/*.c")
+file(GLOB HEALTH_COLLECTOR_SOURCES CONFIGURE_DEPENDS "src/telemetry/collectors/*.c")
+file(GLOB HEALTH_PROVIDER_SOURCES CONFIGURE_DEPENDS "src/telemetry/providers/*.c")
 
 # Add unified HLS thread sources explicitly to ensure they're included
 set(HLS_UNIFIED_THREAD_SOURCES
