@@ -21,6 +21,8 @@ import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.tsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.ts';
 import { LiveDisplayModeToggle } from './LiveDisplayModeToggle.tsx';
 import { useLiveDisplayMode } from './useLiveDisplayMode.ts';
+import { LiveLastImageToggle } from './LiveLastImageToggle.tsx';
+import { useLiveLastImage } from './useLiveLastImage.ts';
 import { LiveSlideshowControl } from './LiveSlideshowControl.tsx';
 import { useLiveSlideshow } from './useLiveSlideshow.ts';
 import { usePullToRefresh } from './usePullToRefresh.ts';
@@ -84,6 +86,8 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
   // Fit (letterbox) or Fill (crop) for the grid tiles (#619). A single stream
   // always shows its whole frame, so the preference only applies to grids.
   const [displayMode, setDisplayMode] = useLiveDisplayMode();
+  // Last known image behind the error overlay of a tile that cannot play (#974).
+  const [showLastImage, setShowLastImage] = useLiveLastImage();
   const [mobileOptionsOpen, setMobileOptionsOpen] = useState(false);
   const optionsButton = useRef<HTMLButtonElement>(null);
   const closeMobileOptions = () => {
@@ -879,6 +883,11 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
             onChange={setAlwaysFullscreenOnTap}
           />
 
+          <LiveLastImageToggle
+            enabled={showLastImage}
+            onChange={setShowLastImage}
+          />
+
           {!isSingleStream && (
             <LiveDisplayModeToggle
               mode={displayMode}
@@ -1102,6 +1111,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
                     showControls={showControls}
                     globalShowDetections={showDetections}
                     alwaysFullscreenOnTap={alwaysFullscreenOnTap && !reorderMode}
+                    showLastImage={showLastImage}
                     onRequestReorder={orderedStreams.length > 1 ? enterReorderMode : undefined}
                     mobileGesturesDisabled={reorderMode}
                   />

@@ -34,6 +34,8 @@ export interface LiveTransportCellProps {
   showControls?: boolean;
   globalShowDetections?: boolean;
   alwaysFullscreenOnTap?: boolean;
+  /** Show the camera's last known image behind the error overlay (#974). Defaults to true. */
+  showLastImage?: boolean;
   onRequestReorder?: (() => unknown) | undefined;
   mobileGesturesDisabled?: boolean;
   audioDisabled?: boolean;

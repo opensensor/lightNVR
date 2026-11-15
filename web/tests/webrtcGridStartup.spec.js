@@ -55,6 +55,7 @@ function mount(name) {
     'useVideoZoom.ts': { useVideoZoom: () => ({}) },
     'MobileTileGestures.tsx': { useMobileTileGestures: () => ({}) },
     'useAutoRetry.ts': { useAutoRetry: noop },
+    'useLastFrame.ts': { useLastFrame: () => ({ image: null, capture: () => false }) },
     'player-telemetry.ts': { createPlayerTelemetry: () => ({ destroy: noop }) },
   };
   const loaded = { exports: {} };

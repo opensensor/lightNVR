@@ -65,6 +65,18 @@ export interface LiveTilePlayback {
   isLoading?: boolean;
 }
 
+/**
+ * Last known image of a camera, shown behind a live tile's error overlay (#974).
+ * `frame` is the tile's own last decoded frame (an object URL owned by the tile);
+ * `recording` is a thumbnail of the newest completed recording.
+ */
+export interface LastFrameImage {
+  url: string;
+  /** Epoch milliseconds: when the frame was captured, or the recording's end. */
+  capturedAt: number;
+  source: 'frame' | 'recording';
+}
+
 /** GET and POST /api/streams/:name/recording (api_handlers_recording_control.c). */
 export interface ManualRecordingStatus {
   stream?: string;

@@ -34,6 +34,9 @@ import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestur
 import { TileAudioButton } from './TileAudioButton.tsx';
 import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.tsx';
 import { isEptzEnabled } from '../../utils/eptz-config.ts';
+import { useLastFrame } from './live/useLastFrame.ts';
+import { lastFrameOverlayBackground } from './live/lastFrame.ts';
+import { LastFrameBackdrop, LastFrameCaption } from './live/LastFrameFallback.tsx';
 import type { DetectionOverlayHandle } from './DetectionOverlay.tsx';
 import type {
   HlsMode,
@@ -60,6 +63,7 @@ export function HLSVideoCell({
   showControls = true,
   globalShowDetections = true,
   alwaysFullscreenOnTap = false,
+  showLastImage = true,
   onRequestReorder,
   mobileGesturesDisabled = false,
   audioDisabled = false,
@@ -113,6 +117,9 @@ export function HLSVideoCell({
   const hlsUrlRef = useRef<string | null>(null);        // Master manifest URL — stored for session-expiry recovery
   const prevStatusRef = useRef(stream.status); // Track previous stream status for transition detection
   const cellAbortRef = useRef<AbortController | null>(null);     // Cancels a queued/in-flight gated preflight on unmount
+  // Last known image behind the error overlay (#974). Declared before the
+  // effects below so its unmount cleanup runs first.
+  const lastFrame = useLastFrame({ streamName: stream.name, videoRef, hasError: !!error, enabled: showLastImage });
   const handleMobileAudioToggle = () => {
     if (audioDisabled) return;
     const nextEnabled = !audioEnabled;
@@ -410,6 +417,7 @@ export function HLSVideoCell({
             // Exhausted recovery attempts - give up
             console.error(`[HLS ${stream.name}] Exhausted ${MAX_RECOVERY} recovery attempts`);
             recoveringRef.current = false;
+            lastFrame.capture(); // before destroy() detaches the video (#974)
             if (hlsPlayerRef.current) {
               hlsPlayerRef.current.destroy();
               hlsPlayerRef.current = null;
@@ -463,6 +471,7 @@ export function HLSVideoCell({
             // Unrecoverable error type - destroy immediately
             console.error(`[HLS ${stream.name}] Unrecoverable error type`);
             recoveringRef.current = false;
+            lastFrame.capture(); // before destroy() detaches the video (#974)
             if (hlsPlayerRef.current) {
               hlsPlayerRef.current.destroy();
               hlsPlayerRef.current = null;
@@ -567,6 +576,7 @@ export function HLSVideoCell({
 
       // Destroy HLS.js instance
       recoveringRef.current = false;
+      lastFrame.capture(); // before the video is reset (#974)
       if (hlsPlayerRef.current) {
         hlsPlayerRef.current.destroy();
         hlsPlayerRef.current = null;
@@ -1180,13 +1190,14 @@ export function HLSVideoCell({
             flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            backgroundColor: lastFrameOverlayBackground(lastFrame.image, 'rgba(0, 0, 0, 0.7)'),
             color: 'white',
             zIndex: 5,
             textAlign: 'center',
             transform: 'none'
           }}
         >
+          <LastFrameBackdrop image={lastFrame.image} />
           <div
             className="error-content"
             style={{
@@ -1250,6 +1261,7 @@ export function HLSVideoCell({
                 ? t('live.autoRetryingIn', { seconds: autoRetryCountdown })
                 : t('common.retry')}
             </button>
+            <LastFrameCaption image={lastFrame.image} />
           </div>
         </div>
       )}
