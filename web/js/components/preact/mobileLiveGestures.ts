@@ -20,10 +20,16 @@ export function fullscreenSwipeAction(deltaX: number, deltaY: number, zoomScale:
   return deltaX < 0 ? 'next' : 'previous';
 }
 
-export function shouldIgnoreTileGestureTarget(target: EventTarget | null | undefined): boolean {
-  return Boolean(target && typeof (target as Element).closest === 'function' && (target as Element).closest(
-    'button, a, input, select, textarea, [role="button"], [role="menu"], [data-gesture-ignore]'
-  ));
+export function shouldIgnoreTileGestureTarget(
+  target: EventTarget | null | undefined
+): boolean {
+  return Boolean(
+    target &&
+    typeof (target as Element).closest === 'function' &&
+    (target as Element).closest(
+      '.ptz-controls, button, a, input, select, textarea, [role="button"], [role="menu"], [data-gesture-ignore]'
+    )
+  );
 }
 
 /**
