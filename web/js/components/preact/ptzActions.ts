@@ -1,7 +1,7 @@
 import type { PtzActionResult, PtzCapabilities, PtzError, PtzPreset, PtzPresetsResponse } from '../../types/live.ts';
 
 import {deviceRequest, type DeviceOperation} from '../../api/device.ts';
-const operations:Record<string,DeviceOperation>={capabilities:'getPtzCapabilities',presets:'getPtzPresets',preset:'setPtzPreset','set-home':'setPtzHome',move:'movePtz',stop:'stopPtz',home:'homePtz','goto-preset':'gotoPtzPreset'};
+const operations:Record<string,DeviceOperation>={capabilities:'getPtzCapabilities',presets:'getPtzPresets',preset:'setPtzPreset','set-home':'setPtzHome',move:'movePtz',stop:'stopPtz',home:'homePtz','goto-preset':'gotoPtzPreset','delete-preset': 'deletePtzPreset'};
 async function ptzRequest<T extends PtzActionResult = PtzActionResult>(streamName:string,action:string,options?:RequestInit):Promise<T>{
   return await deviceRequest(operations[action]!,{name:streamName,body:typeof options?.body==='string'?JSON.parse(options.body):undefined}) as T;
 }
@@ -55,4 +55,8 @@ export function ptzHome(streamName: string) {
 
 export function ptzGotoPreset(streamName: string, token: string) {
   return ptzRequest(streamName, 'goto-preset', postJson({ token }));
+}
+
+export function deletePtzPreset(streamName: string, token: string) {
+  return ptzRequest(streamName, 'delete-preset', postJson({ token }));
 }
