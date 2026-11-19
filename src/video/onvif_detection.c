@@ -1354,7 +1354,7 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
 static void store_lpr_notifications(const char *response, const char *stream_name) {
     if (!response || !stream_name || !stream_name[0]) return;
 
-    onvif_lpr_event_t events[16] = {0};
+    onvif_lpr_event_t events[100] = {0};
     int count = onvif_parse_lpr_events(response, events,
                                        sizeof(events) / sizeof(events[0]));
     if (count <= 0) {
