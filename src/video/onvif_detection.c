@@ -1225,6 +1225,34 @@ static const char *normalize_object_class(const char *raw) {
  * object class inside a Data element, returning the normalized class (or NULL).
  * Alongside ObjectType-style values, Tapo reports asserted class flags such as
  * Name="IsVehicle" Value="true" on TPSmartEventDetector topics (#567). */
+static bool is_recognized_class_flag_name(const char *name) {
+    if (!name || !name[0]) return false;
+
+    /* Explicit class-flag style used by several vendors. */
+    if (strncasecmp(name, "Is", 2) == 0 && name[2] != '\0') {
+        return true;
+    }
+
+    /* Common direct class keys when emitted as boolean assertions. */
+    return strcasecmp(name, "Human") == 0 ||
+           strcasecmp(name, "People") == 0 ||
+           strcasecmp(name, "Person") == 0 ||
+           strcasecmp(name, "Pedestrian") == 0 ||
+           strcasecmp(name, "Vehicle") == 0 ||
+           strcasecmp(name, "Car") == 0 ||
+           strcasecmp(name, "Motorcycle") == 0 ||
+           strcasecmp(name, "Motorbike") == 0 ||
+           strcasecmp(name, "NonMotor") == 0 ||
+           strcasecmp(name, "Bicycle") == 0 ||
+           strcasecmp(name, "Bike") == 0 ||
+           strcasecmp(name, "Cycle") == 0 ||
+           strcasecmp(name, "Face") == 0 ||
+           strcasecmp(name, "Animal") == 0 ||
+           strcasecmp(name, "Dog") == 0 ||
+           strcasecmp(name, "Cat") == 0 ||
+           strcasecmp(name, "Pet") == 0;
+}
+
 static const char *find_object_class(ezxml_t node, bool in_data) {
     for (ezxml_t c = node ? node->child : NULL; c; c = c->ordered) {
         bool inside = in_data || strcmp(local_name(c), "Data") == 0;
@@ -1238,7 +1266,8 @@ static const char *find_object_class(ezxml_t node, bool in_data) {
             }
             const char *value = ezxml_attr(c, "Value");
             if (name && value &&
-                (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0)) {
+                (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0) &&
+                is_recognized_class_flag_name(name)) {
                 const char *cls = normalize_object_class(name);
                 if (cls) return cls;
             }
