@@ -1368,9 +1368,16 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
         if (xml) {
             ezxml_free(xml);
         }
-        bool fallback =
+        bool has_truthy_value =
             (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
              strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
+        bool has_state_indicator =
+            (strstr(response, "IsMotion") || strstr(response, "IsPeople") ||
+             strstr(response, "State")    || strstr(response, "Motion")   ||
+             strstr(response, "PeopleDetector") || strstr(response, "ObjectType") ||
+             strstr(response, "Human")    || strstr(response, "Vehicle")  ||
+             strstr(response, "Detect"));
+        bool fallback = has_truthy_value && has_state_indicator;
         if (fallback && label && label_sz > 0) safe_strcpy(label, "motion", label_sz, 0);
         free(copy);
         return fallback;
