@@ -196,6 +196,7 @@ export function HLSVideoCell({
 
     // Store event listener references for cleanup (native HLS case)
     let nativeLoadedHandler: (() => void) | null = null;
+    let nativePlayingHandler: (() => void) | null = null;
     let nativeErrorHandler: (() => void) | null = null;
 
     // Async initialization function - MUST be defined before doInit to avoid TDZ errors
@@ -602,6 +603,10 @@ export function HLSVideoCell({
         if (nativeLoadedHandler) {
           videoRef.current.removeEventListener('loadedmetadata', nativeLoadedHandler);
           nativeLoadedHandler = null;
+        }
+        if (nativePlayingHandler) {
+          videoRef.current.removeEventListener('playing', nativePlayingHandler);
+          nativePlayingHandler = null;
         }
         if (nativeErrorHandler) {
           videoRef.current.removeEventListener('error', nativeErrorHandler);
