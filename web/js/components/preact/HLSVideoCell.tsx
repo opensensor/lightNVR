@@ -1298,6 +1298,7 @@ export function HLSVideoCell({
       )}
 
       {/* Play button overlay (for browsers that block autoplay) */}
+      <div inert={privacyActive ? '' : undefined} aria-hidden={privacyActive ? 'true' : undefined}>
       {!isPlaying && !isLoading && !error && (
         <div role="button" tabIndex={0} onKeyDown={clickOnActivationKey} aria-label={t('recordings.play')}
           className="play-overlay"
@@ -1350,6 +1351,7 @@ export function HLSVideoCell({
         message={t('live.pauseForPrivacyConfirm')}
         confirmLabel={t('live.pauseForPrivacy')}
       />
+      </div>
 
       {/* Privacy mode overlay — shown when the stream is paused for privacy */}
       {privacyActive && (
