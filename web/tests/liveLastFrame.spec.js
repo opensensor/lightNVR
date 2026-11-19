@@ -486,11 +486,19 @@ describe('cells capture only on failure paths', () => {
   test('generic teardown paths do not capture', () => {
     expect(between(read('MSEVideoCell.tsx'), 'const cleanup = () => {', '\n  };')).not.toContain('lastFrame.capture');
     expect(between(read('WebRTCVideoCell.tsx'), 'const cleanupWebRTCResources = () => {', 'return cleanupWebRTCResources'))
-      .not.toContain('lastFrame.capture');
-    expect(between(read('HLSVideoCell.tsx'), '// Destroy HLS.js instance', 'hlsPlayerRef.current = null;'))
-      .not.toContain('lastFrame.capture');
-  });
+  test('failure paths still capture before the video is reset', async () => {
+    const t = setup();
+    t.controller.recovered();
 
+    t.controller.setError(true, playingVideo);
+    await flush();
+
+    expect(t.deps.captureVideoFrame).toHaveBeenCalled();
+    expect(t.deps.loadRecordingFallback).toHaveBeenCalled();
+
+    const captureOrder = t.deps.captureVideoFrame.mock.invocationCallOrder[0];
+    const fallbackOrder = t.deps.loadRecordingFallback.mock.invocationCallOrder[0];
+    expect(captureOrder).toBeLessThan(fallbackOrder);
   test('failure paths still capture before the video is reset', () => {
     const count = (name) => (read(name).match(/lastFrame\.capture\(\)/g) || []).length;
     expect(count('MSEVideoCell.tsx')).toBe(3);
