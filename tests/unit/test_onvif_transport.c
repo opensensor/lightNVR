@@ -393,7 +393,7 @@ static void test_rejected_subscription_never_contacts_target_or_legacy_fallback(
     const onvif_operation_t operations[] = {ONVIF_OPERATION_PULL_MESSAGES, ONVIF_OPERATION_RENEW, ONVIF_OPERATION_UNSUBSCRIBE};
     for (int variant = 0; variant < 4; variant++) {
         snprintf(sub->subscription_address, sizeof(sub->subscription_address),
-                 variant == 0 ? "http://127.0.0.2:%u/stolen" :
+                 variant == 0 ? "http://127.0.0.1:%u/stolen" :
                  variant == 1 ? "https://127.0.0.1:%u/stolen" :
                  variant == 2 ? "ftp://127.0.0.1:%u/stolen" : "//127.0.0.1:%u/stolen",
                  variant == 1 ? port : destination_port);
