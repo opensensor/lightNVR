@@ -590,6 +590,8 @@ export function HLSVideoCell({
     doInit();
 
     // Cleanup function
+    const videoEl = videoRef.current;
+
     return () => {
       console.log(`[HLS ${stream.name}] Cleaning up HLS player`);
       isMounted = false;
@@ -615,24 +617,24 @@ export function HLSVideoCell({
       }
 
       // Remove native HLS event listeners (Safari)
-      if (videoRef.current) {
+      if (videoEl) {
         if (nativeLoadedHandler) {
-          videoRef.current.removeEventListener('loadedmetadata', nativeLoadedHandler);
+          videoEl.removeEventListener('loadedmetadata', nativeLoadedHandler);
           nativeLoadedHandler = null;
         }
         if (nativePlayingHandler) {
-          videoRef.current.removeEventListener('playing', nativePlayingHandler);
+          videoEl.removeEventListener('playing', nativePlayingHandler);
           nativePlayingHandler = null;
         }
         if (nativeErrorHandler) {
-          videoRef.current.removeEventListener('error', nativeErrorHandler);
+          videoEl.removeEventListener('error', nativeErrorHandler);
           nativeErrorHandler = null;
         }
 
         // Reset video element
-        videoRef.current.pause();
-        videoRef.current.removeAttribute('src');
-        videoRef.current.load();
+        videoEl.pause();
+        videoEl.removeAttribute('src');
+        videoEl.load();
       }
     };
     // Note: depend on stream?.name (not the stream object) so the periodic
