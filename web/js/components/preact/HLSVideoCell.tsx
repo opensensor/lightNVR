@@ -505,6 +505,11 @@ export function HLSVideoCell({
         nativeLoadedHandler = function() {
           if (!isMounted) return;
           setIsLoading(false);
+        };
+
+        nativePlayingHandler = function() {
+          if (!isMounted) return;
+          setIsLoading(false);
           setIsPlaying(true);
         };
 
@@ -528,6 +533,7 @@ export function HLSVideoCell({
         };
 
         videoRef.current!.addEventListener('loadedmetadata', nativeLoadedHandler);
+        videoRef.current!.addEventListener('playing', nativePlayingHandler);
         videoRef.current!.addEventListener('error', nativeErrorHandler);
       } else {
         // Fallback for truly unsupported browsers
