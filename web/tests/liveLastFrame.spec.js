@@ -445,7 +445,7 @@ describe('last frame controller', () => {
     const u = setup();
     let resolveBlob;
     const blobPromise = new Promise((resolve) => { resolveBlob = resolve; });
-    u.deps.canvasToBlob.mockImplementation(() => blobPromise);
+    u.deps.toBlob.mockImplementation(() => blobPromise);
     u.controller.recovered();
     u.controller.setError(true, playingVideo);
     await flush();
