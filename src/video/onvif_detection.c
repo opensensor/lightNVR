@@ -943,12 +943,28 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
+                    int slot = i;
+
                     log_debug("Renewing ONVIF subscription");
-                    if (!renew_subscription_locked(&subscriptions[i])) {
+                    pthread_mutex_unlock(&subscription_mutex);
+
+                    if (!renew_subscription_locked(&subscriptions[slot])) {
                         log_warn("ONVIF subscription renewal failed; recreating it");
-                        unsubscribe_subscription_locked(&subscriptions[i]);
+                        unsubscribe_subscription_locked(&subscriptions[slot]);
+
+                        pthread_mutex_lock(&subscription_mutex);
                         break;
                     }
+
+                    pthread_mutex_lock(&subscription_mutex);
+                    time(&now);
+                    if (slot >= subscription_count ||
+                        strcmp(subscriptions[slot].camera_url, url) != 0 ||
+                        !subscriptions[slot].active ||
+                        now >= subscriptions[slot].expiration_time) {
+                        break;
+                    }
+                    i = slot;
                 }
 
                 log_debug("Reusing existing ONVIF subscription");
