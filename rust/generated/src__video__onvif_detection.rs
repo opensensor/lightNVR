@@ -3400,26 +3400,37 @@ unsafe extern "C" fn get_subscription(
     ];
     if !discovered_url.is_null() {
         if subscription_address_matches_camera_host(url, discovered_url) {
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_INFO,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"ONVIF: Sending CreatePullPointSubscription to discovered endpoint\0".as_ptr()
-                    as *const ::core::ffi::c_char,
-            );
-            safe_strcpy(
-                &raw mut attempted_event_url as *mut ::core::ffi::c_char,
-                discovered_url,
-                ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
-                0 as size_t,
-            );
-            response = send_onvif_request_to_url(
-                discovered_url,
-                username,
-                password,
-                request_body,
-                onvif_operation_t::ONVIF_OPERATION_CREATE_PULLPOINT,
-            );
+            let mut discovered_len: size_t = strlen(discovered_url);
+            if discovered_len < ::core::mem::size_of::<[::core::ffi::c_char; 512]>() {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_INFO,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"ONVIF: Sending CreatePullPointSubscription to discovered endpoint\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                );
+                safe_strcpy(
+                    &raw mut attempted_event_url as *mut ::core::ffi::c_char,
+                    discovered_url,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+                    0 as size_t,
+                );
+                response = send_onvif_request_to_url(
+                    discovered_url,
+                    username,
+                    password,
+                    request_body,
+                    onvif_operation_t::ONVIF_OPERATION_CREATE_PULLPOINT,
+                );
+            } else {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"ONVIF: Ignoring oversized discovered event endpoint\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                );
+            }
         } else {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_WARN,
