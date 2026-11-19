@@ -774,33 +774,22 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         return response;
     }
 
-    // Resolve full URI reference against the endpoint that created the subscription.
-    // Do not collapse path components (for example, "/a/b/123" must stay intact).
-    char *resolved_url = resolve_uri_reference(subscription->camera_url,
-                                               subscription->subscription_address);
-    if (!resolved_url) {
+    // Only genuine relative paths may use the legacy camera-local fallback.
+    // An unsupported scheme or network-path URL is not a relative service.
+    if (has_uri_scheme_prefix(subscription->subscription_address) ||
+        strncmp(subscription->subscription_address, "//", 2) == 0) {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-
-    if (!(strncasecmp(resolved_url, "http://", 7) == 0 ||
-          strncasecmp(resolved_url, "https://", 8) == 0)) {
-        free(resolved_url);
+    const char *last_slash = strrchr(subscription->subscription_address, '/');
+    if (!last_slash || last_slash[1] == '\0') {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-
-    if (!urls_have_same_host(subscription->camera_url, resolved_url)) {
-        free(resolved_url);
-        pthread_mutex_unlock(lock);
-        return NULL;
-    }
-
-    char *response = send_onvif_request_to_url(resolved_url,
-                                               subscription->username,
-                                               subscription->password,
-                                               request_body, operation);
-    free(resolved_url);
+    char *response = send_onvif_request(subscription->camera_url,
+                                        subscription->username,
+                                        subscription->password,
+                                        request_body, last_slash + 1, operation);
     pthread_mutex_unlock(lock);
     return response;
 }
@@ -962,13 +951,9 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                     }
                 }
 
-                /* Do not return an existing slot after releasing subscription_mutex
-                 * without a pin/reference mechanism: another thread may recycle this
-                 * slot for a different camera before the caller can safely lock/use it.
-                 * Force recreation path until slot pinning/generation checks exist. */
-                log_debug("Existing ONVIF subscription found, recreating to avoid slot reuse race");
-                unsubscribe_subscription_locked(&subscriptions[i]);
-                break;
+                log_debug("Reusing existing ONVIF subscription");
+                pthread_mutex_unlock(&subscription_mutex);
+                return &subscriptions[i];
             } else if (!subscriptions[i].active) {
                 log_info("ONVIF subscription is inactive, creating new one");
                 break;
@@ -1369,6 +1354,32 @@ static bool xml_find_active_motion(ezxml_t node, char *label, size_t label_sz) {
     return any;
 }
 
+/* Some cameras send an unclosed Motion element. Keep that compatibility case
+ * without accepting a truthy Value from an unrelated field in the payload. */
+static bool malformed_motion_element_asserted(const char *response) {
+    static const char *const true_values[] = {
+        "Value=\"true\"", "Value='true'", "Value=\"1\"", "Value='1'"
+    };
+    for (const char *tag = strchr(response, '<'); tag; tag = strchr(tag + 1, '<')) {
+        const char *end = strchr(tag, '>');
+        if (!end) end = tag + strlen(tag);
+        const char *name = tag + 1;
+        const char *name_end = name;
+        while (name_end < end && *name_end != ' ' && *name_end != '\t' &&
+               *name_end != '\r' && *name_end != '\n' && *name_end != '/') {
+            name_end++;
+        }
+        const char *local = memchr(name, ':', (size_t)(name_end - name));
+        local = local ? local + 1 : name;
+        if (name_end - local != 6 || strncasecmp(local, "Motion", 6) != 0) continue;
+        for (size_t i = 0; i < sizeof(true_values) / sizeof(true_values[0]); i++) {
+            const char *value = strstr(name_end, true_values[i]);
+            if (value && value + strlen(true_values[i]) <= end) return true;
+        }
+    }
+    return false;
+}
+
 /*
  * Check for an ACTIVE motion event in a PullMessages response.
  *
@@ -1401,14 +1412,16 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
     ezxml_t xml = ezxml_parse_str(copy, strlen(copy));
     const char *parse_error = xml ? ezxml_error(xml) : NULL;
     if (!xml || (parse_error && parse_error[0] != '\0')) {
-        /* Malformed XML from buggy firmware: fail closed to avoid
-         * false positives from unrelated truthy Value fields. */
-        log_debug("ONVIF Detection: failed to parse PullMessages response; ignoring malformed payload");
+        /* Malformed XML from buggy firmware: accept only an asserted Motion
+         * element, not an unrelated truthy metadata Value. */
+        log_debug("ONVIF Detection: failed to parse PullMessages response, using fallback heuristic");
         if (xml) {
             ezxml_free(xml);
         }
+        bool fallback = malformed_motion_element_asserted(response);
+        if (fallback && label && label_sz > 0) safe_strcpy(label, "motion", label_sz, 0);
         free(copy);
-        return false;
+        return fallback;
     }
 
     bool motion = xml_find_active_motion(xml, label, label_sz);
