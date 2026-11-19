@@ -42,8 +42,9 @@ beforeAll(async () => {
       };
       const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
       window.mount=()=>render(h(QueryClientProvider,{client},h(HLSVideoCell,{
-        stream:{name:'fixture camera',status:'Running',go2rtc_hls_available:true},
-        streamId:'fixture',showControls:false,showLabels:false,globalShowDetections:false,
+        stream:{name:'fixture camera',status:'Running',go2rtc_hls_available:true,
+          privacy_mode:!!window.config.privacyMode},
+        streamId:'fixture',showControls:!!window.config.showControls,showLabels:false,globalShowDetections:false,
         onToggleFullscreen:()=>{},onTransportFailure:error=>window.failures.push(error)
       })),document.getElementById('root'));
       window.unmount=()=>render(null,document.getElementById('root'));
@@ -107,7 +108,9 @@ async function openPlayer(config={}) {
     await page.goto('http://fixture.invalid/');
     await page.evaluate(value=>{window.config=value;},config);
     await page.addScriptTag({content:bundle});
-    await page.waitForFunction(()=>window.config.deferSettings ? !!window.resolveSettings :
+    await page.waitForFunction(()=>window.config.privacyMode ?
+      !!document.querySelector('button[aria-label="live.resumeStream"]') :
+      window.config.deferSettings ? !!window.resolveSettings :
       window.config.deferManifest ? window.requests.length>0 :
       window.config.nativePlayer ? window.nativeSources.length>0 : window.players.length>0);
     return {browser,page};
@@ -116,6 +119,36 @@ async function openPlayer(config={}) {
     throw error;
   }
 }
+
+it('keeps audio enabled when an older play request rejects',async()=>{
+  const {browser,page}=await openPlayer({enabled:true,showControls:true});
+  try {
+    await page.evaluate(()=>window.players[0].emit('manifest'));
+    const audio=page.locator('.audio-toggle-btn');
+    await audio.waitFor({state:'visible'});
+    await page.waitForFunction(()=>!document.querySelector('.audio-toggle-btn')?.disabled);
+    await page.evaluate(()=>{
+      window.audioRejects=[];
+      HTMLMediaElement.prototype.play=()=>new Promise((_resolve,reject)=>window.audioRejects.push(reject));
+    });
+    await audio.click();
+    await audio.click();
+    await audio.click();
+    await page.evaluate(()=>window.audioRejects[0](new Error('older request rejected')));
+    await page.waitForFunction(()=>window.audioRejects.length===2);
+    expect(await audio.getAttribute('aria-pressed')).toBe('true');
+    expect(await page.locator('video').evaluate(video=>video.muted)).toBe(false);
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
+  } finally {await browser.close();}
+});
+
+it('focuses the resume control when privacy mode starts active',async()=>{
+  const {browser,page}=await openPlayer({privacyMode:true});
+  try {
+    await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='live.resumeStream');
+    expect(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label'))).toBe('live.resumeStream');
+  } finally {await browser.close();}
+});
 
 it.each(['exhausted','unrecoverable','native'])(
   '%s recovery falls back when go2rtc was only auto-detected',async branch=>{

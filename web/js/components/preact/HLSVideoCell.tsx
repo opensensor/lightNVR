@@ -88,6 +88,11 @@ export function HLSVideoCell({
   const [privacyActive, setPrivacyActive] = useState(!!stream.privacy_mode);
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
   const canControlPrivacy = stream.can_control_privacy !== false;
+  const privacyResumeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (privacyActive) privacyResumeButtonRef.current?.focus();
+  }, [privacyActive]);
 
   useEffect(() => {
     setPrivacyActive(!!stream.privacy_mode);
@@ -121,19 +126,36 @@ export function HLSVideoCell({
   const hlsUrlRef = useRef<string | null>(null);        // Master manifest URL — stored for session-expiry recovery
   const prevStatusRef = useRef(stream.status); // Track previous stream status for transition detection
   const cellAbortRef = useRef<AbortController | null>(null);     // Cancels a queued/in-flight gated preflight on unmount
+  const audioEnabledRef = useRef(false);
+  const audioPlayRequestTokenRef = useRef(0); // Guards against stale play() rejection mutating newer audio/player state
   // Last known image behind the error overlay (#974). Declared before the
   // effects below so its unmount cleanup runs first.
   const lastFrame = useLastFrame({ streamName: stream.name, videoRef, hasError: !!error, enabled: showLastImage });
   const handleMobileAudioToggle = () => {
     if (audioDisabled) return;
-    const nextEnabled = !audioEnabled;
+    const nextEnabled = !audioEnabledRef.current;
+    audioEnabledRef.current = nextEnabled;
+    const requestToken = ++audioPlayRequestTokenRef.current;
     setAudioEnabled(nextEnabled);
-    if (videoRef.current) {
-      videoRef.current.muted = !nextEnabled;
-      if (nextEnabled) videoRef.current.play().catch(() => {
-        if (videoRef.current) videoRef.current.muted = true;
-        setAudioEnabled(false);
-      });
+    const videoEl = videoRef.current;
+    if (videoEl) {
+      videoEl.muted = !nextEnabled;
+      if (nextEnabled) {
+        videoEl.play().catch(() => {
+          // Only rollback if this rejection still matches the latest request
+          // and the same video element is still active.
+          if (
+            requestToken !== audioPlayRequestTokenRef.current ||
+            videoRef.current !== videoEl ||
+            !audioEnabledRef.current
+          ) {
+            return;
+          }
+          videoEl.muted = true;
+          audioEnabledRef.current = false;
+          setAudioEnabled(false);
+        });
+      }
     }
     if (nextEnabled) {
       window.dispatchEvent(new CustomEvent('lightnvr:tile-audio-enabled', {
@@ -153,6 +175,8 @@ export function HLSVideoCell({
 
   useEffect(() => {
     if (!audioDisabled) return;
+    audioPlayRequestTokenRef.current++;
+    audioEnabledRef.current = false;
     setAudioEnabled(false);
     if (videoRef.current) videoRef.current.muted = true;
   }, [audioDisabled]);
@@ -594,6 +618,7 @@ export function HLSVideoCell({
 
     return () => {
       console.log(`[HLS ${stream.name}] Cleaning up HLS player`);
+      audioPlayRequestTokenRef.current++;
       isMounted = false;
 
       // Cancel any queued/in-flight gated preflight
@@ -1378,6 +1403,9 @@ export function HLSVideoCell({
           </svg>
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{t('live.streamPausedForPrivacy')}</p>
           {canControlPrivacy && <button
+            type="button"
+            ref={privacyResumeButtonRef}
+            aria-label={t('live.resumeStream')}
             onClick={handleResumeFromPrivacy}
             disabled={isTogglingEnabled}
             style={{
