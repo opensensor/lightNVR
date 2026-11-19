@@ -27,6 +27,7 @@
 #include <time.h>
 
 #include "web/api_handlers_go2rtc_proxy.h"
+#include "web/go2rtc_media_policy.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
 #include "core/config.h"
@@ -798,11 +799,20 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     sem_post(g_proxy_semaphore);
 
     // Handle errors
-    if (cres != CURLE_OK || ctx.error_occurred ||
-        (media_lease[0] && ctx.http_code < 300 && !ctx.media_policy_ack)) {
-        log_warn("go2rtc proxy: curl request failed: %s", curl_easy_strerror(cres));
+    if (cres != CURLE_OK || ctx.error_occurred) {
+        if (cres != CURLE_OK)
+            log_warn("go2rtc proxy: curl request failed: %s", curl_easy_strerror(cres));
+        else
+            log_warn("go2rtc proxy: response buffering failed");
         if (ctx.buffer) free(ctx.buffer);
         http_response_set_json_error(res, 502, "Proxy error: go2rtc is not responding");
+        return;
+    }
+    if (media_lease[0] && ctx.http_code >= 200 &&
+        ctx.http_code < 300 && !ctx.media_policy_ack) {
+        log_warn("%s (HTTP %ld)", GO2RTC_MEDIA_POLICY_ERROR, ctx.http_code);
+        if (ctx.buffer) free(ctx.buffer);
+        http_response_set_json_error(res, 502, GO2RTC_MEDIA_POLICY_ERROR);
         return;
     }
 

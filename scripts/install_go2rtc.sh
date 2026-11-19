@@ -1,16 +1,15 @@
 #!/bin/bash
-# Script to download and install go2rtc for WebRTC streaming
-# Uses opensensor/go2rtc fork with memory leak fixes
+# Build and install the go2rtc fork pinned by this LightNVR checkout.
+# Upstream binaries do not implement LightNVR's media authority protocol.
 
 set -e
 
 # Default values
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/lightnvr/go2rtc"
-VERSION="latest"
 ARCH=$(uname -m)
-# Use opensensor fork by default (includes memory leak fixes)
-REPO="opensensor/go2rtc"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+GO2RTC_SOURCE_DIR="$SCRIPT_DIR/../go2rtc"
 
 # Display usage information
 usage() {
@@ -18,8 +17,8 @@ usage() {
     echo "Options:"
     echo "  -d, --install-dir DIR   Installation directory for go2rtc binary (default: $INSTALL_DIR)"
     echo "  -c, --config-dir DIR    Configuration directory for go2rtc (default: $CONFIG_DIR)"
-    echo "  -v, --version VERSION   Version to install (default: latest)"
     echo "  -a, --arch ARCH         Architecture (default: auto-detected, current: $ARCH)"
+    echo "  Requires Go and an initialized go2rtc submodule."
     echo "  -h, --help              Display this help message"
     exit 1
 }
@@ -33,10 +32,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--config-dir)
             CONFIG_DIR="$2"
-            shift 2
-            ;;
-        -v|--version)
-            VERSION="$2"
             shift 2
             ;;
         -a|--arch)
@@ -53,16 +48,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Map architecture to go2rtc naming convention
+# Map the requested target to Go's cross-compilation settings.
 case $ARCH in
     x86_64|amd64)
-        GO2RTC_ARCH="amd64"
+        GO2RTC_GOARCH="amd64"
         ;;
     aarch64|arm64)
-        GO2RTC_ARCH="arm64"
+        GO2RTC_GOARCH="arm64"
         ;;
-    armv7l|armhf)
-        GO2RTC_ARCH="arm"
+    arm|armv7|armv7l|armhf)
+        GO2RTC_GOARCH="arm"
+        GO2RTC_GOARM="7"
         ;;
     *)
         echo "Unsupported architecture: $ARCH"
@@ -71,41 +67,34 @@ case $ARCH in
         ;;
 esac
 
-echo "Installing go2rtc..."
-echo "  Architecture: $GO2RTC_ARCH"
-echo "  Version: $VERSION"
+if [ ! -f "$GO2RTC_SOURCE_DIR/go.mod" ] ||
+   [ ! -f "$GO2RTC_SOURCE_DIR/internal/mediaauth/lease.go" ]; then
+    echo "Compatible go2rtc source is missing. Run: git submodule update --init go2rtc" >&2
+    exit 1
+fi
+if ! command -v go >/dev/null 2>&1; then
+    echo "Go is required to build the pinned go2rtc fork." >&2
+    exit 1
+fi
+
+echo "Building the pinned LightNVR go2rtc fork..."
+echo "  Target: linux/$GO2RTC_GOARCH${GO2RTC_GOARM:+ (GOARM=$GO2RTC_GOARM)}"
 echo "  Install directory: $INSTALL_DIR"
 echo "  Config directory: $CONFIG_DIR"
 
-# Create directories if they don't exist
-mkdir -p "$INSTALL_DIR"
-mkdir -p "$CONFIG_DIR"
-
-# Determine download URL
-if [ "$VERSION" = "latest" ]; then
-    # Get latest release URL from opensensor fork
-    RELEASE_URL=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep "browser_download_url.*linux_$GO2RTC_ARCH" | cut -d '"' -f 4)
-    if [ -z "$RELEASE_URL" ]; then
-        echo "Failed to determine latest release URL from $REPO."
-        echo "Falling back to upstream AlexxIT/go2rtc..."
-        RELEASE_URL=$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest | grep "browser_download_url.*linux_$GO2RTC_ARCH" | cut -d '"' -f 4)
-        if [ -z "$RELEASE_URL" ]; then
-            echo "Failed to determine latest release URL. Please specify a version."
-            exit 1
-        fi
-    fi
-else
-    # Construct URL for specific version from opensensor fork
-    RELEASE_URL="https://github.com/$REPO/releases/download/$VERSION/go2rtc_linux_$GO2RTC_ARCH"
-fi
-
-echo "Downloading from: $RELEASE_URL"
-
-# Download go2rtc binary
-curl -L -o "$INSTALL_DIR/go2rtc" "$RELEASE_URL"
-
-# Make binary executable
-chmod +x "$INSTALL_DIR/go2rtc"
+GO2RTC_BUILD_DIR=$(mktemp -d)
+GO2RTC_INSTALL_TEMP=""
+trap 'rm -rf "$GO2RTC_BUILD_DIR"; if [ -n "$GO2RTC_INSTALL_TEMP" ]; then rm -f "$GO2RTC_INSTALL_TEMP"; fi' EXIT
+(
+    cd "$GO2RTC_SOURCE_DIR"
+    GOOS=linux GOARCH="$GO2RTC_GOARCH" GOARM="${GO2RTC_GOARM:-}" CGO_ENABLED=0 \
+        go build -trimpath -ldflags="-s -w" -o "$GO2RTC_BUILD_DIR/go2rtc" .
+)
+mkdir -p "$INSTALL_DIR" "$CONFIG_DIR"
+GO2RTC_INSTALL_TEMP="$INSTALL_DIR/.go2rtc.$$.tmp"
+install -m 0755 "$GO2RTC_BUILD_DIR/go2rtc" "$GO2RTC_INSTALL_TEMP"
+mv -f "$GO2RTC_INSTALL_TEMP" "$INSTALL_DIR/go2rtc"
+GO2RTC_INSTALL_TEMP=""
 
 # Create basic configuration file if it doesn't exist
 if [ ! -f "$CONFIG_DIR/go2rtc.yaml" ]; then

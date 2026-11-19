@@ -19,8 +19,11 @@
 #include <strings.h>
 
 #include "web/go2rtc_websocket.h"
+#include "web/go2rtc_media_policy.h"
 #include "web/httpd_utils.h"
 #include "web/libuv_connection.h"
+#define LOG_COMPONENT "go2rtcWebSocket"
+#include "core/logger.h"
 
 #define WS_BUFFER_SIZE (64 * 1024)
 #define WS_HEADER_LIMIT 8192
@@ -134,16 +137,20 @@ static void close_proxy(websocket_proxy_t *proxy) {
     uv_close((uv_handle_t *)&proxy->timeout, handle_closed);
 }
 
-static void fail_proxy(websocket_proxy_t *proxy) {
+static void fail_proxy_with_error(websocket_proxy_t *proxy, const char *message) {
     if (!proxy->upgraded && proxy->conn && !proxy->closing) {
         libuv_connection_t *conn = proxy->conn;
         proxy->conn = NULL;
         conn->go2rtc_websocket = NULL;
         conn->async_response_pending = false;
-        http_response_set_json_error(&conn->response, 502, "go2rtc WebSocket unavailable");
+        http_response_set_json_error(&conn->response, 502, message);
         libuv_send_response_ex(conn, &conn->response, WRITE_ACTION_CLOSE);
     }
     close_proxy(proxy);
+}
+
+static void fail_proxy(websocket_proxy_t *proxy) {
+    fail_proxy_with_error(proxy, "go2rtc WebSocket unavailable");
 }
 
 /* The client side may be TLS; route its I/O through the connection's
@@ -244,9 +251,14 @@ static void upstream_read(uv_stream_t *stream, ssize_t count, const uv_buf_t *bu
             free(buf->base);
             return;
         }
-        if (strncmp(proxy->headers, "HTTP/1.1 101 ", 13) != 0 ||
-            !strcasestr(proxy->headers, "\r\nX-LightNVR-Media-Policy: 1\r\n")) {
+        if (strncmp(proxy->headers, "HTTP/1.1 101 ", 13) != 0) {
             fail_proxy(proxy);
+            free(buf->base);
+            return;
+        }
+        if (!strcasestr(proxy->headers, "\r\nX-LightNVR-Media-Policy: 1\r\n")) {
+            log_warn("%s (WebSocket upgrade)", GO2RTC_MEDIA_POLICY_ERROR);
+            fail_proxy_with_error(proxy, GO2RTC_MEDIA_POLICY_ERROR);
             free(buf->base);
             return;
         }

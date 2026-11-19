@@ -72,6 +72,16 @@ cd lightnvr
 git submodule update --init --recursive
 ```
 
+LightNVR 0.48.x requires the pinned OpenSensor go2rtc fork for live view. A
+stock upstream go2rtc binary does not acknowledge LightNVR's media policy.
+Build the submodule with `./scripts/install_go2rtc.sh` (requires Go), or set
+`[go2rtc] binary_path` to your own build of the pinned submodule. The installer
+never falls back to an upstream binary.
+
+For an ARMv7 cross-build, run `./scripts/install_go2rtc.sh --arch armv7l
+--install-dir "$PWD/staging/bin" --config-dir "$PWD/staging/go2rtc"` on a Go
+build host, then copy the staged binary to the device.
+
 #### 2. Install Dependencies
 
 See the [Platform-Specific Instructions](#platform-specific-instructions) section for dependency installation commands for your distribution.

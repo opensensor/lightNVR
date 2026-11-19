@@ -640,8 +640,12 @@ static bool is_transport_drop(const onvif_request_status_t *status) {
            status->curl_code == CURLE_SEND_ERROR;
 }
 
-static bool subscription_address_matches_camera_origin(const char *camera_url,
-                                                          const char *subscription_address) {
+/* PullPoint references can use a camera-local ephemeral port (for example,
+ * Tapo creates the subscription on :2020 and serves PullMessages on :1026).
+ * Keep the scheme and host pinned to the configured camera while allowing a
+ * different valid TCP port on that same host. */
+static bool subscription_address_matches_camera_host(const char *camera_url,
+                                                      const char *subscription_address) {
     if (!url_is_http_endpoint(camera_url) || !url_is_http_endpoint(subscription_address)) return false;
 
     CURLU *camera = curl_url();
@@ -662,9 +666,11 @@ static bool subscription_address_matches_camera_origin(const char *camera_url,
     if (curl_url_get(camera, CURLUPART_PORT, &camera_port, CURLU_DEFAULT_PORT) != CURLUE_OK) goto cleanup;
     if (curl_url_get(sub, CURLUPART_PORT, &sub_port, CURLU_DEFAULT_PORT) != CURLUE_OK) goto cleanup;
 
-    long camera_number = strtol(camera_port, NULL, 10);
-    long sub_number = strtol(sub_port, NULL, 10);
-    ok = camera_number > 0 && camera_number == sub_number &&
+    char *camera_end = NULL, *sub_end = NULL;
+    long camera_number = strtol(camera_port, &camera_end, 10);
+    long sub_number = strtol(sub_port, &sub_end, 10);
+    ok = camera_end && *camera_end == '\0' && camera_number >= 1 && camera_number <= 65535 &&
+         sub_end && *sub_end == '\0' && sub_number >= 1 && sub_number <= 65535 &&
          strcasecmp(camera_scheme, sub_scheme) == 0 &&
          strcasecmp(camera_host, sub_host) == 0;
 
@@ -698,9 +704,9 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
 
     if (strncasecmp(subscription->subscription_address, "http://", 7) == 0 ||
         strncasecmp(subscription->subscription_address, "https://", 8) == 0) {
-        if (!subscription_address_matches_camera_origin(subscription->camera_url,
-                                                         subscription->subscription_address)) {
-            log_warn("Rejected ONVIF subscription endpoint outside the configured camera origin");
+        if (!subscription_address_matches_camera_host(subscription->camera_url,
+                                                       subscription->subscription_address)) {
+            log_warn("Rejected ONVIF subscription endpoint with a different scheme/host or invalid port");
             return NULL;
         }
         char *response = NULL;
@@ -1528,7 +1534,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     // when the motion window started, not when inference + DB write finished.
     time_t event_timestamp = time(NULL);
 
-    // Use the same origin check and relative-path handling as Renew/Unsubscribe.
+    // Use the same camera-host check and relative-path handling as Renew/Unsubscribe.
     bool transport_dropped = false;
     char *response = send_subscription_request(subscription, request_body,
                                                ONVIF_OPERATION_PULL_MESSAGES,
