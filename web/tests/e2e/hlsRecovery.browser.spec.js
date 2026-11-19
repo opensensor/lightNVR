@@ -112,7 +112,17 @@ it.each(['exhausted','unrecoverable','native'])(
       if(branch==='native') await page.locator('video').dispatchEvent('error');
       else await page.evaluate(value=>window.emitFatal(value==='exhausted'?'media':'other',value==='exhausted'?4:1),branch);
       expect(await page.evaluate(()=>window.errors)).toEqual([]);
-      await page.waitForFunction(()=>window.requests.some(r=>r.url==='/hls/fixture%20camera/index.m3u8'));
+      await page.waitForFunction(currentBranch=>{
+        const fallbackUrl='/hls/fixture%20camera/index.m3u8';
+        const requested=window.requests.some(r=>r.url===fallbackUrl);
+        if(!requested) return false;
+        if(currentBranch==='native') {
+          return (window.nativeSources||[]).some(s=>String(s).includes(fallbackUrl));
+        }
+        return (window.players||[]).some(p=>
+          Array.isArray(p?.sources) && p.sources.some(s=>String(s?.src||s).includes(fallbackUrl)),
+        );
+      },branch);
       expect(await page.evaluate(()=>window.failures)).toEqual([]);
       if(branch!=='native') expect(await page.evaluate(()=>window.players[0].destroyed)).toBe(1);
     } finally {await browser.close();}
