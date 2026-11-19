@@ -379,8 +379,6 @@ export function HLSVideoCell({
             fatalErrorCountRef.current = 0;
           }
           setIsLoading(false);
-          setIsPlaying(false);
-
           if (videoRef.current) {
             videoRef.current.play()
               .then(() => {
