@@ -1070,7 +1070,16 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             curl_easy_cleanup(subscriptions[slot].curl);
             subscriptions[slot].curl = NULL;
         }
-        memset(&subscriptions[slot], 0, sizeof(subscriptions[slot]));
+        /* Do not clear the whole slot with memset here: callers may still hold
+         * a pointer to this slot object. Reinitialize only per-subscription
+         * payload/state fields needed for reassignment. */
+        subscriptions[slot].active = false;
+        subscriptions[slot].renewal_time = 0;
+        subscriptions[slot].consecutive_failures = 0;
+        subscriptions[slot].subscription_address[0] = '\0';
+        subscriptions[slot].camera_url[0] = '\0';
+        subscriptions[slot].username[0] = '\0';
+        subscriptions[slot].password[0] = '\0';
 
         // Store camera URL, username, and password
         safe_strcpy(subscriptions[slot].camera_url, url, sizeof(subscriptions[slot].camera_url), 0);
