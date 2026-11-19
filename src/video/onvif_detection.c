@@ -1187,6 +1187,10 @@ static const char *normalize_object_class(const char *raw) {
         ci_contains(raw, "person") || ci_contains(raw, "pedestrian")) {
         return "person";
     }
+    /* Handle motorized two-wheelers before broad bicycle/cycle matching. */
+    if (ci_contains(raw, "motorcycle") || ci_contains(raw, "motorbike")) {
+        return "vehicle";
+    }
     /* Check non-motorized before vehicle so "NonMotor" isn't caught by "motor". */
     if (ci_contains(raw, "nonmotor") || ci_contains(raw, "bicycle") ||
         ci_contains(raw, "bike") || ci_contains(raw, "cycle")) {
