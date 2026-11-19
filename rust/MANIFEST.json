@@ -936,7 +936,7 @@
       "c": "src/video/faac_encoder.c",
       "c_sha256": "941d682766cdc61efa860de9069bf1640ee27220e144e218e5084712b10aad9d",
       "rust": "generated/src__video__faac_encoder.rs",
-      "rust_sha256": "3ce9bb8e4f24bbfcbda92a822e012bac5a2424e33e32475b9f611ad414195876",
+      "rust_sha256": "8519b4d3cd3f3ceb66bf2506d05d83d88927c3b2c7aac854a8534d1f6b6ed352",
       "adapted": false
     },
     {
@@ -1734,7 +1734,7 @@
       "c": "src/web/api_handlers_system.c",
       "c_sha256": "d1ace8b40b7b50385014fd926a778c20d19a0bde2ba59ab9043712b3b2913b17",
       "rust": "generated/src__web__api_handlers_system.rs",
-      "rust_sha256": "e9aacf3a4c8b87a6cf3e228724933fe2cb5e30cd688f447bfb950c436d052558",
+      "rust_sha256": "b8b87a58d8cdd6ff3ed8e39e93a0f1371e4130c97aa47e45a89ffdd70531932e",
       "adapted": true
     },
     {

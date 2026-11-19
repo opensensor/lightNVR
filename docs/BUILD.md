@@ -363,7 +363,7 @@ If LightNVR fails to start or crashes:
 ### llhttp source fallback
 
 When `libllhttp` is unavailable through pkg-config, CMake downloads generated
-llhttp sources. The default `LLHTTP_DOWNLOAD_REF=release/v9.4.3` is a tag whose
+llhttp sources. The default `LLHTTP_DOWNLOAD_REF=release/v9.4.4` is a tag whose
 files are checked against pinned SHA-256 hashes.
 
 For alternate sources, set both `LLHTTP_DOWNLOAD_REF` and

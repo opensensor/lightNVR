@@ -234,10 +234,10 @@ describe('standalone Swagger browser', () => {
       if (pathname.startsWith('/locales/')) {
         await route.fulfill({ contentType: 'application/json', body: readFileSync(path.resolve(__dirname, '../public', pathname.slice(1)), 'utf8') }); return;
       }
-      if (pathname === '/api-docs-vendor/swagger-ui-bundle-5.34.1.js') {
+      if (pathname === '/api-docs-vendor/swagger-ui-bundle-5.35.0.js') {
         await route.fulfill({ contentType: 'text/javascript', body: readFileSync(path.resolve(__dirname, '../node_modules/swagger-ui-dist/swagger-ui-bundle.js')) }); return;
       }
-      if (pathname === '/api-docs-vendor/swagger-ui-5.34.1.css') {
+      if (pathname === '/api-docs-vendor/swagger-ui-5.35.0.css') {
         await route.fulfill({ contentType: 'text/css', body: readFileSync(path.resolve(__dirname, '../node_modules/swagger-ui-dist/swagger-ui.css')) }); return;
       }
       if (pathname === '/css/api-docs.css') {

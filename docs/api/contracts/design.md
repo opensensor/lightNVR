@@ -225,7 +225,7 @@ Rust compatibility are not claimed by these tests.
 
 Open `/api-docs.html` directly, or `/prefix/api-docs.html` when the application is
 mounted under a reverse-proxy prefix. The page resolves verification, discovery,
-locale catalogs and its standalone Swagger UI 5.34.1 assets under its own page
+locale catalogs and its standalone Swagger UI 5.35.0 assets under its own page
 directory. It does not trust forwarded host/prefix headers or accept a spec URL
 from the query string. Normal Live, Streams and recordings entries do not load
 the explorer vendor assets.

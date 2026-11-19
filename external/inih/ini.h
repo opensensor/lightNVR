@@ -2,7 +2,7 @@
 
 SPDX-License-Identifier: BSD-3-Clause
 
-Copyright (C) 2009-2020, Ben Hoyt
+Copyright (C) 2009-2025, Ben Hoyt
 
 inih is released under the New BSD license (see LICENSE.txt). Go to the project
 home page for more info:
@@ -47,7 +47,13 @@ extern "C" {
 #endif
 #endif
 
-/* Typedef for prototype of handler function. */
+/* Typedef for prototype of handler function.
+
+   Note that even though the value parameter has type "const char*", the user
+   may cast to "char*" and modify its content, as the value is not used again
+   after the call to ini_handler. This is not true of section and name --
+   those must not be modified.
+*/
 #if INI_HANDLER_LINENO
 typedef int (*ini_handler)(void* user, const char* section,
                            const char* name, const char* value,
@@ -70,8 +76,8 @@ typedef char* (*ini_reader)(char* str, int num, void* stream);
    of handler call). Handler should return nonzero on success, zero on error.
 
    Returns 0 on success, line number of first error on parse error (doesn't
-   stop on first error), -1 on file open error, or -2 on memory allocation
-   error (only when INI_USE_STACK is zero).
+   stop on first error), -1 on file open error, -2 on memory allocation error
+   (only when INI_USE_STACK is zero), or -3 on file read error.
 */
 INI_API int ini_parse(const char* filename, ini_handler handler, void* user);
 
@@ -86,9 +92,14 @@ INI_API int ini_parse_stream(ini_reader reader, void* stream, ini_handler handle
                      void* user);
 
 /* Same as ini_parse(), but takes a zero-terminated string with the INI data
-instead of a file. Useful for parsing INI data from a network socket or
-already in memory. */
+   instead of a file. Useful for parsing INI data from a network socket or
+   which is already in memory. */
 INI_API int ini_parse_string(const char* string, ini_handler handler, void* user);
+
+/* Same as ini_parse_string(), but takes a string and its length, avoiding
+   strlen(). Useful for parsing INI data from a network socket or which is
+   already in memory, or interfacing with C++ std::string_view. */
+INI_API int ini_parse_string_length(const char* string, size_t length, ini_handler handler, void* user);
 
 /* Nonzero to allow multi-line value parsing, in the style of Python's
    configparser. If allowed, ini_parse() will call the handler with the same
@@ -128,6 +139,20 @@ INI_API int ini_parse_string(const char* string, ini_handler handler, void* user
    this must be 3 more than the longest line (due to '\r', '\n', and '\0'). */
 #ifndef INI_MAX_LINE
 #define INI_MAX_LINE 200
+#endif
+
+/* Maximum size in bytes, including the NUL terminator, of a "[section]" name.
+   A longer name is silently truncated to fit, so a caller that cannot tolerate
+   truncation must size this above its longest valid name and reject a name
+   whose length reaches INI_MAX_SECTION - 1. */
+#ifndef INI_MAX_SECTION
+#define INI_MAX_SECTION 50
+#endif
+
+/* Maximum size in bytes, including the NUL terminator, of a "name" in a
+   name=value pair. Longer names are truncated as above. */
+#ifndef INI_MAX_NAME
+#define INI_MAX_NAME 50
 #endif
 
 /* Nonzero to allow heap line buffer to grow via realloc(), zero for a

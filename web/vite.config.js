@@ -17,8 +17,8 @@ const MISSING_APP_JS_IMPORTERS = ['streams.html'];
 const MIN_COMPRESSION_SIZE_BYTES = 1024;
 const legacyBrowserSupport = process.env.LIGHTNVR_WEB_LEGACY !== 'false';
 const swaggerVendorFiles = new Map([
-  ['swagger-ui-bundle-5.34.1.js', 'swagger-ui-bundle.js'],
-  ['swagger-ui-5.34.1.css', 'swagger-ui.css'],
+  ['swagger-ui-bundle-5.35.0.js', 'swagger-ui-bundle.js'],
+  ['swagger-ui-5.35.0.css', 'swagger-ui.css'],
   ['LICENSE', 'LICENSE'],
   ['swagger-ui-bundle.js.LICENSE.txt', 'swagger-ui-bundle.js.LICENSE.txt'],
 ]);
@@ -29,7 +29,7 @@ const apiDocsVendorPlugin = () => ({
   name: 'api-docs-standalone-vendor',
   async buildStart() {
     const metadata = JSON.parse(await fsPromises.readFile(resolve(__dirname, 'node_modules/swagger-ui-dist/package.json'), 'utf8'));
-    if (metadata.version !== '5.34.1') throw new Error('Review the API explorer before changing Swagger UI 5.34.1');
+    if (metadata.version !== '5.35.0') throw new Error('Review the API explorer before changing Swagger UI 5.35.0');
   },
   transformIndexHtml(html, context) {
     if (basename(context.filename) !== 'api-docs.html') return html;

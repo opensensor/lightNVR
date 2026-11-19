@@ -46,7 +46,7 @@ export function prepareExplorerDocument(value: unknown, specUrl: string): Explor
   return { ...value, servers: [{ url: expectedServer.href }] };
 }
 
-/** Pinned Swagger UI 5.34.1 configuration. No Swagger-originated HTTP is needed.
+/** Pinned Swagger UI 5.35.0 configuration. No Swagger-originated HTTP is needed.
  * https://swagger.io/docs/open-source-tools/swagger-ui/usage/configuration/
  * Component names are checked against the installed standalone distribution.
  */

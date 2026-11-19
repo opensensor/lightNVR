@@ -64,7 +64,7 @@ function loadVendor(): Promise<void> {
   if (window.SwaggerUIBundle) return Promise.resolve();
   if (!vendorLoad) vendorLoad = new Promise<void>((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = new URL('api-docs-vendor/swagger-ui-bundle-5.34.1.js', urls.base).href;
+    script.src = new URL('api-docs-vendor/swagger-ui-bundle-5.35.0.js', urls.base).href;
     script.onload = () => window.SwaggerUIBundle ? resolve() : reject(new Error('API reference unavailable'));
     script.onerror = () => { vendorLoad = undefined; script.remove(); reject(new Error('API reference unavailable')); };
     document.head.append(script);
