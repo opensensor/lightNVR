@@ -1301,7 +1301,7 @@ export function HLSVideoCell({
       )}
 
       {/* Play button overlay (for browsers that block autoplay) */}
-      {!isPlaying && !isLoading && !error && (
+      {!isPlaying && !isLoading && !error && !privacyActive && (
         <div role="button" tabIndex={0} onKeyDown={clickOnActivationKey} aria-label={t('recordings.play')}
           className="play-overlay"
           style={{
