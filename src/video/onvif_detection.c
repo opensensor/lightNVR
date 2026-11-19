@@ -762,26 +762,22 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         return response;
     }
 
-    // Resolve relative subscription references against the camera endpoint.
+    // Only genuine relative paths may use the legacy camera-local fallback.
     // An unsupported scheme or network-path URL is not a relative service.
     if (strchr(subscription->subscription_address, ':') ||
         strncmp(subscription->subscription_address, "//", 2) == 0) {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-
-    char *resolved_url = resolve_reference_url(subscription->camera_url,
-                                               subscription->subscription_address);
-    if (!resolved_url) {
+    const char *last_slash = strrchr(subscription->subscription_address, '/');
+    if (!last_slash || last_slash[1] == '\0') {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-
-    char *response = send_onvif_request_absolute(resolved_url,
-                                                 subscription->username,
-                                                 subscription->password,
-                                                 request_body, operation);
-    free(resolved_url);
+    char *response = send_onvif_request(subscription->camera_url,
+                                        subscription->username,
+                                        subscription->password,
+                                        request_body, last_slash + 1, operation);
     pthread_mutex_unlock(lock);
     return response;
 }
@@ -935,19 +931,10 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
-                    onvif_subscription_t *sub = &subscriptions[i];
-                    bool renewed_ok = false;
                     log_debug("Renewing ONVIF subscription for %s", url);
-
-                    pthread_mutex_unlock(&subscription_mutex);
-                    renewed_ok = renew_subscription_locked(sub);
-                    if (!renewed_ok) {
+                    if (!renew_subscription_locked(&subscriptions[i])) {
                         log_warn("ONVIF subscription renewal failed for %s; recreating it", url);
-                        unsubscribe_subscription_locked(sub);
-                    }
-                    pthread_mutex_lock(&subscription_mutex);
-
-                    if (!renewed_ok) {
+                        unsubscribe_subscription_locked(&subscriptions[i]);
                         break;
                     }
                 }
@@ -962,11 +949,8 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                 /* We missed the renewal window. Best-effort Unsubscribe avoids
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
-                onvif_subscription_t *sub = &subscriptions[i];
                 log_info("ONVIF subscription for %s expired, replacing it", url);
-                pthread_mutex_unlock(&subscription_mutex);
-                unsubscribe_subscription_locked(sub);
-                pthread_mutex_lock(&subscription_mutex);
+                unsubscribe_subscription_locked(&subscriptions[i]);
                 break;
             }
         }
@@ -1377,12 +1361,17 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
  * or placed on the general detection/event path. */
 static void store_lpr_notifications(const char *response, const char *stream_name) {
     if (!response || !stream_name || !stream_name[0]) return;
+    if (!ci_contains(response, "LicensePlate") && !ci_contains(response, "ANPR") &&
+        !ci_contains(response, "ALPR") && !ci_contains(response, "LPR")) return;
 
-    onvif_lpr_event_t events[100] = {0};
-    int count = onvif_parse_lpr_events(response, events,
-                                       sizeof(events) / sizeof(events[0]));
+    enum { MAX_LPR_EVENTS_PER_PULL = 100 };
+    const size_t events_size = MAX_LPR_EVENTS_PER_PULL * sizeof(onvif_lpr_event_t);
+    onvif_lpr_event_t *events = calloc(MAX_LPR_EVENTS_PER_PULL, sizeof(*events));
+    if (!events) return;
+    int count = onvif_parse_lpr_events(response, events, MAX_LPR_EVENTS_PER_PULL);
     if (count <= 0) {
-        secure_clear(events, sizeof(events));
+        secure_clear(events, events_size);
+        free(events);
         return;
     }
 
@@ -1392,7 +1381,8 @@ static void store_lpr_notifications(const char *response, const char *stream_nam
             log_warn("LPR reads are available but protected storage is disabled: "
                      "LIGHTNVR_LPR_MASTER_KEY_HEX is not configured");
         }
-        secure_clear(events, sizeof(events));
+        secure_clear(events, events_size);
+        free(events);
         return;
     }
 
@@ -1400,7 +1390,8 @@ static void store_lpr_notifications(const char *response, const char *stream_nam
     if (get_stream_config_by_name(stream_name, &stream) != 0 ||
         !stream.camera_uuid[0]) {
         log_warn("Cannot associate ONVIF LPR notifications with stream identity");
-        secure_clear(events, sizeof(events));
+        secure_clear(events, events_size);
+        free(events);
         return;
     }
 
@@ -1432,7 +1423,8 @@ static void store_lpr_notifications(const char *response, const char *stream_nam
         secure_clear(&input, sizeof(input));
         secure_clear(read_uuid, sizeof(read_uuid));
     }
-    secure_clear(events, sizeof(events));
+    secure_clear(events, events_size);
+    free(events);
 }
 
 /**
