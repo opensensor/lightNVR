@@ -455,6 +455,19 @@ static void test_fixture_send_stops_on_zero_progress_or_closed_peer(void) {
     TEST_ASSERT_EQUAL_UINT(2, send_calls);
 }
 
+static void test_motorcycle_class_precedes_bicycle_substrings(void) {
+    TEST_ASSERT_EQUAL_STRING("vehicle", normalize_object_class("Motorcycle"));
+    TEST_ASSERT_EQUAL_STRING("vehicle", normalize_object_class("motorbike"));
+    TEST_ASSERT_EQUAL_STRING("bicycle", normalize_object_class("bicycle"));
+}
+
+static void test_malformed_motion_message_uses_truthy_fallback(void) {
+    char label[32];
+    TEST_ASSERT_TRUE(has_motion_event("<Motion Value=\"true\"", label, sizeof(label)));
+    TEST_ASSERT_EQUAL_STRING("motion", label);
+    TEST_ASSERT_FALSE(has_motion_event("<Motion Value=\"false\"", label, sizeof(label)));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_every_operation_preserves_action_headers_and_transport_destination);
@@ -471,5 +484,7 @@ int main(void) {
     RUN_TEST(test_camera_local_ephemeral_port_receives_subscription_requests);
     RUN_TEST(test_relative_subscription_preserves_camera_local_fallback);
     RUN_TEST(test_fixture_send_stops_on_zero_progress_or_closed_peer);
+    RUN_TEST(test_motorcycle_class_precedes_bicycle_substrings);
+    RUN_TEST(test_malformed_motion_message_uses_truthy_fallback);
     return UNITY_END();
 }

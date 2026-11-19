@@ -1187,6 +1187,10 @@ static const char *normalize_object_class(const char *raw) {
         ci_contains(raw, "person") || ci_contains(raw, "pedestrian")) {
         return "person";
     }
+    /* Handle motorized two-wheelers before broad bicycle/cycle matching. */
+    if (ci_contains(raw, "motorcycle") || ci_contains(raw, "motorbike")) {
+        return "vehicle";
+    }
     /* Check non-motorized before vehicle so "NonMotor" isn't caught by "motor". */
     if (ci_contains(raw, "nonmotor") || ci_contains(raw, "bicycle") ||
         ci_contains(raw, "bike") || ci_contains(raw, "cycle")) {
@@ -1328,11 +1332,15 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
     if (!copy) return false;
 
     ezxml_t xml = ezxml_parse_str(copy, strlen(copy));
-    if (!xml) {
+    const char *parse_error = xml ? ezxml_error(xml) : NULL;
+    if (!xml || (parse_error && parse_error[0] != '\0')) {
         /* Malformed XML from buggy firmware: fall back to substring matching,
          * but at least require a truthy Value somewhere in the payload so a
          * plain "motion ended" message doesn't trigger. */
         log_debug("ONVIF Detection: failed to parse PullMessages response, using fallback heuristic");
+        if (xml) {
+            ezxml_free(xml);
+        }
         bool fallback =
             (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
              strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
@@ -1353,12 +1361,17 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
  * or placed on the general detection/event path. */
 static void store_lpr_notifications(const char *response, const char *stream_name) {
     if (!response || !stream_name || !stream_name[0]) return;
+    if (!ci_contains(response, "LicensePlate") && !ci_contains(response, "ANPR") &&
+        !ci_contains(response, "ALPR") && !ci_contains(response, "LPR")) return;
 
-    onvif_lpr_event_t events[16] = {0};
-    int count = onvif_parse_lpr_events(response, events,
-                                       sizeof(events) / sizeof(events[0]));
+    enum { MAX_LPR_EVENTS_PER_PULL = 100 };
+    const size_t events_size = MAX_LPR_EVENTS_PER_PULL * sizeof(onvif_lpr_event_t);
+    onvif_lpr_event_t *events = calloc(MAX_LPR_EVENTS_PER_PULL, sizeof(*events));
+    if (!events) return;
+    int count = onvif_parse_lpr_events(response, events, MAX_LPR_EVENTS_PER_PULL);
     if (count <= 0) {
-        secure_clear(events, sizeof(events));
+        secure_clear(events, events_size);
+        free(events);
         return;
     }
 
@@ -1368,7 +1381,8 @@ static void store_lpr_notifications(const char *response, const char *stream_nam
             log_warn("LPR reads are available but protected storage is disabled: "
                      "LIGHTNVR_LPR_MASTER_KEY_HEX is not configured");
         }
-        secure_clear(events, sizeof(events));
+        secure_clear(events, events_size);
+        free(events);
         return;
     }
 
@@ -1376,7 +1390,8 @@ static void store_lpr_notifications(const char *response, const char *stream_nam
     if (get_stream_config_by_name(stream_name, &stream) != 0 ||
         !stream.camera_uuid[0]) {
         log_warn("Cannot associate ONVIF LPR notifications with stream identity");
-        secure_clear(events, sizeof(events));
+        secure_clear(events, events_size);
+        free(events);
         return;
     }
 
@@ -1408,7 +1423,8 @@ static void store_lpr_notifications(const char *response, const char *stream_nam
         secure_clear(&input, sizeof(input));
         secure_clear(read_uuid, sizeof(read_uuid));
     }
-    secure_clear(events, sizeof(events));
+    secure_clear(events, events_size);
+    free(events);
 }
 
 /**
