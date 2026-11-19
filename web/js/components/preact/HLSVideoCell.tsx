@@ -379,12 +379,17 @@ export function HLSVideoCell({
             fatalErrorCountRef.current = 0;
           }
           setIsLoading(false);
-          setIsPlaying(true);
-
           if (videoRef.current) {
-            videoRef.current.play().catch(error => {
-              console.warn('Auto-play prevented:', error);
-            });
+            videoRef.current.play()
+              .then(() => {
+                if (!isMounted) return;
+                setIsPlaying(true);
+              })
+              .catch(error => {
+                if (!isMounted) return;
+                setIsPlaying(false);
+                console.warn('Auto-play prevented:', error);
+              });
           }
         });
 
