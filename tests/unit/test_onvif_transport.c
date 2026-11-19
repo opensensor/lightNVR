@@ -405,6 +405,9 @@ static void assert_subscription_request_target(bool relative, bool different_por
     snprintf(sub->subscription_address, sizeof(sub->subscription_address), "%s/onvif/fixture?x=1&y=2", advertised_endpoint);
     if (relative) {
         strcpy(sub->subscription_address, "/legacy/fixture?x=1&y=2");
+        curl_handle = create_curl_handle();
+        TEST_ASSERT_NOT_NULL(curl_handle);
+        curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
     }
     pthread_t worker;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, operation_server, NULL));
