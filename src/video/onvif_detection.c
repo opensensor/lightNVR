@@ -951,9 +951,13 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                     }
                 }
 
-                log_debug("Reusing existing ONVIF subscription");
-                pthread_mutex_unlock(&subscription_mutex);
-                return &subscriptions[i];
+                /* Do not return an existing slot after releasing subscription_mutex
+                 * without a pin/reference mechanism: another thread may recycle this
+                 * slot for a different camera before the caller can safely lock/use it.
+                 * Force recreation path until slot pinning/generation checks exist. */
+                log_debug("Existing ONVIF subscription found, recreating to avoid slot reuse race");
+                unsubscribe_subscription_locked(&subscriptions[i]);
+                break;
             } else if (!subscriptions[i].active) {
                 log_info("ONVIF subscription is inactive, creating new one");
                 break;
