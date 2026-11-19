@@ -1354,6 +1354,32 @@ static bool xml_find_active_motion(ezxml_t node, char *label, size_t label_sz) {
     return any;
 }
 
+/* Some cameras send an unclosed Motion element. Keep that compatibility case
+ * without accepting a truthy Value from an unrelated field in the payload. */
+static bool malformed_motion_element_asserted(const char *response) {
+    static const char *const true_values[] = {
+        "Value=\"true\"", "Value='true'", "Value=\"1\"", "Value='1'"
+    };
+    for (const char *tag = strchr(response, '<'); tag; tag = strchr(tag + 1, '<')) {
+        const char *end = strchr(tag, '>');
+        if (!end) end = tag + strlen(tag);
+        const char *name = tag + 1;
+        const char *name_end = name;
+        while (name_end < end && *name_end != ' ' && *name_end != '\t' &&
+               *name_end != '\r' && *name_end != '\n' && *name_end != '/') {
+            name_end++;
+        }
+        const char *local = memchr(name, ':', (size_t)(name_end - name));
+        local = local ? local + 1 : name;
+        if (name_end - local != 6 || strncasecmp(local, "Motion", 6) != 0) continue;
+        for (size_t i = 0; i < sizeof(true_values) / sizeof(true_values[0]); i++) {
+            const char *value = strstr(name_end, true_values[i]);
+            if (value && value + strlen(true_values[i]) <= end) return true;
+        }
+    }
+    return false;
+}
+
 /*
  * Check for an ACTIVE motion event in a PullMessages response.
  *
@@ -1386,16 +1412,13 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
     ezxml_t xml = ezxml_parse_str(copy, strlen(copy));
     const char *parse_error = xml ? ezxml_error(xml) : NULL;
     if (!xml || (parse_error && parse_error[0] != '\0')) {
-        /* Malformed XML from buggy firmware: fall back to substring matching,
-         * but at least require a truthy Value somewhere in the payload so a
-         * plain "motion ended" message doesn't trigger. */
+        /* Malformed XML from buggy firmware: accept only an asserted Motion
+         * element, not an unrelated truthy metadata Value. */
         log_debug("ONVIF Detection: failed to parse PullMessages response, using fallback heuristic");
         if (xml) {
             ezxml_free(xml);
         }
-        bool fallback =
-            (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
-             strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
+        bool fallback = malformed_motion_element_asserted(response);
         if (fallback && label && label_sz > 0) safe_strcpy(label, "motion", label_sz, 0);
         free(copy);
         return fallback;

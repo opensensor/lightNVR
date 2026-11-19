@@ -479,6 +479,9 @@ static void test_malformed_motion_message_uses_truthy_fallback(void) {
     TEST_ASSERT_TRUE(has_motion_event("<Motion Value=\"true\"", label, sizeof(label)));
     TEST_ASSERT_EQUAL_STRING("motion", label);
     TEST_ASSERT_FALSE(has_motion_event("<Motion Value=\"false\"", label, sizeof(label)));
+    TEST_ASSERT_FALSE(has_motion_event(
+        "<Motion Value=\"false\"><SimpleItem Name=\"Gain\" Value=\"1\"",
+        label, sizeof(label)));
 }
 
 static void test_motion_requires_asserted_state_not_truthy_metadata(void) {
