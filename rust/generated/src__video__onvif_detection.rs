@@ -3992,7 +3992,15 @@ unsafe extern "C" fn malformed_motion_element_asserted(
     ];
     let mut tag: *const ::core::ffi::c_char = strchr(response, '<' as ::core::ffi::c_int);
     while !tag.is_null() {
-        let mut end: *const ::core::ffi::c_char = strchr(tag, '>' as ::core::ffi::c_int);
+        let mut gt_end: *const ::core::ffi::c_char = strchr(tag, '>' as ::core::ffi::c_int);
+        let mut lt_end: *const ::core::ffi::c_char = strchr(
+            tag.offset(1 as ::core::ffi::c_int as isize),
+            '<' as ::core::ffi::c_int,
+        );
+        let mut end: *const ::core::ffi::c_char = gt_end;
+        if end.is_null() || !lt_end.is_null() && lt_end < end {
+            end = lt_end;
+        }
         if end.is_null() {
             end = tag.offset(strlen(tag) as isize);
         }
@@ -5335,7 +5343,8 @@ pub unsafe extern "C" fn detect_motion_onvif(
             log_level_t::LOG_LEVEL_DEBUG,
             LOG_COMPONENT,
             _log_stream_name,
-            b"ONVIF Detection: No motion detected for %s\0".as_ptr() as *const ::core::ffi::c_char,
+            b"ONVIF Detection: No asserted motion event for %s\0".as_ptr()
+                as *const ::core::ffi::c_char,
             stream_name,
         );
         (*result).count = 0 as ::core::ffi::c_int;
