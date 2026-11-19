@@ -994,7 +994,7 @@ pub struct onvif_subscription_t {
     pub expiration_time: time_t,
     pub first_pull_failure_time: time_t,
     pub consecutive_pull_failures: ::core::ffi::c_int,
-    pub active: bool,
+    pub active: atomic_bool,
     pub reserved: bool,
     pub curl: *mut ::core::ffi::c_void,
 }
@@ -2553,11 +2553,15 @@ unsafe extern "C" fn renew_subscription_locked(
     return r#true != 0;
 }
 unsafe extern "C" fn unsubscribe_subscription_locked(mut subscription: *mut onvif_subscription_t) {
-    if subscription.is_null()
-        || !(*subscription).active
+    if subscription.is_null() {
+        return;
+    }
+    if !(*subscription).active
         || (*subscription).subscription_address[0usize] as ::core::ffi::c_int
             == '\0' as ::core::ffi::c_int
     {
+        (*subscription).active = r#false != 0;
+        release_subscription_curl(subscription);
         return;
     }
     let mut request_body: *const ::core::ffi::c_char =
