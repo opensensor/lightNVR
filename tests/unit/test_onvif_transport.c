@@ -391,6 +391,9 @@ static void assert_subscription_request_target(bool relative, bool different_por
     snprintf(advertised_endpoint, sizeof(advertised_endpoint), "http://127.0.0.1:%u", port);
     onvif_subscription_t *sub = &subscriptions[0];
     memset(sub, 0, sizeof(*sub));
+    sub->curl = create_curl_handle();
+    TEST_ASSERT_NOT_NULL(sub->curl);
+    curl_easy_setopt(sub->curl, CURLOPT_PROXY, "");
     if (different_port) {
         destination = listen_local(&destination_port);
         TEST_ASSERT_GREATER_OR_EQUAL_INT(0, destination);
@@ -402,9 +405,6 @@ static void assert_subscription_request_target(bool relative, bool different_por
     snprintf(sub->subscription_address, sizeof(sub->subscription_address), "%s/onvif/fixture?x=1&y=2", advertised_endpoint);
     if (relative) {
         strcpy(sub->subscription_address, "/legacy/fixture?x=1&y=2");
-        curl_handle = create_curl_handle();
-        TEST_ASSERT_NOT_NULL(curl_handle);
-        curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
     }
     pthread_t worker;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, operation_server, NULL));
