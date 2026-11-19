@@ -103,8 +103,7 @@ if [ ! -f "$CONFIG_DIR/go2rtc.yaml" ]; then
 # See https://github.com/opensensor/go2rtc for documentation (fork with memory fixes)
 
 api:
-  listen: :1984
-  origin: "*"
+  listen: 127.0.0.1:1984
   base_path: /go2rtc
 
 webrtc:
