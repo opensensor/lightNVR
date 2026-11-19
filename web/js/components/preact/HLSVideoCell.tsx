@@ -89,6 +89,10 @@ export function HLSVideoCell({
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
   const canControlPrivacy = stream.can_control_privacy !== false;
 
+  useEffect(() => {
+    setPrivacyActive(!!stream.privacy_mode);
+  }, [stream.privacy_mode]);
+
   // HLS source state: 'go2rtc' (go2rtc's dynamic HLS), 'native' (lightNVR FFmpeg-based HLS), or 'failed'
   // Default to native lightNVR HLS (reliable, always running when streaming enabled)
   // go2rtc mode is used only when the backend reports go2rtc is available for this stream
@@ -192,6 +196,7 @@ export function HLSVideoCell({
 
     // Store event listener references for cleanup (native HLS case)
     let nativeLoadedHandler: (() => void) | null = null;
+    let nativePlayingHandler: (() => void) | null = null;
     let nativeErrorHandler: (() => void) | null = null;
 
     // Async initialization function - MUST be defined before doInit to avoid TDZ errors
@@ -505,6 +510,11 @@ export function HLSVideoCell({
         nativeLoadedHandler = function() {
           if (!isMounted) return;
           setIsLoading(false);
+        };
+
+        nativePlayingHandler = function() {
+          if (!isMounted) return;
+          setIsLoading(false);
           setIsPlaying(true);
         };
 
@@ -528,6 +538,7 @@ export function HLSVideoCell({
         };
 
         videoRef.current!.addEventListener('loadedmetadata', nativeLoadedHandler);
+        videoRef.current!.addEventListener('playing', nativePlayingHandler);
         videoRef.current!.addEventListener('error', nativeErrorHandler);
       } else {
         // Fallback for truly unsupported browsers
@@ -592,6 +603,10 @@ export function HLSVideoCell({
         if (nativeLoadedHandler) {
           videoRef.current.removeEventListener('loadedmetadata', nativeLoadedHandler);
           nativeLoadedHandler = null;
+        }
+        if (nativePlayingHandler) {
+          videoRef.current.removeEventListener('playing', nativePlayingHandler);
+          nativePlayingHandler = null;
         }
         if (nativeErrorHandler) {
           videoRef.current.removeEventListener('error', nativeErrorHandler);
