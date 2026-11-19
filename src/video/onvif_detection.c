@@ -808,8 +808,8 @@ static bool renew_subscription_locked(onvif_subscription_t *subscription) {
     int lease_seconds = subscription_lease_seconds(response);
     free(response);
     apply_subscription_lease(subscription, lease_seconds);
-    log_debug("Renewed ONVIF subscription for %d seconds",
-              lease_seconds);
+    log_debug("Renewed ONVIF subscription for %s for %d seconds",
+              subscription->camera_url, lease_seconds);
     return true;
 }
 
@@ -826,9 +826,10 @@ static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) 
                                                ONVIF_OPERATION_UNSUBSCRIBE, NULL);
     if (response) {
         free(response);
-        log_debug("Unsubscribed ONVIF PullPoint");
+        log_debug("Unsubscribed ONVIF PullPoint for %s", subscription->camera_url);
     } else {
-        log_warn("Unable to unsubscribe ONVIF PullPoint");
+        log_warn("Unable to unsubscribe ONVIF PullPoint for %s",
+                 subscription->camera_url);
     }
     subscription->active = false;
     release_subscription_curl(subscription);
@@ -1069,16 +1070,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             curl_easy_cleanup(subscriptions[slot].curl);
             subscriptions[slot].curl = NULL;
         }
-        {
-            /* Bump generation so callers can validate they still refer to the same
-             * logical camera assignment after releasing subscription_mutex. */
-            uint64_t next_generation = subscriptions[slot].generation + 1;
-            if (next_generation == 0) {
-                next_generation = 1;
-            }
-            memset(&subscriptions[slot], 0, sizeof(subscriptions[slot]));
-            subscriptions[slot].generation = next_generation;
-        }
+        memset(&subscriptions[slot], 0, sizeof(subscriptions[slot]));
 
         // Store camera URL, username, and password
         safe_strcpy(subscriptions[slot].camera_url, url, sizeof(subscriptions[slot].camera_url), 0);
