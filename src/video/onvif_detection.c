@@ -1361,7 +1361,10 @@ static bool malformed_motion_element_asserted(const char *response) {
         "Value=\"true\"", "Value='true'", "Value=\"1\"", "Value='1'"
     };
     for (const char *tag = strchr(response, '<'); tag; tag = strchr(tag + 1, '<')) {
-        const char *end = strchr(tag, '>');
+        const char *gt_end = strchr(tag, '>');
+        const char *lt_end = strchr(tag + 1, '<');
+        const char *end = gt_end;
+        if (!end || (lt_end && lt_end < end)) end = lt_end;
         if (!end) end = tag + strlen(tag);
         const char *name = tag + 1;
         const char *name_end = name;
