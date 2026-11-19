@@ -1590,7 +1590,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
 
     onvif_subscription_t *subscription = get_subscription(onvif_url, username, password);
     if (!subscription) {
-        log_error("Failed to get subscription for %s", onvif_url);
+        log_error("Failed to get subscription");
         return -1;
     }
 
