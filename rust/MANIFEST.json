@@ -1123,9 +1123,9 @@
     },
     {
       "c": "src/video/onvif_detection.c",
-      "c_sha256": "f53d0fc20ed3654a2550c3515ec9e6f919f4e16d4d0261970c52d6b6fe649100",
+      "c_sha256": "3733502099585451405811254b078507f9da65d44dd9091c41d277f93ac8e110",
       "rust": "generated/src__video__onvif_detection.rs",
-      "rust_sha256": "947361f55fa1309a18d6a256d7882afd20c897b48dd2418cbf2047892a540fe5",
+      "rust_sha256": "acbfc08edfddc5581887bc63c40a1300e7523a852adb3f227af1ffc773d60b4f",
       "adapted": true
     },
     {
@@ -1193,9 +1193,9 @@
     },
     {
       "c": "src/video/onvif_ptz.c",
-      "c_sha256": "30d0ab77e682c50c12d4e8115606da1bd5924b0243ce1e0b991a85f11e15a077",
+      "c_sha256": "09dc6ebe5c5ff9090d997a4146f18d4508603508166628d1a7bbac5a1ab1dfc8",
       "rust": "generated/src__video__onvif_ptz.rs",
-      "rust_sha256": "190add6c0e7657db7b5cc039202657751bc974cf352fea1e342bf44677c4400d",
+      "rust_sha256": "da76f176898240b8ed41c0e4ef2311f904fad9a72cb216477a9a7487e1d119de",
       "adapted": false
     },
     {
@@ -1459,9 +1459,9 @@
     },
     {
       "c": "src/web/api_handlers_go2rtc_proxy.c",
-      "c_sha256": "3cd588b03b131988006f5d0eb6295f48f7a3197df86fed4a7903c7708bb9c6f0",
+      "c_sha256": "6519df40d720f7d332dec154cf77e7730d71d33a21ba4ed9d2a5a46fac5aa2d4",
       "rust": "generated/src__web__api_handlers_go2rtc_proxy.rs",
-      "rust_sha256": "81b4178d61f39726a8cef6fc804c8f456fc631c9ec53de1165999584614dd9f2",
+      "rust_sha256": "0fda81f4a39f12c7ad19baf738f27f2e124eb0645ee46b6c3a4f2cf479786d4e",
       "adapted": false
     },
     {
@@ -1552,7 +1552,7 @@
       "c": "src/web/api_handlers_openapi.c",
       "c_sha256": "24a7f45bda510214f89f5d12cf395fe8df2b97b28dfc920fa73705fe18d3fbe5",
       "rust": "generated/src__web__api_handlers_openapi.rs",
-      "rust_sha256": "30d6d09441cf196a04e4230c5b32a001c1541a7d098f3b3bf11889bacf268d37",
+      "rust_sha256": "4c547918ad6a2b3245b20c65a4d98e868ef75d2c47320dacd4785c3a0c1451a3",
       "adapted": false
     },
     {
@@ -1564,9 +1564,9 @@
     },
     {
       "c": "src/web/api_handlers_ptz.c",
-      "c_sha256": "2eac34726c0419eeac0048e55ddfbc4f1fd8cb20675b07ec1975c17ff442f2d2",
+      "c_sha256": "b30143d6729d7048473bae1065d320987e3f3ffe292fc0228670abae67c46ebf",
       "rust": "generated/src__web__api_handlers_ptz.rs",
-      "rust_sha256": "f09841f76811ad4293ca668e0eb35ff1551a1010a32d1e40c926f0a03d34735a",
+      "rust_sha256": "06b2c44adb8d32ff3d5c89331e86659b7aaf1e110b4f1f54652786f1c91aa38e",
       "adapted": false
     },
     {
@@ -1830,16 +1830,16 @@
     },
     {
       "c": "src/web/go2rtc_proxy_thread.c",
-      "c_sha256": "2eb65e696205cf4fa474c3379805aee9351911d353ba69bdd8febb83ac03996c",
+      "c_sha256": "5efb80e47e59d0dd593426185fb7c1807afe6b23052a13d0d3c23f6990a38bbc",
       "rust": "generated/src__web__go2rtc_proxy_thread.rs",
-      "rust_sha256": "f3df4d9bcd6dddb61bfbea74460efbc8aae49fed042f932bbe541e201c1b359d",
+      "rust_sha256": "3d1d601dd31e1ae52daa8e114cdfd4ddcff280b28b40e7089d69833306aebc97",
       "adapted": true
     },
     {
       "c": "src/web/go2rtc_websocket.c",
-      "c_sha256": "3f71a6e2a4bbf88ca7d274a112b6fad645783a51303baa6032e0f571d28877bb",
+      "c_sha256": "5d332ba85b777423dd03b1b090fbf7b50ebfe64710544bc3a277d352cdeecd8c",
       "rust": "generated/src__web__go2rtc_websocket.rs",
-      "rust_sha256": "5e642881e780214fe561a65199b1a93eedd26548274fbfdc396df7caecdfce6d",
+      "rust_sha256": "647eddd7e0bca4d201252a9eb447fa078976c23fb72a1c6b48ccdf2eb3304dea",
       "adapted": false
     },
     {
@@ -1851,9 +1851,9 @@
     },
     {
       "c": "src/web/libuv_api_handlers.c",
-      "c_sha256": "5abcb74cf897b88acb15337307b4f1b2962dfb123f6a9b416274692deb556c5e",
+      "c_sha256": "5a73eb5bd230cbdb9253ef61a807bd64bf93482bf3035af222113870ea67c654",
       "rust": "generated/src__web__libuv_api_handlers.rs",
-      "rust_sha256": "fb06801952f7c36f8e018a61c1a4610464cbf81e1be99c9edfa21d67f37a3d5f",
+      "rust_sha256": "0551b13c45fec74b905bf64608e4957830098c93202297de6f1e9f221cb20d6d",
       "adapted": false
     },
     {

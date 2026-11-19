@@ -58,6 +58,7 @@ unsafe extern "C" {
         string: *const ::core::ffi::c_char,
     ) -> *mut cJSON;
     unsafe fn fabs(__x: ::core::ffi::c_double) -> ::core::ffi::c_double;
+    unsafe fn httpd_parse_json_body(req: *const http_request_t) -> *mut cJSON;
     unsafe fn httpd_authorize_stream_action_with_context(
         req: *const http_request_t,
         res: *mut http_response_t,
@@ -189,6 +190,13 @@ unsafe extern "C" {
         preset_name: *const ::core::ffi::c_char,
         preset_token: *mut ::core::ffi::c_char,
         token_size: size_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn onvif_ptz_remove_preset(
+        ptz_url: *const ::core::ffi::c_char,
+        profile_token: *const ::core::ffi::c_char,
+        username: *const ::core::ffi::c_char,
+        password: *const ::core::ffi::c_char,
+        preset_token: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
     unsafe fn strcmp(
         __s1: *const ::core::ffi::c_char,
@@ -3913,6 +3921,319 @@ pub unsafe extern "C" fn handle_ptz_capabilities(
         response,
         b"has_home\0".as_ptr() as *const ::core::ffi::c_char,
         config.ptz_has_home as cJSON_bool,
+    );
+    let mut json_str: *mut ::core::ffi::c_char = cJSON_PrintUnformatted(response);
+    cJSON_Delete(response);
+    http_response_set_json(res, 200 as ::core::ffi::c_int, json_str);
+    free(json_str as *mut ::core::ffi::c_void);
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn handle_ptz_remove_preset(
+    mut req: *const http_request_t,
+    mut res: *mut http_response_t,
+) {
+    let mut stream_name: [::core::ffi::c_char; 256] = [0; 256];
+    if extract_ptz_stream_name(
+        req,
+        &raw mut stream_name as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+    ) != 0 as ::core::ffi::c_int
+    {
+        http_response_set_json_error(
+            res,
+            400 as ::core::ffi::c_int,
+            b"Invalid stream name\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    _log_message_ctx(
+        log_level_t::LOG_LEVEL_INFO,
+        LOG_COMPONENT.as_ptr(),
+        _log_stream_name,
+        b"Handling POST /api/streams/%s/ptz/delete-preset\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut stream_name as *mut ::core::ffi::c_char,
+    );
+    let mut auth: ptz_authorization_context_t = ptz_authorization_context_t {
+        user: user_t {
+            id: 0,
+            username: [0; 64],
+            email: [0; 128],
+            role: user_role_t::USER_ROLE_ADMIN,
+            api_key: [0; 64],
+            created_at: 0,
+            updated_at: 0,
+            last_login: 0,
+            is_active: false,
+            password_change_locked: false,
+            must_change_password: false,
+            totp_enabled: false,
+            allowed_login_cidrs: [0; 1024],
+            has_login_cidr_restriction: false,
+            authorization_mode: [0; 16],
+            authenticated_via_scoped_token: false,
+            api_token_uuid: [0; 37],
+            authentication_method: [0; 24],
+        },
+        camera: fleet_camera_t {
+            camera_uuid: [0; 37],
+            name: [0; 256],
+            address: [0; 512],
+            legacy_tags: [0; 256],
+            location_uuid: [0; 37],
+            location_name: [0; 128],
+            location_path: [0; 1024],
+            location_ancestor_uuids: [[0; 37]; 32],
+            location_depth: 0,
+            tags: [fleet_camera_tag_t {
+                uuid: [0; 37],
+                label: [0; 256],
+            }; 64],
+            tag_count: 0,
+            manufacturer: [0; 128],
+            model: [0; 128],
+            enabled: false,
+            streaming_enabled: false,
+            record: false,
+            detection_based_recording: false,
+            is_onvif: false,
+            ptz_enabled: false,
+            backchannel_enabled: false,
+            health: fleet_health_state_t::FLEET_HEALTH_UNKNOWN,
+            availability: fleet_availability_state_t::FLEET_AVAILABILITY_LIVE,
+            health_changed_at: 0,
+            first_video_at: 0,
+            last_frame_ts: 0,
+            last_recording_at: 0,
+            current_fps: 0.,
+            recording_active: false,
+        },
+        evaluation: authorization_evaluation_t {
+            decision: authorization_decision_t::AUTHZ_DECISION_DENY,
+            source: authorization_decision_source_t::AUTHZ_SOURCE_NONE,
+            policy_version: 0,
+            grant_uuid: [0; 37],
+            token_uuid: [0; 37],
+            role_uuid: [0; 37],
+            role_name: [0; 128],
+            explanation: [0; 256],
+        },
+    };
+    if authorize_ptz_stream(
+        req,
+        res,
+        &raw mut stream_name as *mut ::core::ffi::c_char,
+        authorization_action_t::AUTHZ_PTZ_CONTROL,
+        &raw mut auth,
+    ) == 0
+    {
+        return;
+    }
+    let mut config: stream_config_t = stream_config_t {
+        camera_uuid: [0; 37],
+        location_uuid: [0; 37],
+        name: [0; 256],
+        url: [0; 512],
+        enabled: false,
+        width: 0,
+        height: 0,
+        fps: 0,
+        codec: [0; 16],
+        priority: 0,
+        record: false,
+        segment_duration: 0,
+        detection_based_recording: false,
+        detection_model: [0; 512],
+        detection_interval: 0,
+        detection_threshold: 0.,
+        pre_detection_buffer: 0,
+        post_detection_buffer: 0,
+        detection_api_url: [0; 512],
+        detection_object_filter: [0; 16],
+        detection_object_filter_list: [0; 256],
+        streaming_enabled: false,
+        protocol: stream_protocol_t::STREAM_PROTOCOL_TCP,
+        record_audio: false,
+        audio_voice_enhancement: false,
+        onvif_username: [0; 64],
+        onvif_password: [0; 64],
+        onvif_profile: [0; 64],
+        onvif_port: 0,
+        onvif_discovery_enabled: false,
+        is_onvif: false,
+        backchannel_enabled: false,
+        retention_days: 0,
+        detection_retention_days: 0,
+        max_storage_mb: 0,
+        tier_critical_multiplier: 0.,
+        tier_important_multiplier: 0.,
+        tier_ephemeral_multiplier: 0.,
+        storage_priority: 0,
+        ptz_enabled: false,
+        ptz_max_x: 0,
+        ptz_max_y: 0,
+        ptz_max_z: 0,
+        ptz_has_home: false,
+        record_on_schedule: false,
+        recording_schedule: [0; 168],
+        detection_record_on_schedule: false,
+        detection_recording_schedule: [0; 168],
+        tags: [0; 256],
+        admin_url: [0; 512],
+        privacy_mode: false,
+        motion_trigger_source: [0; 256],
+        go2rtc_source_override: [0; 8192],
+        sub_stream_url: [0; 512],
+        detection_url: [0; 512],
+        publish_url: [0; 512],
+        playback_transport: [0; 24],
+        eptz_config: [0; 1024],
+        observation_evidence_enabled: false,
+        observation_labels: [0; 512],
+        observation_max_age_days: 0,
+        observation_max_bytes: 0,
+    };
+    let mut rc: ::core::ffi::c_int = get_ptz_stream_config(
+        &raw mut stream_name as *mut ::core::ffi::c_char,
+        &raw mut config,
+    );
+    if rc == -1 as ::core::ffi::c_int {
+        audit_ptz_operation(
+            req,
+            &raw mut auth,
+            b"remove_preset\0".as_ptr() as *const ::core::ffi::c_char,
+            b"error\0".as_ptr() as *const ::core::ffi::c_char,
+            b"stream_configuration_unavailable\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_set_json_error(
+            res,
+            404 as ::core::ffi::c_int,
+            b"Stream not found\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    } else if rc == -2 as ::core::ffi::c_int {
+        audit_ptz_operation(
+            req,
+            &raw mut auth,
+            b"remove_preset\0".as_ptr() as *const ::core::ffi::c_char,
+            b"failure\0".as_ptr() as *const ::core::ffi::c_char,
+            b"ptz_disabled\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_set_json_error(
+            res,
+            400 as ::core::ffi::c_int,
+            b"PTZ not enabled for this stream\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    let mut body: *mut cJSON = httpd_parse_json_body(req);
+    if body.is_null() {
+        audit_ptz_operation(
+            req,
+            &raw mut auth,
+            b"remove_preset\0".as_ptr() as *const ::core::ffi::c_char,
+            b"failure\0".as_ptr() as *const ::core::ffi::c_char,
+            b"invalid_request\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_set_json_error(
+            res,
+            400 as ::core::ffi::c_int,
+            b"Invalid JSON body\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    let mut token_json: *mut cJSON =
+        cJSON_GetObjectItem(body, b"token\0".as_ptr() as *const ::core::ffi::c_char);
+    if token_json.is_null()
+        || cJSON_IsString(token_json) == 0
+        || (*token_json).valuestring.is_null()
+        || *(*token_json).valuestring.offset(0isize) as ::core::ffi::c_int
+            == '\0' as ::core::ffi::c_int
+        || strlen((*token_json).valuestring) >= 64 as size_t
+    {
+        cJSON_Delete(body);
+        audit_ptz_operation(
+            req,
+            &raw mut auth,
+            b"remove_preset\0".as_ptr() as *const ::core::ffi::c_char,
+            b"failure\0".as_ptr() as *const ::core::ffi::c_char,
+            b"missing_preset_token\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_set_json_error(
+            res,
+            400 as ::core::ffi::c_int,
+            b"Missing preset token\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    let mut preset_token: [::core::ffi::c_char; 64] = [0; 64];
+    safe_strcpy(
+        &raw mut preset_token as *mut ::core::ffi::c_char,
+        (*token_json).valuestring,
+        ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+        0 as size_t,
+    );
+    cJSON_Delete(body);
+    let mut ptz_url: [::core::ffi::c_char; 512] = [0; 512];
+    if build_ptz_url(
+        &raw mut config,
+        &raw mut ptz_url as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+    ) != 0 as ::core::ffi::c_int
+    {
+        audit_ptz_operation(
+            req,
+            &raw mut auth,
+            b"remove_preset\0".as_ptr() as *const ::core::ffi::c_char,
+            b"error\0".as_ptr() as *const ::core::ffi::c_char,
+            b"service_discovery_failed\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_set_json_error(
+            res,
+            500 as ::core::ffi::c_int,
+            b"Failed to build PTZ URL\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    let mut profile_token: *const ::core::ffi::c_char = get_profile_token(&raw mut config);
+    rc = onvif_ptz_remove_preset(
+        &raw mut ptz_url as *mut ::core::ffi::c_char,
+        profile_token,
+        &raw mut config.onvif_username as *mut ::core::ffi::c_char,
+        &raw mut config.onvif_password as *mut ::core::ffi::c_char,
+        &raw mut preset_token as *mut ::core::ffi::c_char,
+    );
+    if rc != 0 as ::core::ffi::c_int {
+        audit_ptz_operation(
+            req,
+            &raw mut auth,
+            b"remove_preset\0".as_ptr() as *const ::core::ffi::c_char,
+            b"failure\0".as_ptr() as *const ::core::ffi::c_char,
+            b"device_operation_failed\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_set_json_error(
+            res,
+            500 as ::core::ffi::c_int,
+            b"PTZ remove preset failed\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
+    audit_ptz_operation(
+        req,
+        &raw mut auth,
+        b"remove_preset\0".as_ptr() as *const ::core::ffi::c_char,
+        b"success\0".as_ptr() as *const ::core::ffi::c_char,
+        b"completed\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    let mut response: *mut cJSON = cJSON_CreateObject();
+    cJSON_AddBoolToObject(
+        response,
+        b"success\0".as_ptr() as *const ::core::ffi::c_char,
+        r#true,
+    );
+    cJSON_AddStringToObject(
+        response,
+        b"message\0".as_ptr() as *const ::core::ffi::c_char,
+        b"PTZ preset removed\0".as_ptr() as *const ::core::ffi::c_char,
     );
     let mut json_str: *mut ::core::ffi::c_char = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);

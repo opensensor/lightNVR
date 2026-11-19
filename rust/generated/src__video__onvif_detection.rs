@@ -2073,10 +2073,12 @@ unsafe extern "C" fn is_transport_drop(mut status: *const onvif_request_status_t
         || (*status).curl_code.0 == CURLcode::CURLE_RECV_ERROR.0
         || (*status).curl_code.0 == CURLcode::CURLE_SEND_ERROR.0;
 }
-unsafe extern "C" fn subscription_address_matches_camera_origin(
+unsafe extern "C" fn subscription_address_matches_camera_host(
     mut camera_url: *const ::core::ffi::c_char,
     mut subscription_address: *const ::core::ffi::c_char,
 ) -> bool {
+    let mut camera_end: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut sub_end: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
     let mut camera_number: ::core::ffi::c_long = 0;
     let mut sub_number: ::core::ffi::c_long = 0;
     if !url_is_http_endpoint(camera_url) || !url_is_http_endpoint(subscription_address) {
@@ -2157,18 +2159,28 @@ unsafe extern "C" fn subscription_address_matches_camera_origin(
                                     )
                                     .0 == CURLUcode::CURLUE_OK.0
                                     {
+                                        camera_end = ::core::ptr::null_mut::<::core::ffi::c_char>();
+                                        sub_end = ::core::ptr::null_mut::<::core::ffi::c_char>();
                                         camera_number = strtol(
                                             camera_port,
-                                            ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
+                                            &raw mut camera_end,
                                             10 as ::core::ffi::c_int,
                                         );
                                         sub_number = strtol(
                                             sub_port,
-                                            ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
+                                            &raw mut sub_end,
                                             10 as ::core::ffi::c_int,
                                         );
-                                        ok = camera_number > 0 as ::core::ffi::c_long
-                                            && camera_number == sub_number
+                                        ok = !camera_end.is_null()
+                                            && *camera_end as ::core::ffi::c_int
+                                                == '\0' as ::core::ffi::c_int
+                                            && camera_number >= 1 as ::core::ffi::c_long
+                                            && camera_number <= 65535 as ::core::ffi::c_long
+                                            && !sub_end.is_null()
+                                            && *sub_end as ::core::ffi::c_int
+                                                == '\0' as ::core::ffi::c_int
+                                            && sub_number >= 1 as ::core::ffi::c_long
+                                            && sub_number <= 65535 as ::core::ffi::c_long
                                             && strcasecmp(camera_scheme, sub_scheme)
                                                 == 0 as ::core::ffi::c_int
                                             && strcasecmp(camera_host, sub_host)
@@ -2232,7 +2244,7 @@ unsafe extern "C" fn send_subscription_request(
             8 as size_t,
         ) == 0 as ::core::ffi::c_int
     {
-        if !subscription_address_matches_camera_origin(
+        if !subscription_address_matches_camera_host(
             &raw mut (*subscription).camera_url as *mut ::core::ffi::c_char,
             &raw mut (*subscription).subscription_address as *mut ::core::ffi::c_char,
         ) {
@@ -2240,7 +2252,7 @@ unsafe extern "C" fn send_subscription_request(
                 log_level_t::LOG_LEVEL_WARN,
                 LOG_COMPONENT,
                 _log_stream_name,
-                b"Rejected ONVIF subscription endpoint outside the configured camera origin\0"
+                b"Rejected ONVIF subscription endpoint with a different scheme/host or invalid port\0"
                     .as_ptr() as *const ::core::ffi::c_char,
             );
             return ::core::ptr::null_mut::<::core::ffi::c_char>();

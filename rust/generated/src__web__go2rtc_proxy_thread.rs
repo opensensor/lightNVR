@@ -1335,6 +1335,7 @@ pub struct proxy_thread_ctx {
     pub url: [::core::ffi::c_char; 2048],
     pub media_lease: [::core::ffi::c_char; 37],
     pub media_policy_ack: bool,
+    pub incompatible_media_policy: bool,
     pub method: [::core::ffi::c_char; 16],
     pub body: *mut ::core::ffi::c_char,
     pub body_len: size_t,
@@ -1815,12 +1816,7 @@ unsafe extern "C" fn proxy_worker_thread(
                     curl_slist_free_all(headers);
                 }
                 curl_easy_cleanup(curl);
-                if cres.0 != CURLcode::CURLE_OK.0
-                    || (*ctx).error as ::core::ffi::c_int != 0
-                    || (*ctx).media_lease[0usize] as ::core::ffi::c_int != 0
-                        && (*ctx).http_code < 300 as ::core::ffi::c_long
-                        && !(*ctx).media_policy_ack
-                {
+                if cres.0 != CURLcode::CURLE_OK.0 {
                     _log_message_ctx(
                         log_level_t::LOG_LEVEL_WARN,
                         LOG_COMPONENT.as_ptr(),
@@ -1829,6 +1825,30 @@ unsafe extern "C" fn proxy_worker_thread(
                             as *const ::core::ffi::c_char,
                         curl_easy_strerror(cres),
                     );
+                    (*ctx).error = r#true != 0;
+                } else if (*ctx).error {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT.as_ptr(),
+                        _log_stream_name,
+                        b"go2rtc proxy thread: response buffering failed\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                    );
+                } else if (*ctx).media_lease[0usize] as ::core::ffi::c_int != 0
+                    && (*ctx).http_code >= 200 as ::core::ffi::c_long
+                    && (*ctx).http_code < 300 as ::core::ffi::c_long
+                    && !(*ctx).media_policy_ack
+                {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT.as_ptr(),
+                        _log_stream_name,
+                        b"%s (HTTP %ld)\0".as_ptr() as *const ::core::ffi::c_char,
+                        b"go2rtc did not acknowledge LightNVR media policy; use the compatible OpenSensor go2rtc fork\0"
+                            .as_ptr() as *const ::core::ffi::c_char,
+                        (*ctx).http_code,
+                    );
+                    (*ctx).incompatible_media_policy = r#true != 0;
                     (*ctx).error = r#true != 0;
                 } else if (*ctx).capture_hls_session as ::core::ffi::c_int != 0
                     && (*ctx).http_code == 200 as ::core::ffi::c_long
@@ -1883,8 +1903,12 @@ unsafe extern "C" fn proxy_async_cb(mut handle: *mut uv_async_t) {
                 http_response_set_json_error(
                     &raw mut (*conn).response,
                     502 as ::core::ffi::c_int,
-                    b"Proxy error: go2rtc is not responding\0".as_ptr()
-                        as *const ::core::ffi::c_char,
+                    if (*ctx).incompatible_media_policy as ::core::ffi::c_int != 0 {
+                        GO2RTC_MEDIA_POLICY_ERROR.as_ptr()
+                    } else {
+                        b"Proxy error: go2rtc is not responding\0".as_ptr()
+                            as *const ::core::ffi::c_char
+                    },
                 );
             } else {
                 (*conn).response.status_code = (*ctx).http_code as ::core::ffi::c_int;
@@ -2214,4 +2238,12 @@ pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const GO2RTC_MEDIA_POLICY_ERROR: [::core::ffi::c_char; 92] = unsafe {
+    ::core::mem::transmute::<
+        [u8; 92],
+        [::core::ffi::c_char; 92],
+    >(
+        *b"go2rtc did not acknowledge LightNVR media policy; use the compatible OpenSensor go2rtc fork\0",
+    )
+};
 pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
