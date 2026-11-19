@@ -208,6 +208,31 @@ static void test_duplicate_fallback_logs_only_fixed_service_name(void) {
     TEST_ASSERT_NULL(strstr(log_capture, "fixture-password"));
 }
 
+static void test_discovered_endpoint_on_other_host_is_not_contacted(void) {
+    unsigned short port;
+    origin = listen_local(&port);
+    destination = listen_local(&destination_port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, destination);
+    char base[128];
+    snprintf(base, sizeof(base), "http://127.0.0.1:%u", port);
+    snprintf(advertised_endpoint, sizeof(advertised_endpoint),
+             "http://localhost:%u/steal", destination_port);
+    fallback_requests = 0;
+    curl_handle = create_curl_handle();
+    TEST_ASSERT_NOT_NULL(curl_handle);
+    curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
+    pthread_t worker;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, fallback_server, NULL));
+    onvif_subscription_t *subscription = get_subscription(base, "fixture-user", "fixture-password");
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+    TEST_ASSERT_NULL(subscription);
+    TEST_ASSERT_EQUAL_INT(0, server_failed);
+    TEST_ASSERT_EQUAL_INT(4, fallback_requests);
+    struct pollfd pending = {.fd = destination, .events = POLLIN};
+    TEST_ASSERT_EQUAL_INT(0, poll(&pending, 1, 0));
+}
+
 /* Independent wire expectations: changing a SOAP identifier to HTTPS breaks
  * the protocol even when the transport endpoint itself uses HTTPS. */
 static const char *const expected_actions[] = {
@@ -436,6 +461,7 @@ int main(void) {
     RUN_TEST(test_invalid_endpoint_is_rejected_before_transfer);
     RUN_TEST(test_trace_never_logs_headers_or_curl_notes);
     RUN_TEST(test_duplicate_fallback_logs_only_fixed_service_name);
+    RUN_TEST(test_discovered_endpoint_on_other_host_is_not_contacted);
     RUN_TEST(test_subscription_origin_allows_camera_local_port);
     RUN_TEST(test_rejected_subscription_never_contacts_target_or_legacy_fallback);
     RUN_TEST(test_same_origin_subscription_keeps_full_request_target);
