@@ -67,6 +67,18 @@ static const char *onvif_operation_action(onvif_operation_t operation) {
     return (unsigned int)operation < ONVIF_OPERATION_COUNT ? actions[operation] : NULL;
 }
 
+static bool has_uri_scheme_prefix(const char *reference) {
+    if (!reference || !isalpha((unsigned char)reference[0])) return false;
+
+    for (size_t i = 1; reference[i] != '\0'; ++i) {
+        unsigned char ch = (unsigned char)reference[i];
+        if (ch == ':') return true;
+        if (!(isalnum(ch) || ch == '+' || ch == '-' || ch == '.')) return false;
+    }
+
+    return false;
+}
+
 /* Tapo cameras accept a ten-minute PullPoint lease and reject both the old
  * one-hour request and a request with no InitialTerminationTime (#567).
  * Renew at 80% of the camera-reported lease so normal polling jitter cannot
@@ -764,7 +776,7 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
 
     // Only genuine relative paths may use the legacy camera-local fallback.
     // An unsupported scheme or network-path URL is not a relative service.
-    if (strchr(subscription->subscription_address, ':') ||
+    if (has_uri_scheme_prefix(subscription->subscription_address) ||
         strncmp(subscription->subscription_address, "//", 2) == 0) {
         pthread_mutex_unlock(lock);
         return NULL;
