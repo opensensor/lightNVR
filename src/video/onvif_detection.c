@@ -765,13 +765,21 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
     // Only genuine relative paths may use the legacy camera-local fallback.
     // An unsupported scheme or network-path URL is not a relative service.
     if (strchr(subscription->subscription_address, ':') ||
-        strncmp(subscription->subscription_address, "//", 2) == 0) return NULL;
+        strncmp(subscription->subscription_address, "//", 2) == 0) {
+        pthread_mutex_unlock(lock);
+        return NULL;
+    }
     const char *last_slash = strrchr(subscription->subscription_address, '/');
-    if (!last_slash || last_slash[1] == '\0') return NULL;
-    return send_onvif_request(subscription->camera_url,
-                              subscription->username,
-                              subscription->password,
-                              request_body, last_slash + 1, operation);
+    if (!last_slash || last_slash[1] == '\0') {
+        pthread_mutex_unlock(lock);
+        return NULL;
+    }
+    char *response = send_onvif_request(subscription->camera_url,
+                                        subscription->username,
+                                        subscription->password,
+                                        request_body, last_slash + 1, operation);
+    pthread_mutex_unlock(lock);
+    return response;
 }
 
 /* subscription_mutex must be held by the caller. */
@@ -919,20 +927,22 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         if (strcmp(subscriptions[i].camera_url, url) == 0) {
             // Check if subscription is still valid
             time_t now;
-            bool should_renew = false;
-            bool should_unsubscribe = false;
-            bool can_reuse = false;
-            onvif_subscription_t *slot = &subscriptions[i];
-
             time(&now);
 
-            if (slot->active && now < slot->expiration_time) {
-                if (now >= slot->renewal_time) {
-                    should_renew = true;
-                } else {
-                    can_reuse = true;
+            if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
+                if (now >= subscriptions[i].renewal_time) {
+                    log_debug("Renewing ONVIF subscription for %s", url);
+                    if (!renew_subscription_locked(&subscriptions[i])) {
+                        log_warn("ONVIF subscription renewal failed for %s; recreating it", url);
+                        unsubscribe_subscription_locked(&subscriptions[i]);
+                        break;
+                    }
                 }
-            } else if (!slot->active) {
+
+                log_debug("Reusing existing ONVIF subscription for %s", url);
+                pthread_mutex_unlock(&subscription_mutex);
+                return &subscriptions[i];
+            } else if (!subscriptions[i].active) {
                 log_info("ONVIF subscription for %s is inactive, creating new one", url);
                 break;
             } else {
@@ -940,32 +950,9 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
                 log_info("ONVIF subscription for %s expired, replacing it", url);
-                should_unsubscribe = true;
+                unsubscribe_subscription_locked(&subscriptions[i]);
+                break;
             }
-
-            if (can_reuse) {
-                log_debug("Reusing existing ONVIF subscription for %s", url);
-                pthread_mutex_unlock(&subscription_mutex);
-                return slot;
-            }
-
-            /* Do not hold the global registry mutex across network operations. */
-            pthread_mutex_unlock(&subscription_mutex);
-
-            if (should_renew) {
-                log_debug("Renewing ONVIF subscription for %s", url);
-                if (!renew_subscription_locked(slot)) {
-                    log_warn("ONVIF subscription renewal failed for %s; recreating it", url);
-                    unsubscribe_subscription_locked(slot);
-                } else {
-                    return slot;
-                }
-            } else if (should_unsubscribe) {
-                unsubscribe_subscription_locked(slot);
-            }
-
-            pthread_mutex_lock(&subscription_mutex);
-            break;
         }
     }
 
