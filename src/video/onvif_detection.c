@@ -138,7 +138,7 @@ typedef struct {
     time_t expiration_time;
     time_t first_pull_failure_time;
     int consecutive_pull_failures;
-    bool active;
+    atomic_bool active;             // Read under table lock, cleared after network I/O
     bool reserved;                  // Creation or renewal in progress
     CURL *curl;                     // Connection for this PullPoint (see subscription_locks)
 } onvif_subscription_t;
@@ -845,8 +845,10 @@ static bool renew_subscription_locked(onvif_subscription_t *subscription) {
 
 /* Best-effort cleanup. The caller reserves the slot or runs during shutdown. */
 static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) {
-    if (!subscription || !subscription->active ||
-        subscription->subscription_address[0] == '\0') {
+    if (!subscription) return;
+    if (!subscription->active || subscription->subscription_address[0] == '\0') {
+        subscription->active = false;
+        release_subscription_curl(subscription);
         return;
     }
 
