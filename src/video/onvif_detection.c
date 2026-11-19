@@ -1034,6 +1034,13 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         return NULL;
     }
 
+    if (strlen(subscription_address) >= sizeof(subscriptions[0].subscription_address)) {
+        log_warn("ONVIF subscription address exceeds local capacity; rejecting it");
+        free(subscription_address);
+        pthread_mutex_unlock(&subscription_mutex);
+        return NULL;
+    }
+
     // Find an empty slot or reuse an inactive one
     int slot = -1;
     for (int i = 0; i < subscription_count; i++) {
