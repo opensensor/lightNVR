@@ -18,6 +18,7 @@
 #include "video/go2rtc/go2rtc_api.h"
 #include "utils/yaml_validate.h"
 #include "web/api_handlers_go2rtc_proxy.h"
+#include "web/go2rtc_websocket.h"
 #include "web/libuv_server.h"
 
 static http_server_handle_t server;
@@ -29,6 +30,42 @@ static const char upgrade_headers[] =
 static const char upgrade_response[] =
     "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
     "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nX-LightNVR-Media-Policy: 1\r\n\r\n";
+
+static void test_websocket_origin_authority_validation(void) {
+    const struct { const char *host; const char *origin; bool allowed; } cases[] = {
+        {"camera", "http://CAMERA:80", true},
+        {"camera:8080", "http://camera:8080", true},
+        {"camera:443", "https://camera", true},
+        {"camera:80", "https://camera:80", true},
+        {"[::1]:8080", "http://[::1]:8080", true},
+        {"camera:8080", "http://camera:8081", false},
+        {"camera", "http://camera.evil", false},
+        {"camera", "http://camera/path", false},
+        {"camera", "http://user@camera", false},
+        {"camera", "http://camera:0", false},
+        {"[::1]:8080", "http://[::2]:8080", false},
+        {"camera", NULL, true},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        http_request_t request = {0};
+        http_response_t response;
+        http_response_init(&response);
+        const char *names[] = {"Host", "Origin", "Upgrade", "Connection",
+                               "Sec-WebSocket-Key", "Sec-WebSocket-Version"};
+        const char *values[] = {cases[i].host, cases[i].origin, "websocket", "Upgrade",
+                                "dGhlIHNhbXBsZSBub25jZQ==", "13"};
+        for (size_t j = 0; j < sizeof(names) / sizeof(names[0]); j++) {
+            if (!values[j]) continue;
+            http_header_t *header = &request.headers[request.num_headers++];
+            snprintf(header->name, sizeof(header->name), "%s", names[j]);
+            snprintf(header->value, sizeof(header->value), "%s", values[j]);
+        }
+        TEST_ASSERT_EQUAL_INT_MESSAGE(cases[i].allowed,
+            go2rtc_websocket_validate(&request, &response),
+            cases[i].origin ? cases[i].origin : "missing Origin");
+        http_response_free(&response);
+    }
+}
 /* A masked text frame containing {"type":"mse"}. */
 static const unsigned char mse_request[] = {
     0x81, 0x8e, 0, 0, 0, 0, '{', '"', 't', 'y', 'p', 'e', '"', ':', '"', 'm', 's', 'e', '"', '}'
@@ -298,6 +335,7 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
 }
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_websocket_origin_authority_validation);
     RUN_TEST(test_four_websockets_relay_media_on_the_web_port_and_close_cleanly);
     RUN_TEST(test_websocket_auth_origin_and_query_failures_never_reach_upstream);
     RUN_TEST(test_failed_upstream_handshake_returns_502);
