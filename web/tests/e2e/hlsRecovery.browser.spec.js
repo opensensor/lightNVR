@@ -127,7 +127,10 @@ it.each(['exhausted','unrecoverable','native'])(
       else await page.evaluate(value=>window.emitFatal(value==='exhausted'?'media':'other',value==='exhausted'?4:1),branch);
       expect(await page.evaluate(()=>window.errors)).toEqual([]);
       await page.waitForFunction(()=>window.failures.length>0);
-      expect(await page.evaluate(()=>window.requests.map(r=>r.url))).toEqual(['/go2rtc/api/stream.m3u8?src=fixture%20camera&mp4=flac']);
+      // The error overlay may fetch the latest recording for its last-frame
+      // image; only manifest requests indicate an HLS transport fallback.
+      expect(await page.evaluate(()=>window.requests.map(r=>r.url).filter(url=>url.includes('.m3u8'))))
+        .toEqual(['/go2rtc/api/stream.m3u8?src=fixture%20camera&mp4=flac']);
       expect(await page.evaluate(()=>window.failures[0])).toBe(branch==='unrecoverable'?'fixture fatal':'live.go2rtcHlsFailedRetry');
     } finally {await browser.close();}
   },

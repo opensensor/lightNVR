@@ -965,43 +965,47 @@ export function HLSVideoCell({
               canvas.height = videoElement.videoHeight;
               const ctx = canvas.getContext('2d')!;
 
-              // Draw video frame at native resolution
-              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+              try {
+                // Draw video frame at native resolution
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
 
-              // Draw detections at native resolution if available (fixes boundary shift)
-              if (detectionOverlayRef.current && typeof detectionOverlayRef.current.getDetections === 'function') {
-                const detections = detectionOverlayRef.current.getDetections();
-                if (detections && detections.length > 0) {
-                  drawDetectionsOnCanvas(ctx, canvas.width, canvas.height, detections);
-                }
-              }
-
-              // Auto-download for rapid-fire capability (also works in fullscreen)
-              const timestamp = formatFilenameTimestamp();
-              const fileName = `snapshot-${stream.name.replace(/\s+/g, '-')}-${timestamp}.jpg`;
-
-              canvas.toBlob((blob) => {
-                if (!blob) {
-                  showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
-                  return;
-                }
-
-                const blobUrl = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = blobUrl;
-                link.download = fileName;
-                document.body.appendChild(link);
-                link.click();
-
-                setTimeout(() => {
-                  if (document.body.contains(link)) {
-                    document.body.removeChild(link);
+                // Draw detections at native resolution if available (fixes boundary shift)
+                if (detectionOverlayRef.current && typeof detectionOverlayRef.current.getDetections === 'function') {
+                  const detections = detectionOverlayRef.current.getDetections();
+                  if (detections && detections.length > 0) {
+                    drawDetectionsOnCanvas(ctx, canvas.width, canvas.height, detections);
                   }
-                  URL.revokeObjectURL(blobUrl);
-                }, 1000);
+                }
 
-                showStatusMessage(t('live.snapshotSaved', { fileName }), 'success', 2000);
-              }, 'image/jpeg', 0.95);
+                // Auto-download for rapid-fire capability (also works in fullscreen)
+                const timestamp = formatFilenameTimestamp();
+                const fileName = `snapshot-${stream.name.replace(/\s+/g, '-')}-${timestamp}.jpg`;
+
+                canvas.toBlob((blob) => {
+                  if (!blob) {
+                    showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
+                    return;
+                  }
+
+                  const blobUrl = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = blobUrl;
+                  link.download = fileName;
+                  document.body.appendChild(link);
+                  link.click();
+
+                  setTimeout(() => {
+                    if (document.body.contains(link)) {
+                      document.body.removeChild(link);
+                    }
+                    URL.revokeObjectURL(blobUrl);
+                  }, 1000);
+
+                  showStatusMessage(t('live.snapshotSaved', { fileName }), 'success', 2000);
+                }, 'image/jpeg', 0.95);
+              } catch (_error) {
+                showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
+              }
           }}
         />
         {/* Pause for privacy button */}
