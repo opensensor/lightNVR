@@ -277,6 +277,7 @@
       "homePtz",
       "setPtzHome",
       "gotoPtzPreset",
+      "deletePtzPreset",
       "setPtzPreset",
       "getImagingSettings",
       "setImagingSettings",
@@ -25693,6 +25694,143 @@
       "post": {
         "operationId": "gotoPtzPreset",
         "summary": "gotoPtzPreset",
+        "tags": [
+          "Device controls"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "ptz.control",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Device result; optional device capabilities remain explicitly optional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCommandResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid input, denied access, unavailable device or failed device operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PtzGotoPresetRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/streams/{name}/ptz/delete-preset": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1
+          }
+        }
+      ],
+      "post": {
+        "operationId": "deletePtzPreset",
+        "summary": "deletePtzPreset",
         "tags": [
           "Device controls"
         ],

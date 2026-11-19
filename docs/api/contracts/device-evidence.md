@@ -20,6 +20,7 @@ No physical cameras, user instances, or LAN multicast scans were contacted.
 | POST | /api/streams/{name}/ptz/home | homePtz |
 | POST | /api/streams/{name}/ptz/set-home | setPtzHome |
 | POST | /api/streams/{name}/ptz/goto-preset | gotoPtzPreset |
+| POST | /api/streams/{name}/ptz/delete-preset | deletePtzPreset |
 | PUT | /api/streams/{name}/ptz/preset | setPtzPreset |
 | GET | /api/streams/{name}/imaging/settings | getImagingSettings |
 | PUT | /api/streams/{name}/imaging/settings | setImagingSettings |
