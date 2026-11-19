@@ -13,6 +13,11 @@ beforeAll(async () => {
       window.players=[];window.requests=[];window.failures=[];window.errors=[];
       window.recoveries=[];window.settingsReads=[];window.nativeSources=[];window.cleanups=0;
       window.addEventListener('error',event=>{if(event instanceof ErrorEvent){window.errors.push(event.message);event.preventDefault();}});
+      window.addEventListener('unhandledrejection',event=>{
+        const reason=event.reason;
+        window.errors.push(reason instanceof Error ? reason.message : String(reason));
+        event.preventDefault();
+      });
       const originalTimeout=window.setTimeout;
       window.setTimeout=(callback,delay,...args)=>{
         if(window.captureRecovery && (delay===1000||delay===2000)) {
