@@ -1386,9 +1386,30 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
         if (xml) {
             ezxml_free(xml);
         }
-        bool fallback =
-            (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
-             strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
+        bool fallback = false;
+        const char *truthy_patterns[] = {
+            "Value=\"true\"", "Value='true'", "Value=\"1\"", "Value='1'",
+            "Value=&quot;true&quot;", "Value=&quot;1&quot;"
+        };
+        const char *state_item_patterns[] = {
+            "Name=\"IsMotion\"", "Name='IsMotion'",
+            "Name=\"Motion\"", "Name='Motion'",
+            "Name=\"IsPeople\"", "Name='IsPeople'",
+            "Name=\"PeopleDetector\"", "Name='PeopleDetector'",
+            "Name=\"HumanDetect\"", "Name='HumanDetect'",
+            "Name=\"VehicleDetect\"", "Name='VehicleDetect'",
+            "Name=\"ObjectDetect\"", "Name='ObjectDetect'"
+        };
+
+        for (size_t i = 0; i < sizeof(state_item_patterns) / sizeof(state_item_patterns[0]) && !fallback; ++i) {
+            if (!strstr(response, state_item_patterns[i])) continue;
+            for (size_t j = 0; j < sizeof(truthy_patterns) / sizeof(truthy_patterns[0]); ++j) {
+                if (strstr(response, truthy_patterns[j])) {
+                    fallback = true;
+                    break;
+                }
+            }
+        }
         if (fallback && label && label_sz > 0) safe_strcpy(label, "motion", label_sz, 0);
         free(copy);
         return fallback;
