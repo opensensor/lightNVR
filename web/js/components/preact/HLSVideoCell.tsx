@@ -89,6 +89,10 @@ export function HLSVideoCell({
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
   const canControlPrivacy = stream.can_control_privacy !== false;
 
+  useEffect(() => {
+    setPrivacyActive(!!stream.privacy_mode);
+  }, [stream.privacy_mode]);
+
   // HLS source state: 'go2rtc' (go2rtc's dynamic HLS), 'native' (lightNVR FFmpeg-based HLS), or 'failed'
   // Default to native lightNVR HLS (reliable, always running when streaming enabled)
   // go2rtc mode is used only when the backend reports go2rtc is available for this stream
