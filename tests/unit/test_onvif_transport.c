@@ -489,6 +489,46 @@ static void test_pull_rejects_reassigned_slot(void) {
                      ONVIF_OPERATION_PULL_MESSAGES, NULL, "http://original-camera"));
 }
 
+typedef struct {
+    char url[128];
+    onvif_subscription_t *subscription;
+} subscription_lookup_fixture_t;
+
+static void *lookup_subscription_worker(void *arg) {
+    subscription_lookup_fixture_t *fixture = arg;
+    fixture->subscription = get_subscription(fixture->url, "", "");
+    return NULL;
+}
+
+static void test_discovery_does_not_hold_subscription_table_lock(void) {
+    unsigned short port;
+    origin = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    curl_handle = create_curl_handle();
+    TEST_ASSERT_NOT_NULL(curl_handle);
+    curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
+
+    subscription_lookup_fixture_t fixture = {0};
+    snprintf(fixture.url, sizeof(fixture.url), "http://127.0.0.1:%u", port);
+    pthread_t worker;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, lookup_subscription_worker, &fixture));
+    struct pollfd pending = {.fd = origin, .events = POLLIN};
+    TEST_ASSERT_EQUAL_INT(1, poll(&pending, 1, 3000));
+    int client = accept(origin, NULL, NULL);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, client);
+    int lock_result = pthread_mutex_trylock(&subscription_mutex);
+    if (lock_result == 0) pthread_mutex_unlock(&subscription_mutex);
+    close(client);
+    close(origin);
+    origin = -1;
+    pthread_join(worker, NULL);
+    TEST_ASSERT_EQUAL_INT(0, lock_result);
+    TEST_ASSERT_NULL(fixture.subscription);
+    TEST_ASSERT_FALSE(subscriptions[0].reserved);
+    subscription_count = 0;
+    memset(subscriptions, 0, sizeof(subscriptions));
+}
+
 static void test_fixture_send_stops_on_zero_progress_or_closed_peer(void) {
     int pair[2];
     TEST_ASSERT_EQUAL_INT(0, socketpair(AF_UNIX, SOCK_STREAM, 0, pair));
@@ -584,6 +624,7 @@ int main(void) {
     RUN_TEST(test_relative_subscription_preserves_full_path);
     RUN_TEST(test_full_registry_rejects_before_remote_create);
     RUN_TEST(test_pull_rejects_reassigned_slot);
+    RUN_TEST(test_discovery_does_not_hold_subscription_table_lock);
     RUN_TEST(test_fixture_send_stops_on_zero_progress_or_closed_peer);
     RUN_TEST(test_motorcycle_class_precedes_bicycle_substrings);
     RUN_TEST(test_malformed_motion_message_uses_truthy_fallback);
