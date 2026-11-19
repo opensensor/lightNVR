@@ -623,7 +623,7 @@ export function HLSVideoCell({
     // /api/streams status refetch doesn't tear down healthy players when it
     // produces new object identities every poll cycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.name, retryCount, hlsMode, useSubStream, audioDisabled, privacyActive, t]);
+  }, [stream?.name, retryCount, hlsMode, useSubStream, audioDisabled, t]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
@@ -676,7 +676,7 @@ export function HLSVideoCell({
   };
 
   // Auto-retry while the error overlay is visible — see WebRTCVideoCell for rationale.
-  const autoRetryCountdown = useAutoRetry(error, handleRetry);
+  const autoRetryCountdown = useAutoRetry(privacyActive ? null : error, handleRetry);
 
   useEffect(() => {
     if (error && onTransportFailure) onTransportFailure(error);
