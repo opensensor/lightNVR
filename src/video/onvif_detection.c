@@ -943,28 +943,12 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
-                    int slot = i;
-
                     log_debug("Renewing ONVIF subscription");
-                    pthread_mutex_unlock(&subscription_mutex);
-
-                    if (!renew_subscription_locked(&subscriptions[slot])) {
+                    if (!renew_subscription_locked(&subscriptions[i])) {
                         log_warn("ONVIF subscription renewal failed; recreating it");
-                        unsubscribe_subscription_locked(&subscriptions[slot]);
-
-                        pthread_mutex_lock(&subscription_mutex);
+                        unsubscribe_subscription_locked(&subscriptions[i]);
                         break;
                     }
-
-                    pthread_mutex_lock(&subscription_mutex);
-                    time(&now);
-                    if (slot >= subscription_count ||
-                        strcmp(subscriptions[slot].camera_url, url) != 0 ||
-                        !subscriptions[slot].active ||
-                        now >= subscriptions[slot].expiration_time) {
-                        break;
-                    }
-                    i = slot;
                 }
 
                 log_debug("Reusing existing ONVIF subscription");
@@ -1242,31 +1226,21 @@ static const char *normalize_object_class(const char *raw) {
  * Alongside ObjectType-style values, Tapo reports asserted class flags such as
  * Name="IsVehicle" Value="true" on TPSmartEventDetector topics (#567). */
 static bool is_recognized_class_flag_name(const char *name) {
-    if (!name || !name[0]) return false;
-
-    /* Explicit class-flag style used by several vendors. */
-    if (strncasecmp(name, "Is", 2) == 0 && name[2] != '\0') {
-        return true;
+    if (!name) return false;
+    static const char *const flags[] = {
+        "Human", "People", "Person", "Pedestrian", "Vehicle", "Car",
+        "Motorcycle", "Motorbike", "NonMotor", "Bicycle", "Bike", "Cycle",
+        "Face", "Animal", "Dog", "Cat", "Pet",
+        "IsHuman", "IsPeople", "IsPerson", "IsPedestrian", "IsVehicle", "IsCar",
+        "IsMotorcycle", "IsMotorbike", "IsNonMotor", "IsBicycle", "IsBike",
+        "IsCycle", "IsFace", "IsAnimal", "IsDog", "IsCat", "IsPet",
+        "HumanDetect", "PeopleDetect", "PersonDetect", "VehicleDetect",
+        "CarDetect", "FaceDetect", "AnimalDetect", NULL
+    };
+    for (size_t i = 0; flags[i]; ++i) {
+        if (strcasecmp(name, flags[i]) == 0) return true;
     }
-
-    /* Common direct class keys when emitted as boolean assertions. */
-    return strcasecmp(name, "Human") == 0 ||
-           strcasecmp(name, "People") == 0 ||
-           strcasecmp(name, "Person") == 0 ||
-           strcasecmp(name, "Pedestrian") == 0 ||
-           strcasecmp(name, "Vehicle") == 0 ||
-           strcasecmp(name, "Car") == 0 ||
-           strcasecmp(name, "Motorcycle") == 0 ||
-           strcasecmp(name, "Motorbike") == 0 ||
-           strcasecmp(name, "NonMotor") == 0 ||
-           strcasecmp(name, "Bicycle") == 0 ||
-           strcasecmp(name, "Bike") == 0 ||
-           strcasecmp(name, "Cycle") == 0 ||
-           strcasecmp(name, "Face") == 0 ||
-           strcasecmp(name, "Animal") == 0 ||
-           strcasecmp(name, "Dog") == 0 ||
-           strcasecmp(name, "Cat") == 0 ||
-           strcasecmp(name, "Pet") == 0;
+    return false;
 }
 
 static const char *find_object_class(ezxml_t node, bool in_data) {
@@ -1319,8 +1293,7 @@ static bool is_asserted_item_name(const char *name) {
     for (size_t i = 0; state_names[i]; ++i) {
         if (strcasecmp(name, state_names[i]) == 0) return true;
     }
-    return (strncasecmp(name, "Is", 2) == 0 || ci_contains(name, "Detect")) &&
-           normalize_object_class(name) != NULL;
+    return is_recognized_class_flag_name(name);
 }
 
 /*
@@ -1413,16 +1386,9 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
         if (xml) {
             ezxml_free(xml);
         }
-        bool has_truthy_value =
+        bool fallback =
             (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
              strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
-        bool has_state_indicator =
-            (strstr(response, "IsMotion") || strstr(response, "IsPeople") ||
-             strstr(response, "State")    || strstr(response, "Motion")   ||
-             strstr(response, "PeopleDetector") || strstr(response, "ObjectType") ||
-             strstr(response, "Human")    || strstr(response, "Vehicle")  ||
-             strstr(response, "Detect"));
-        bool fallback = has_truthy_value && has_state_indicator;
         if (fallback && label && label_sz > 0) safe_strcpy(label, "motion", label_sz, 0);
         free(copy);
         return fallback;

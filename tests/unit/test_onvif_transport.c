@@ -500,6 +500,31 @@ static void test_motion_requires_asserted_state_not_truthy_metadata(void) {
     TEST_ASSERT_EQUAL_STRING("motion", label);
 }
 
+static void test_class_flags_ignore_camera_metadata(void) {
+    char label[32];
+    const char *metadata_only =
+        "<Envelope><NotificationMessage><Topic>RuleEngine/CellMotionDetector/Motion</Topic>"
+        "<Message><Data><SimpleItem Name=\"IsCamera\" Value=\"true\"/>"
+        "<SimpleItem Name=\"IsMotion\" Value=\"false\"/>"
+        "</Data></Message></NotificationMessage></Envelope>";
+    TEST_ASSERT_FALSE(has_motion_event(metadata_only, label, sizeof(label)));
+
+    const char *asserted =
+        "<Envelope><NotificationMessage><Topic>RuleEngine/CellMotionDetector/Motion</Topic>"
+        "<Message><Data><SimpleItem Name=\"IsCamera\" Value=\"true\"/>"
+        "<SimpleItem Name=\"IsMotion\" Value=\"true\"/>"
+        "</Data></Message></NotificationMessage></Envelope>";
+    TEST_ASSERT_TRUE(has_motion_event(asserted, label, sizeof(label)));
+    TEST_ASSERT_EQUAL_STRING("motion", label);
+
+    const char *vehicle =
+        "<Envelope><NotificationMessage><Topic>RuleEngine/CellMotionDetector/Motion</Topic>"
+        "<Message><Data><SimpleItem Name=\"IsVehicle\" Value=\"true\"/>"
+        "</Data></Message></NotificationMessage></Envelope>";
+    TEST_ASSERT_TRUE(has_motion_event(vehicle, label, sizeof(label)));
+    TEST_ASSERT_EQUAL_STRING("vehicle", label);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_every_operation_preserves_action_headers_and_transport_destination);
@@ -519,5 +544,6 @@ int main(void) {
     RUN_TEST(test_motorcycle_class_precedes_bicycle_substrings);
     RUN_TEST(test_malformed_motion_message_uses_truthy_fallback);
     RUN_TEST(test_motion_requires_asserted_state_not_truthy_metadata);
+    RUN_TEST(test_class_flags_ignore_camera_metadata);
     return UNITY_END();
 }
