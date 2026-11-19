@@ -121,6 +121,7 @@ export function HLSVideoCell({
   const hlsUrlRef = useRef<string | null>(null);        // Master manifest URL — stored for session-expiry recovery
   const prevStatusRef = useRef(stream.status); // Track previous stream status for transition detection
   const cellAbortRef = useRef<AbortController | null>(null);     // Cancels a queued/in-flight gated preflight on unmount
+  const audioPlayRequestTokenRef = useRef(0); // Guards against stale play() rejection mutating newer audio/player state
   // Last known image behind the error overlay (#974). Declared before the
   // effects below so its unmount cleanup runs first.
   const lastFrame = useLastFrame({ streamName: stream.name, videoRef, hasError: !!error, enabled: showLastImage });
@@ -128,12 +129,25 @@ export function HLSVideoCell({
     if (audioDisabled) return;
     const nextEnabled = !audioEnabled;
     setAudioEnabled(nextEnabled);
-    if (videoRef.current) {
-      videoRef.current.muted = !nextEnabled;
-      if (nextEnabled) videoRef.current.play().catch(() => {
-        if (videoRef.current) videoRef.current.muted = true;
-        setAudioEnabled(false);
-      });
+    const videoEl = videoRef.current;
+    if (videoEl) {
+      videoEl.muted = !nextEnabled;
+      if (nextEnabled) {
+        const requestToken = ++audioPlayRequestTokenRef.current;
+        videoEl.play().catch(() => {
+          // Only rollback if this rejection still matches the latest request
+          // and the same video element is still active.
+          if (
+            requestToken !== audioPlayRequestTokenRef.current ||
+            videoRef.current !== videoEl ||
+            !audioEnabledRef.current
+          ) {
+            return;
+          }
+          videoEl.muted = true;
+          setAudioEnabled(false);
+        });
+      }
     }
     if (nextEnabled) {
       window.dispatchEvent(new CustomEvent('lightnvr:tile-audio-enabled', {
