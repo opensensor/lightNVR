@@ -861,7 +861,7 @@ static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) 
         log_warn("Unable to unsubscribe ONVIF PullPoint for %s",
                  subscription->camera_url);
     }
-    atomic_store_explicit(&subscription->active, false, memory_order_release);
+    subscription->active = false;
     release_subscription_curl(subscription);
 }
 
