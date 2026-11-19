@@ -284,6 +284,14 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     send_upgrade(client, 0, origin, false);
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_NOT_NULL(strstr(response, "502"));
+    const char *length_header = strstr(response, "Content-Length: ");
+    TEST_ASSERT_NOT_NULL(length_header);
+    long body_length = strtol(length_header + strlen("Content-Length: "), NULL, 10);
+    TEST_ASSERT_GREATER_THAN_INT(0, body_length);
+    TEST_ASSERT_LESS_THAN_INT((int)sizeof(response), body_length);
+    TEST_ASSERT_TRUE(read_all(client, response, (size_t)body_length));
+    response[body_length] = '\0';
+    TEST_ASSERT_NOT_NULL(strstr(response, "compatible OpenSensor go2rtc fork"));
     close(client);
     pthread_join(thread, NULL);
     TEST_ASSERT_FALSE(peer.received_mse);

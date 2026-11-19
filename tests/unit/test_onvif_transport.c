@@ -308,14 +308,17 @@ static void test_invalid_operation_is_rejected_before_transfer(void) {
     TEST_ASSERT_EQUAL_INT(0, poll(&pending, 1, 0));
 }
 
-static void test_subscription_origin_requires_matching_scheme_host_and_effective_port(void) {
+static void test_subscription_origin_allows_camera_local_port(void) {
     const struct { const char *camera; const char *endpoint; bool allowed; } cases[] = {
         {"http://camera", "http://CAMERA:80/pull", true},
         {"https://camera:443", "https://camera/pull", true},
-        {"http://[::1]:8080", "http://[::1]:8080/pull", true},
+        {"http://[::1]:8080", "http://[::1]:1026/pull", true},
+        {"http://192.168.1.123:2020", "http://192.168.1.123:1026/pull", true},
         {"https://camera:443", "http://camera:443/pull", false},
         {"http://camera:80", "https://camera:80/pull", false},
-        {"http://camera", "http://camera:8080/pull", false},
+        {"http://camera", "http://camera:8080/pull", true},
+        {"http://camera", "http://camera:0/pull", false},
+        {"http://camera", "http://camera:65536/pull", false},
         {"http://camera", "http://other/pull", false},
         {"http://camera", "http://user:secret@camera/pull", false},
         {"http://camera", "http://camera/pull\r\nInjected: x", false},
@@ -324,7 +327,7 @@ static void test_subscription_origin_requires_matching_scheme_host_and_effective
     };
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
         TEST_ASSERT_EQUAL_INT_MESSAGE(cases[i].allowed,
-            subscription_address_matches_camera_origin(cases[i].camera, cases[i].endpoint), cases[i].endpoint);
+            subscription_address_matches_camera_host(cases[i].camera, cases[i].endpoint), cases[i].endpoint);
 }
 
 static void test_rejected_subscription_never_contacts_target_or_legacy_fallback(void) {
@@ -341,7 +344,7 @@ static void test_rejected_subscription_never_contacts_target_or_legacy_fallback(
     const onvif_operation_t operations[] = {ONVIF_OPERATION_PULL_MESSAGES, ONVIF_OPERATION_RENEW, ONVIF_OPERATION_UNSUBSCRIBE};
     for (int variant = 0; variant < 4; variant++) {
         snprintf(sub->subscription_address, sizeof(sub->subscription_address),
-                 variant == 0 ? "http://127.0.0.1:%u/stolen" :
+                 variant == 0 ? "http://127.0.0.2:%u/stolen" :
                  variant == 1 ? "https://127.0.0.1:%u/stolen" :
                  variant == 2 ? "ftp://127.0.0.1:%u/stolen" : "//127.0.0.1:%u/stolen",
                  variant == 1 ? port : destination_port);
@@ -356,14 +359,21 @@ static void test_rejected_subscription_never_contacts_target_or_legacy_fallback(
     TEST_ASSERT_NULL(sub->curl);
 }
 
-static void assert_subscription_request_target(bool relative) {
+static void assert_subscription_request_target(bool relative, bool different_port) {
     unsigned short port;
     origin = listen_local(&port);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
     snprintf(advertised_endpoint, sizeof(advertised_endpoint), "http://127.0.0.1:%u", port);
     onvif_subscription_t *sub = &subscriptions[0];
     memset(sub, 0, sizeof(*sub));
-    strcpy(sub->camera_url, advertised_endpoint);
+    if (different_port) {
+        destination = listen_local(&destination_port);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(0, destination);
+        snprintf(sub->camera_url, sizeof(sub->camera_url),
+                 "http://127.0.0.1:%u", destination_port);
+    } else {
+        strcpy(sub->camera_url, advertised_endpoint);
+    }
     snprintf(sub->subscription_address, sizeof(sub->subscription_address), "%s/onvif/fixture?x=1&y=2", advertised_endpoint);
     if (relative) {
         strcpy(sub->subscription_address, "/legacy/fixture?x=1&y=2");
@@ -382,14 +392,22 @@ static void assert_subscription_request_target(bool relative) {
     pthread_join(worker, NULL);
     TEST_ASSERT_EQUAL_INT(0, server_failed);
     TEST_ASSERT_TRUE(ok);
+    if (different_port) {
+        struct pollfd pending = {.fd = destination, .events = POLLIN};
+        TEST_ASSERT_EQUAL_INT(0, poll(&pending, 1, 0));
+    }
 }
 
 static void test_same_origin_subscription_keeps_full_request_target(void) {
-    assert_subscription_request_target(false);
+    assert_subscription_request_target(false, false);
+}
+
+static void test_camera_local_ephemeral_port_receives_subscription_requests(void) {
+    assert_subscription_request_target(false, true);
 }
 
 static void test_relative_subscription_preserves_camera_local_fallback(void) {
-    assert_subscription_request_target(true);
+    assert_subscription_request_target(true, false);
 }
 
 static void test_fixture_send_stops_on_zero_progress_or_closed_peer(void) {
@@ -418,9 +436,10 @@ int main(void) {
     RUN_TEST(test_invalid_endpoint_is_rejected_before_transfer);
     RUN_TEST(test_trace_never_logs_headers_or_curl_notes);
     RUN_TEST(test_duplicate_fallback_logs_only_fixed_service_name);
-    RUN_TEST(test_subscription_origin_requires_matching_scheme_host_and_effective_port);
+    RUN_TEST(test_subscription_origin_allows_camera_local_port);
     RUN_TEST(test_rejected_subscription_never_contacts_target_or_legacy_fallback);
     RUN_TEST(test_same_origin_subscription_keeps_full_request_target);
+    RUN_TEST(test_camera_local_ephemeral_port_receives_subscription_requests);
     RUN_TEST(test_relative_subscription_preserves_camera_local_fallback);
     RUN_TEST(test_fixture_send_stops_on_zero_progress_or_closed_peer);
     return UNITY_END();

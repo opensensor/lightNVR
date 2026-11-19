@@ -32,10 +32,13 @@ sudo bash scripts/install.sh [--prefix=DIR] [--config-dir=DIR] [--data-dir=DIR]
 ```
 
 ### `install_go2rtc.sh`
-Downloads and installs go2rtc binary (opensensor fork with memory leak fixes).
+Builds and installs the pinned OpenSensor go2rtc fork from the initialized
+submodule. Requires Go; stock upstream binaries are incompatible with the
+media authority protocol.
 
 ```bash
-sudo bash scripts/install_go2rtc.sh [-d DIR] [-c DIR] [-v VERSION]
+git submodule update --init go2rtc
+sudo bash scripts/install_go2rtc.sh [-d DIR] [-c DIR] [-a ARCH]
 ```
 
 ### `install_web_assets.sh`

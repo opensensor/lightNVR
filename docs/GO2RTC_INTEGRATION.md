@@ -83,18 +83,20 @@ The integration consists of three main components:
 ### Prerequisites
 
 - LightNVR installed and configured
-- go2rtc binary (can be installed using the provided script)
+- The OpenSensor go2rtc fork pinned by this repository. Upstream go2rtc lacks
+  the media-policy acknowledgement required for live view in LightNVR 0.48.x.
 
 ### Installing go2rtc
 
-A script is provided to download and install go2rtc:
+Initialize the submodule, then build and install the compatible fork:
 
 ```bash
+git submodule update --init go2rtc
 sudo ./scripts/install_go2rtc.sh
 ```
 
 By default, this will:
-- Download the latest go2rtc binary for your architecture
+- Build the pinned go2rtc source for the host architecture (requires Go)
 - Install it to `/usr/local/bin/go2rtc`
 - Create a configuration directory at `/etc/lightnvr/go2rtc`
 - Generate a basic configuration file
@@ -106,6 +108,10 @@ sudo ./scripts/install_go2rtc.sh --install-dir /custom/path --config-dir /custom
 ```
 
 Run `./scripts/install_go2rtc.sh --help` for more options.
+For an ARMv7 target built on another machine, pass `--arch armv7l` and stage
+the binary in a writable `--install-dir`. Do not substitute an upstream release:
+LightNVR rejects its media responses because it cannot enforce camera and audio
+permissions.
 
 ### Building LightNVR with go2rtc Support
 

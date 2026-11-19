@@ -387,6 +387,10 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
         if (!acknowledged || fail_issuance) {
             TEST_ASSERT_EQUAL_INT(fail_issuance ? 503 : 502, connection.response.status_code);
             TEST_ASSERT_NULL(strstr((char *)connection.response.body, sdp_answer));
+            if (!acknowledged && !fail_issuance) {
+                TEST_ASSERT_NOT_NULL(strstr((char *)connection.response.body,
+                                            "compatible OpenSensor go2rtc fork"));
+            }
             http_response_free(&connection.response);
             continue;
         }
