@@ -3777,6 +3777,45 @@ unsafe extern "C" fn value_is_true(mut value: *const ::core::ffi::c_char) -> boo
         == 0 as ::core::ffi::c_int
         || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char) == 0 as ::core::ffi::c_int;
 }
+unsafe extern "C" fn is_asserted_item_name(mut name: *const ::core::ffi::c_char) -> bool {
+    if name.is_null() {
+        return r#false != 0;
+    }
+    static mut state_names: [*const ::core::ffi::c_char; 16] = [
+        b"IsMotion\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Motion\0".as_ptr() as *const ::core::ffi::c_char,
+        b"MotionAlarm\0".as_ptr() as *const ::core::ffi::c_char,
+        b"State\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Active\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Detected\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsActive\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Person\0".as_ptr() as *const ::core::ffi::c_char,
+        b"People\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Human\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Vehicle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Car\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Bicycle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Face\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Animal\0".as_ptr() as *const ::core::ffi::c_char,
+        ::core::ptr::null::<::core::ffi::c_char>(),
+    ];
+    let mut i: size_t = 0 as size_t;
+    while !state_names[i].is_null() {
+        if strcasecmp(name, state_names[i]) == 0 as ::core::ffi::c_int {
+            return r#true != 0;
+        }
+        i = i.wrapping_add(1);
+    }
+    return (strncasecmp(
+        name,
+        b"Is\0".as_ptr() as *const ::core::ffi::c_char,
+        2 as size_t,
+    ) == 0 as ::core::ffi::c_int
+        || ci_contains(name, b"Detect\0".as_ptr() as *const ::core::ffi::c_char)
+            as ::core::ffi::c_int
+            != 0)
+        && !normalize_object_class(name).is_null();
+}
 unsafe extern "C" fn data_has_asserted_item(mut node: ezxml_t, mut in_data: bool) -> bool {
     let mut c: ezxml_t = if !node.is_null() {
         (*node).child
@@ -3794,6 +3833,11 @@ unsafe extern "C" fn data_has_asserted_item(mut node: ezxml_t, mut in_data: bool
                 local_name(c),
                 b"SimpleItem\0".as_ptr() as *const ::core::ffi::c_char,
             ) == 0 as ::core::ffi::c_int
+            && is_asserted_item_name(ezxml_attr(
+                c,
+                b"Name\0".as_ptr() as *const ::core::ffi::c_char,
+            )) as ::core::ffi::c_int
+                != 0
             && value_is_true(ezxml_attr(
                 c,
                 b"Value\0".as_ptr() as *const ::core::ffi::c_char,
