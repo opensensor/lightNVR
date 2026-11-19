@@ -1425,9 +1425,6 @@ static bool xml_find_active_motion(ezxml_t node, char *label, size_t label_sz) {
 /* Some cameras send an unclosed Motion element. Keep that compatibility case
  * without accepting a truthy Value from an unrelated field in the payload. */
 static bool malformed_motion_element_asserted(const char *response) {
-    static const char *const true_values[] = {
-        "Value=\"true\"", "Value='true'", "Value=\"1\"", "Value='1'"
-    };
     for (const char *tag = strchr(response, '<'); tag; tag = strchr(tag + 1, '<')) {
         const char *gt_end = strchr(tag, '>');
         const char *lt_end = strchr(tag + 1, '<');
@@ -1443,9 +1440,41 @@ static bool malformed_motion_element_asserted(const char *response) {
         const char *local = memchr(name, ':', (size_t)(name_end - name));
         local = local ? local + 1 : name;
         if (name_end - local != 6 || strncasecmp(local, "Motion", 6) != 0) continue;
-        for (size_t i = 0; i < sizeof(true_values) / sizeof(true_values[0]); i++) {
-            const char *value = strstr(name_end, true_values[i]);
-            if (value && value + strlen(true_values[i]) <= end) return true;
+
+        const char *p = name_end;
+        while (p < end) {
+            while (p < end && isspace((unsigned char)*p)) p++;
+            if (p >= end || *p == '/' || *p == '>') break;
+
+            const char *attr_name = p;
+            while (p < end && !isspace((unsigned char)*p) && *p != '=' && *p != '/' && *p != '>') p++;
+            const char *attr_name_end = p;
+
+            while (p < end && isspace((unsigned char)*p)) p++;
+            if (p >= end || *p != '=') {
+                while (p < end && !isspace((unsigned char)*p) && *p != '>') p++;
+                continue;
+            }
+            p++; /* skip '=' */
+            while (p < end && isspace((unsigned char)*p)) p++;
+            if (p >= end || (*p != '"' && *p != '\'')) continue;
+
+            char quote = *p++;
+            const char *attr_val = p;
+            while (p < end && *p != quote) p++;
+            if (p >= end) break;
+            const char *attr_val_end = p;
+
+            if ((attr_name_end - attr_name) == 5 &&
+                strncasecmp(attr_name, "Value", 5) == 0) {
+                size_t vlen = (size_t)(attr_val_end - attr_val);
+                if ((vlen == 4 && strncasecmp(attr_val, "true", 4) == 0) ||
+                    (vlen == 1 && attr_val[0] == '1')) {
+                    return true;
+                }
+            }
+
+            p++; /* skip closing quote */
         }
     }
     return false;
