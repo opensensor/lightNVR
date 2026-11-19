@@ -1225,6 +1225,24 @@ static const char *normalize_object_class(const char *raw) {
  * object class inside a Data element, returning the normalized class (or NULL).
  * Alongside ObjectType-style values, Tapo reports asserted class flags such as
  * Name="IsVehicle" Value="true" on TPSmartEventDetector topics (#567). */
+static bool is_recognized_class_flag_name(const char *name) {
+    if (!name) return false;
+    static const char *const flags[] = {
+        "Human", "People", "Person", "Pedestrian", "Vehicle", "Car",
+        "Motorcycle", "Motorbike", "NonMotor", "Bicycle", "Bike", "Cycle",
+        "Face", "Animal", "Dog", "Cat", "Pet",
+        "IsHuman", "IsPeople", "IsPerson", "IsPedestrian", "IsVehicle", "IsCar",
+        "IsMotorcycle", "IsMotorbike", "IsNonMotor", "IsBicycle", "IsBike",
+        "IsCycle", "IsFace", "IsAnimal", "IsDog", "IsCat", "IsPet",
+        "HumanDetect", "PeopleDetect", "PersonDetect", "VehicleDetect",
+        "CarDetect", "FaceDetect", "AnimalDetect", NULL
+    };
+    for (size_t i = 0; flags[i]; ++i) {
+        if (strcasecmp(name, flags[i]) == 0) return true;
+    }
+    return false;
+}
+
 static const char *find_object_class(ezxml_t node, bool in_data) {
     for (ezxml_t c = node ? node->child : NULL; c; c = c->ordered) {
         bool inside = in_data || strcmp(local_name(c), "Data") == 0;
@@ -1238,7 +1256,8 @@ static const char *find_object_class(ezxml_t node, bool in_data) {
             }
             const char *value = ezxml_attr(c, "Value");
             if (name && value &&
-                (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0)) {
+                (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0) &&
+                is_recognized_class_flag_name(name)) {
                 const char *cls = normalize_object_class(name);
                 if (cls) return cls;
             }
@@ -1274,8 +1293,7 @@ static bool is_asserted_item_name(const char *name) {
     for (size_t i = 0; state_names[i]; ++i) {
         if (strcasecmp(name, state_names[i]) == 0) return true;
     }
-    return (strncasecmp(name, "Is", 2) == 0 || ci_contains(name, "Detect")) &&
-           normalize_object_class(name) != NULL;
+    return is_recognized_class_flag_name(name);
 }
 
 /*
@@ -1590,7 +1608,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
 
     onvif_subscription_t *subscription = get_subscription(onvif_url, username, password);
     if (!subscription) {
-        log_error("Failed to get subscription for %s", onvif_url);
+        log_error("Failed to get subscription");
         return -1;
     }
 
