@@ -599,6 +599,7 @@ export function HLSVideoCell({
 
       // Destroy HLS.js instance
       recoveringRef.current = false;
+      fatalErrorCountRef.current = 0;
       if (hlsPlayerRef.current) {
         hlsPlayerRef.current.destroy();
         hlsPlayerRef.current = null;
