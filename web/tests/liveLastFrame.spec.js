@@ -443,14 +443,9 @@ describe('last frame controller', () => {
     expect(t.changes).toEqual([]);
 
     const u = setup();
-    let resolveUnmountLookup;
-    u.deps.loadRecordingFallback.mockImplementation(
-      () => new Promise((resolve) => { resolveUnmountLookup = resolve; }),
-    );
-    u.controller.setError(true, null);
-    await flush();
+    let resolveBlob;
+    const blobPromise = new Promise((resolve) => { resolveBlob = resolve; });
     u.deps.toBlob.mockImplementation(() => blobPromise);
-    resolveUnmountLookup(RECORDING_IMAGE);
     u.controller.recovered();
     u.controller.setError(true, playingVideo);
     await flush();
@@ -459,6 +454,18 @@ describe('last frame controller', () => {
     await flush();
     expect(u.deps.createObjectURL).not.toHaveBeenCalled();
     expect(u.changes).toEqual([]);
+
+    const v = setup();
+    let resolveUnmountLookup;
+    v.deps.loadRecordingFallback.mockImplementation(
+      () => new Promise((resolve) => { resolveUnmountLookup = resolve; }),
+    );
+    v.controller.setError(true, null);
+    await flush();
+    v.controller.dispose();
+    resolveUnmountLookup(RECORDING_IMAGE);
+    await flush();
+    expect(v.changes).toEqual([]);
   });
 
   test('switching streams discards the previous camera\'s image', async () => {
@@ -491,19 +498,11 @@ describe('cells capture only on failure paths', () => {
   test('generic teardown paths do not capture', () => {
     expect(between(read('MSEVideoCell.tsx'), 'const cleanup = () => {', '\n  };')).not.toContain('lastFrame.capture');
     expect(between(read('WebRTCVideoCell.tsx'), 'const cleanupWebRTCResources = () => {', 'return cleanupWebRTCResources'))
-  test('failure paths still capture before the video is reset', async () => {
-    const t = setup();
-    t.controller.recovered();
+      .not.toContain('lastFrame.capture');
+    expect(between(read('HLSVideoCell.tsx'), '// Destroy HLS.js instance', 'hlsPlayerRef.current = null;'))
+      .not.toContain('lastFrame.capture');
+  });
 
-    t.controller.setError(true, playingVideo);
-    await flush();
-
-    expect(t.deps.captureVideoFrame).toHaveBeenCalled();
-    expect(t.deps.loadRecordingFallback).toHaveBeenCalled();
-
-    const captureOrder = t.deps.captureVideoFrame.mock.invocationCallOrder[0];
-    const fallbackOrder = t.deps.loadRecordingFallback.mock.invocationCallOrder[0];
-    expect(captureOrder).toBeLessThan(fallbackOrder);
   test('failure paths still capture before the video is reset', () => {
     const count = (name) => (read(name).match(/lastFrame\.capture\(\)/g) || []).length;
     expect(count('MSEVideoCell.tsx')).toBe(3);
