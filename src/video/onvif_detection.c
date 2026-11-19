@@ -1057,11 +1057,16 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
     if (discovered_url) {
         if (subscription_address_matches_camera_host(url, discovered_url)) {
-            log_info("ONVIF: Sending CreatePullPointSubscription to discovered endpoint");
-            safe_strcpy(attempted_event_url, discovered_url,
-                        sizeof(attempted_event_url), 0);
-            response = send_onvif_request_to_url(discovered_url, username, password, request_body,
-                                                 ONVIF_OPERATION_CREATE_PULLPOINT);
+            size_t discovered_len = strlen(discovered_url);
+            if (discovered_len < sizeof(attempted_event_url)) {
+                log_info("ONVIF: Sending CreatePullPointSubscription to discovered endpoint");
+                safe_strcpy(attempted_event_url, discovered_url,
+                            sizeof(attempted_event_url), 0);
+                response = send_onvif_request_to_url(discovered_url, username, password, request_body,
+                                                     ONVIF_OPERATION_CREATE_PULLPOINT);
+            } else {
+                log_warn("ONVIF: Ignoring oversized discovered event endpoint");
+            }
         } else {
             log_warn("ONVIF: Ignoring discovered event endpoint outside the camera host");
         }
