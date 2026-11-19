@@ -1196,13 +1196,13 @@ pub const ONVIF_RESPONSE_MAX_BYTES: ::core::ffi::c_uint = (4 as ::core::ffi::c_u
 unsafe extern "C" fn secure_clear(mut data: *mut ::core::ffi::c_void, mut size: size_t) {
     let mut bytes: *mut ::core::ffi::c_uchar = data as *mut ::core::ffi::c_uchar;
     while !bytes.is_null() && {
-        let c2rust_fresh2 = size;
+        let c2rust_fresh3 = size;
         size = size.wrapping_sub(1);
-        c2rust_fresh2 > 0 as size_t
+        c2rust_fresh3 > 0 as size_t
     } {
-        let c2rust_fresh3 = bytes;
+        let c2rust_fresh4 = bytes;
         bytes = bytes.offset(1);
-        ::core::ptr::write_volatile(c2rust_fresh3, 0 as ::core::ffi::c_uchar);
+        ::core::ptr::write_volatile(c2rust_fresh4, 0 as ::core::ffi::c_uchar);
     }
 }
 pub const MAX_SUBSCRIPTIONS: ::core::ffi::c_int = 100 as ::core::ffi::c_int;
@@ -4142,12 +4142,6 @@ unsafe extern "C" fn xml_find_active_motion(
 unsafe extern "C" fn malformed_motion_element_asserted(
     mut response: *const ::core::ffi::c_char,
 ) -> bool {
-    static mut true_values: [*const ::core::ffi::c_char; 4] = [
-        b"Value=\"true\"\0".as_ptr() as *const ::core::ffi::c_char,
-        b"Value='true'\0".as_ptr() as *const ::core::ffi::c_char,
-        b"Value=\"1\"\0".as_ptr() as *const ::core::ffi::c_char,
-        b"Value='1'\0".as_ptr() as *const ::core::ffi::c_char,
-    ];
     let mut tag: *const ::core::ffi::c_char = strchr(response, '<' as ::core::ffi::c_int);
     while !tag.is_null() {
         let mut gt_end: *const ::core::ffi::c_char = strchr(tag, '>' as ::core::ffi::c_int);
@@ -4190,15 +4184,115 @@ unsafe extern "C" fn malformed_motion_element_asserted(
                 6 as size_t,
             ) != 0 as ::core::ffi::c_int)
         {
-            let mut i: size_t = 0 as size_t;
-            while i < ::core::mem::size_of::<[*const ::core::ffi::c_char; 4]>()
-                .wrapping_div(::core::mem::size_of::<*const ::core::ffi::c_char>())
-            {
-                let mut value: *const ::core::ffi::c_char = strstr(name_end, true_values[i]);
-                if !value.is_null() && value.offset(strlen(true_values[i]) as isize) <= end {
-                    return r#true != 0;
+            let mut p: *const ::core::ffi::c_char = name_end;
+            while p < end {
+                while p < end
+                    && *(*__ctype_b_loc())
+                        .offset(*p as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                        as ::core::ffi::c_int
+                        & C2Rust_Unnamed::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                            as ::core::ffi::c_int
+                        != 0
+                {
+                    p = p.offset(1);
                 }
-                i = i.wrapping_add(1);
+                if p >= end
+                    || *p as ::core::ffi::c_int == '/' as ::core::ffi::c_int
+                    || *p as ::core::ffi::c_int == '>' as ::core::ffi::c_int
+                {
+                    break;
+                }
+                let mut attr_name: *const ::core::ffi::c_char = p;
+                while p < end
+                    && *(*__ctype_b_loc())
+                        .offset(*p as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                        as ::core::ffi::c_int
+                        & C2Rust_Unnamed::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                            as ::core::ffi::c_int
+                        == 0
+                    && *p as ::core::ffi::c_int != '=' as ::core::ffi::c_int
+                    && *p as ::core::ffi::c_int != '/' as ::core::ffi::c_int
+                    && *p as ::core::ffi::c_int != '>' as ::core::ffi::c_int
+                {
+                    p = p.offset(1);
+                }
+                let mut attr_name_end: *const ::core::ffi::c_char = p;
+                while p < end
+                    && *(*__ctype_b_loc())
+                        .offset(*p as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                        as ::core::ffi::c_int
+                        & C2Rust_Unnamed::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                            as ::core::ffi::c_int
+                        != 0
+                {
+                    p = p.offset(1);
+                }
+                if p >= end || *p as ::core::ffi::c_int != '=' as ::core::ffi::c_int {
+                    while p < end
+                        && *(*__ctype_b_loc())
+                            .offset(*p as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                            as ::core::ffi::c_int
+                            & C2Rust_Unnamed::_ISspace.0 as ::core::ffi::c_int
+                                as ::core::ffi::c_ushort
+                                as ::core::ffi::c_int
+                            == 0
+                        && *p as ::core::ffi::c_int != '>' as ::core::ffi::c_int
+                    {
+                        p = p.offset(1);
+                    }
+                } else {
+                    p = p.offset(1);
+                    while p < end
+                        && *(*__ctype_b_loc())
+                            .offset(*p as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                            as ::core::ffi::c_int
+                            & C2Rust_Unnamed::_ISspace.0 as ::core::ffi::c_int
+                                as ::core::ffi::c_ushort
+                                as ::core::ffi::c_int
+                            != 0
+                    {
+                        p = p.offset(1);
+                    }
+                    if p >= end
+                        || *p as ::core::ffi::c_int != '"' as ::core::ffi::c_int
+                            && *p as ::core::ffi::c_int != '\'' as ::core::ffi::c_int
+                    {
+                        continue;
+                    }
+                    let c2rust_fresh2 = p;
+                    p = p.offset(1);
+                    let mut quote: ::core::ffi::c_char = *c2rust_fresh2;
+                    let mut attr_val: *const ::core::ffi::c_char = p;
+                    while p < end && *p as ::core::ffi::c_int != quote as ::core::ffi::c_int {
+                        p = p.offset(1);
+                    }
+                    if p >= end {
+                        break;
+                    }
+                    let mut attr_val_end: *const ::core::ffi::c_char = p;
+                    if attr_name_end.offset_from(attr_name) == 5isize
+                        && strncasecmp(
+                            attr_name,
+                            b"Value\0".as_ptr() as *const ::core::ffi::c_char,
+                            5 as size_t,
+                        ) == 0 as ::core::ffi::c_int
+                    {
+                        let mut vlen: size_t = attr_val_end.offset_from(attr_val) as size_t;
+                        if vlen == 4 as size_t
+                            && strncasecmp(
+                                attr_val,
+                                b"true\0".as_ptr() as *const ::core::ffi::c_char,
+                                4 as size_t,
+                            ) == 0 as ::core::ffi::c_int
+                            || vlen == 1 as size_t
+                                && *attr_val.offset(0isize) as ::core::ffi::c_int
+                                    == '1' as ::core::ffi::c_int
+                        {
+                            return r#true != 0;
+                        }
+                    }
+                    p = p.offset(1);
+                }
             }
         }
         tag = strchr(
