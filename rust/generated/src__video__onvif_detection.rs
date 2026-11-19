@@ -3350,6 +3350,18 @@ unsafe extern "C" fn get_subscription(
         pthread_mutex_unlock(&raw mut subscription_mutex);
         return ::core::ptr::null_mut::<onvif_subscription_t>();
     }
+    if strlen(subscription_address) >= ::core::mem::size_of::<[::core::ffi::c_char; 512]>() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"ONVIF subscription address exceeds local capacity; rejecting it\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        free(subscription_address as *mut ::core::ffi::c_void);
+        pthread_mutex_unlock(&raw mut subscription_mutex);
+        return ::core::ptr::null_mut::<onvif_subscription_t>();
+    }
     let mut slot: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
     let mut i_1: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i_1 < subscription_count {
