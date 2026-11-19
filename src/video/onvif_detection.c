@@ -1527,7 +1527,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         log_debug("ONVIF Detection: Using camera with authentication");
     }
 
-    log_debug("ONVIF Detection: Starting detection with URL: %s", onvif_url);
+    log_debug("ONVIF Detection: Starting detection");
     log_debug("ONVIF Detection: Stream name: %s", stream_name);
 
     onvif_subscription_t *subscription = get_subscription(onvif_url, username, password);
