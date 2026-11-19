@@ -931,10 +931,19 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
+                    onvif_subscription_t *sub = &subscriptions[i];
+                    bool renewed_ok = false;
                     log_debug("Renewing ONVIF subscription for %s", url);
-                    if (!renew_subscription_locked(&subscriptions[i])) {
+
+                    pthread_mutex_unlock(&subscription_mutex);
+                    renewed_ok = renew_subscription_locked(sub);
+                    if (!renewed_ok) {
                         log_warn("ONVIF subscription renewal failed for %s; recreating it", url);
-                        unsubscribe_subscription_locked(&subscriptions[i]);
+                        unsubscribe_subscription_locked(sub);
+                    }
+                    pthread_mutex_lock(&subscription_mutex);
+
+                    if (!renewed_ok) {
                         break;
                     }
                 }
@@ -949,8 +958,11 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                 /* We missed the renewal window. Best-effort Unsubscribe avoids
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
+                onvif_subscription_t *sub = &subscriptions[i];
                 log_info("ONVIF subscription for %s expired, replacing it", url);
-                unsubscribe_subscription_locked(&subscriptions[i]);
+                pthread_mutex_unlock(&subscription_mutex);
+                unsubscribe_subscription_locked(sub);
+                pthread_mutex_lock(&subscription_mutex);
                 break;
             }
         }
