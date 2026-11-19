@@ -422,7 +422,7 @@ static void test_rejected_subscription_never_contacts_target_or_legacy_fallback(
     const onvif_operation_t operations[] = {ONVIF_OPERATION_PULL_MESSAGES, ONVIF_OPERATION_RENEW, ONVIF_OPERATION_UNSUBSCRIBE};
     for (int variant = 0; variant < 4; variant++) {
         snprintf(sub->subscription_address, sizeof(sub->subscription_address),
-                 variant == 0 ? "http://127.0.0.2:%u/stolen" :
+                 variant == 0 ? "http://localhost:%u/stolen" :
                  variant == 1 ? "https://127.0.0.1:%u/stolen" :
                  variant == 2 ? "ftp://127.0.0.1:%u/stolen" : "//127.0.0.1:%u/stolen",
                  variant == 1 ? port : destination_port);
@@ -504,15 +504,30 @@ static void test_relative_subscription_preserves_full_path(void) {
 }
 
 static void test_full_registry_rejects_before_remote_create(void) {
+    unsigned short port;
+    origin = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    char camera_url[128];
+    snprintf(camera_url, sizeof(camera_url), "http://127.0.0.1:%u", port);
+
     subscription_count = MAX_SUBSCRIPTIONS;
     for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
         subscriptions[i].active = true;
         snprintf(subscriptions[i].camera_url, sizeof(subscriptions[i].camera_url),
                  "http://occupied-%d", i);
     }
-    TEST_ASSERT_NULL(get_subscription("http://new-camera", "", ""));
+
+    TEST_ASSERT_NULL(get_subscription(camera_url, "", ""));
+
+    struct pollfd pfd;
+    pfd.fd = origin;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    TEST_ASSERT_EQUAL_INT(0, poll(&pfd, 1, 100));
+
     subscription_count = 0;
     memset(subscriptions, 0, sizeof(subscriptions));
+
 }
 
 static void test_pull_rejects_reassigned_slot(void) {
