@@ -3,7 +3,7 @@
 The contract tooling pins exact versions: Redocly CLI 2.76.0,
 openapi-typescript 7.13.0, Ajv 8.20.0,
 ajv-formats 3.0.1, esbuild 0.28.2, root TypeScript 5.9.3 and Node types
-26.6.6. The docs-only web dependency is swagger-ui-dist 5.34.1.
+26.6.6. The docs-only web dependency is swagger-ui-dist 5.35.0.
 The application checks types with TypeScript 7.0.2 through `@typescript/native`;
 its `typescript` alias provides the TypeScript 6 compatibility API for ESLint.
 
