@@ -3033,6 +3033,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/streams/{name}/ptz/delete-preset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** deletePtzPreset */
+        post: operations["deletePtzPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/streams/{name}/ptz/goto-preset": {
         parameters: {
             query?: never;
@@ -25015,6 +25034,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PtzCapabilities"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid input, denied access, unavailable device or failed device operation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deletePtzPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzGotoPresetRequest"];
+            };
+        };
+        responses: {
+            /** @description Device result; optional device capabilities remain explicitly optional. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandResult"];
                 };
             };
             /** @description Invalid input, denied access, unavailable device or failed device operation. */

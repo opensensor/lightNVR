@@ -969,7 +969,8 @@ void handle_ptz_remove_preset(const http_request_t *req, http_response_t *res) {
     }
 
     cJSON *token_json = cJSON_GetObjectItem(body, "token");
-    if (!token_json || !cJSON_IsString(token_json)) {
+    if (!token_json || !cJSON_IsString(token_json) || !token_json->valuestring ||
+        token_json->valuestring[0] == '\0' || strlen(token_json->valuestring) >= 64) {
         cJSON_Delete(body);
         audit_ptz_operation(req, &auth, "remove_preset", "failure", "missing_preset_token");
         http_response_set_json_error(res, 400, "Missing preset token");
