@@ -464,6 +464,7 @@ export function HLSVideoCell({
             console.warn(`[HLS ${stream.name}] Media error recovery attempt ${attemptNum}/${MAX_RECOVERY}`);
             setTimeout(() => {
               if (isMounted && hlsPlayerRef.current) {
+                lastFrame.capture(); // capture before recoverMediaError() detaches/reattaches media
                 hlsPlayerRef.current.recoverMediaError();
               }
             }, delay);
