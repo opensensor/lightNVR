@@ -1728,13 +1728,13 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
             log_warn("No stream name provided, skipping database storage");
         }
     } else {
-        log_debug("ONVIF Detection: No motion detected for %s", stream_name);
+        log_debug("ONVIF Detection: No asserted motion event for %s", stream_name);
         result->count = 0;
 
-        // Notify motion recording that motion has ended
-        if (stream_name && stream_name[0] != '\0') {
-            process_motion_event(stream_name, false, event_timestamp, false);
-        }
+        // Do not infer "motion ended" from absence of a motion assertion.
+        // ONVIF pulls may omit motion-state updates (or include unrelated events)
+        // while motion is still active. Only an explicit false motion notification
+        // should clear recording state.
     }
 
     return 0;
