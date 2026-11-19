@@ -774,27 +774,22 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         return response;
     }
 
-    // Resolve relative SubscriptionReference against the endpoint that created it.
+    // Only genuine relative paths may use the legacy camera-local fallback.
     // An unsupported scheme or network-path URL is not a relative service.
     if (has_uri_scheme_prefix(subscription->subscription_address) ||
         strncmp(subscription->subscription_address, "//", 2) == 0) {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-
-    char *resolved_endpoint = resolve_url_reference(subscription->camera_url,
-                                                    subscription->subscription_address);
-    if (!resolved_endpoint || !is_http_or_https_url(resolved_endpoint)) {
-        free(resolved_endpoint);
+    const char *last_slash = strrchr(subscription->subscription_address, '/');
+    if (!last_slash || last_slash[1] == '\0') {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-
-    char *response = send_soap_request(resolved_endpoint,
-                                       subscription->username,
-                                       subscription->password,
-                                       request_body, action);
-    free(resolved_endpoint);
+    char *response = send_onvif_request(subscription->camera_url,
+                                        subscription->username,
+                                        subscription->password,
+                                        request_body, last_slash + 1, operation);
     pthread_mutex_unlock(lock);
     return response;
 }
@@ -939,13 +934,6 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         return NULL;
     }
 
-    /* NOTE:
-     * Keep subscription_mutex scoped to subscription-table access only.
-     * Network operations (discover/create/renew/unsubscribe) must be executed
-     * without holding this global mutex, coordinated via per-subscription
-     * state/locking to avoid duplicate operations for the same camera.
-     */
-
     // Check if we already have a subscription for this URL
     for (int i = 0; i < subscription_count; i++) {
         if (strcmp(subscriptions[i].camera_url, url) == 0) {
@@ -955,15 +943,12 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
-                    pthread_mutex_unlock(&subscription_mutex);
                     log_debug("Renewing ONVIF subscription");
                     if (!renew_subscription_locked(&subscriptions[i])) {
                         log_warn("ONVIF subscription renewal failed; recreating it");
                         unsubscribe_subscription_locked(&subscriptions[i]);
-                        pthread_mutex_lock(&subscription_mutex);
                         break;
                     }
-                    pthread_mutex_lock(&subscription_mutex);
                 }
 
                 log_debug("Reusing existing ONVIF subscription");
@@ -977,9 +962,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
                 log_info("ONVIF subscription expired, replacing it");
-                pthread_mutex_unlock(&subscription_mutex);
                 unsubscribe_subscription_locked(&subscriptions[i]);
-                pthread_mutex_lock(&subscription_mutex);
                 break;
             }
         }
@@ -993,8 +976,6 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         "<CreatePullPointSubscription xmlns=\"http://www.onvif.org/ver10/events/wsdl\">"
         "<InitialTerminationTime>PT600S</InitialTerminationTime>"
         "</CreatePullPointSubscription>";
-
-    pthread_mutex_unlock(&subscription_mutex);
 
     // Dynamically discover the correct event service URL via GetServices.
     // Different vendors use different paths (e.g. Tapo uses "service", Lorex uses "event_service").
@@ -1074,16 +1055,8 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         slot = subscription_count++;
     }
 
-    // No local capacity: do not keep the newly created remote subscription.
-    if (slot < 0) {
-        log_error("No space for new ONVIF subscription");
-        free(subscription_address);
-        pthread_mutex_unlock(&subscription_mutex);
-        return NULL;
-    }
-
-    // We have a reserved slot, use it
-    {
+    // If we found a slot, use it
+    if (slot >= 0) {
         /* An inactive slot can contain failure state and an old subscription
          * address. Start the replacement with a completely clean record. */
         pthread_mutex_t *slot_lock = subscription_lock(&subscriptions[slot]);
@@ -1097,16 +1070,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             curl_easy_cleanup(subscriptions[slot].curl);
             subscriptions[slot].curl = NULL;
         }
-        /* Do not clear the whole slot with memset here: callers may still hold
-         * a pointer to this slot object. Reinitialize only per-subscription
-         * payload/state fields needed for reassignment. */
-        subscriptions[slot].active = false;
-        subscriptions[slot].renewal_time = 0;
-        subscriptions[slot].consecutive_failures = 0;
-        subscriptions[slot].subscription_address[0] = '\0';
-        subscriptions[slot].camera_url[0] = '\0';
-        subscriptions[slot].username[0] = '\0';
-        subscriptions[slot].password[0] = '\0';
+        memset(&subscriptions[slot], 0, sizeof(subscriptions[slot]));
 
         // Store camera URL, username, and password
         safe_strcpy(subscriptions[slot].camera_url, url, sizeof(subscriptions[slot].camera_url), 0);
@@ -1767,10 +1731,10 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         log_debug("ONVIF Detection: No asserted motion event for %s", stream_name);
         result->count = 0;
 
-        // Do not infer "motion ended" from absence of a motion assertion.
-        // ONVIF pulls may omit motion-state updates (or include unrelated events)
-        // while motion is still active. Only an explicit false motion notification
-        // should clear recording state.
+        // Notify motion recording that motion has ended
+        if (stream_name && stream_name[0] != '\0') {
+            process_motion_event(stream_name, false, event_timestamp, false);
+        }
     }
 
     return 0;
