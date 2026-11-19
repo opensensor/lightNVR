@@ -292,8 +292,6 @@ export function HLSVideoCell({
       // (go2rtc sessions expire after 5 s of inactivity; reloading the master
       // manifest creates a fresh session instead of retrying the stale one).
       hlsUrlRef.current = hlsStreamUrl;
-      preflightManifestUrlRef.current = null;
-      preflightManifestTextRef.current = null;
 
       // Preflight the manifest through the shared connection gate before
       // spinning up a player. go2rtc holds this request open while it dials
@@ -324,9 +322,6 @@ export function HLSVideoCell({
           }
           // Non-OK but not clearly offline (e.g. session race) — let hls.js retry
           console.warn(`[HLS ${stream.name}] Manifest preflight returned ${preflight.status}, continuing to player`);
-        } else {
-          preflightManifestUrlRef.current = hlsStreamUrl;
-          preflightManifestTextRef.current = await preflight.text();
         }
       } catch (err) {
         if (isGateAbort(err)) return; // unmounted / superseded
@@ -1009,7 +1004,7 @@ export function HLSVideoCell({
                   showStatusMessage(t('live.snapshotSaved', { fileName }), 'success', 2000);
                 }, 'image/jpeg', 0.95);
               } catch (_error) {
-                showStatusMessage(t('live.cannotTakeSnapshotVideoNotLoaded'), 'error');
+                showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
               }
           }}
         />
