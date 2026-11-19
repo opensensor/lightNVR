@@ -934,10 +934,6 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         return NULL;
     }
 
-    int matched_index = -1;
-    bool needs_renewal = false;
-    bool needs_recreate = false;
-
     // Check if we already have a subscription for this URL
     for (int i = 0; i < subscription_count; i++) {
         if (strcmp(subscriptions[i].camera_url, url) == 0) {
@@ -947,45 +943,29 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
-                    matched_index = i;
-                    needs_renewal = true;
-                } else {
-                    log_debug("Reusing existing ONVIF subscription");
-                    pthread_mutex_unlock(&subscription_mutex);
-                    return &subscriptions[i];
+                    log_debug("Renewing ONVIF subscription");
+                    if (!renew_subscription_locked(&subscriptions[i])) {
+                        log_warn("ONVIF subscription renewal failed; recreating it");
+                        unsubscribe_subscription_locked(&subscriptions[i]);
+                        break;
+                    }
                 }
+
+                log_debug("Reusing existing ONVIF subscription");
+                pthread_mutex_unlock(&subscription_mutex);
+                return &subscriptions[i];
             } else if (!subscriptions[i].active) {
                 log_info("ONVIF subscription is inactive, creating new one");
-                matched_index = i;
-                needs_recreate = true;
+                break;
             } else {
                 /* We missed the renewal window. Best-effort Unsubscribe avoids
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
                 log_info("ONVIF subscription expired, replacing it");
-                matched_index = i;
-                needs_recreate = true;
+                unsubscribe_subscription_locked(&subscriptions[i]);
+                break;
             }
-            break;
         }
-    }
-
-    pthread_mutex_unlock(&subscription_mutex);
-
-    if (matched_index >= 0 && needs_renewal) {
-        log_debug("Renewing ONVIF subscription");
-        pthread_mutex_lock(&subscription_mutex);
-        bool renewed = renew_subscription_locked(&subscriptions[matched_index]);
-        if (!renewed) {
-            log_warn("ONVIF subscription renewal failed; recreating it");
-            unsubscribe_subscription_locked(&subscriptions[matched_index]);
-            needs_recreate = true;
-        } else {
-            onvif_subscription_t *sub = &subscriptions[matched_index];
-            pthread_mutex_unlock(&subscription_mutex);
-            return sub;
-        }
-        pthread_mutex_unlock(&subscription_mutex);
     }
 
     log_info("Creating new ONVIF subscription");
@@ -1054,6 +1034,13 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         return NULL;
     }
 
+    if (strlen(subscription_address) >= sizeof(subscriptions[0].subscription_address)) {
+        log_warn("ONVIF subscription address exceeds local capacity; rejecting it");
+        free(subscription_address);
+        pthread_mutex_unlock(&subscription_mutex);
+        return NULL;
+    }
+
     // Find an empty slot or reuse an inactive one
     int slot = -1;
     for (int i = 0; i < subscription_count; i++) {
@@ -1083,11 +1070,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             curl_easy_cleanup(subscriptions[slot].curl);
             subscriptions[slot].curl = NULL;
         }
-        /* Bump generation before reusing the slot so stale holders can detect
-         * that this slot identity has changed. */
-        uint64_t next_generation = subscriptions[slot].generation + 1;
         memset(&subscriptions[slot], 0, sizeof(subscriptions[slot]));
-        subscriptions[slot].generation = next_generation;
 
         // Store camera URL, username, and password
         safe_strcpy(subscriptions[slot].camera_url, url, sizeof(subscriptions[slot].camera_url), 0);
@@ -1097,17 +1080,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         safe_strcpy(subscriptions[slot].password, password, sizeof(subscriptions[slot].password), 0);
         
         // Store subscription address
-        size_t subscription_address_len = strlen(subscription_address);
-        if (subscription_address_len >= sizeof(subscriptions[slot].subscription_address)) {
-            log_error("ONVIF subscription address too long (%zu bytes, max %zu): rejecting subscription",
-                      subscription_address_len,
-                      sizeof(subscriptions[slot].subscription_address) - 1);
-            pthread_mutex_unlock(slot_lock);
-            free(subscription_address);
-            pthread_mutex_unlock(&subscription_mutex);
-            return NULL;
-        }
-        safe_strcpy(subscriptions[slot].subscription_address, subscription_address,
+        safe_strcpy(subscriptions[slot].subscription_address, subscription_address, 
                 sizeof(subscriptions[slot].subscription_address), 0);
         
         // Schedule renewal from the lease the camera actually granted.
@@ -1420,30 +1393,9 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
         if (xml) {
             ezxml_free(xml);
         }
-        bool fallback = false;
-        const char *truthy_patterns[] = {
-            "Value=\"true\"", "Value='true'", "Value=\"1\"", "Value='1'",
-            "Value=&quot;true&quot;", "Value=&quot;1&quot;"
-        };
-        const char *state_item_patterns[] = {
-            "Name=\"IsMotion\"", "Name='IsMotion'",
-            "Name=\"Motion\"", "Name='Motion'",
-            "Name=\"IsPeople\"", "Name='IsPeople'",
-            "Name=\"PeopleDetector\"", "Name='PeopleDetector'",
-            "Name=\"HumanDetect\"", "Name='HumanDetect'",
-            "Name=\"VehicleDetect\"", "Name='VehicleDetect'",
-            "Name=\"ObjectDetect\"", "Name='ObjectDetect'"
-        };
-
-        for (size_t i = 0; i < sizeof(state_item_patterns) / sizeof(state_item_patterns[0]) && !fallback; ++i) {
-            if (!strstr(response, state_item_patterns[i])) continue;
-            for (size_t j = 0; j < sizeof(truthy_patterns) / sizeof(truthy_patterns[0]); ++j) {
-                if (strstr(response, truthy_patterns[j])) {
-                    fallback = true;
-                    break;
-                }
-            }
-        }
+        bool fallback =
+            (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
+             strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
         if (fallback && label && label_sz > 0) safe_strcpy(label, "motion", label_sz, 0);
         free(copy);
         return fallback;
