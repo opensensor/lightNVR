@@ -774,22 +774,33 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         return response;
     }
 
-    // Only genuine relative paths may use the legacy camera-local fallback.
-    // An unsupported scheme or network-path URL is not a relative service.
-    if (has_uri_scheme_prefix(subscription->subscription_address) ||
-        strncmp(subscription->subscription_address, "//", 2) == 0) {
+    // Resolve full URI reference against the endpoint that created the subscription.
+    // Do not collapse path components (for example, "/a/b/123" must stay intact).
+    char *resolved_url = resolve_uri_reference(subscription->camera_url,
+                                               subscription->subscription_address);
+    if (!resolved_url) {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-    const char *last_slash = strrchr(subscription->subscription_address, '/');
-    if (!last_slash || last_slash[1] == '\0') {
+
+    if (!(strncasecmp(resolved_url, "http://", 7) == 0 ||
+          strncasecmp(resolved_url, "https://", 8) == 0)) {
+        free(resolved_url);
         pthread_mutex_unlock(lock);
         return NULL;
     }
-    char *response = send_onvif_request(subscription->camera_url,
-                                        subscription->username,
-                                        subscription->password,
-                                        request_body, last_slash + 1, operation);
+
+    if (!urls_have_same_host(subscription->camera_url, resolved_url)) {
+        free(resolved_url);
+        pthread_mutex_unlock(lock);
+        return NULL;
+    }
+
+    char *response = send_onvif_request_to_url(resolved_url,
+                                               subscription->username,
+                                               subscription->password,
+                                               request_body, operation);
+    free(resolved_url);
     pthread_mutex_unlock(lock);
     return response;
 }
