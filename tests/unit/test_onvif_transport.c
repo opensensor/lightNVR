@@ -10,6 +10,8 @@ static char log_capture[8192];
 static int origin, destination, server_failed;
 static unsigned short destination_port;
 static char advertised_endpoint[256];
+static char oversized_advertised_endpoint[768];
+static bool use_oversized_endpoint;
 static const char *operation_path;
 static const char *operation_soap_path;
 static int fallback_requests;
@@ -56,6 +58,7 @@ void setUp(void) {
     interrupt_send = true;
     zero_send = false;
     send_calls = 0;
+    use_oversized_endpoint = false;
     log_capture[0] = '\0';
     memset(subscriptions, 0, sizeof(subscriptions));
     subscription_count = 0;
@@ -199,7 +202,7 @@ static void *fallback_server(void *unused) {
             "<Envelope><Body><GetServicesResponse><Service>"
             "<Namespace>http://www.onvif.org/ver10/events/wsdl</Namespace>"
             "<XAddr>%s</XAddr></Service></GetServicesResponse></Body></Envelope>",
-            advertised_endpoint);
+            use_oversized_endpoint ? oversized_advertised_endpoint : advertised_endpoint);
         char response[1400];
         int length = snprintf(response, sizeof(response),
             "HTTP/1.1 %s\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
@@ -254,6 +257,32 @@ static void test_discovered_endpoint_on_other_host_is_not_contacted(void) {
     TEST_ASSERT_EQUAL_INT(4, fallback_requests);
     struct pollfd pending = {.fd = destination, .events = POLLIN};
     TEST_ASSERT_EQUAL_INT(0, poll(&pending, 1, 0));
+}
+
+static void test_oversized_discovered_endpoint_is_not_contacted(void) {
+    unsigned short port;
+    origin = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    char base[128];
+    snprintf(base, sizeof(base), "http://127.0.0.1:%u", port);
+    int prefix = snprintf(oversized_advertised_endpoint, sizeof(oversized_advertised_endpoint),
+                          "%s/onvif/", base);
+    TEST_ASSERT_TRUE(prefix > 0);
+    memset(oversized_advertised_endpoint + prefix, 'x',
+           sizeof(oversized_advertised_endpoint) - (size_t)prefix - 1);
+    oversized_advertised_endpoint[sizeof(oversized_advertised_endpoint) - 1] = '\0';
+    use_oversized_endpoint = true;
+    fallback_requests = 0;
+    curl_handle = create_curl_handle();
+    TEST_ASSERT_NOT_NULL(curl_handle);
+    curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
+    pthread_t worker;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, fallback_server, NULL));
+    TEST_ASSERT_NULL(get_subscription(base, "fixture-user", "fixture-password"));
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+    TEST_ASSERT_EQUAL_INT(0, server_failed);
+    TEST_ASSERT_EQUAL_INT(4, fallback_requests);
+    TEST_ASSERT_NOT_NULL(strstr(log_capture, "Ignoring oversized discovered event endpoint"));
 }
 
 /* Independent wire expectations: changing a SOAP identifier to HTTPS breaks
@@ -648,6 +677,7 @@ int main(void) {
     RUN_TEST(test_trace_never_logs_headers_or_curl_notes);
     RUN_TEST(test_duplicate_fallback_logs_only_fixed_service_name);
     RUN_TEST(test_discovered_endpoint_on_other_host_is_not_contacted);
+    RUN_TEST(test_oversized_discovered_endpoint_is_not_contacted);
     RUN_TEST(test_subscription_origin_allows_camera_local_port);
     RUN_TEST(test_rejected_subscription_never_contacts_target_or_legacy_fallback);
     RUN_TEST(test_same_origin_subscription_keeps_full_request_target);
