@@ -934,6 +934,13 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         return NULL;
     }
 
+    /* NOTE:
+     * Keep subscription_mutex scoped to subscription-table access only.
+     * Network operations (discover/create/renew/unsubscribe) must be executed
+     * without holding this global mutex, coordinated via per-subscription
+     * state/locking to avoid duplicate operations for the same camera.
+     */
+
     // Check if we already have a subscription for this URL
     for (int i = 0; i < subscription_count; i++) {
         if (strcmp(subscriptions[i].camera_url, url) == 0) {
@@ -943,12 +950,15 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
+                    pthread_mutex_unlock(&subscription_mutex);
                     log_debug("Renewing ONVIF subscription");
                     if (!renew_subscription_locked(&subscriptions[i])) {
                         log_warn("ONVIF subscription renewal failed; recreating it");
                         unsubscribe_subscription_locked(&subscriptions[i]);
+                        pthread_mutex_lock(&subscription_mutex);
                         break;
                     }
+                    pthread_mutex_lock(&subscription_mutex);
                 }
 
                 log_debug("Reusing existing ONVIF subscription");
@@ -962,7 +972,9 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
                 log_info("ONVIF subscription expired, replacing it");
+                pthread_mutex_unlock(&subscription_mutex);
                 unsubscribe_subscription_locked(&subscriptions[i]);
+                pthread_mutex_lock(&subscription_mutex);
                 break;
             }
         }
@@ -976,6 +988,8 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         "<CreatePullPointSubscription xmlns=\"http://www.onvif.org/ver10/events/wsdl\">"
         "<InitialTerminationTime>PT600S</InitialTerminationTime>"
         "</CreatePullPointSubscription>";
+
+    pthread_mutex_unlock(&subscription_mutex);
 
     // Dynamically discover the correct event service URL via GetServices.
     // Different vendors use different paths (e.g. Tapo uses "service", Lorex uses "event_service").
