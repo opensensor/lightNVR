@@ -702,20 +702,21 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
     const char *action = onvif_operation_action(operation);
     if (!subscription || !request_body || !action) return NULL;
 
+    pthread_mutex_t *lock = subscription_lock(subscription);
+    if (!lock) return NULL;
+    pthread_mutex_lock(lock);
+
     if (strncasecmp(subscription->subscription_address, "http://", 7) == 0 ||
         strncasecmp(subscription->subscription_address, "https://", 8) == 0) {
         if (!subscription_address_matches_camera_host(subscription->camera_url,
                                                        subscription->subscription_address)) {
             log_warn("Rejected ONVIF subscription endpoint with a different scheme/host or invalid port");
+            pthread_mutex_unlock(lock);
             return NULL;
         }
         char *response = NULL;
         onvif_request_status_t status = {0};
         int attempts = 0;
-        pthread_mutex_t *lock = subscription_lock(subscription);
-        if (!lock) return NULL;
-
-        pthread_mutex_lock(lock);
         if (!subscription->curl) subscription->curl = create_curl_handle();
         if (!subscription->curl) {
             pthread_mutex_unlock(lock);
@@ -764,13 +765,21 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
     // Only genuine relative paths may use the legacy camera-local fallback.
     // An unsupported scheme or network-path URL is not a relative service.
     if (strchr(subscription->subscription_address, ':') ||
-        strncmp(subscription->subscription_address, "//", 2) == 0) return NULL;
+        strncmp(subscription->subscription_address, "//", 2) == 0) {
+        pthread_mutex_unlock(lock);
+        return NULL;
+    }
     const char *last_slash = strrchr(subscription->subscription_address, '/');
-    if (!last_slash || last_slash[1] == '\0') return NULL;
-    return send_onvif_request(subscription->camera_url,
-                              subscription->username,
-                              subscription->password,
-                              request_body, last_slash + 1, operation);
+    if (!last_slash || last_slash[1] == '\0') {
+        pthread_mutex_unlock(lock);
+        return NULL;
+    }
+    char *response = send_onvif_request(subscription->camera_url,
+                                        subscription->username,
+                                        subscription->password,
+                                        request_body, last_slash + 1, operation);
+    pthread_mutex_unlock(lock);
+    return response;
 }
 
 /* subscription_mutex must be held by the caller. */
@@ -837,6 +846,10 @@ static char *discover_event_service_url(const char *url, const char *username, c
         return NULL;
     }
 
+    /* Preserve an untouched copy for the fallback substring heuristic.
+     * ezxml_parse_str mutates its input buffer in place. */
+    char *response_fallback = strdup(response);
+
     /* ezxml_parse_str modifies the buffer in place, and the returned
      * tree references it, so keep `response` alive until we copy the
      * matched URL out. */
@@ -868,9 +881,9 @@ static char *discover_event_service_url(const char *url, const char *username, c
 
     /* Fallback: the old substring heuristic, for responses that ezxml
      * can't parse (malformed XML from buggy firmware). */
-    if (!event_url) {
+    if (!event_url && response_fallback) {
         const char *events_ns = "http://www.onvif.org/ver10/events/wsdl";
-        const char *ns_pos = strstr(response, events_ns);
+        const char *ns_pos = strstr(response_fallback, events_ns);
         if (ns_pos) {
             const char *xaddr_open[]  = {"<tds:XAddr>", "<XAddr>", NULL};
             const char *xaddr_close[] = {"</tds:XAddr>", "</XAddr>", NULL};
@@ -887,6 +900,8 @@ static char *discover_event_service_url(const char *url, const char *username, c
             }
         }
     }
+
+    free(response_fallback);
 
     if (event_url) {
         log_info("ONVIF: Discovered event service endpoint");
@@ -913,7 +928,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             // Check if subscription is still valid
             time_t now;
             time(&now);
-            
+
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
                     log_debug("Renewing ONVIF subscription for %s", url);
@@ -1527,7 +1542,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         log_debug("ONVIF Detection: Using camera with authentication");
     }
 
-    log_debug("ONVIF Detection: Starting detection with URL: %s", onvif_url);
+    log_debug("ONVIF Detection: Starting detection");
     log_debug("ONVIF Detection: Stream name: %s", stream_name);
 
     onvif_subscription_t *subscription = get_subscription(onvif_url, username, password);
