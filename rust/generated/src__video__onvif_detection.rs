@@ -3690,6 +3690,63 @@ unsafe extern "C" fn normalize_object_class(
     }
     return ::core::ptr::null::<::core::ffi::c_char>();
 }
+unsafe extern "C" fn is_recognized_class_flag_name(mut name: *const ::core::ffi::c_char) -> bool {
+    if name.is_null() {
+        return r#false != 0;
+    }
+    static mut flags: [*const ::core::ffi::c_char; 42] = [
+        b"Human\0".as_ptr() as *const ::core::ffi::c_char,
+        b"People\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Person\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Pedestrian\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Vehicle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Car\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Motorcycle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Motorbike\0".as_ptr() as *const ::core::ffi::c_char,
+        b"NonMotor\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Bicycle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Bike\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Cycle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Face\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Animal\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Dog\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Cat\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Pet\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsHuman\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsPeople\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsPerson\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsPedestrian\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsVehicle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsCar\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsMotorcycle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsMotorbike\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsNonMotor\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsBicycle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsBike\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsCycle\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsFace\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsAnimal\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsDog\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsCat\0".as_ptr() as *const ::core::ffi::c_char,
+        b"IsPet\0".as_ptr() as *const ::core::ffi::c_char,
+        b"HumanDetect\0".as_ptr() as *const ::core::ffi::c_char,
+        b"PeopleDetect\0".as_ptr() as *const ::core::ffi::c_char,
+        b"PersonDetect\0".as_ptr() as *const ::core::ffi::c_char,
+        b"VehicleDetect\0".as_ptr() as *const ::core::ffi::c_char,
+        b"CarDetect\0".as_ptr() as *const ::core::ffi::c_char,
+        b"FaceDetect\0".as_ptr() as *const ::core::ffi::c_char,
+        b"AnimalDetect\0".as_ptr() as *const ::core::ffi::c_char,
+        ::core::ptr::null::<::core::ffi::c_char>(),
+    ];
+    let mut i: size_t = 0 as size_t;
+    while !flags[i].is_null() {
+        if strcasecmp(name, flags[i]) == 0 as ::core::ffi::c_int {
+            return r#true != 0;
+        }
+        i = i.wrapping_add(1);
+    }
+    return r#false != 0;
+}
 unsafe extern "C" fn find_object_class(
     mut node: ezxml_t,
     mut in_data: bool,
@@ -3739,6 +3796,7 @@ unsafe extern "C" fn find_object_class(
                     == 0 as ::core::ffi::c_int
                     || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
                         == 0 as ::core::ffi::c_int)
+                && is_recognized_class_flag_name(name) as ::core::ffi::c_int != 0
             {
                 let mut cls_0: *const ::core::ffi::c_char = normalize_object_class(name);
                 if !cls_0.is_null() {
@@ -3806,15 +3864,7 @@ unsafe extern "C" fn is_asserted_item_name(mut name: *const ::core::ffi::c_char)
         }
         i = i.wrapping_add(1);
     }
-    return (strncasecmp(
-        name,
-        b"Is\0".as_ptr() as *const ::core::ffi::c_char,
-        2 as size_t,
-    ) == 0 as ::core::ffi::c_int
-        || ci_contains(name, b"Detect\0".as_ptr() as *const ::core::ffi::c_char)
-            as ::core::ffi::c_int
-            != 0)
-        && !normalize_object_class(name).is_null();
+    return is_recognized_class_flag_name(name);
 }
 unsafe extern "C" fn data_has_asserted_item(mut node: ezxml_t, mut in_data: bool) -> bool {
     let mut c: ezxml_t = if !node.is_null() {
@@ -4805,8 +4855,7 @@ pub unsafe extern "C" fn detect_motion_onvif(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Failed to get subscription for %s\0".as_ptr() as *const ::core::ffi::c_char,
-            onvif_url,
+            b"Failed to get subscription\0".as_ptr() as *const ::core::ffi::c_char,
         );
         return -1 as ::core::ffi::c_int;
     }
