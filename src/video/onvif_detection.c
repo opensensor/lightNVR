@@ -1070,7 +1070,9 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             curl_easy_cleanup(subscriptions[slot].curl);
             subscriptions[slot].curl = NULL;
         }
+        uint64_t next_generation = subscriptions[slot].generation + 1;
         memset(&subscriptions[slot], 0, sizeof(subscriptions[slot]));
+        subscriptions[slot].generation = next_generation;
 
         // Store camera URL, username, and password
         safe_strcpy(subscriptions[slot].camera_url, url, sizeof(subscriptions[slot].camera_url), 0);
