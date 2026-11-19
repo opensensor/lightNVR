@@ -1378,6 +1378,8 @@ export function HLSVideoCell({
           </svg>
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{t('live.streamPausedForPrivacy')}</p>
           {canControlPrivacy && <button
+            ref={privacyResumeButtonRef}
+            autoFocus
             onClick={handleResumeFromPrivacy}
             disabled={isTogglingEnabled}
             style={{
