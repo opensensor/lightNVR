@@ -90,19 +90,26 @@ beforeAll(async () => {
 });
 
 async function openPlayer(config={}) {
-  const browser=await chromium.launch({headless:true});
-  const page=await browser.newPage();
-  page.setDefaultTimeout(5000);
-  await page.route('http://fixture.invalid/**',route=>route.fulfill({
-    contentType:'text/html',body:'<style>svg{width:20px;height:20px}</style><div id="root"></div>',
-  }));
-  await page.goto('http://fixture.invalid/');
-  await page.evaluate(value=>{window.config=value;},config);
-  await page.addScriptTag({content:bundle});
-  await page.waitForFunction(()=>window.config.deferSettings ? !!window.resolveSettings :
-    window.config.deferManifest ? window.requests.length>0 :
-    window.config.nativePlayer ? window.nativeSources.length>0 : window.players.length>0);
-  return {browser,page};
+  let browser;
+  let page;
+  try {
+    browser=await chromium.launch({headless:true});
+    page=await browser.newPage();
+    page.setDefaultTimeout(5000);
+    await page.route('http://fixture.invalid/**',route=>route.fulfill({
+      contentType:'text/html',body:'<style>svg{width:20px;height:20px}</style><div id="root"></div>',
+    }));
+    await page.goto('http://fixture.invalid/');
+    await page.evaluate(value=>{window.config=value;},config);
+    await page.addScriptTag({content:bundle});
+    await page.waitForFunction(()=>window.config.deferSettings ? !!window.resolveSettings :
+      window.config.deferManifest ? window.requests.length>0 :
+      window.config.nativePlayer ? window.nativeSources.length>0 : window.players.length>0);
+    return {browser,page};
+  } catch (error) {
+    if (browser) await browser.close().catch(() => {});
+    throw error;
+  }
 }
 
 it.each(['exhausted','unrecoverable','native'])(
