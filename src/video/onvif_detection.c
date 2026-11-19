@@ -1328,11 +1328,15 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
     if (!copy) return false;
 
     ezxml_t xml = ezxml_parse_str(copy, strlen(copy));
-    if (!xml) {
+    const char *parse_error = xml ? ezxml_error(xml) : NULL;
+    if (!xml || (parse_error && parse_error[0] != '\0')) {
         /* Malformed XML from buggy firmware: fall back to substring matching,
          * but at least require a truthy Value somewhere in the payload so a
          * plain "motion ended" message doesn't trigger. */
         log_debug("ONVIF Detection: failed to parse PullMessages response, using fallback heuristic");
+        if (xml) {
+            ezxml_free(xml);
+        }
         bool fallback =
             (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
              strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
