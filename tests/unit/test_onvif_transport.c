@@ -511,17 +511,32 @@ static void test_discovery_does_not_hold_subscription_table_lock(void) {
     subscription_lookup_fixture_t fixture = {0};
     snprintf(fixture.url, sizeof(fixture.url), "http://127.0.0.1:%u", port);
     pthread_t worker;
-    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, lookup_subscription_worker, &fixture));
-    struct pollfd pending = {.fd = origin, .events = POLLIN};
-    TEST_ASSERT_EQUAL_INT(1, poll(&pending, 1, 3000));
-    int client = accept(origin, NULL, NULL);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, client);
-    int lock_result = pthread_mutex_trylock(&subscription_mutex);
-    if (lock_result == 0) pthread_mutex_unlock(&subscription_mutex);
-    close(client);
+    bool worker_started = false;
+    const char *failure_message = NULL;
+    int client = -1;
+    int lock_result = -1;
+    if (pthread_create(&worker, NULL, lookup_subscription_worker, &fixture) != 0) {
+        failure_message = "pthread_create failed";
+    } else {
+        worker_started = true;
+        struct pollfd pending = {.fd = origin, .events = POLLIN};
+        if (poll(&pending, 1, 3000) != 1) {
+            failure_message = "poll did not report pending connection";
+        } else {
+            client = accept(origin, NULL, NULL);
+            if (client < 0) {
+                failure_message = "accept failed";
+            } else {
+                lock_result = pthread_mutex_trylock(&subscription_mutex);
+                if (lock_result == 0) pthread_mutex_unlock(&subscription_mutex);
+            }
+        }
+    }
+    if (client >= 0) close(client);
     close(origin);
     origin = -1;
-    pthread_join(worker, NULL);
+    if (worker_started) pthread_join(worker, NULL);
+    if (failure_message != NULL) TEST_FAIL_MESSAGE(failure_message);
     TEST_ASSERT_EQUAL_INT(0, lock_result);
     TEST_ASSERT_NULL(fixture.subscription);
     TEST_ASSERT_FALSE(subscriptions[0].reserved);
