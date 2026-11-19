@@ -1055,8 +1055,16 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         slot = subscription_count++;
     }
 
-    // If we found a slot, use it
-    if (slot >= 0) {
+    // No local capacity: do not keep the newly created remote subscription.
+    if (slot < 0) {
+        log_error("No space for new ONVIF subscription");
+        free(subscription_address);
+        pthread_mutex_unlock(&subscription_mutex);
+        return NULL;
+    }
+
+    // We have a reserved slot, use it
+    {
         /* An inactive slot can contain failure state and an old subscription
          * address. Start the replacement with a completely clean record. */
         pthread_mutex_t *slot_lock = subscription_lock(&subscriptions[slot]);
