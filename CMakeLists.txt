@@ -370,10 +370,9 @@ if(ENABLE_LITERT)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/video/detection/litert_engine.cc"
     )
     # TFLite public headers (and the Abseil/FlatBuffers they pull in) require
-    # C++17, but the project default is C++14. Linking the tensorflow-lite
-    # target propagates cxx_std_17, yet make the requirement explicit on our
-    # own engine source so it compiles correctly regardless of propagation.
-    set_source_files_properties(${LITERT_ENGINE_SOURCES} PROPERTIES CXX_STANDARD 17)
+    # C++17, but the project default is C++14. Require C++17 on our library
+    # target explicitly when LiteRT is enabled so this does not depend solely
+    # on transitive propagation from tensorflow-lite.
     message(STATUS "LiteRT engine enabled (XNNPACK=${LITERT_WITH_XNNPACK}, GPU=${LITERT_WITH_GPU})")
 else()
     message(STATUS "LiteRT engine disabled (set -DENABLE_LITERT=ON to enable)")
@@ -675,7 +674,7 @@ message(STATUS "Excluding main.c and tools from ROOT_SOURCES")
 
 # Collect video sources from src/video, then exclude motion_detection_optimized.c,
 # detection_thread_pool.c, and the original hls_writer_thread.c (since we're using our split version).
-file(GLOB VIDEO_SOURCES "src/video/*.c")
+file(GLOB VIDEO_SOURCES CONFIGURE_DEPENDS "src/video/*.c")
 
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
@@ -686,9 +685,9 @@ file(GLOB HLS_SOURCES CONFIGURE_DEPENDS "src/video/hls/*.c")
 # hls_unified_thread.c is added explicitly via HLS_UNIFIED_THREAD_SOURCES below.
 # Exclude it here to avoid duplicate source listing.
 list(FILTER HLS_SOURCES EXCLUDE REGEX ".*hls_unified_thread\\.c$")
-file(GLOB TELEMETRY_SOURCES "src/telemetry/*.c")
-file(GLOB HEALTH_COLLECTOR_SOURCES "src/telemetry/collectors/*.c")
-file(GLOB HEALTH_PROVIDER_SOURCES "src/telemetry/providers/*.c")
+file(GLOB TELEMETRY_SOURCES CONFIGURE_DEPENDS "src/telemetry/*.c")
+file(GLOB HEALTH_COLLECTOR_SOURCES CONFIGURE_DEPENDS "src/telemetry/collectors/*.c")
+file(GLOB HEALTH_PROVIDER_SOURCES CONFIGURE_DEPENDS "src/telemetry/providers/*.c")
 
 # Add unified HLS thread sources explicitly to ensure they're included
 set(HLS_UNIFIED_THREAD_SOURCES
@@ -735,6 +734,9 @@ list(APPEND SOURCES ${LIBUV_SERVER_SOURCES})
 
 # Define the shared library
 add_library(lightnvr_lib STATIC ${SOURCES})
+if(ENABLE_LITERT)
+    target_compile_features(lightnvr_lib PRIVATE cxx_std_17)
+endif()
 target_include_directories(lightnvr_lib PUBLIC ${LIGHTNVR_INCLUDE_DIRS})
 target_include_directories(lightnvr_lib PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/external/inih"
