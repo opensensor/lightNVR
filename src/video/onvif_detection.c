@@ -1264,18 +1264,40 @@ static bool value_is_true(const char *value) {
     return strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0;
 }
 
+/* Only specific Data SimpleItem names represent asserted event state. */
+static bool is_asserted_item_name(const char *name) {
+    if (!name) return false;
+
+    /* Common ONVIF/vendor state flags. */
+    if (strcasecmp(name, "IsMotion") == 0 ||
+        strcasecmp(name, "Motion") == 0 ||
+        strcasecmp(name, "State") == 0 ||
+        strcasecmp(name, "Active") == 0 ||
+        strcasecmp(name, "Detected") == 0 ||
+        strcasecmp(name, "IsActive") == 0) {
+        return true;
+    }
+
+    /* Class assertions may be emitted directly as Name="Person"/"Vehicle"/... */
+    return normalize_object_class(name) != NULL;
+}
+
 /*
  * Return true if any SimpleItem beneath `node` that sits inside a Data
- * element has a truthy Value.  `in_data` tracks whether an ancestor was a
- * Data element — Source/Key sections also carry SimpleItems, but their
- * Values are configuration tokens (often literally "1"), not event state.
+ * element has a truthy Value and a name that represents event assertion.
+ * `in_data` tracks whether an ancestor was a Data element — Source/Key
+ * sections also carry SimpleItems, but their Values are configuration
+ * tokens (often literally "1"), not event state.
  */
 static bool data_has_asserted_item(ezxml_t node, bool in_data) {
     for (ezxml_t c = node ? node->child : NULL; c; c = c->ordered) {
         bool inside = in_data || strcmp(local_name(c), "Data") == 0;
-        if (inside && strcmp(local_name(c), "SimpleItem") == 0 &&
-            value_is_true(ezxml_attr(c, "Value"))) {
-            return true;
+        if (inside && strcmp(local_name(c), "SimpleItem") == 0) {
+            const char *name = ezxml_attr(c, "Name");
+            const char *value = ezxml_attr(c, "Value");
+            if (is_asserted_item_name(name) && value_is_true(value)) {
+                return true;
+            }
         }
         if (data_has_asserted_item(c, inside)) return true;
     }
