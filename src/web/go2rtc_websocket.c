@@ -80,6 +80,74 @@ static bool header_token(const char *value, const char *token) {
     return false;
 }
 
+/* Origin and Host carry authorities, not paths or user credentials. Keep the
+ * bracketed IPv6 literal intact when finding an optional port. */
+static bool parse_authority(const char *value, const char **host, size_t *host_len,
+                            unsigned short *port, bool *has_port) {
+    if (!value || !*value) return false;
+    const char *end = value + strlen(value);
+    for (const char *p = value; p < end; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c <= ' ' || c == 127 || strchr("/@?#\\%", c)) return false;
+    }
+
+    const char *port_start = NULL;
+    if (*value == '[') {
+        const char *closing = strchr(value, ']');
+        if (!closing || closing == value + 1 ||
+            memchr(value + 1, '[', (size_t)(closing - value - 1))) return false;
+        *host_len = (size_t)(closing + 1 - value);
+        if (closing + 1 < end) {
+            if (closing[1] != ':') return false;
+            port_start = closing + 2;
+        }
+    } else {
+        if (strchr(value, '[') || strchr(value, ']')) return false;
+        const char *colon = strchr(value, ':');
+        *host_len = colon ? (size_t)(colon - value) : (size_t)(end - value);
+        if (colon) port_start = colon + 1;
+    }
+    if (!*host_len) return false;
+    *host = value;
+    *has_port = port_start != NULL;
+    *port = 0;
+    if (!port_start) return true;
+    if (port_start == end || (size_t)(end - port_start) > 5) return false;
+    unsigned number = 0;
+    for (const char *p = port_start; p < end; p++) {
+        if (!isdigit((unsigned char)*p)) return false;
+        number = number * 10 + (unsigned)(*p - '0');
+        if (number > 65535) return false;
+    }
+    if (!number) return false;
+    *port = (unsigned short)number;
+    return true;
+}
+
+static bool origin_matches_host(const char *origin, const char *host) {
+    const char *authority;
+    unsigned short default_port;
+    if (strncasecmp(origin, "http://", 7) == 0) {
+        authority = origin + 7;
+        default_port = 80;
+    } else if (strncasecmp(origin, "https://", 8) == 0) {
+        authority = origin + 8;
+        default_port = 443;
+    } else {
+        return false;
+    }
+    const char *origin_name = NULL, *host_name = NULL;
+    size_t origin_len = 0, host_len = 0;
+    unsigned short origin_port = 0, host_port = 0;
+    bool origin_has_port = false, host_has_port = false;
+    if (!parse_authority(authority, &origin_name, &origin_len, &origin_port, &origin_has_port) ||
+        !parse_authority(host, &host_name, &host_len, &host_port, &host_has_port)) return false;
+    return origin_len == host_len &&
+           strncasecmp(origin_name, host_name, origin_len) == 0 &&
+           (origin_has_port ? origin_port : default_port) ==
+           (host_has_port ? host_port : default_port);
+}
+
 bool go2rtc_websocket_validate(const http_request_t *req, http_response_t *res) {
     const char *key = single_header(req, "Sec-WebSocket-Key");
     const char *version = single_header(req, "Sec-WebSocket-Version");
@@ -100,9 +168,7 @@ bool go2rtc_websocket_validate(const http_request_t *req, http_response_t *res) 
     int origin_count = 0;
     for (int i = 0; i < req->num_headers; i++)
         if (strcasecmp(req->headers[i].name, "Origin") == 0) origin_count++;
-    const char *authority = origin && strncmp(origin, "http://", 7) == 0 ? origin + 7 :
-                            origin && strncmp(origin, "https://", 8) == 0 ? origin + 8 : NULL;
-    if (!host || origin_count > 1 || (origin && (!authority || strcasecmp(authority, host) != 0))) {
+    if (!host || origin_count > 1 || (origin && !origin_matches_host(origin, host))) {
         http_response_set_json_error(res, 403, "WebSocket origin denied");
         return false;
     }
