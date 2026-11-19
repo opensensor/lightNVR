@@ -1073,7 +1073,17 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         safe_strcpy(subscriptions[slot].password, password, sizeof(subscriptions[slot].password), 0);
         
         // Store subscription address
-        safe_strcpy(subscriptions[slot].subscription_address, subscription_address, 
+        size_t subscription_address_len = strlen(subscription_address);
+        if (subscription_address_len >= sizeof(subscriptions[slot].subscription_address)) {
+            log_error("ONVIF subscription address too long (%zu bytes, max %zu): rejecting subscription",
+                      subscription_address_len,
+                      sizeof(subscriptions[slot].subscription_address) - 1);
+            pthread_mutex_unlock(slot_lock);
+            free(subscription_address);
+            pthread_mutex_unlock(&subscription_mutex);
+            return NULL;
+        }
+        safe_strcpy(subscriptions[slot].subscription_address, subscription_address,
                 sizeof(subscriptions[slot].subscription_address), 0);
         
         // Schedule renewal from the lease the camera actually granted.
