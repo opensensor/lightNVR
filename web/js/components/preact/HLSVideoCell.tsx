@@ -182,6 +182,9 @@ export function HLSVideoCell({
   useEffect(() => {
     if (privacyActive) {
       console.log(`[HLS ${stream?.name ?? 'unknown'}] Skipping init - privacy mode active`);
+      setIsPlaying(false);
+      setIsLoading(false);
+      setError(null);
       return;
     }
 
