@@ -180,6 +180,11 @@ export function HLSVideoCell({
 
   // Initialize HLS player when component mounts or retry is triggered
   useEffect(() => {
+    if (privacyActive) {
+      console.log(`[HLS ${stream?.name ?? 'unknown'}] Skipping init - privacy mode active`);
+      return;
+    }
+
     if (!stream || !stream.name) {
       console.warn(`[HLS] Skipping init - no stream data`);
       return;
@@ -623,7 +628,7 @@ export function HLSVideoCell({
     // /api/streams status refetch doesn't tear down healthy players when it
     // produces new object identities every poll cycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.name, retryCount, hlsMode, useSubStream, audioDisabled, t]);
+  }, [stream?.name, retryCount, hlsMode, useSubStream, audioDisabled, privacyActive, t]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
@@ -1335,7 +1340,7 @@ export function HLSVideoCell({
       {canControlPrivacy && showPrivacyConfirm && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 20,
+          backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 40,
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: '12px',
           padding: '16px', textAlign: 'center'
@@ -1371,7 +1376,7 @@ export function HLSVideoCell({
       {privacyActive && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 15,
+          backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 40,
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: '12px'
         }}>
