@@ -570,6 +570,7 @@ export function HLSVideoCell({
       console.log(`[HLS ${stream.name}] Initializing HLS player...`);
       setIsLoading(true);
       setError(null);
+      setIsPlaying(false);
 
       await initHls();
     };
