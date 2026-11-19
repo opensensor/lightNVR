@@ -443,9 +443,14 @@ describe('last frame controller', () => {
     expect(t.changes).toEqual([]);
 
     const u = setup();
+    let resolveBlob;
+    const blobPromise = new Promise((resolve) => { resolveBlob = resolve; });
+    u.deps.toBlob.mockImplementation(() => blobPromise);
     u.controller.recovered();
-    u.controller.capture(playingVideo);
+    u.controller.setError(true, playingVideo);
+    await flush();
     u.controller.dispose();
+    resolveBlob(new Blob(['frame'], { type: 'image/png' }));
     await flush();
     expect(u.deps.createObjectURL).not.toHaveBeenCalled();
     expect(u.changes).toEqual([]);
