@@ -67,6 +67,18 @@ static const char *onvif_operation_action(onvif_operation_t operation) {
     return (unsigned int)operation < ONVIF_OPERATION_COUNT ? actions[operation] : NULL;
 }
 
+static bool has_uri_scheme_prefix(const char *reference) {
+    if (!reference || !isalpha((unsigned char)reference[0])) return false;
+
+    for (size_t i = 1; reference[i] != '\0'; ++i) {
+        unsigned char ch = (unsigned char)reference[i];
+        if (ch == ':') return true;
+        if (!(isalnum(ch) || ch == '+' || ch == '-' || ch == '.')) return false;
+    }
+
+    return false;
+}
+
 /* Tapo cameras accept a ten-minute PullPoint lease and reject both the old
  * one-hour request and a request with no InitialTerminationTime (#567).
  * Renew at 80% of the camera-reported lease so normal polling jitter cannot
@@ -764,7 +776,7 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
 
     // Only genuine relative paths may use the legacy camera-local fallback.
     // An unsupported scheme or network-path URL is not a relative service.
-    if (strchr(subscription->subscription_address, ':') ||
+    if (has_uri_scheme_prefix(subscription->subscription_address) ||
         strncmp(subscription->subscription_address, "//", 2) == 0) {
         pthread_mutex_unlock(lock);
         return NULL;
@@ -931,32 +943,32 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
-                    log_debug("Renewing ONVIF subscription for %s", url);
+                    log_debug("Renewing ONVIF subscription");
                     if (!renew_subscription_locked(&subscriptions[i])) {
-                        log_warn("ONVIF subscription renewal failed for %s; recreating it", url);
+                        log_warn("ONVIF subscription renewal failed; recreating it");
                         unsubscribe_subscription_locked(&subscriptions[i]);
                         break;
                     }
                 }
 
-                log_debug("Reusing existing ONVIF subscription for %s", url);
+                log_debug("Reusing existing ONVIF subscription");
                 pthread_mutex_unlock(&subscription_mutex);
                 return &subscriptions[i];
             } else if (!subscriptions[i].active) {
-                log_info("ONVIF subscription for %s is inactive, creating new one", url);
+                log_info("ONVIF subscription is inactive, creating new one");
                 break;
             } else {
                 /* We missed the renewal window. Best-effort Unsubscribe avoids
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
-                log_info("ONVIF subscription for %s expired, replacing it", url);
+                log_info("ONVIF subscription expired, replacing it");
                 unsubscribe_subscription_locked(&subscriptions[i]);
                 break;
             }
         }
     }
 
-    log_info("Creating new ONVIF subscription for %s", url);
+    log_info("Creating new ONVIF subscription");
 
     /* Tapo accepts a ten-minute lease but rejects both PT1H and an omitted
      * InitialTerminationTime with ter:InvalidArgVal (#567). */
