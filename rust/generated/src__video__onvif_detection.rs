@@ -158,6 +158,11 @@ unsafe extern "C" {
         __c: ::core::ffi::c_int,
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
+    unsafe fn memchr(
+        __s: *const ::core::ffi::c_void,
+        __c: ::core::ffi::c_int,
+        __n: size_t,
+    ) -> *mut ::core::ffi::c_void;
     unsafe fn strcmp(
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
@@ -3976,6 +3981,67 @@ unsafe extern "C" fn xml_find_active_motion(
     }
     return any;
 }
+unsafe extern "C" fn malformed_motion_element_asserted(
+    mut response: *const ::core::ffi::c_char,
+) -> bool {
+    static mut true_values: [*const ::core::ffi::c_char; 4] = [
+        b"Value=\"true\"\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Value='true'\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Value=\"1\"\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Value='1'\0".as_ptr() as *const ::core::ffi::c_char,
+    ];
+    let mut tag: *const ::core::ffi::c_char = strchr(response, '<' as ::core::ffi::c_int);
+    while !tag.is_null() {
+        let mut end: *const ::core::ffi::c_char = strchr(tag, '>' as ::core::ffi::c_int);
+        if end.is_null() {
+            end = tag.offset(strlen(tag) as isize);
+        }
+        let mut name: *const ::core::ffi::c_char = tag.offset(1 as ::core::ffi::c_int as isize);
+        let mut name_end: *const ::core::ffi::c_char = name;
+        while name_end < end
+            && *name_end as ::core::ffi::c_int != ' ' as ::core::ffi::c_int
+            && *name_end as ::core::ffi::c_int != '\t' as ::core::ffi::c_int
+            && *name_end as ::core::ffi::c_int != '\r' as ::core::ffi::c_int
+            && *name_end as ::core::ffi::c_int != '\n' as ::core::ffi::c_int
+            && *name_end as ::core::ffi::c_int != '/' as ::core::ffi::c_int
+        {
+            name_end = name_end.offset(1);
+        }
+        let mut local: *const ::core::ffi::c_char = memchr(
+            name as *const ::core::ffi::c_void,
+            ':' as ::core::ffi::c_int,
+            name_end.offset_from(name) as size_t,
+        ) as *const ::core::ffi::c_char;
+        local = if !local.is_null() {
+            local.offset(1 as ::core::ffi::c_int as isize)
+        } else {
+            name
+        };
+        if !(name_end.offset_from(local) != 6isize
+            || strncasecmp(
+                local,
+                b"Motion\0".as_ptr() as *const ::core::ffi::c_char,
+                6 as size_t,
+            ) != 0 as ::core::ffi::c_int)
+        {
+            let mut i: size_t = 0 as size_t;
+            while i < ::core::mem::size_of::<[*const ::core::ffi::c_char; 4]>()
+                .wrapping_div(::core::mem::size_of::<*const ::core::ffi::c_char>())
+            {
+                let mut value: *const ::core::ffi::c_char = strstr(name_end, true_values[i]);
+                if !value.is_null() && value.offset(strlen(true_values[i]) as isize) <= end {
+                    return r#true != 0;
+                }
+                i = i.wrapping_add(1);
+            }
+        }
+        tag = strchr(
+            tag.offset(1 as ::core::ffi::c_int as isize),
+            '<' as ::core::ffi::c_int,
+        );
+    }
+    return r#false != 0;
+}
 unsafe extern "C" fn has_motion_event(
     mut response: *const ::core::ffi::c_char,
     mut label: *mut ::core::ffi::c_char,
@@ -4031,26 +4097,7 @@ unsafe extern "C" fn has_motion_event(
         if !xml.is_null() {
             ezxml_free(xml);
         }
-        let mut fallback: bool = !strstr(
-            response,
-            b"Value=\"true\"\0".as_ptr() as *const ::core::ffi::c_char,
-        )
-        .is_null()
-            || !strstr(
-                response,
-                b"Value='true'\0".as_ptr() as *const ::core::ffi::c_char,
-            )
-            .is_null()
-            || !strstr(
-                response,
-                b"Value=\"1\"\0".as_ptr() as *const ::core::ffi::c_char,
-            )
-            .is_null()
-            || !strstr(
-                response,
-                b"Value='1'\0".as_ptr() as *const ::core::ffi::c_char,
-            )
-            .is_null();
+        let mut fallback: bool = malformed_motion_element_asserted(response);
         if fallback as ::core::ffi::c_int != 0 && !label.is_null() && label_sz > 0 as size_t {
             safe_strcpy(
                 label,

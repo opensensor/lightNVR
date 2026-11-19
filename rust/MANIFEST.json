@@ -1123,9 +1123,9 @@
     },
     {
       "c": "src/video/onvif_detection.c",
-      "c_sha256": "740077bd451413cfc993667c98478549c041c50e7ae61a1a1faba91aa7dc0087",
+      "c_sha256": "1d1ab98af863526c86a5e5ae7f247095d762727dd835eb92f96c3b4c51da8968",
       "rust": "generated/src__video__onvif_detection.rs",
-      "rust_sha256": "0b9101f774aa677bf85e6541539cdbdcbce9124053911ca20f4fc361558ec4fe",
+      "rust_sha256": "9ae2ad7fa40dcb93f35874f19ac266457858c9a00068bf7c2b80167a3ebae1cb",
       "adapted": true
     },
     {
