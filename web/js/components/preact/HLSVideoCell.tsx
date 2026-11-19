@@ -570,6 +570,7 @@ export function HLSVideoCell({
       console.log(`[HLS ${stream.name}] Initializing HLS player...`);
       setIsLoading(true);
       setError(null);
+      setIsPlaying(false);
 
       await initHls();
     };
@@ -1336,41 +1337,14 @@ export function HLSVideoCell({
         confirmLabel={t('common.refresh')}
       />
 
-      {/* Inline pause-for-privacy confirmation overlay */}
-      {canControlPrivacy && showPrivacyConfirm && (
-        <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 40,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: '12px',
-          padding: '16px', textAlign: 'center'
-        }}>
-          <p style={{ color: 'white', fontSize: '14px', maxWidth: '240px', lineHeight: '1.4' }}>
-            {t('live.pauseForPrivacyConfirm')}
-          </p>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={handlePauseForPrivacy}
-              disabled={isTogglingEnabled}
-              style={{
-                padding: '6px 16px', backgroundColor: '#7c3aed', color: 'white',
-                border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px'
-              }}
-            >
-              {t('live.pauseForPrivacy')}
-            </button>
-            <button
-              onClick={() => setShowPrivacyConfirm(false)}
-              style={{
-                padding: '6px 16px', backgroundColor: 'rgba(255,255,255,0.2)', color: 'white',
-                border: '1px solid rgba(255,255,255,0.4)', borderRadius: '4px', cursor: 'pointer', fontSize: '13px'
-              }}
-            >
-              {t('common.cancel')}
-            </button>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        isOpen={canControlPrivacy && showPrivacyConfirm}
+        onClose={() => setShowPrivacyConfirm(false)}
+        onConfirm={handlePauseForPrivacy}
+        title={t('live.pauseForPrivacy')}
+        message={t('live.pauseForPrivacyConfirm')}
+        confirmLabel={t('live.pauseForPrivacy')}
+      />
 
       {/* Privacy mode overlay — shown when the stream is paused for privacy */}
       {privacyActive && (
