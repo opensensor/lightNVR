@@ -957,11 +957,15 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     char attempted_event_url[512] = {0};
 
     if (discovered_url) {
-        log_info("ONVIF: Sending CreatePullPointSubscription to discovered endpoint");
-        safe_strcpy(attempted_event_url, discovered_url,
-                    sizeof(attempted_event_url), 0);
-        response = send_onvif_request_to_url(discovered_url, username, password, request_body,
-                                              ONVIF_OPERATION_CREATE_PULLPOINT);
+        if (subscription_address_matches_camera_host(url, discovered_url)) {
+            log_info("ONVIF: Sending CreatePullPointSubscription to discovered endpoint");
+            safe_strcpy(attempted_event_url, discovered_url,
+                        sizeof(attempted_event_url), 0);
+            response = send_onvif_request_to_url(discovered_url, username, password, request_body,
+                                                 ONVIF_OPERATION_CREATE_PULLPOINT);
+        } else {
+            log_warn("ONVIF: Ignoring discovered event endpoint outside the camera host");
+        }
         free(discovered_url);
     }
 
@@ -1021,7 +1025,17 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     if (slot >= 0) {
         /* An inactive slot can contain failure state and an old subscription
          * address. Start the replacement with a completely clean record. */
-        release_subscription_curl(&subscriptions[slot]);
+        pthread_mutex_t *slot_lock = subscription_lock(&subscriptions[slot]);
+        if (!slot_lock) {
+            free(subscription_address);
+            pthread_mutex_unlock(&subscription_mutex);
+            return NULL;
+        }
+        pthread_mutex_lock(slot_lock);
+        if (subscriptions[slot].curl) {
+            curl_easy_cleanup(subscriptions[slot].curl);
+            subscriptions[slot].curl = NULL;
+        }
         memset(&subscriptions[slot], 0, sizeof(subscriptions[slot]));
 
         // Store camera URL, username, and password
@@ -1038,6 +1052,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         // Schedule renewal from the lease the camera actually granted.
         apply_subscription_lease(&subscriptions[slot], lease_seconds);
         subscriptions[slot].active = true;
+        pthread_mutex_unlock(slot_lock);
         
         log_info("Successfully created ONVIF subscription (lease: %d seconds)", lease_seconds);
         free(subscription_address);
