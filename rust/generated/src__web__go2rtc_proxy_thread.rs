@@ -265,6 +265,10 @@ pub union pthread_rwlock_t {
     pub __size: [::core::ffi::c_char; 56],
     pub __align: ::core::ffi::c_long,
 }
+pub type uint8_t = u8;
+pub type uint16_t = u16;
+pub type uint64_t = u64;
+pub type uintptr_t = usize;
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct C2Rust_Unnamed_0(pub ::core::ffi::c_uint);
@@ -272,10 +276,6 @@ impl C2Rust_Unnamed_0 {
     pub const PTHREAD_CREATE_JOINABLE: Self = Self(0);
     pub const PTHREAD_CREATE_DETACHED: Self = Self(1);
 }
-pub type uint8_t = u8;
-pub type uint16_t = u16;
-pub type uint64_t = u64;
-pub type uintptr_t = usize;
 pub type atomic_bool = bool;
 pub type atomic_int = ::core::ffi::c_int;
 pub type curl_off_t = ::core::ffi::c_long;
@@ -1355,10 +1355,14 @@ pub struct proxy_thread_ctx {
     pub auth_response: http_response_t,
     pub next: *mut proxy_thread_ctx,
 }
+pub const SIZE_MAX: ::core::ffi::c_ulong = 18446744073709551615 as ::core::ffi::c_ulong;
 pub const CLOCK_MONOTONIC: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const LOG_COMPONENT: [::core::ffi::c_char; 12] =
     unsafe { ::core::mem::transmute::<[u8; 12], [::core::ffi::c_char; 12]>(*b"go2rtcProxy\0") };
 pub const MAX_CONCURRENT_PROXY_THREADS: ::core::ffi::c_int = 32 as ::core::ffi::c_int;
+pub const PROXY_MAX_RESPONSE_BYTES: size_t = (16 as ::core::ffi::c_int as size_t)
+    .wrapping_mul(1024 as size_t)
+    .wrapping_mul(1024 as size_t);
 static mut g_proxy_state: C2Rust_Unnamed_12 = C2Rust_Unnamed_12 {
     r#loop: ::core::ptr::null_mut::<uv_loop_t>(),
     async_handle: uv_async_t {
@@ -1420,8 +1424,28 @@ unsafe extern "C" fn proxy_write_cb(
     mut nmemb: size_t,
     mut userp: *mut ::core::ffi::c_void,
 ) -> size_t {
-    let mut total: size_t = size.wrapping_mul(nmemb);
     let mut ctx: *mut proxy_thread_ctx_t = userp as *mut proxy_thread_ctx_t;
+    if size != 0 && nmemb > (SIZE_MAX as size_t).wrapping_div(size) {
+        (*ctx).error = r#true != 0;
+        return 0 as size_t;
+    }
+    let mut total: size_t = size.wrapping_mul(nmemb);
+    if total == 0 {
+        return 0 as size_t;
+    }
+    if (*ctx).response_size > PROXY_MAX_RESPONSE_BYTES
+        || total > PROXY_MAX_RESPONSE_BYTES.wrapping_sub((*ctx).response_size)
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT.as_ptr(),
+            _log_stream_name,
+            b"go2rtc proxy thread: upstream response exceeds buffer limit\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        (*ctx).error = r#true != 0;
+        return 0 as size_t;
+    }
     let mut new_buf: *mut ::core::ffi::c_char = realloc(
         (*ctx).response_buffer as *mut ::core::ffi::c_void,
         (*ctx).response_size.wrapping_add(total),

@@ -1123,9 +1123,9 @@
     },
     {
       "c": "src/video/onvif_detection.c",
-      "c_sha256": "3733502099585451405811254b078507f9da65d44dd9091c41d277f93ac8e110",
+      "c_sha256": "be879ec2e29c4e69a4d63f41c67c441868ec04cac71eed44c1a553248c1e3147",
       "rust": "generated/src__video__onvif_detection.rs",
-      "rust_sha256": "acbfc08edfddc5581887bc63c40a1300e7523a852adb3f227af1ffc773d60b4f",
+      "rust_sha256": "8dfda199b928ac98fb6ea7a904e1b81ea5538f8d4196935491d42f8f0a3c08ac",
       "adapted": true
     },
     {
@@ -1830,16 +1830,16 @@
     },
     {
       "c": "src/web/go2rtc_proxy_thread.c",
-      "c_sha256": "5efb80e47e59d0dd593426185fb7c1807afe6b23052a13d0d3c23f6990a38bbc",
+      "c_sha256": "f148662c3a92b5997c2119ccfe69064d9883341e8e395263b3ff2be9a48ee86e",
       "rust": "generated/src__web__go2rtc_proxy_thread.rs",
-      "rust_sha256": "3d1d601dd31e1ae52daa8e114cdfd4ddcff280b28b40e7089d69833306aebc97",
+      "rust_sha256": "6154965e7e8f7f323929c69ca401327bdbb0b1b766cbd21ac73af7f85f6eb3aa",
       "adapted": true
     },
     {
       "c": "src/web/go2rtc_websocket.c",
-      "c_sha256": "5d332ba85b777423dd03b1b090fbf7b50ebfe64710544bc3a277d352cdeecd8c",
+      "c_sha256": "792d2c1fce93bfeeca1dc23a9328a57b6f2788ca8e45b25dd64bf595907546dc",
       "rust": "generated/src__web__go2rtc_websocket.rs",
-      "rust_sha256": "647eddd7e0bca4d201252a9eb447fa078976c23fb72a1c6b48ccdf2eb3304dea",
+      "rust_sha256": "0e3fc71d4c823357bea9df6dfd891e408e44bf6c90642cae3b50b49a4c12abf1",
       "adapted": false
     },
     {
