@@ -10,6 +10,8 @@ static char log_capture[8192];
 static int origin, destination, server_failed;
 static unsigned short destination_port;
 static char advertised_endpoint[256];
+static const char *operation_path;
+static const char *operation_soap_path;
 static int fallback_requests;
 
 /* Force the fixture through short-write and EINTR paths during real HTTP
@@ -49,6 +51,8 @@ void setUp(void) {
     initialized = true;
     origin = destination = -1;
     server_failed = 0;
+    operation_path = "/onvif/fixture?x=1&y=2";
+    operation_soap_path = "/onvif/fixture?x=1&amp;y=2";
     interrupt_send = true;
     zero_send = false;
     send_calls = 0;
@@ -280,8 +284,9 @@ static void *operation_server(void *unused) {
         char header[512], element[512], destination_element[512];
         snprintf(header, sizeof(header), "Content-Type: application/soap+xml; charset=utf-8; action=\"%s\"\r\n", expected_actions[i]);
         snprintf(element, sizeof(element), "<wsa:Action>%s</wsa:Action>", expected_actions[i]);
-        snprintf(destination_element, sizeof(destination_element), "<wsa:To>%s/onvif/fixture?x=1&amp;y=2</wsa:To>", advertised_endpoint);
-        const char target[] = "POST /onvif/fixture?x=1&y=2 HTTP/";
+        snprintf(destination_element, sizeof(destination_element), "<wsa:To>%s%s</wsa:To>", advertised_endpoint, operation_soap_path);
+        char target[256];
+        snprintf(target, sizeof(target), "POST %s HTTP/", operation_path);
         if (strncmp(request, target, strlen(target)) != 0 ||
             !strstr(request, header) || !strstr(request, element) ||
             !strstr(request, destination_element) || !strstr(request, "<Fixture/>")) server_failed = 4;
@@ -388,7 +393,7 @@ static void test_rejected_subscription_never_contacts_target_or_legacy_fallback(
                  variant == 1 ? port : destination_port);
         for (size_t i = 0; i < sizeof(operations) / sizeof(operations[0]); i++) {
             bool dropped = true;
-            TEST_ASSERT_NULL(send_subscription_request(sub, "<Fixture/>", operations[i], &dropped));
+            TEST_ASSERT_NULL(send_subscription_request(sub, "<Fixture/>", operations[i], &dropped, NULL));
             TEST_ASSERT_FALSE(dropped);
         }
     }
@@ -397,7 +402,7 @@ static void test_rejected_subscription_never_contacts_target_or_legacy_fallback(
     TEST_ASSERT_NULL(sub->curl);
 }
 
-static void assert_subscription_request_target(bool relative, bool different_port) {
+static void assert_subscription_request_target(int relative, bool different_port) {
     unsigned short port;
     origin = listen_local(&port);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
@@ -416,17 +421,25 @@ static void assert_subscription_request_target(bool relative, bool different_por
         strcpy(sub->camera_url, advertised_endpoint);
     }
     snprintf(sub->subscription_address, sizeof(sub->subscription_address), "%s/onvif/fixture?x=1&y=2", advertised_endpoint);
-    if (relative) {
-        strcpy(sub->subscription_address, "/legacy/fixture?x=1&y=2");
+    if (relative == 1) {
+        strcpy(sub->subscription_address, "fixture?x=1&y=2");
+        snprintf(sub->service_url, sizeof(sub->service_url),
+                 "%s/onvif/service", advertised_endpoint);
         curl_handle = create_curl_handle();
         TEST_ASSERT_NOT_NULL(curl_handle);
         curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
+    } else if (relative == 2) {
+        strcpy(sub->subscription_address, "/onvif/subscriptions/fixture?x=1&y=2");
+        snprintf(sub->service_url, sizeof(sub->service_url),
+                 "%s/onvif/service", advertised_endpoint);
+        operation_path = "/onvif/subscriptions/fixture?x=1&y=2";
+        operation_soap_path = "/onvif/subscriptions/fixture?x=1&amp;y=2";
     }
     pthread_t worker;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, operation_server, NULL));
     bool ok = true;
     for (size_t i = 0; i < sizeof(fixture_operations) / sizeof(fixture_operations[0]); i++) {
-        char *response = send_subscription_request(sub, "<Fixture/>", fixture_operations[i], NULL);
+        char *response = send_subscription_request(sub, "<Fixture/>", fixture_operations[i], NULL, NULL);
         if (!response || strcmp(response, "<Envelope/>") != 0) ok = false;
         free(response);
     }
@@ -448,7 +461,32 @@ static void test_camera_local_ephemeral_port_receives_subscription_requests(void
 }
 
 static void test_relative_subscription_preserves_camera_local_fallback(void) {
-    assert_subscription_request_target(true, false);
+    assert_subscription_request_target(1, false);
+}
+
+static void test_relative_subscription_preserves_full_path(void) {
+    assert_subscription_request_target(2, false);
+}
+
+static void test_full_registry_rejects_before_remote_create(void) {
+    subscription_count = MAX_SUBSCRIPTIONS;
+    for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
+        subscriptions[i].active = true;
+        snprintf(subscriptions[i].camera_url, sizeof(subscriptions[i].camera_url),
+                 "http://occupied-%d", i);
+    }
+    TEST_ASSERT_NULL(get_subscription("http://new-camera", "", ""));
+    subscription_count = 0;
+    memset(subscriptions, 0, sizeof(subscriptions));
+}
+
+static void test_pull_rejects_reassigned_slot(void) {
+    onvif_subscription_t *sub = &subscriptions[0];
+    sub->active = true;
+    strcpy(sub->camera_url, "http://different-camera");
+    strcpy(sub->subscription_address, "http://different-camera/onvif/pull");
+    TEST_ASSERT_NULL(send_subscription_request(sub, "<Fixture/>",
+                     ONVIF_OPERATION_PULL_MESSAGES, NULL, "http://original-camera"));
 }
 
 static void test_fixture_send_stops_on_zero_progress_or_closed_peer(void) {
@@ -543,6 +581,9 @@ int main(void) {
     RUN_TEST(test_same_origin_subscription_keeps_full_request_target);
     RUN_TEST(test_camera_local_ephemeral_port_receives_subscription_requests);
     RUN_TEST(test_relative_subscription_preserves_camera_local_fallback);
+    RUN_TEST(test_relative_subscription_preserves_full_path);
+    RUN_TEST(test_full_registry_rejects_before_remote_create);
+    RUN_TEST(test_pull_rejects_reassigned_slot);
     RUN_TEST(test_fixture_send_stops_on_zero_progress_or_closed_peer);
     RUN_TEST(test_motorcycle_class_precedes_bicycle_substrings);
     RUN_TEST(test_malformed_motion_message_uses_truthy_fallback);

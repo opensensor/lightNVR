@@ -130,6 +130,7 @@ static void secure_clear(void *data, size_t size) {
 typedef struct {
     char camera_url[512];           // URL of the camera (used as the key for lookup)
     char subscription_address[512]; // Address returned by CreatePullPointSubscription (full URL)
+    char service_url[512];          // Endpoint that created this PullPoint
     char username[64];              // Username for authentication
     char password[64];              // Password for authentication
     time_t creation_time;
@@ -138,6 +139,7 @@ typedef struct {
     time_t first_pull_failure_time;
     int consecutive_pull_failures;
     bool active;
+    bool reserved;                  // Creation or renewal in progress
     CURL *curl;                     // Connection for this PullPoint (see subscription_locks)
 } onvif_subscription_t;
 
@@ -147,6 +149,24 @@ static onvif_subscription_t subscriptions[MAX_SUBSCRIPTIONS];
 static int subscription_count = 0;
 static pthread_mutex_t subscription_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool subscriptions_shutting_down = false;
+
+/* Serialize operations for one camera across table lookup and PullMessages.
+ * Hash collisions only reduce concurrency; they cannot mix camera identities. */
+static pthread_mutex_t camera_locks[64];
+static pthread_once_t camera_locks_once = PTHREAD_ONCE_INIT;
+
+static void init_camera_locks(void) {
+    for (size_t i = 0; i < sizeof(camera_locks) / sizeof(camera_locks[0]); i++)
+        pthread_mutex_init(&camera_locks[i], NULL);
+}
+
+static pthread_mutex_t *camera_lock_for_url(const char *url) {
+    unsigned long hash = 5381;
+    for (const unsigned char *p = (const unsigned char *)url; *p; p++)
+        hash = hash * 33 + *p;
+    pthread_once(&camera_locks_once, init_camera_locks);
+    return &camera_locks[hash % (sizeof(camera_locks) / sizeof(camera_locks[0]))];
+}
 
 /* Each PullPoint talks to its camera over its own CURL handle, serialized by
  * the lock of the same index. A PullMessages long poll holds the camera's
@@ -709,7 +729,8 @@ cleanup:
 static char *send_subscription_request(onvif_subscription_t *subscription,
                                        const char *request_body,
                                        onvif_operation_t operation,
-                                       bool *transport_dropped) {
+                                       bool *transport_dropped,
+                                       const char *expected_camera_url) {
     if (transport_dropped) *transport_dropped = false;
     const char *action = onvif_operation_action(operation);
     if (!subscription || !request_body || !action) return NULL;
@@ -717,20 +738,48 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
     pthread_mutex_t *lock = subscription_lock(subscription);
     if (!lock) return NULL;
     pthread_mutex_lock(lock);
+    if (expected_camera_url &&
+        (!subscription->active ||
+         strcmp(subscription->camera_url, expected_camera_url) != 0)) {
+        pthread_mutex_unlock(lock);
+        return NULL;
+    }
 
-    if (strncasecmp(subscription->subscription_address, "http://", 7) == 0 ||
-        strncasecmp(subscription->subscription_address, "https://", 8) == 0) {
-        if (!subscription_address_matches_camera_host(subscription->camera_url,
-                                                       subscription->subscription_address)) {
+    char *target_url = NULL;
+    if (has_uri_scheme_prefix(subscription->subscription_address) ||
+        strncmp(subscription->subscription_address, "//", 2) == 0) {
+        if (strncmp(subscription->subscription_address, "//", 2) != 0 &&
+            (strncasecmp(subscription->subscription_address, "http://", 7) == 0 ||
+             strncasecmp(subscription->subscription_address, "https://", 8) == 0))
+            target_url = strdup(subscription->subscription_address);
+    } else {
+        CURLU *resolved = curl_url();
+        const char *base = subscription->service_url[0] ?
+                           subscription->service_url : subscription->camera_url;
+        if (resolved && curl_url_set(resolved, CURLUPART_URL, base, 0) == CURLUE_OK &&
+            curl_url_set(resolved, CURLUPART_URL,
+                         subscription->subscription_address, 0) == CURLUE_OK) {
+            char *curl_target = NULL;
+            if (curl_url_get(resolved, CURLUPART_URL, &curl_target, 0) == CURLUE_OK) {
+                target_url = strdup(curl_target);
+                curl_free(curl_target);
+            }
+        }
+        if (resolved) curl_url_cleanup(resolved);
+    }
+    if (!target_url || !subscription_address_matches_camera_host(subscription->camera_url,
+                                                                  target_url)) {
+            free(target_url);
             log_warn("Rejected ONVIF subscription endpoint with a different scheme/host or invalid port");
             pthread_mutex_unlock(lock);
             return NULL;
-        }
+    }
         char *response = NULL;
         onvif_request_status_t status = {0};
         int attempts = 0;
         if (!subscription->curl) subscription->curl = create_curl_handle();
         if (!subscription->curl) {
+            free(target_url);
             pthread_mutex_unlock(lock);
             log_error("Failed to create a curl handle for the ONVIF subscription of %s",
                       subscription->camera_url);
@@ -739,7 +788,7 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         while (attempts < ONVIF_PULL_DROP_MAX_ATTEMPTS) {
             attempts++;
             response = perform_onvif_request_locked(subscription->curl,
-                                                    subscription->subscription_address,
+                                                    target_url,
                                                     subscription->username,
                                                     subscription->password,
                                                     request_body, operation, &status);
@@ -754,6 +803,7 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
                       ONVIF_PULL_DROP_MAX_ATTEMPTS);
             usleep(ONVIF_PULL_DROP_RETRY_DELAY_MS * 1000);
         }
+        free(target_url);
         pthread_mutex_unlock(lock);
 
         if (transport_dropped) {
@@ -772,29 +822,9 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
                         status.new_connections, curl_easy_strerror(status.curl_code));
         }
         return response;
-    }
-
-    // Only genuine relative paths may use the legacy camera-local fallback.
-    // An unsupported scheme or network-path URL is not a relative service.
-    if (has_uri_scheme_prefix(subscription->subscription_address) ||
-        strncmp(subscription->subscription_address, "//", 2) == 0) {
-        pthread_mutex_unlock(lock);
-        return NULL;
-    }
-    const char *last_slash = strrchr(subscription->subscription_address, '/');
-    if (!last_slash || last_slash[1] == '\0') {
-        pthread_mutex_unlock(lock);
-        return NULL;
-    }
-    char *response = send_onvif_request(subscription->camera_url,
-                                        subscription->username,
-                                        subscription->password,
-                                        request_body, last_slash + 1, operation);
-    pthread_mutex_unlock(lock);
-    return response;
 }
 
-/* subscription_mutex must be held by the caller. */
+/* The caller reserves the slot or runs during shutdown. */
 static bool renew_subscription_locked(onvif_subscription_t *subscription) {
     const char *request_body =
         "<Renew xmlns=\"http://docs.oasis-open.org/wsn/b-2\">"
@@ -802,7 +832,7 @@ static bool renew_subscription_locked(onvif_subscription_t *subscription) {
         "</Renew>";
 
     char *response = send_subscription_request(subscription, request_body,
-                                               ONVIF_OPERATION_RENEW, NULL);
+                                               ONVIF_OPERATION_RENEW, NULL, NULL);
     if (!response) return false;
 
     int lease_seconds = subscription_lease_seconds(response);
@@ -813,7 +843,7 @@ static bool renew_subscription_locked(onvif_subscription_t *subscription) {
     return true;
 }
 
-/* Best-effort cleanup. subscription_mutex must be held by the caller. */
+/* Best-effort cleanup. The caller reserves the slot or runs during shutdown. */
 static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) {
     if (!subscription || !subscription->active ||
         subscription->subscription_address[0] == '\0') {
@@ -823,7 +853,7 @@ static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) 
     const char *request_body =
         "<Unsubscribe xmlns=\"http://docs.oasis-open.org/wsn/b-2\"/>";
     char *response = send_subscription_request(subscription, request_body,
-                                               ONVIF_OPERATION_UNSUBSCRIBE, NULL);
+                                               ONVIF_OPERATION_UNSUBSCRIBE, NULL, NULL);
     if (response) {
         free(response);
         log_debug("Unsubscribed ONVIF PullPoint for %s", subscription->camera_url);
@@ -926,6 +956,13 @@ static char *discover_event_service_url(const char *url, const char *username, c
 }
 
 // Find or create subscription for a camera
+static void release_subscription_reservation(int slot) {
+    pthread_mutex_lock(&subscription_mutex);
+    subscriptions[slot].reserved = false;
+    if (!subscriptions[slot].active) subscriptions[slot].camera_url[0] = '\0';
+    pthread_mutex_unlock(&subscription_mutex);
+}
+
 static onvif_subscription_t *get_subscription(const char *url, const char *username, const char *password) {
     pthread_mutex_lock(&subscription_mutex);
 
@@ -934,6 +971,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         return NULL;
     }
 
+    int slot = -1;
     // Check if we already have a subscription for this URL
     for (int i = 0; i < subscription_count; i++) {
         if (strcmp(subscriptions[i].camera_url, url) == 0) {
@@ -944,11 +982,17 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
                     log_debug("Renewing ONVIF subscription");
+                    subscriptions[i].reserved = true;
+                    pthread_mutex_unlock(&subscription_mutex);
                     if (!renew_subscription_locked(&subscriptions[i])) {
                         log_warn("ONVIF subscription renewal failed; recreating it");
                         unsubscribe_subscription_locked(&subscriptions[i]);
+                        pthread_mutex_lock(&subscription_mutex);
+                        slot = i;
                         break;
                     }
+                    pthread_mutex_lock(&subscription_mutex);
+                    subscriptions[i].reserved = false;
                 }
 
                 log_debug("Reusing existing ONVIF subscription");
@@ -956,17 +1000,43 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                 return &subscriptions[i];
             } else if (!subscriptions[i].active) {
                 log_info("ONVIF subscription is inactive, creating new one");
+                subscriptions[i].reserved = true;
+                slot = i;
                 break;
             } else {
                 /* We missed the renewal window. Best-effort Unsubscribe avoids
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
                 log_info("ONVIF subscription expired, replacing it");
+                subscriptions[i].reserved = true;
+                pthread_mutex_unlock(&subscription_mutex);
                 unsubscribe_subscription_locked(&subscriptions[i]);
+                pthread_mutex_lock(&subscription_mutex);
+                slot = i;
                 break;
             }
         }
     }
+
+    if (slot < 0) {
+        for (int i = 0; i < subscription_count; i++) {
+            if (!subscriptions[i].active && !subscriptions[i].reserved) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0 && subscription_count < MAX_SUBSCRIPTIONS)
+            slot = subscription_count++;
+        if (slot < 0) {
+            log_error("No space for new ONVIF subscription");
+            pthread_mutex_unlock(&subscription_mutex);
+            return NULL;
+        }
+        subscriptions[slot].reserved = true;
+        safe_strcpy(subscriptions[slot].camera_url, url,
+                    sizeof(subscriptions[slot].camera_url), 0);
+    }
+    pthread_mutex_unlock(&subscription_mutex);
 
     log_info("Creating new ONVIF subscription");
 
@@ -1015,12 +1085,15 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             log_info("ONVIF: Trying fallback event endpoint: onvif/%s", fallback_services[i]);
             response = send_onvif_request(url, username, password, request_body,
                                           fallback_services[i], ONVIF_OPERATION_CREATE_PULLPOINT);
+            if (response)
+                safe_strcpy(attempted_event_url, fallback_url,
+                            sizeof(attempted_event_url), 0);
         }
     }
 
     if (!response) {
         log_error("Failed to create subscription on any endpoint");
-        pthread_mutex_unlock(&subscription_mutex);
+        release_subscription_reservation(slot);
         return NULL;
     }
 
@@ -1030,30 +1103,18 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
     if (!subscription_address) {
         log_error("Failed to extract subscription address");
-        pthread_mutex_unlock(&subscription_mutex);
+        release_subscription_reservation(slot);
         return NULL;
     }
 
     if (strlen(subscription_address) >= sizeof(subscriptions[0].subscription_address)) {
         log_warn("ONVIF subscription address exceeds local capacity; rejecting it");
         free(subscription_address);
-        pthread_mutex_unlock(&subscription_mutex);
+        release_subscription_reservation(slot);
         return NULL;
     }
 
-    // Find an empty slot or reuse an inactive one
-    int slot = -1;
-    for (int i = 0; i < subscription_count; i++) {
-        if (!subscriptions[i].active) {
-            slot = i;
-            break;
-        }
-    }
-
-    // If no empty slot found, add to the end if there's space
-    if (slot == -1 && subscription_count < MAX_SUBSCRIPTIONS) {
-        slot = subscription_count++;
-    }
+    pthread_mutex_lock(&subscription_mutex);
 
     // If we found a slot, use it
     if (slot >= 0) {
@@ -1062,6 +1123,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         pthread_mutex_t *slot_lock = subscription_lock(&subscriptions[slot]);
         if (!slot_lock) {
             free(subscription_address);
+            subscriptions[slot].reserved = false;
             pthread_mutex_unlock(&subscription_mutex);
             return NULL;
         }
@@ -1082,6 +1144,8 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         // Store subscription address
         safe_strcpy(subscriptions[slot].subscription_address, subscription_address, 
                 sizeof(subscriptions[slot].subscription_address), 0);
+        safe_strcpy(subscriptions[slot].service_url, attempted_event_url,
+                    sizeof(subscriptions[slot].service_url), 0);
         
         // Schedule renewal from the lease the camera actually granted.
         apply_subscription_lease(&subscriptions[slot], lease_seconds);
@@ -1132,7 +1196,11 @@ static void note_pull_failure(const char *camera_url) {
             log_warn("ONVIF PullPoint for %s has not completed a pull for %d "
                      "seconds; unsubscribing before refresh",
                      camera_url, ONVIF_PULL_FAILURE_REFRESH_SECONDS);
+            subscription->reserved = true;
+            pthread_mutex_unlock(&subscription_mutex);
             unsubscribe_subscription_locked(subscription);
+            pthread_mutex_lock(&subscription_mutex);
+            subscription->reserved = false;
         }
         break;
     }
@@ -1639,8 +1707,11 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     log_debug("ONVIF Detection: Starting detection");
     log_debug("ONVIF Detection: Stream name: %s", stream_name);
 
+    pthread_mutex_t *camera_lock = camera_lock_for_url(onvif_url);
+    pthread_mutex_lock(camera_lock);
     onvif_subscription_t *subscription = get_subscription(onvif_url, username, password);
     if (!subscription) {
+        pthread_mutex_unlock(camera_lock);
         log_error("Failed to get subscription");
         return -1;
     }
@@ -1662,15 +1733,17 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     bool transport_dropped = false;
     char *response = send_subscription_request(subscription, request_body,
                                                ONVIF_OPERATION_PULL_MESSAGES,
-                                               &transport_dropped);
+                                               &transport_dropped, onvif_url);
 
     if (!response) {
         if (!transport_dropped) log_error("Failed to pull messages from subscription");
         note_pull_failure(onvif_url);
+        pthread_mutex_unlock(camera_lock);
         return transport_dropped ? ONVIF_DETECT_RETRY : -1;
     }
 
     note_pull_success(onvif_url);
+    pthread_mutex_unlock(camera_lock);
 
     // Check for motion events, capturing the object class (person/vehicle/…)
     // when the camera reports a smart detection rather than plain motion.
