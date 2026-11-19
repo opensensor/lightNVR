@@ -2759,6 +2759,94 @@ pub unsafe extern "C" fn onvif_ptz_get_capabilities(
     }
     return 0 as ::core::ffi::c_int;
 }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn onvif_ptz_remove_preset(
+    mut ptz_url: *const ::core::ffi::c_char,
+    mut profile_token: *const ::core::ffi::c_char,
+    mut username: *const ::core::ffi::c_char,
+    mut password: *const ::core::ffi::c_char,
+    mut preset_token: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    if ptz_url.is_null() || profile_token.is_null() || preset_token.is_null() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"PTZ URL, profile token, and preset token are required\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut token: [::core::ffi::c_char; 128] = [0; 128];
+    if xml_escape(
+        profile_token,
+        &raw mut token as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
+    ) != 0 as ::core::ffi::c_int
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut escaped_preset: [::core::ffi::c_char; 128] = [0; 128];
+    if xml_escape(
+        preset_token,
+        &raw mut escaped_preset as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
+    ) != 0 as ::core::ffi::c_int
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut request_body: [::core::ffi::c_char; 512] = [0; 512];
+    snprintf(
+        &raw mut request_body as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        b"<tptz:RemovePreset><tptz:ProfileToken>%s</tptz:ProfileToken><tptz:PresetToken>%s</tptz:PresetToken></tptz:RemovePreset>\0"
+            .as_ptr() as *const ::core::ffi::c_char,
+        &raw mut token as *mut ::core::ffi::c_char,
+        &raw mut escaped_preset as *mut ::core::ffi::c_char,
+    );
+    let mut response: *mut ::core::ffi::c_char = send_ptz_soap_request(
+        ptz_url,
+        b"http://www.onvif.org/ver20/ptz/wsdl/RemovePreset\0".as_ptr()
+            as *const ::core::ffi::c_char,
+        &raw mut request_body as *mut ::core::ffi::c_char,
+        username,
+        password,
+    );
+    if response.is_null() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to send RemovePreset request\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut result: ::core::ffi::c_int =
+        if !strstr(response, b"Fault\0".as_ptr() as *const ::core::ffi::c_char).is_null() {
+            -1 as ::core::ffi::c_int
+        } else {
+            0 as ::core::ffi::c_int
+        };
+    if result == 0 as ::core::ffi::c_int {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_INFO,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"PTZ RemovePreset: %s\0".as_ptr() as *const ::core::ffi::c_char,
+            preset_token,
+        );
+    } else {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"RemovePreset returned fault: %s\0".as_ptr() as *const ::core::ffi::c_char,
+            response,
+        );
+    }
+    free(response as *mut ::core::ffi::c_void);
+    return result;
+}
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;

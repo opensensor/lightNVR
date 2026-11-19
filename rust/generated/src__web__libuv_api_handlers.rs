@@ -88,6 +88,7 @@ unsafe extern "C" {
     unsafe fn handle_ptz_get_presets(req: *const http_request_t, res: *mut http_response_t);
     unsafe fn handle_ptz_goto_preset(req: *const http_request_t, res: *mut http_response_t);
     unsafe fn handle_ptz_set_preset(req: *const http_request_t, res: *mut http_response_t);
+    unsafe fn handle_ptz_remove_preset(req: *const http_request_t, res: *mut http_response_t);
     unsafe fn handle_ptz_capabilities(req: *const http_request_t, res: *mut http_response_t);
     unsafe fn handle_imaging_get_settings(req: *const http_request_t, res: *mut http_response_t);
     unsafe fn handle_imaging_put_settings(req: *const http_request_t, res: *mut http_response_t);
@@ -1228,6 +1229,15 @@ pub unsafe extern "C" fn register_all_libuv_handlers(
         b"PUT\0".as_ptr() as *const ::core::ffi::c_char,
         Some(
             handle_ptz_set_preset
+                as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
+        ),
+    );
+    http_server_register_handler(
+        server,
+        b"/api/streams/#/ptz/delete-preset\0".as_ptr() as *const ::core::ffi::c_char,
+        b"POST\0".as_ptr() as *const ::core::ffi::c_char,
+        Some(
+            handle_ptz_remove_preset
                 as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
         ),
     );

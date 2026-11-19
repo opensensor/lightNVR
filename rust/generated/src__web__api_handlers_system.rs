@@ -1380,7 +1380,7 @@ pub const O_CREAT: ::core::ffi::c_int = 0o100 as ::core::ffi::c_int;
 pub const O_TRUNC: ::core::ffi::c_int = 0o1000 as ::core::ffi::c_int;
 pub const LLHTTP_VERSION_MAJOR: ::core::ffi::c_int = 9 as ::core::ffi::c_int;
 pub const LLHTTP_VERSION_MINOR: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
-pub const LLHTTP_VERSION_PATCH: ::core::ffi::c_int = 3 as ::core::ffi::c_int;
+pub const LLHTTP_VERSION_PATCH: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
 pub const LOG_COMPONENT: [::core::ffi::c_char; 10] =
     unsafe { ::core::mem::transmute::<[u8; 10], [::core::ffi::c_char; 10]>(*b"SystemAPI\0") };
 pub const SYSTEM_RECORDING_AGGREGATE_TTL_SECONDS: ::core::ffi::c_int = 30 as ::core::ffi::c_int;

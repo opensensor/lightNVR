@@ -71,6 +71,13 @@ unsafe extern "C" {
         read_cb: uv_read_cb,
     ) -> ::core::ffi::c_int;
     unsafe fn libuv_connection_read_stop(conn: *mut libuv_connection) -> ::core::ffi::c_int;
+    unsafe fn _log_message_ctx(
+        level: log_level_t,
+        component: *const ::core::ffi::c_char,
+        stream: *const ::core::ffi::c_char,
+        format: *const ::core::ffi::c_char,
+        ...
+    );
     unsafe fn memcpy(
         __dest: *mut ::core::ffi::c_void,
         __src: *const ::core::ffi::c_void,
@@ -799,7 +806,18 @@ pub struct websocket_write_t {
     pub resume: *mut uv_stream_t,
     pub data: *mut ::core::ffi::c_char,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct log_level_t(pub ::core::ffi::c_uint);
+impl log_level_t {
+    pub const LOG_LEVEL_ERROR: Self = Self(0);
+    pub const LOG_LEVEL_WARN: Self = Self(1);
+    pub const LOG_LEVEL_INFO: Self = Self(2);
+    pub const LOG_LEVEL_DEBUG: Self = Self(3);
+}
 pub const MAX_STREAMS: ::core::ffi::c_int = LIGHTNVR_MAX_STREAMS;
+pub const LOG_COMPONENT: [::core::ffi::c_char; 16] =
+    unsafe { ::core::mem::transmute::<[u8; 16], [::core::ffi::c_char; 16]>(*b"go2rtcWebSocket\0") };
 pub const WS_BUFFER_SIZE: ::core::ffi::c_int =
     64 as ::core::ffi::c_int * 1024 as ::core::ffi::c_int;
 pub const WS_CONNECTION_LIMIT: ::core::ffi::c_int = if MAX_STREAMS < 32 as ::core::ffi::c_int {
@@ -1018,7 +1036,10 @@ unsafe extern "C" fn close_proxy(mut proxy: *mut websocket_proxy_t) {
         Some(handle_closed as unsafe extern "C" fn(*mut uv_handle_t) -> ()),
     );
 }
-unsafe extern "C" fn fail_proxy(mut proxy: *mut websocket_proxy_t) {
+unsafe extern "C" fn fail_proxy_with_error(
+    mut proxy: *mut websocket_proxy_t,
+    mut message: *const ::core::ffi::c_char,
+) {
     if !(*proxy).upgraded && !(*proxy).conn.is_null() && !(*proxy).closing {
         let mut conn: *mut libuv_connection_t = (*proxy).conn;
         (*proxy).conn = ::core::ptr::null_mut::<libuv_connection_t>();
@@ -1027,7 +1048,7 @@ unsafe extern "C" fn fail_proxy(mut proxy: *mut websocket_proxy_t) {
         http_response_set_json_error(
             &raw mut (*conn).response,
             502 as ::core::ffi::c_int,
-            b"go2rtc WebSocket unavailable\0".as_ptr() as *const ::core::ffi::c_char,
+            message,
         );
         libuv_send_response_ex(
             conn,
@@ -1036,6 +1057,12 @@ unsafe extern "C" fn fail_proxy(mut proxy: *mut websocket_proxy_t) {
         );
     }
     close_proxy(proxy);
+}
+unsafe extern "C" fn fail_proxy(mut proxy: *mut websocket_proxy_t) {
+    fail_proxy_with_error(
+        proxy,
+        b"go2rtc WebSocket unavailable\0".as_ptr() as *const ::core::ffi::c_char,
+    );
 }
 unsafe extern "C" fn is_client_stream(
     mut proxy: *const websocket_proxy_t,
@@ -1252,13 +1279,26 @@ unsafe extern "C" fn upstream_read(
             b"HTTP/1.1 101 \0".as_ptr() as *const ::core::ffi::c_char,
             13 as size_t,
         ) != 0 as ::core::ffi::c_int
-            || strcasestr(
-                &raw mut (*proxy).headers as *mut ::core::ffi::c_char,
-                b"\r\nX-LightNVR-Media-Policy: 1\r\n\0".as_ptr() as *const ::core::ffi::c_char,
-            )
-            .is_null()
         {
             fail_proxy(proxy);
+            free((*buf).base as *mut ::core::ffi::c_void);
+            return;
+        }
+        if strcasestr(
+            &raw mut (*proxy).headers as *mut ::core::ffi::c_char,
+            b"\r\nX-LightNVR-Media-Policy: 1\r\n\0".as_ptr() as *const ::core::ffi::c_char,
+        )
+        .is_null()
+        {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT.as_ptr(),
+                _log_stream_name,
+                b"%s (WebSocket upgrade)\0".as_ptr() as *const ::core::ffi::c_char,
+                b"go2rtc did not acknowledge LightNVR media policy; use the compatible OpenSensor go2rtc fork\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
+            );
+            fail_proxy_with_error(proxy, GO2RTC_MEDIA_POLICY_ERROR.as_ptr());
             free((*buf).base as *mut ::core::ffi::c_void);
             return;
         }
@@ -1480,7 +1520,16 @@ pub unsafe extern "C" fn go2rtc_websocket_shutdown(mut r#loop: *mut uv_loop_t) {
         proxy = (*proxy).next as *mut websocket_proxy_t;
     }
 }
+pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const GO2RTC_MEDIA_POLICY_ERROR: [::core::ffi::c_char; 92] = unsafe {
+    ::core::mem::transmute::<
+        [u8; 92],
+        [::core::ffi::c_char; 92],
+    >(
+        *b"go2rtc did not acknowledge LightNVR media policy; use the compatible OpenSensor go2rtc fork\0",
+    )
+};
 pub const LIGHTNVR_MAX_STREAMS: ::core::ffi::c_int = 1024 as ::core::ffi::c_int;

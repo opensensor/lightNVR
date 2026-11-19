@@ -122,6 +122,18 @@ impl faac_channel_layout {
     pub const FAAC_LAYOUT_WAV: Self = Self(1);
     pub const FAAC_LAYOUT_MAX: Self = Self(2147483647);
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct faac_drc_profile(pub ::core::ffi::c_uint);
+impl faac_drc_profile {
+    pub const FAAC_DRC_OFF: Self = Self(0);
+    pub const FAAC_DRC_FILM: Self = Self(1);
+    pub const FAAC_DRC_FILM_LIGHT: Self = Self(2);
+    pub const FAAC_DRC_MUSIC: Self = Self(3);
+    pub const FAAC_DRC_MUSIC_LIGHT: Self = Self(4);
+    pub const FAAC_DRC_SPEECH: Self = Self(5);
+    pub const FAAC_DRC_MAX: Self = Self(2147483647);
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct faac_params {
@@ -140,6 +152,8 @@ pub struct faac_params {
     pub channel_layout: faac_channel_layout,
     pub peak_bit_rate: uint32_t,
     pub rate_control: faac_rate_control,
+    pub drc_profile: faac_drc_profile,
+    pub drc_ref_level: ::core::ffi::c_float,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -155,6 +169,8 @@ pub struct faac_encoder_info {
     pub encoder_delay: uint32_t,
     pub asc_size: uint32_t,
     pub asc: [uint8_t; 14],
+    pub drc_profile: faac_drc_profile,
+    pub drc_ref_level: ::core::ffi::c_float,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -236,6 +252,8 @@ pub unsafe extern "C" fn faac_adapter_open(
         channel_layout: faac_channel_layout::FAAC_LAYOUT_AAC,
         peak_bit_rate: 0,
         rate_control: faac_rate_control::FAAC_RC_ABR,
+        drc_profile: faac_drc_profile::FAAC_DRC_OFF,
+        drc_ref_level: 0.,
     };
     let mut status: faac_status = faac_params_init(
         &raw mut params,
