@@ -1189,6 +1189,21 @@
     object-fit: contain;
 }
 
+/* Last known image behind a tile's error overlay (#974) follows the same Fit / Fill rules. */
+.last-frame-image {
+    object-fit: contain;
+}
+
+[data-display-mode="fill"] .last-frame-image {
+    object-fit: cover;
+}
+
+.video-cell:fullscreen .last-frame-image,
+.video-cell:-webkit-full-screen .last-frame-image,
+.video-cell.pseudo-native-fullscreen .last-frame-image {
+    object-fit: contain;
+}
+
 /* Detection overlay canvas - critical for detection bounding boxes */
 .detection-overlay {
     position: absolute;

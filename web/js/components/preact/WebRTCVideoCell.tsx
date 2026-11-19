@@ -40,6 +40,9 @@ import {
 import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.tsx';
 import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.tsx';
 import { isEptzEnabled } from '../../utils/eptz-config.ts';
+import { useLastFrame } from './live/useLastFrame.ts';
+import { lastFrameOverlayBackground } from './live/lastFrame.ts';
+import { LastFrameBackdrop, LastFrameCaption } from './live/LastFrameFallback.tsx';
 import type { DetectionOverlayHandle } from './DetectionOverlay.tsx';
 import type {
   LiveTransportCellProps,
@@ -110,6 +113,7 @@ export function WebRTCVideoCell({
   showControls = true,
   globalShowDetections = true,
   alwaysFullscreenOnTap = false,
+  showLastImage = true,
   onRequestReorder,
   mobileGesturesDisabled = false,
   audioDisabled = false,
@@ -215,6 +219,9 @@ export function WebRTCVideoCell({
   const disconnectRecoveryTimeoutRef = useRef<number | null>(null);
   // Track previous stream status so we can detect transitions to 'Running'
   const prevStatusRef = useRef(stream.status);
+  // Last known image behind the error overlay (#974). Declared before the
+  // effects below so its unmount cleanup runs first.
+  const lastFrame = useLastFrame({ streamName: stream.name, videoRef, hasError: !!error, enabled: showLastImage });
 
   const applyAudioPlaybackState = useCallback((enabled: boolean) => {
     const videoElement = videoRef.current;
@@ -625,6 +632,7 @@ export function WebRTCVideoCell({
                   `after ${videoDataCheckCount * VIDEO_DATA_CHECK_INTERVAL_MS / 1000}s ` +
                   `(attempt ${noDataReconnectAttemptsRef.current}/${MAX_NO_DATA_RECONNECT_ATTEMPTS})`
                 );
+                lastFrame.capture(); // failure teardown: keep the last frame (#974)
                 setRetryCount(prev => prev + 1);
                 return; // Stop check chain; the retry useEffect run starts fresh
               }
@@ -761,6 +769,7 @@ export function WebRTCVideoCell({
           connectionRefreshRequestedRef.current = true;
           reconnectAttemptsRef.current++;
           console.log(`Retrying local WebRTC player for stream ${stream.name} (attempt ${reconnectAttemptsRef.current}/3)`);
+          lastFrame.capture(); // failure teardown: keep the last frame (#974)
           setRetryCount(prev => prev + 1);
         } else {
           setError(t('live.webrtcIceConnectionFailed'));
@@ -2054,7 +2063,7 @@ export function WebRTCVideoCell({
             flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            backgroundColor: lastFrameOverlayBackground(lastFrame.image, 'rgba(0, 0, 0, 0.7)'),
             color: 'white',
             zIndex: 10,
             textAlign: 'center',
@@ -2062,6 +2071,7 @@ export function WebRTCVideoCell({
             transform: 'none'
           }}
         >
+          <LastFrameBackdrop image={lastFrame.image} />
           <div
             className="error-content"
             style={{
@@ -2131,6 +2141,7 @@ export function WebRTCVideoCell({
                 ? t('live.autoRetryingIn', { seconds: autoRetryCountdown })
                 : t('common.retry')}
             </button>
+            <LastFrameCaption image={lastFrame.image} />
           </div>
         </div>
       )}

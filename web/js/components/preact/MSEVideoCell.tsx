@@ -34,6 +34,9 @@ import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestur
 import { TileAudioButton } from './TileAudioButton.tsx';
 import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.tsx';
 import { isEptzEnabled } from '../../utils/eptz-config.ts';
+import { useLastFrame } from './live/useLastFrame.ts';
+import { lastFrameOverlayBackground } from './live/lastFrame.ts';
+import { LastFrameBackdrop, LastFrameCaption } from './live/LastFrameFallback.tsx';
 import type { DetectionOverlayHandle } from './DetectionOverlay.tsx';
 import type {
   GateSettle,
@@ -67,6 +70,7 @@ export function MSEVideoCell({
   showControls = true,
   globalShowDetections = true,
   alwaysFullscreenOnTap = false,
+  showLastImage = true,
   onRequestReorder,
   mobileGesturesDisabled = false,
   audioDisabled = false,
@@ -121,6 +125,9 @@ export function MSEVideoCell({
   // resolved on first media, rejected on WS error/close/abort so the gate
   // slot always frees.
   const gateSettleRef = useRef<GateSettle | null>(null);
+  // Last known image behind the error overlay (#974). Declared before the
+  // effects below so its unmount cleanup runs first.
+  const lastFrame = useLastFrame({ streamName: stream.name, videoRef, hasError: !!error, enabled: showLastImage });
   const [forceH264, setForceH264] = useState(false);
   useEffect(() => setForceH264(false), [stream?.name, useSubStream]);
   // Cell-scoped abort: cancels a queued/in-flight gated attempt on unmount
@@ -454,6 +461,7 @@ export function MSEVideoCell({
       autoRetryTimeoutRef.current = setTimeout(() => {
         autoRetryTimeoutRef.current = null;
         if (videoRef.current) {
+          lastFrame.capture(); // failure teardown: keep the last frame (#974)
           cleanup();
           initMSE();
         }
@@ -477,6 +485,7 @@ export function MSEVideoCell({
     reconnectTimeoutRef.current = setTimeout(() => {
       reconnectTimeoutRef.current = null;
       if (videoRef.current) {
+        lastFrame.capture(); // failure teardown: keep the last frame (#974)
         cleanup();
         initMSE();
       }
@@ -718,6 +727,7 @@ export function MSEVideoCell({
       setIsLoading(false);
       // Let transport fallback/auto-retry own recovery instead of silently
       // reconnecting to the same unsupported video forever.
+      lastFrame.capture(); // failure teardown: keep the last frame (#974)
       cleanup();
     };
 
@@ -930,7 +940,7 @@ export function MSEVideoCell({
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            backgroundColor: lastFrameOverlayBackground(lastFrame.image, 'rgba(0, 0, 0, 0.8)'),
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -939,6 +949,7 @@ export function MSEVideoCell({
             padding: '20px'
           }}
         >
+          <LastFrameBackdrop image={lastFrame.image} />
           <div
             className="error-icon"
             style={{
@@ -985,6 +996,7 @@ export function MSEVideoCell({
               ? t('live.autoRetryingIn', { seconds: autoRetryCountdown })
               : t('common.retry')}
           </button>
+          <LastFrameCaption image={lastFrame.image} />
         </div>
       )}
 
