@@ -295,6 +295,7 @@ export function HLSVideoCell({
       // (go2rtc sessions expire after 5 s of inactivity; reloading the master
       // manifest creates a fresh session instead of retrying the stale one).
       hlsUrlRef.current = hlsStreamUrl;
+      let corsPreflightSucceeded = false;
 
       // Preflight the manifest through the shared connection gate before
       // spinning up a player. go2rtc holds this request open while it dials
@@ -312,6 +313,8 @@ export function HLSVideoCell({
             signal: cellAbortRef.current ? cellAbortRef.current.signal : undefined
           }
         );
+        // A successful cross-origin fetch proves the endpoint permits anonymous CORS.
+        corsPreflightSucceeded = true;
         if (!preflight.ok) {
           const bodyText = await preflight.text().catch(() => '');
           const isSourceUnreachable = /dial tcp|no route to host|connection refused|connect:/i.test(bodyText);
@@ -512,6 +515,9 @@ export function HLSVideoCell({
       else if (videoRef.current!.canPlayType('application/vnd.apple.mpegurl')) {
         console.log(`Using native HLS support for stream ${stream.name}`);
         // Native HLS support (Safari)
+        // Request CORS media only after the endpoint has passed the fetch preflight.
+        // Otherwise keep playback available even if snapshots cannot be exported.
+        videoRef.current!.crossOrigin = corsPreflightSucceeded ? 'anonymous' : null;
         videoRef.current!.src = hlsStreamUrl;
 
         // Store handlers for cleanup
@@ -859,7 +865,7 @@ export function HLSVideoCell({
           aria-label={t('live.resetZoom')}
           style={{
             position: 'absolute',
-            bottom: '10px',
+            top: '10px',
             insetInlineEnd: '10px',
             padding: '4px 8px',
             backgroundColor: 'rgba(0, 0, 0, 0.6)',
