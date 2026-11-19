@@ -481,6 +481,25 @@ static void test_malformed_motion_message_uses_truthy_fallback(void) {
     TEST_ASSERT_FALSE(has_motion_event("<Motion Value=\"false\"", label, sizeof(label)));
 }
 
+static void test_motion_requires_asserted_state_not_truthy_metadata(void) {
+    char label[32];
+    const char *metadata_only =
+        "<Envelope><NotificationMessage><Topic>RuleEngine/CellMotionDetector/Motion</Topic>"
+        "<Message><Data><SimpleItem Name=\"Gain\" Value=\"1\"/>"
+        "<SimpleItem Name=\"Camera\" Value=\"1\"/>"
+        "<SimpleItem Name=\"IsMotion\" Value=\"false\"/>"
+        "</Data></Message></NotificationMessage></Envelope>";
+    TEST_ASSERT_FALSE(has_motion_event(metadata_only, label, sizeof(label)));
+
+    const char *asserted =
+        "<Envelope><NotificationMessage><Topic>RuleEngine/CellMotionDetector/Motion</Topic>"
+        "<Message><Data><SimpleItem Name=\"Gain\" Value=\"1\"/>"
+        "<SimpleItem Name=\"IsMotion\" Value=\"true\"/>"
+        "</Data></Message></NotificationMessage></Envelope>";
+    TEST_ASSERT_TRUE(has_motion_event(asserted, label, sizeof(label)));
+    TEST_ASSERT_EQUAL_STRING("motion", label);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_every_operation_preserves_action_headers_and_transport_destination);
@@ -499,5 +518,6 @@ int main(void) {
     RUN_TEST(test_fixture_send_stops_on_zero_progress_or_closed_peer);
     RUN_TEST(test_motorcycle_class_precedes_bicycle_substrings);
     RUN_TEST(test_malformed_motion_message_uses_truthy_fallback);
+    RUN_TEST(test_motion_requires_asserted_state_not_truthy_metadata);
     return UNITY_END();
 }

@@ -1264,16 +1264,31 @@ static bool value_is_true(const char *value) {
     return strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0;
 }
 
+/* Ignore truthy metadata (for example Gain=1) in motion-topic Data sections. */
+static bool is_asserted_item_name(const char *name) {
+    if (!name) return false;
+    static const char *const state_names[] = {
+        "IsMotion", "Motion", "MotionAlarm", "State", "Active", "Detected", "IsActive",
+        "Person", "People", "Human", "Vehicle", "Car", "Bicycle", "Face", "Animal", NULL
+    };
+    for (size_t i = 0; state_names[i]; ++i) {
+        if (strcasecmp(name, state_names[i]) == 0) return true;
+    }
+    return (strncasecmp(name, "Is", 2) == 0 || ci_contains(name, "Detect")) &&
+           normalize_object_class(name) != NULL;
+}
+
 /*
  * Return true if any SimpleItem beneath `node` that sits inside a Data
- * element has a truthy Value.  `in_data` tracks whether an ancestor was a
- * Data element — Source/Key sections also carry SimpleItems, but their
+ * element has a truthy event-state Value. `in_data` tracks whether an ancestor
+ * was a Data element — Source/Key sections also carry SimpleItems, but their
  * Values are configuration tokens (often literally "1"), not event state.
  */
 static bool data_has_asserted_item(ezxml_t node, bool in_data) {
     for (ezxml_t c = node ? node->child : NULL; c; c = c->ordered) {
         bool inside = in_data || strcmp(local_name(c), "Data") == 0;
         if (inside && strcmp(local_name(c), "SimpleItem") == 0 &&
+            is_asserted_item_name(ezxml_attr(c, "Name")) &&
             value_is_true(ezxml_attr(c, "Value"))) {
             return true;
         }
