@@ -774,22 +774,33 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         return response;
     }
 
-    // Only genuine relative paths may use the legacy camera-local fallback.
-    // An unsupported scheme or network-path URL is not a relative service.
-    if (has_uri_scheme_prefix(subscription->subscription_address) ||
-        strncmp(subscription->subscription_address, "//", 2) == 0) {
+    // Only genuine relative references may use camera-local resolution.
+    // Reject network-path references and unsupported absolute schemes.
+    if (strncmp(subscription->subscription_address, "//", 2) == 0) {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-    const char *last_slash = strrchr(subscription->subscription_address, '/');
-    if (!last_slash || last_slash[1] == '\0') {
+    if (has_uri_scheme_prefix(subscription->subscription_address) &&
+        strncasecmp(subscription->subscription_address, "http://", 7) != 0 &&
+        strncasecmp(subscription->subscription_address, "https://", 8) != 0) {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-    char *response = send_onvif_request(subscription->camera_url,
-                                        subscription->username,
-                                        subscription->password,
-                                        request_body, last_slash + 1, operation);
+
+    char *resolved_url = url_resolve_reference(subscription->camera_url,
+                                               subscription->subscription_address);
+    if (!resolved_url || !url_is_http_or_https(resolved_url) ||
+        !url_has_same_host(subscription->camera_url, resolved_url)) {
+        free(resolved_url);
+        pthread_mutex_unlock(lock);
+        return NULL;
+    }
+
+    char *response = send_onvif_request_absolute(resolved_url,
+                                                 subscription->username,
+                                                 subscription->password,
+                                                 request_body, operation);
+    free(resolved_url);
     pthread_mutex_unlock(lock);
     return response;
 }
