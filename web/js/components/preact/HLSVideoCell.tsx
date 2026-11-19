@@ -623,14 +623,14 @@ export function HLSVideoCell({
     // /api/streams status refetch doesn't tear down healthy players when it
     // produces new object identities every poll cycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.name, retryCount, hlsMode, useSubStream, audioDisabled, t]);
+  }, [stream?.name, retryCount, hlsMode, useSubStream, audioDisabled, privacyActive, t]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = stream.status;
-    if (error && stream.status === 'Running' && prev !== 'Running') {
+    if (!privacyActive && error && stream.status === 'Running' && prev !== 'Running') {
       console.log(`[HLS ${stream.name}] Status changed to Running — auto-retrying after error`);
       fatalErrorCountRef.current = 0;
       recoveringRef.current = false;
@@ -639,7 +639,7 @@ export function HLSVideoCell({
       setIsPlaying(false);
       setRetryCount(c => c + 1);
     }
-  }, [stream.status, error]);
+  }, [stream.status, error, privacyActive]);
 
   // Retry only this browser player. Shared-source refresh is reserved for the
   // explicitly labelled force-refresh control (#457).
