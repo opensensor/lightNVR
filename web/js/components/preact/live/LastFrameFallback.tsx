@@ -18,6 +18,7 @@ export function LastFrameBackdrop({ image }: LastFrameFallbackProps) {
   if (!image) return null;
   return (
     <img
+      key={image.url}
       className="last-frame-image"
       src={image.url}
       alt=""
