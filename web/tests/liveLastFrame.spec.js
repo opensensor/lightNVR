@@ -489,7 +489,7 @@ describe('cells capture only on failure paths', () => {
   test('failure paths still capture before the video is reset', () => {
     const count = (name) => (read(name).match(/lastFrame\.capture\(\)/g) || []).length;
     expect(count('MSEVideoCell.tsx')).toBe(3);
-    expect(count('HLSVideoCell.tsx')).toBe(2);
+    expect(count('HLSVideoCell.tsx')).toBe(3);
     expect(count('WebRTCVideoCell.tsx')).toBe(2);
   });
 });
