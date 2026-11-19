@@ -937,23 +937,21 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     // Check if we already have a subscription for this URL
     for (int i = 0; i < subscription_count; i++) {
         if (strcmp(subscriptions[i].camera_url, url) == 0) {
+            bool do_renew = false;
+            bool do_unsubscribe = false;
+
             // Check if subscription is still valid
             time_t now;
             time(&now);
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
-                    log_debug("Renewing ONVIF subscription");
-                    if (!renew_subscription_locked(&subscriptions[i])) {
-                        log_warn("ONVIF subscription renewal failed; recreating it");
-                        unsubscribe_subscription_locked(&subscriptions[i]);
-                        break;
-                    }
+                    do_renew = true;
+                } else {
+                    log_debug("Reusing existing ONVIF subscription");
+                    pthread_mutex_unlock(&subscription_mutex);
+                    return &subscriptions[i];
                 }
-
-                log_debug("Reusing existing ONVIF subscription");
-                pthread_mutex_unlock(&subscription_mutex);
-                return &subscriptions[i];
             } else if (!subscriptions[i].active) {
                 log_info("ONVIF subscription is inactive, creating new one");
                 break;
@@ -962,7 +960,39 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
                 log_info("ONVIF subscription expired, replacing it");
-                unsubscribe_subscription_locked(&subscriptions[i]);
+                do_unsubscribe = true;
+            }
+
+            if (do_renew || do_unsubscribe) {
+                onvif_subscription_t *sub = &subscriptions[i];
+                pthread_mutex_unlock(&subscription_mutex);
+
+                if (do_renew) {
+                    log_debug("Renewing ONVIF subscription");
+                    if (!renew_subscription_locked(sub)) {
+                        log_warn("ONVIF subscription renewal failed; recreating it");
+                        unsubscribe_subscription_locked(sub);
+                    } else {
+                        pthread_mutex_lock(&subscription_mutex);
+                        if (!subscriptions_shutting_down &&
+                            i < subscription_count &&
+                            strcmp(subscriptions[i].camera_url, url) == 0 &&
+                            subscriptions[i].active) {
+                            log_debug("Reusing existing ONVIF subscription");
+                            pthread_mutex_unlock(&subscription_mutex);
+                            return &subscriptions[i];
+                        }
+                        pthread_mutex_unlock(&subscription_mutex);
+                    }
+                } else {
+                    unsubscribe_subscription_locked(sub);
+                }
+
+                pthread_mutex_lock(&subscription_mutex);
+                if (subscriptions_shutting_down) {
+                    pthread_mutex_unlock(&subscription_mutex);
+                    return NULL;
+                }
                 break;
             }
         }
