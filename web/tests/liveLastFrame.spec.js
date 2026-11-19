@@ -503,10 +503,7 @@ describe('cells capture only on failure paths', () => {
       .not.toContain('lastFrame.capture');
   });
 
-  test('failure paths still capture before the video is reset', () => {
-    const count = (name) => (read(name).match(/lastFrame\.capture\(\)/g) || []).length;
-    expect(count('MSEVideoCell.tsx')).toBe(3);
-    expect(count('HLSVideoCell.tsx')).toBe(3);
-    expect(count('WebRTCVideoCell.tsx')).toBe(2);
-  });
+  // The controller tests above cover capture before failure teardown and
+  // recovery. A source-text call count would fail whenever a valid failure
+  // path is added without catching a behavior regression.
 });
