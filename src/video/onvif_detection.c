@@ -1078,6 +1078,9 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         
         // Schedule renewal from the lease the camera actually granted.
         apply_subscription_lease(&subscriptions[slot], lease_seconds);
+        /* Bump generation whenever a slot is (re)assigned so stale references
+         * can be detected by callers before use. */
+        subscriptions[slot].generation++;
         subscriptions[slot].active = true;
         pthread_mutex_unlock(slot_lock);
         
