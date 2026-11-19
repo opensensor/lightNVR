@@ -57,10 +57,17 @@ void setUp(void) {
     zero_send = false;
     send_calls = 0;
     log_capture[0] = '\0';
+    for (size_t i = 0; i < MAX_ONVIF_SUBSCRIPTIONS; ++i) memset(&subscriptions[i], 0, sizeof(subscriptions[i]));
+    subscription_count = 0;
+    shutdown_requested = false;
 }
 void tearDown(void) {
-    if (subscriptions[0].curl) curl_easy_cleanup(subscriptions[0].curl);
-    memset(&subscriptions[0], 0, sizeof(subscriptions[0]));
+    for (size_t i = 0; i < MAX_ONVIF_SUBSCRIPTIONS; ++i) {
+        if (subscriptions[i].curl) curl_easy_cleanup(subscriptions[i].curl);
+        memset(&subscriptions[i], 0, sizeof(subscriptions[i]));
+    }
+    subscription_count = 0;
+    shutdown_requested = false;
     initialized = false;
     if (curl_handle) { curl_easy_cleanup(curl_handle); curl_handle = NULL; }
     if (origin >= 0) close(origin);
