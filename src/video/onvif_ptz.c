@@ -1169,3 +1169,49 @@ int onvif_ptz_get_capabilities(const char *ptz_url, const char *profile_token,
 
     return 0;
 }
+
+int onvif_ptz_remove_preset(const char *ptz_url, const char *profile_token,
+                            const char *username, const char *password,
+                            const char *preset_token) {
+    if (!ptz_url || !profile_token || !preset_token) {
+        log_error("PTZ URL, profile token, and preset token are required");
+        return -1;
+    }
+
+    char token[128];
+    if (xml_escape(profile_token, token, sizeof(token)) != 0) {
+        return -1;
+    }
+
+    char escaped_preset[128];
+    if (xml_escape(preset_token, escaped_preset, sizeof(escaped_preset)) != 0) {
+        return -1;
+    }
+
+    char request_body[512];
+    snprintf(request_body, sizeof(request_body),
+        "<tptz:RemovePreset>"
+            "<tptz:ProfileToken>%s</tptz:ProfileToken>"
+            "<tptz:PresetToken>%s</tptz:PresetToken>"
+        "</tptz:RemovePreset>",
+        token, escaped_preset);
+
+    char *response = send_ptz_soap_request(ptz_url,
+        "http://www.onvif.org/ver20/ptz/wsdl/RemovePreset",
+        request_body, username, password);
+
+    if (!response) {
+        log_error("Failed to send RemovePreset request");
+        return -1;
+    }
+
+    int result = (strstr(response, "Fault") != NULL) ? -1 : 0;
+    if (result == 0) {
+        log_info("PTZ RemovePreset: %s", preset_token);
+    } else {
+        log_error("RemovePreset returned fault: %s", response);
+    }
+
+    free(response);
+    return result;
+}

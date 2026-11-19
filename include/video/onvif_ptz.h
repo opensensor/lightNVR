@@ -194,4 +194,11 @@ int onvif_ptz_set_preset(const char *ptz_url, const char *profile_token,
                          const char *username, const char *password,
                          const char *preset_name, char *preset_token, size_t token_size);
 
+/**
+ * Preset remove
+ */
+int onvif_ptz_remove_preset(const char *ptz_url, const char *profile_token,
+                           const char *username, const char *password,
+                           const char *preset_token);
+
 #endif /* ONVIF_PTZ_H */

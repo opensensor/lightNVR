@@ -1,4 +1,4 @@
-import {getPtzCapabilities,savePtzPreset,setPtzHome,ptzMove,ptzStop,ptzHome,ptzGotoPreset} from '../js/components/preact/ptzActions.ts';
+import {getPtzCapabilities,savePtzPreset,setPtzHome,ptzMove,ptzStop,ptzHome,ptzGotoPreset,deletePtzPreset} from '../js/components/preact/ptzActions.ts';
 import {enhancedFetch} from '../js/fetch-utils.ts';
 jest.mock('../js/fetch-utils.ts',()=>({enhancedFetch:jest.fn()}));
 const response=body=>new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}});
@@ -9,6 +9,11 @@ test('saves named preset and validates refreshed list before updating controls',
  await savePtzPreset('Front door / 1','Front door',updated);
  expect(enhancedFetch).toHaveBeenNthCalledWith(1,'/api/streams/Front%20door%20%2F%201/ptz/preset',expect.objectContaining({method:'PUT',body:'{"name":"Front door"}',retries:0,sensitive:true}));
  expect(enhancedFetch).toHaveBeenNthCalledWith(2,'/api/streams/Front%20door%20%2F%201/ptz/presets',expect.objectContaining({method:'GET'}));expect(updated).toHaveBeenCalledWith(presets);
+});
+test('deletes a preset by token',async()=>{
+ enhancedFetch.mockResolvedValue(response(result));
+ await deletePtzPreset('Front door / 1','preset-42');
+ expect(enhancedFetch).toHaveBeenCalledWith('/api/streams/Front%20door%20%2F%201/ptz/delete-preset',expect.objectContaining({method:'POST',body:JSON.stringify({token:'preset-42'})}));
 });
 test('sets current position as home',async()=>{enhancedFetch.mockResolvedValue(response(result));await setPtzHome('Lobby');expect(enhancedFetch).toHaveBeenCalledWith('/api/streams/Lobby/ptz/set-home',expect.objectContaining({method:'POST'}));});
 test('rejects incomplete capability rows instead of hiding controls based on unvalidated fields',async()=>{enhancedFetch.mockResolvedValue(response({has_presets:false,has_home_position:true}));await expect(getPtzCapabilities('Lobby')).rejects.toMatchObject({phase:'response',schema:'PtzCapabilities'});});

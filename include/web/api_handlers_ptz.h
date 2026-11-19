@@ -70,10 +70,16 @@ void handle_ptz_goto_preset(const http_request_t *req, http_response_t *res);
 void handle_ptz_set_preset(const http_request_t *req, http_response_t *res);
 
 /**
+ * @brief Handle POST request for PTZ remove preset
+ * POST /api/streams/{name}/ptz/delete-preset
+ * Body: { "token": "preset_token" }
+ */
+void handle_ptz_remove_preset(const http_request_t *req, http_response_t *res);
+
+/**
  * @brief Handle GET request for PTZ capabilities
  * GET /api/streams/{name}/ptz/capabilities
  */
 void handle_ptz_capabilities(const http_request_t *req, http_response_t *res);
 
 #endif /* API_HANDLERS_PTZ_H */
-
