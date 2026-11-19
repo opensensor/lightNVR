@@ -912,22 +912,20 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         if (strcmp(subscriptions[i].camera_url, url) == 0) {
             // Check if subscription is still valid
             time_t now;
-            time(&now);
-            
-            if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
-                if (now >= subscriptions[i].renewal_time) {
-                    log_debug("Renewing ONVIF subscription for %s", url);
-                    if (!renew_subscription_locked(&subscriptions[i])) {
-                        log_warn("ONVIF subscription renewal failed for %s; recreating it", url);
-                        unsubscribe_subscription_locked(&subscriptions[i]);
-                        break;
-                    }
-                }
+            bool should_renew = false;
+            bool should_unsubscribe = false;
+            bool can_reuse = false;
+            onvif_subscription_t *slot = &subscriptions[i];
 
-                log_debug("Reusing existing ONVIF subscription for %s", url);
-                pthread_mutex_unlock(&subscription_mutex);
-                return &subscriptions[i];
-            } else if (!subscriptions[i].active) {
+            time(&now);
+
+            if (slot->active && now < slot->expiration_time) {
+                if (now >= slot->renewal_time) {
+                    should_renew = true;
+                } else {
+                    can_reuse = true;
+                }
+            } else if (!slot->active) {
                 log_info("ONVIF subscription for %s is inactive, creating new one", url);
                 break;
             } else {
@@ -935,9 +933,32 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
                 log_info("ONVIF subscription for %s expired, replacing it", url);
-                unsubscribe_subscription_locked(&subscriptions[i]);
-                break;
+                should_unsubscribe = true;
             }
+
+            if (can_reuse) {
+                log_debug("Reusing existing ONVIF subscription for %s", url);
+                pthread_mutex_unlock(&subscription_mutex);
+                return slot;
+            }
+
+            /* Do not hold the global registry mutex across network operations. */
+            pthread_mutex_unlock(&subscription_mutex);
+
+            if (should_renew) {
+                log_debug("Renewing ONVIF subscription for %s", url);
+                if (!renew_subscription_locked(slot)) {
+                    log_warn("ONVIF subscription renewal failed for %s; recreating it", url);
+                    unsubscribe_subscription_locked(slot);
+                } else {
+                    return slot;
+                }
+            } else if (should_unsubscribe) {
+                unsubscribe_subscription_locked(slot);
+            }
+
+            pthread_mutex_lock(&subscription_mutex);
+            break;
         }
     }
 
