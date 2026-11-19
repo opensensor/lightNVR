@@ -57,10 +57,16 @@ void setUp(void) {
     zero_send = false;
     send_calls = 0;
     log_capture[0] = '\0';
+    memset(subscriptions, 0, sizeof(subscriptions));
+    subscription_count = 0;
+    subscriptions_shutting_down = false;
 }
 void tearDown(void) {
-    if (subscriptions[0].curl) curl_easy_cleanup(subscriptions[0].curl);
-    memset(&subscriptions[0], 0, sizeof(subscriptions[0]));
+    for (int i = 0; i < MAX_SUBSCRIPTIONS; ++i)
+        release_subscription_curl(&subscriptions[i]);
+    memset(subscriptions, 0, sizeof(subscriptions));
+    subscription_count = 0;
+    subscriptions_shutting_down = false;
     initialized = false;
     if (curl_handle) { curl_easy_cleanup(curl_handle); curl_handle = NULL; }
     if (origin >= 0) close(origin);
