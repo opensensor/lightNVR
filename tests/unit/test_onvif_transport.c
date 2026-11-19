@@ -475,15 +475,52 @@ static void test_relative_subscription_preserves_full_path(void) {
 }
 
 static void test_full_registry_rejects_before_remote_create(void) {
+    int listener = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_TRUE(listener >= 0);
+
+    int reuse = 1;
+    TEST_ASSERT_TRUE(setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == 0);
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    TEST_ASSERT_TRUE(bind(listener, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+    TEST_ASSERT_TRUE(listen(listener, 1) == 0);
+
+    socklen_t addr_len = sizeof(addr);
+    TEST_ASSERT_TRUE(getsockname(listener, (struct sockaddr *)&addr, &addr_len) == 0);
+
+    char camera_url[128];
+    snprintf(camera_url, sizeof(camera_url), "http://127.0.0.1:%u",
+             (unsigned)ntohs(addr.sin_port));
+
+    CURL *saved_curl_handle = curl_handle;
+    curl_handle = curl_easy_init();
+    TEST_ASSERT_NOT_NULL(curl_handle);
+
     subscription_count = MAX_SUBSCRIPTIONS;
     for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
         subscriptions[i].active = true;
         snprintf(subscriptions[i].camera_url, sizeof(subscriptions[i].camera_url),
                  "http://occupied-%d", i);
     }
-    TEST_ASSERT_NULL(get_subscription("http://new-camera", "", ""));
+
+    TEST_ASSERT_NULL(get_subscription(camera_url, "", ""));
+
+    struct pollfd pfd;
+    pfd.fd = listener;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    TEST_ASSERT_EQUAL_INT(0, poll(&pfd, 1, 100));
+
     subscription_count = 0;
     memset(subscriptions, 0, sizeof(subscriptions));
+
+    curl_easy_cleanup(curl_handle);
+    curl_handle = saved_curl_handle;
+    close(listener);
 }
 
 static void test_pull_rejects_reassigned_slot(void) {
