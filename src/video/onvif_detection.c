@@ -774,35 +774,22 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         return response;
     }
 
-    // Only genuine relative paths may use fallback; resolve against the
-    // endpoint that created the subscription and keep the full path.
-    // Unsupported absolute schemes or network-path references are rejected.
+    // Only genuine relative paths may use the legacy camera-local fallback.
+    // An unsupported scheme or network-path URL is not a relative service.
     if (has_uri_scheme_prefix(subscription->subscription_address) ||
         strncmp(subscription->subscription_address, "//", 2) == 0) {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-
-    char *resolved_url = resolve_uri_reference(subscription->camera_url,
-                                               subscription->subscription_address);
-    if (!resolved_url) {
+    const char *last_slash = strrchr(subscription->subscription_address, '/');
+    if (!last_slash || last_slash[1] == '\0') {
         pthread_mutex_unlock(lock);
         return NULL;
     }
-
-    if (!(strncasecmp(resolved_url, "http://", 7) == 0 ||
-          strncasecmp(resolved_url, "https://", 8) == 0) ||
-        !url_same_host(subscription->camera_url, resolved_url)) {
-        free(resolved_url);
-        pthread_mutex_unlock(lock);
-        return NULL;
-    }
-
-    char *response = send_onvif_request(resolved_url,
+    char *response = send_onvif_request(subscription->camera_url,
                                         subscription->username,
                                         subscription->password,
-                                        request_body, action, operation);
-    free(resolved_url);
+                                        request_body, last_slash + 1, operation);
     pthread_mutex_unlock(lock);
     return response;
 }
@@ -950,21 +937,23 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     // Check if we already have a subscription for this URL
     for (int i = 0; i < subscription_count; i++) {
         if (strcmp(subscriptions[i].camera_url, url) == 0) {
-            bool do_renew = false;
-            bool do_unsubscribe = false;
-
             // Check if subscription is still valid
             time_t now;
             time(&now);
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
-                    do_renew = true;
-                } else {
-                    log_debug("Reusing existing ONVIF subscription");
-                    pthread_mutex_unlock(&subscription_mutex);
-                    return &subscriptions[i];
+                    log_debug("Renewing ONVIF subscription");
+                    if (!renew_subscription_locked(&subscriptions[i])) {
+                        log_warn("ONVIF subscription renewal failed; recreating it");
+                        unsubscribe_subscription_locked(&subscriptions[i]);
+                        break;
+                    }
                 }
+
+                log_debug("Reusing existing ONVIF subscription");
+                pthread_mutex_unlock(&subscription_mutex);
+                return &subscriptions[i];
             } else if (!subscriptions[i].active) {
                 log_info("ONVIF subscription is inactive, creating new one");
                 break;
@@ -973,39 +962,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
                 log_info("ONVIF subscription expired, replacing it");
-                do_unsubscribe = true;
-            }
-
-            if (do_renew || do_unsubscribe) {
-                onvif_subscription_t *sub = &subscriptions[i];
-                pthread_mutex_unlock(&subscription_mutex);
-
-                if (do_renew) {
-                    log_debug("Renewing ONVIF subscription");
-                    if (!renew_subscription_locked(sub)) {
-                        log_warn("ONVIF subscription renewal failed; recreating it");
-                        unsubscribe_subscription_locked(sub);
-                    } else {
-                        pthread_mutex_lock(&subscription_mutex);
-                        if (!subscriptions_shutting_down &&
-                            i < subscription_count &&
-                            strcmp(subscriptions[i].camera_url, url) == 0 &&
-                            subscriptions[i].active) {
-                            log_debug("Reusing existing ONVIF subscription");
-                            pthread_mutex_unlock(&subscription_mutex);
-                            return &subscriptions[i];
-                        }
-                        pthread_mutex_unlock(&subscription_mutex);
-                    }
-                } else {
-                    unsubscribe_subscription_locked(sub);
-                }
-
-                pthread_mutex_lock(&subscription_mutex);
-                if (subscriptions_shutting_down) {
-                    pthread_mutex_unlock(&subscription_mutex);
-                    return NULL;
-                }
+                unsubscribe_subscription_locked(&subscriptions[i]);
                 break;
             }
         }
@@ -1121,9 +1078,6 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         
         // Schedule renewal from the lease the camera actually granted.
         apply_subscription_lease(&subscriptions[slot], lease_seconds);
-        /* Bump generation whenever a slot is (re)assigned so stale references
-         * can be detected by callers before use. */
-        subscriptions[slot].generation++;
         subscriptions[slot].active = true;
         pthread_mutex_unlock(slot_lock);
         
@@ -1134,10 +1088,6 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     }
 
     log_error("No space for new ONVIF subscription");
-    log_warn("Cleaning up camera-side PullPoint because local subscription capacity is full");
-    if (subscription_address != NULL) {
-        unsubscribe_subscription_with_auth(subscription_address, username, password);
-    }
     free(subscription_address);
     pthread_mutex_unlock(&subscription_mutex);
     return NULL;
@@ -1314,40 +1264,33 @@ static bool value_is_true(const char *value) {
     return strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0;
 }
 
-/* Only specific Data SimpleItem names represent asserted event state. */
+/* Ignore truthy metadata (for example Gain=1) in motion-topic Data sections. */
 static bool is_asserted_item_name(const char *name) {
     if (!name) return false;
-
-    /* Common ONVIF/vendor state flags. */
-    if (strcasecmp(name, "IsMotion") == 0 ||
-        strcasecmp(name, "Motion") == 0 ||
-        strcasecmp(name, "State") == 0 ||
-        strcasecmp(name, "Active") == 0 ||
-        strcasecmp(name, "Detected") == 0 ||
-        strcasecmp(name, "IsActive") == 0) {
-        return true;
+    static const char *const state_names[] = {
+        "IsMotion", "Motion", "MotionAlarm", "State", "Active", "Detected", "IsActive",
+        "Person", "People", "Human", "Vehicle", "Car", "Bicycle", "Face", "Animal", NULL
+    };
+    for (size_t i = 0; state_names[i]; ++i) {
+        if (strcasecmp(name, state_names[i]) == 0) return true;
     }
-
-    /* Class assertions may be emitted directly as Name="Person"/"Vehicle"/... */
-    return normalize_object_class(name) != NULL;
+    return (strncasecmp(name, "Is", 2) == 0 || ci_contains(name, "Detect")) &&
+           normalize_object_class(name) != NULL;
 }
 
 /*
  * Return true if any SimpleItem beneath `node` that sits inside a Data
- * element has a truthy Value and a name that represents event assertion.
- * `in_data` tracks whether an ancestor was a Data element — Source/Key
- * sections also carry SimpleItems, but their Values are configuration
- * tokens (often literally "1"), not event state.
+ * element has a truthy event-state Value. `in_data` tracks whether an ancestor
+ * was a Data element — Source/Key sections also carry SimpleItems, but their
+ * Values are configuration tokens (often literally "1"), not event state.
  */
 static bool data_has_asserted_item(ezxml_t node, bool in_data) {
     for (ezxml_t c = node ? node->child : NULL; c; c = c->ordered) {
         bool inside = in_data || strcmp(local_name(c), "Data") == 0;
-        if (inside && strcmp(local_name(c), "SimpleItem") == 0) {
-            const char *name = ezxml_attr(c, "Name");
-            const char *value = ezxml_attr(c, "Value");
-            if (is_asserted_item_name(name) && value_is_true(value)) {
-                return true;
-            }
+        if (inside && strcmp(local_name(c), "SimpleItem") == 0 &&
+            is_asserted_item_name(ezxml_attr(c, "Name")) &&
+            value_is_true(ezxml_attr(c, "Value"))) {
+            return true;
         }
         if (data_has_asserted_item(c, inside)) return true;
     }
