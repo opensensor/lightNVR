@@ -454,6 +454,18 @@ describe('last frame controller', () => {
     await flush();
     expect(u.deps.createObjectURL).not.toHaveBeenCalled();
     expect(u.changes).toEqual([]);
+
+    const v = setup();
+    let resolveUnmountLookup;
+    v.deps.loadRecordingFallback.mockImplementation(
+      () => new Promise((resolve) => { resolveUnmountLookup = resolve; }),
+    );
+    v.controller.setError(true, null);
+    await flush();
+    v.controller.dispose();
+    resolveUnmountLookup(RECORDING_IMAGE);
+    await flush();
+    expect(v.changes).toEqual([]);
   });
 
   test('switching streams discards the previous camera\'s image', async () => {
