@@ -931,32 +931,32 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
                 if (now >= subscriptions[i].renewal_time) {
-                    log_debug("Renewing ONVIF subscription for %s", url);
+                    log_debug("Renewing ONVIF subscription");
                     if (!renew_subscription_locked(&subscriptions[i])) {
-                        log_warn("ONVIF subscription renewal failed for %s; recreating it", url);
+                        log_warn("ONVIF subscription renewal failed; recreating it");
                         unsubscribe_subscription_locked(&subscriptions[i]);
                         break;
                     }
                 }
 
-                log_debug("Reusing existing ONVIF subscription for %s", url);
+                log_debug("Reusing existing ONVIF subscription");
                 pthread_mutex_unlock(&subscription_mutex);
                 return &subscriptions[i];
             } else if (!subscriptions[i].active) {
-                log_info("ONVIF subscription for %s is inactive, creating new one", url);
+                log_info("ONVIF subscription is inactive, creating new one");
                 break;
             } else {
                 /* We missed the renewal window. Best-effort Unsubscribe avoids
                  * consuming another slot if the camera granted a longer lease
                  * than the timestamps indicated. */
-                log_info("ONVIF subscription for %s expired, replacing it", url);
+                log_info("ONVIF subscription expired, replacing it");
                 unsubscribe_subscription_locked(&subscriptions[i]);
                 break;
             }
         }
     }
 
-    log_info("Creating new ONVIF subscription for %s", url);
+    log_info("Creating new ONVIF subscription");
 
     /* Tapo accepts a ten-minute lease but rejects both PT1H and an omitted
      * InitialTerminationTime with ter:InvalidArgVal (#567). */
