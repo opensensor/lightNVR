@@ -808,8 +808,8 @@ static bool renew_subscription_locked(onvif_subscription_t *subscription) {
     int lease_seconds = subscription_lease_seconds(response);
     free(response);
     apply_subscription_lease(subscription, lease_seconds);
-    log_debug("Renewed ONVIF subscription for %s for %d seconds",
-              subscription->camera_url, lease_seconds);
+    log_debug("Renewed ONVIF subscription for %d seconds",
+              lease_seconds);
     return true;
 }
 
@@ -826,10 +826,9 @@ static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) 
                                                ONVIF_OPERATION_UNSUBSCRIBE, NULL);
     if (response) {
         free(response);
-        log_debug("Unsubscribed ONVIF PullPoint for %s", subscription->camera_url);
+        log_debug("Unsubscribed ONVIF PullPoint");
     } else {
-        log_warn("Unable to unsubscribe ONVIF PullPoint for %s",
-                 subscription->camera_url);
+        log_warn("Unable to unsubscribe ONVIF PullPoint");
     }
     subscription->active = false;
     release_subscription_curl(subscription);
