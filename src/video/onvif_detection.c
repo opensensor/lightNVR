@@ -1386,19 +1386,14 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
     ezxml_t xml = ezxml_parse_str(copy, strlen(copy));
     const char *parse_error = xml ? ezxml_error(xml) : NULL;
     if (!xml || (parse_error && parse_error[0] != '\0')) {
-        /* Malformed XML from buggy firmware: fall back to substring matching,
-         * but at least require a truthy Value somewhere in the payload so a
-         * plain "motion ended" message doesn't trigger. */
-        log_debug("ONVIF Detection: failed to parse PullMessages response, using fallback heuristic");
+        /* Malformed XML from buggy firmware: fail closed to avoid
+         * false positives from unrelated truthy Value fields. */
+        log_debug("ONVIF Detection: failed to parse PullMessages response; ignoring malformed payload");
         if (xml) {
             ezxml_free(xml);
         }
-        bool fallback =
-            (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
-             strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
-        if (fallback && label && label_sz > 0) safe_strcpy(label, "motion", label_sz, 0);
         free(copy);
-        return fallback;
+        return false;
     }
 
     bool motion = xml_find_active_motion(xml, label, label_sz);
