@@ -373,7 +373,6 @@ if(ENABLE_LITERT)
     # C++17, but the project default is C++14. Require C++17 on our library
     # target explicitly when LiteRT is enabled so this does not depend solely
     # on transitive propagation from tensorflow-lite.
-    target_compile_features(lightnvr_lib PRIVATE cxx_std_17)
     message(STATUS "LiteRT engine enabled (XNNPACK=${LITERT_WITH_XNNPACK}, GPU=${LITERT_WITH_GPU})")
 else()
     message(STATUS "LiteRT engine disabled (set -DENABLE_LITERT=ON to enable)")
@@ -735,6 +734,9 @@ list(APPEND SOURCES ${LIBUV_SERVER_SOURCES})
 
 # Define the shared library
 add_library(lightnvr_lib STATIC ${SOURCES})
+if(ENABLE_LITERT)
+    target_compile_features(lightnvr_lib PRIVATE cxx_std_17)
+endif()
 target_include_directories(lightnvr_lib PUBLIC ${LIGHTNVR_INCLUDE_DIRS})
 target_include_directories(lightnvr_lib PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/external/inih"
@@ -747,13 +749,13 @@ target_include_directories(lightnvr_lib PRIVATE ${HTTP_BACKEND_INCLUDE_DIRS})
 # test binaries and utilities automatically receive the libraries needed
 # by objects pulled from lightnvr_lib.
 target_link_libraries(lightnvr_lib PUBLIC
-        PkgConfig::HTTP_BACKEND
+        ${HTTP_BACKEND_LIBS}
         inih_lib
         faac_lib
-        PkgConfig::FFMPEG
-        PkgConfig::SQLITE
-        PkgConfig::CURL
-        PkgConfig::CJSON
+        ${FFMPEG_LIBRARIES}
+        ${SQLITE_LIBRARIES}
+        ${CURL_LIBRARIES}
+        ${CJSON_LIBRARIES}
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
         pthread
