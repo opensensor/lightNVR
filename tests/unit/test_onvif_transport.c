@@ -489,6 +489,13 @@ static void test_pull_rejects_reassigned_slot(void) {
                      ONVIF_OPERATION_PULL_MESSAGES, NULL, "http://original-camera"));
 }
 
+static void test_unsubscribe_deactivates_slot_without_address(void) {
+    onvif_subscription_t *sub = &subscriptions[0];
+    sub->active = true;
+    unsubscribe_subscription_locked(sub);
+    TEST_ASSERT_FALSE(sub->active);
+}
+
 typedef struct {
     char url[128];
     onvif_subscription_t *subscription;
@@ -643,6 +650,7 @@ int main(void) {
     RUN_TEST(test_relative_subscription_preserves_full_path);
     RUN_TEST(test_full_registry_rejects_before_remote_create);
     RUN_TEST(test_pull_rejects_reassigned_slot);
+    RUN_TEST(test_unsubscribe_deactivates_slot_without_address);
     RUN_TEST(test_discovery_does_not_hold_subscription_table_lock);
     RUN_TEST(test_fixture_send_stops_on_zero_progress_or_closed_peer);
     RUN_TEST(test_motorcycle_class_precedes_bicycle_substrings);
