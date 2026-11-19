@@ -21,6 +21,7 @@
 
 #include "video/go2rtc/go2rtc_api.h"
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -45,6 +46,7 @@
 
 // Maximum concurrent proxy threads (independent of UV_THREADPOOL_SIZE)
 #define MAX_CONCURRENT_PROXY_THREADS 32
+#define PROXY_MAX_RESPONSE_BYTES ((size_t)16 * 1024 * 1024)
 
 // ============================================================================
 // Internal types
@@ -112,8 +114,19 @@ static struct {
 // ============================================================================
 
 static size_t proxy_write_cb(void *contents, size_t size, size_t nmemb, void *userp) {
-    size_t total = size * nmemb;
     proxy_thread_ctx_t *ctx = (proxy_thread_ctx_t *)userp;
+    if (size && nmemb > SIZE_MAX / size) {
+        ctx->error = true;
+        return 0;
+    }
+    size_t total = size * nmemb;
+    if (!total) return 0;
+    if (ctx->response_size > PROXY_MAX_RESPONSE_BYTES ||
+        total > PROXY_MAX_RESPONSE_BYTES - ctx->response_size) {
+        log_warn("go2rtc proxy thread: upstream response exceeds buffer limit");
+        ctx->error = true;
+        return 0;
+    }
 
     char *new_buf = realloc(ctx->response_buffer, ctx->response_size + total);
     if (!new_buf) {
