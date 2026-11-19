@@ -837,6 +837,10 @@ static char *discover_event_service_url(const char *url, const char *username, c
         return NULL;
     }
 
+    /* Preserve an untouched copy for the fallback substring heuristic.
+     * ezxml_parse_str mutates its input buffer in place. */
+    char *response_fallback = strdup(response);
+
     /* ezxml_parse_str modifies the buffer in place, and the returned
      * tree references it, so keep `response` alive until we copy the
      * matched URL out. */
@@ -868,9 +872,9 @@ static char *discover_event_service_url(const char *url, const char *username, c
 
     /* Fallback: the old substring heuristic, for responses that ezxml
      * can't parse (malformed XML from buggy firmware). */
-    if (!event_url) {
+    if (!event_url && response_fallback) {
         const char *events_ns = "http://www.onvif.org/ver10/events/wsdl";
-        const char *ns_pos = strstr(response, events_ns);
+        const char *ns_pos = strstr(response_fallback, events_ns);
         if (ns_pos) {
             const char *xaddr_open[]  = {"<tds:XAddr>", "<XAddr>", NULL};
             const char *xaddr_close[] = {"</tds:XAddr>", "</XAddr>", NULL};
@@ -887,6 +891,8 @@ static char *discover_event_service_url(const char *url, const char *username, c
             }
         }
     }
+
+    free(response_fallback);
 
     if (event_url) {
         log_info("ONVIF: Discovered event service endpoint");
