@@ -503,7 +503,7 @@ describe('cells capture only on failure paths', () => {
       .not.toContain('lastFrame.capture');
   });
 
-  // NOTE: Do not rely on source-text call counting for capture correctness.
-  // Behavioral assertions should exercise failure handlers and verify capture
-  // happens before reset/teardown operations.
+  // The controller tests above cover capture before failure teardown and
+  // recovery. A source-text call count would fail whenever a valid failure
+  // path is added without catching a behavior regression.
 });
