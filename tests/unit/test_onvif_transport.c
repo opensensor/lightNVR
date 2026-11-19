@@ -393,7 +393,7 @@ static void test_rejected_subscription_never_contacts_target_or_legacy_fallback(
     const onvif_operation_t operations[] = {ONVIF_OPERATION_PULL_MESSAGES, ONVIF_OPERATION_RENEW, ONVIF_OPERATION_UNSUBSCRIBE};
     for (int variant = 0; variant < 4; variant++) {
         snprintf(sub->subscription_address, sizeof(sub->subscription_address),
-                 variant == 0 ? "http://127.0.0.1:%u/stolen" :
+                 variant == 0 ? "http://localhost:%u/stolen" :
                  variant == 1 ? "https://127.0.0.1:%u/stolen" :
                  variant == 2 ? "ftp://127.0.0.1:%u/stolen" : "//127.0.0.1:%u/stolen",
                  variant == 1 ? port : destination_port);
@@ -475,30 +475,11 @@ static void test_relative_subscription_preserves_full_path(void) {
 }
 
 static void test_full_registry_rejects_before_remote_create(void) {
-    int listener = socket(AF_INET, SOCK_STREAM, 0);
-    TEST_ASSERT_TRUE(listener >= 0);
-
-    int reuse = 1;
-    TEST_ASSERT_TRUE(setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == 0);
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = 0;
-    TEST_ASSERT_TRUE(bind(listener, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-    TEST_ASSERT_TRUE(listen(listener, 1) == 0);
-
-    socklen_t addr_len = sizeof(addr);
-    TEST_ASSERT_TRUE(getsockname(listener, (struct sockaddr *)&addr, &addr_len) == 0);
-
+    unsigned short port;
+    origin = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
     char camera_url[128];
-    snprintf(camera_url, sizeof(camera_url), "http://127.0.0.1:%u",
-             (unsigned)ntohs(addr.sin_port));
-
-    CURL *saved_curl_handle = curl_handle;
-    curl_handle = curl_easy_init();
-    TEST_ASSERT_NOT_NULL(curl_handle);
+    snprintf(camera_url, sizeof(camera_url), "http://127.0.0.1:%u", port);
 
     subscription_count = MAX_SUBSCRIPTIONS;
     for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
@@ -510,7 +491,7 @@ static void test_full_registry_rejects_before_remote_create(void) {
     TEST_ASSERT_NULL(get_subscription(camera_url, "", ""));
 
     struct pollfd pfd;
-    pfd.fd = listener;
+    pfd.fd = origin;
     pfd.events = POLLIN;
     pfd.revents = 0;
     TEST_ASSERT_EQUAL_INT(0, poll(&pfd, 1, 100));
@@ -518,9 +499,6 @@ static void test_full_registry_rejects_before_remote_create(void) {
     subscription_count = 0;
     memset(subscriptions, 0, sizeof(subscriptions));
 
-    curl_easy_cleanup(curl_handle);
-    curl_handle = saved_curl_handle;
-    close(listener);
 }
 
 static void test_pull_rejects_reassigned_slot(void) {
