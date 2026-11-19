@@ -1335,7 +1335,7 @@ export function HLSVideoCell({
       {canControlPrivacy && showPrivacyConfirm && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 20,
+          backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 40,
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: '12px',
           padding: '16px', textAlign: 'center'
@@ -1371,7 +1371,7 @@ export function HLSVideoCell({
       {privacyActive && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 15,
+          backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 40,
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: '12px'
         }}>
