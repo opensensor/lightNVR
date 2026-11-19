@@ -443,9 +443,14 @@ describe('last frame controller', () => {
     expect(t.changes).toEqual([]);
 
     const u = setup();
-    let resolveBlob;
-    const blobPromise = new Promise((resolve) => { resolveBlob = resolve; });
+    let resolveUnmountLookup;
+    u.deps.loadRecordingFallback.mockImplementation(
+      () => new Promise((resolve) => { resolveUnmountLookup = resolve; }),
+    );
+    u.controller.setError(true, null);
+    await flush();
     u.deps.toBlob.mockImplementation(() => blobPromise);
+    resolveUnmountLookup(RECORDING_IMAGE);
     u.controller.recovered();
     u.controller.setError(true, playingVideo);
     await flush();
