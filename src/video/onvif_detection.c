@@ -702,20 +702,21 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
     const char *action = onvif_operation_action(operation);
     if (!subscription || !request_body || !action) return NULL;
 
+    pthread_mutex_t *lock = subscription_lock(subscription);
+    if (!lock) return NULL;
+    pthread_mutex_lock(lock);
+
     if (strncasecmp(subscription->subscription_address, "http://", 7) == 0 ||
         strncasecmp(subscription->subscription_address, "https://", 8) == 0) {
         if (!subscription_address_matches_camera_host(subscription->camera_url,
                                                        subscription->subscription_address)) {
             log_warn("Rejected ONVIF subscription endpoint with a different scheme/host or invalid port");
+            pthread_mutex_unlock(lock);
             return NULL;
         }
         char *response = NULL;
         onvif_request_status_t status = {0};
         int attempts = 0;
-        pthread_mutex_t *lock = subscription_lock(subscription);
-        if (!lock) return NULL;
-
-        pthread_mutex_lock(lock);
         if (!subscription->curl) subscription->curl = create_curl_handle();
         if (!subscription->curl) {
             pthread_mutex_unlock(lock);
