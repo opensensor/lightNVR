@@ -128,12 +128,25 @@ static void test_soap_authentication_body_is_not_forwarded_to_redirect_target(vo
 
 static void test_invalid_endpoint_is_rejected_before_transfer(void) {
     CURL *handle = create_curl_handle(); TEST_ASSERT_NOT_NULL(handle);
-    const char *urls[] = {"file:///not-a-network-endpoint", "ftp://127.0.0.1/test",
-                         "http://fixture-user:fixture-secret@127.0.0.1/test"};
+    curl_easy_setopt(handle, CURLOPT_PROXY, "");
+    const char *urls[] = {"file:///not-a-network-endpoint", "ftp://127.0.0.1/test"};
     for (size_t i = 0; i < sizeof(urls)/sizeof(urls[0]); ++i) {
         TEST_ASSERT_NULL(perform_onvif_request_locked(handle, urls[i], "user", "password",
             "<GetServices/>", ONVIF_OPERATION_GET_SERVICES, NULL));
     }
+
+    unsigned short port;
+    int listener = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, listener);
+    char userinfo_url[160];
+    snprintf(userinfo_url, sizeof(userinfo_url),
+        "http://fixture-user:fixture-secret@127.0.0.1:%u/test", port);
+    TEST_ASSERT_NULL(perform_onvif_request_locked(handle, userinfo_url, "user", "password",
+        "<GetServices/>", ONVIF_OPERATION_GET_SERVICES, NULL));
+    struct pollfd pending = {.fd = listener, .events = POLLIN};
+    TEST_ASSERT_EQUAL_INT(0, poll(&pending, 1, 0));
+    close(listener);
+
     curl_easy_cleanup(handle);
     TEST_ASSERT_NULL(strstr(log_capture, "fixture-secret"));
 }
