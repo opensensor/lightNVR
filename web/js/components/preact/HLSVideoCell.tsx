@@ -812,7 +812,6 @@ export function HLSVideoCell({
         autoPlay
         muted={audioDisabled || !audioEnabled}
         playsInline
-        crossOrigin="anonymous"
         style={{
           width: '100%',
           height: '100%',
