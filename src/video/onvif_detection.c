@@ -1088,6 +1088,10 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     }
 
     log_error("No space for new ONVIF subscription");
+    log_warn("Cleaning up camera-side PullPoint because local subscription capacity is full");
+    if (subscription_address != NULL) {
+        unsubscribe_subscription_with_auth(subscription_address, username, password);
+    }
     free(subscription_address);
     pthread_mutex_unlock(&subscription_mutex);
     return NULL;
