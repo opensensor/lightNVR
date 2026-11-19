@@ -630,7 +630,7 @@ export function HLSVideoCell({
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = stream.status;
-    if (error && stream.status === 'Running' && prev !== 'Running') {
+    if (!privacyActive && error && stream.status === 'Running' && prev !== 'Running') {
       console.log(`[HLS ${stream.name}] Status changed to Running — auto-retrying after error`);
       fatalErrorCountRef.current = 0;
       recoveringRef.current = false;
@@ -639,7 +639,7 @@ export function HLSVideoCell({
       setIsPlaying(false);
       setRetryCount(c => c + 1);
     }
-  }, [stream.status, error]);
+  }, [stream.status, error, privacyActive]);
 
   // Retry only this browser player. Shared-source refresh is reserved for the
   // explicitly labelled force-refresh control (#457).
@@ -676,7 +676,7 @@ export function HLSVideoCell({
   };
 
   // Auto-retry while the error overlay is visible — see WebRTCVideoCell for rationale.
-  const autoRetryCountdown = useAutoRetry(error, handleRetry);
+  const autoRetryCountdown = useAutoRetry(privacyActive ? null : error, handleRetry);
 
   useEffect(() => {
     if (error && onTransportFailure) onTransportFailure(error);
