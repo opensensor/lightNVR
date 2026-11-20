@@ -288,6 +288,62 @@ typedef struct {
  * destination URL; both are required (strict ONVIF servers
  * such as Reolink reject requests missing either — #374).
  */
+static char *normalize_reference_parameters(const char *ref_params) {
+    if (!ref_params || ref_params[0] == '\0') {
+        return strdup("");
+    }
+
+    size_t wrapped_len = strlen(ref_params) + 128;
+    char *wrapped = malloc(wrapped_len);
+    if (!wrapped) return NULL;
+
+    snprintf(wrapped, wrapped_len,
+             "<rp-root xmlns:wsa=\"http://www.w3.org/2005/08/addressing\">%s</rp-root>",
+             ref_params);
+
+    ezxml_t root = ezxml_parse_str(wrapped, (size_t)strlen(wrapped));
+    free(wrapped);
+    if (!root) {
+        return NULL;
+    }
+
+    for (ezxml_t child = ezxml_child(root, NULL); child; child = child->next) {
+        const char *is_ref = ezxml_attr(child, "wsa:IsReferenceParameter");
+        if (!is_ref) {
+            ezxml_set_attr(child, "wsa:IsReferenceParameter", "true");
+        }
+    }
+
+    char *xml = ezxml_toxml(root);
+    if (!xml) {
+        ezxml_free(root);
+        return NULL;
+    }
+
+    char *start = strchr(xml, '>');
+    char *end = strrchr(xml, '<');
+    if (!start || !end || end <= start) {
+        free(xml);
+        ezxml_free(root);
+        return NULL;
+    }
+
+    start++;
+    size_t out_len = (size_t)(end - start);
+    char *out = malloc(out_len + 1);
+    if (!out) {
+        free(xml);
+        ezxml_free(root);
+        return NULL;
+    }
+    memcpy(out, start, out_len);
+    out[out_len] = '\0';
+
+    free(xml);
+    ezxml_free(root);
+    return out;
+}
+
 static char *create_onvif_request(const char *username, const char *password,
                                   const char *request_body,
                                   onvif_operation_t operation, const char *to,
@@ -297,6 +353,7 @@ static char *create_onvif_request(const char *username, const char *password,
     if (!action || !request_body) return NULL;
     bool has_credentials = (username && strlen(username) > 0 && password && strlen(password) > 0);
     char *security_header = NULL;
+    char *normalized_ref_params = NULL;
 
     if (!has_credentials) {
         log_debug("Creating ONVIF request without authentication (no credentials provided)");
@@ -336,14 +393,22 @@ static char *create_onvif_request(const char *username, const char *password,
      * MessageID (urn:uuid:… = ~45 chars), the action URI, the destination URL,
      * the security header, and the body. 2 KB of slack above those sizes is
      * plenty. */
+    normalized_ref_params = normalize_reference_parameters(ref_params);
+    if (!normalized_ref_params) {
+        free(security_header);
+        free(destination_xml);
+        return NULL;
+    }
+
     size_t envelope_size = strlen(request_body) + strlen(security_header)
                            + strlen(action) + strlen(destination_xml)
-                           + (ref_params ? strlen(ref_params) : 0)
+                           + strlen(normalized_ref_params)
                            + (ref_namespaces ? strlen(ref_namespaces) : 0) + 2048;
     char *soap_request = malloc(envelope_size);
     if (!soap_request) {
         free(security_header);
         free(destination_xml);
+        free(normalized_ref_params);
         return NULL;
     }
 
@@ -362,10 +427,11 @@ static char *create_onvif_request(const char *username, const char *password,
                 "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
         "</s:Envelope>",
         ref_namespaces ? ref_namespaces : "", uuid, destination_xml, action,
-        ref_params ? ref_params : "", security_header, request_body);
+        normalized_ref_params, security_header, request_body);
 
     free(security_header);
     free(destination_xml);
+    free(normalized_ref_params);
     return soap_request;
 }
 
