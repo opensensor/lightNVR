@@ -135,6 +135,7 @@ export function HLSVideoCell({
   const cellAbortRef = useRef<AbortController | null>(null);     // Cancels a queued/in-flight gated preflight on unmount
   const audioEnabledRef = useRef(false);
   const audioPlayRequestTokenRef = useRef(0); // Guards against stale play() rejection mutating newer audio/player state
+  const manualPlayRequestTokenRef = useRef(0); // Guards the play overlay across retries and stream changes
   // Last known image behind the error overlay (#974). Declared before the
   // effects below so its unmount cleanup runs first.
   const lastFrame = useLastFrame({ streamName: stream.name, videoRef, hasError: !!error, enabled: showLastImage });
@@ -612,7 +613,15 @@ export function HLSVideoCell({
       setError(null);
       setIsPlaying(false);
 
-      await initHls();
+      try {
+        await initHls();
+      } catch (err) {
+        if (!isMounted) return;
+        console.error(`[HLS ${stream.name}] Failed to initialize player:`, err);
+        setError(err instanceof Error ? err.message : 'Failed to initialize video stream');
+        setIsLoading(false);
+        setIsPlaying(false);
+      }
     };
 
     // Connection concurrency is bounded by the shared stream connection gate
@@ -626,6 +635,7 @@ export function HLSVideoCell({
     return () => {
       console.log(`[HLS ${stream.name}] Cleaning up HLS player`);
       audioPlayRequestTokenRef.current++;
+      manualPlayRequestTokenRef.current++;
       isMounted = false;
 
       // Cancel any queued/in-flight gated preflight
@@ -1362,15 +1372,23 @@ export function HLSVideoCell({
             cursor: 'pointer'
           }}
           onClick={() => {
-            if (videoRef.current) {
-              videoRef.current.play()
-                .then(() => {
-                  setIsPlaying(true);
-                })
-                .catch(error => {
-                  console.error('Play failed:', error);
-                });
+            const videoEl = videoRef.current;
+            if (!videoEl) {
+              return;
             }
+
+            const requestToken = ++manualPlayRequestTokenRef.current;
+
+            videoEl.play()
+              .then(() => {
+                if (videoRef.current !== videoEl || manualPlayRequestTokenRef.current !== requestToken) {
+                  return;
+                }
+                setIsPlaying(true);
+              })
+              .catch(error => {
+                console.error('Play failed:', error);
+              });
           }}
         >
           <div className="play-button">
