@@ -1362,15 +1362,23 @@ export function HLSVideoCell({
             cursor: 'pointer'
           }}
           onClick={() => {
-            if (videoRef.current) {
-              videoRef.current.play()
-                .then(() => {
-                  setIsPlaying(true);
-                })
-                .catch(error => {
-                  console.error('Play failed:', error);
-                });
+            const videoEl = videoRef.current;
+            if (!videoEl) {
+              return;
             }
+
+            const requestToken = ++manualPlayRequestTokenRef.current;
+
+            videoEl.play()
+              .then(() => {
+                if (videoRef.current !== videoEl || manualPlayRequestTokenRef.current !== requestToken) {
+                  return;
+                }
+                setIsPlaying(true);
+              })
+              .catch(error => {
+                console.error('Play failed:', error);
+              });
           }}
         >
           <div className="play-button">
