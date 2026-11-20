@@ -528,22 +528,52 @@ static ezxml_t child_by_local_name(ezxml_t parent, const char *local) {
 /* The destination belongs to SubscriptionReference, not an unrelated
  * WS-Addressing header. XML parsing also handles vendor prefixes, attributes,
  * and escaped query-string separators in the returned URL. */
-static char *extract_subscription_address(const char *response) {
-    if (!response) return NULL;
+static bool extract_subscription_endpoint_reference(const char *response,
+                                                   char **out_address,
+                                                   char **out_ref_params_xml) {
+    if (out_address) *out_address = NULL;
+    if (out_ref_params_xml) *out_ref_params_xml = NULL;
+    if (!response || !out_address) return false;
+
     char *copy = strdup(response);
-    if (!copy) return NULL;
+    if (!copy) return false;
+
     ezxml_t root = ezxml_parse_str(copy, strlen(copy));
-    char *address = NULL;
+    bool ok = false;
     if (root && !ezxml_error(root)[0]) {
         ezxml_t body = child_by_local_name(root, "Body");
         ezxml_t reply = child_by_local_name(body, "CreatePullPointSubscriptionResponse");
         ezxml_t reference = child_by_local_name(reply, "SubscriptionReference");
         ezxml_t destination = child_by_local_name(reference, "Address");
-        if (destination && destination->txt && destination->txt[0])
-            address = strdup(destination->txt);
+        ezxml_t ref_params = child_by_local_name(reference, "ReferenceParameters");
+
+        if (destination && destination->txt && destination->txt[0]) {
+            *out_address = strdup(destination->txt);
+            if (*out_address) {
+                ok = true;
+                if (out_ref_params_xml && ref_params) {
+                    char *xml = ezxml_toxml(ref_params);
+                    if (xml && xml[0]) {
+                        *out_ref_params_xml = strdup(xml);
+                    }
+                    if (xml) free(xml);
+                }
+            }
+        }
     }
+
     if (root) ezxml_free(root);
     free(copy);
+    return ok;
+}
+
+static char *extract_subscription_address(const char *response) {
+    char *address = NULL;
+    char *ref_params_xml = NULL;
+    if (!extract_subscription_endpoint_reference(response, &address, &ref_params_xml)) {
+        return NULL;
+    }
+    if (ref_params_xml) free(ref_params_xml);
     return address;
 }
 
