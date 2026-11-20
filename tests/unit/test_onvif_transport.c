@@ -648,18 +648,20 @@ static void test_subscription_reference_parameters_become_soap_headers(void) {
         "<CreatePullPointSubscriptionResponse><SubscriptionReference>"
         "<wsa:Address>http://camera/onvif/pull</wsa:Address>"
         "<wsa:ReferenceParameters><tt:Token>abc&amp;123</tt:Token>"
+        "<tt:Lease>one</tt:Lease>"
         "</wsa:ReferenceParameters></SubscriptionReference>"
         "</CreatePullPointSubscriptionResponse></s:Body></s:Envelope>";
     char *address = NULL, *params = NULL, *namespaces = NULL;
     TEST_ASSERT_TRUE(extract_subscription_endpoint_reference(reply, &address,
                                                               &params, &namespaces));
     TEST_ASSERT_EQUAL_STRING("http://camera/onvif/pull", address);
-    TEST_ASSERT_NOT_NULL(strstr(params, "<tt:Token>abc&amp;123</tt:Token>"));
+    TEST_ASSERT_NOT_NULL(strstr(params, "<tt:Token wsa:IsReferenceParameter=\"true\">abc&amp;123</tt:Token>"));
+    TEST_ASSERT_NOT_NULL(strstr(params, "<tt:Lease wsa:IsReferenceParameter=\"true\">one</tt:Lease>"));
     TEST_ASSERT_NOT_NULL(strstr(namespaces, "xmlns:tt=\"urn:camera:token\""));
     char *request = create_onvif_request("", "", "<PullMessages/>",
                          ONVIF_OPERATION_PULL_MESSAGES, address, params, namespaces);
     TEST_ASSERT_NOT_NULL(request);
-    TEST_ASSERT_NOT_NULL(strstr(request, "<tt:Token>abc&amp;123</tt:Token>"));
+    TEST_ASSERT_NOT_NULL(strstr(request, "<tt:Token wsa:IsReferenceParameter=\"true\">abc&amp;123</tt:Token>"));
     TEST_ASSERT_NULL(strstr(request, "<wsa:ReferenceParameters>"));
     TEST_ASSERT_NOT_NULL(strstr(request, "xmlns:tt=\"urn:camera:token\""));
     ezxml_t parsed = ezxml_parse_str(request, strlen(request));
@@ -667,6 +669,8 @@ static void test_subscription_reference_parameters_become_soap_headers(void) {
     TEST_ASSERT_EQUAL_STRING("", ezxml_error(parsed));
     TEST_ASSERT_NOT_NULL(child_by_local_name(child_by_local_name(parsed, "Header"),
                                              "Token"));
+    TEST_ASSERT_NOT_NULL(child_by_local_name(child_by_local_name(parsed, "Header"),
+                                             "Lease"));
     ezxml_free(parsed);
     free(request);
     free(namespaces);
@@ -690,6 +694,129 @@ static void test_subscription_reference_cannot_rebind_soap_namespace(void) {
     TEST_ASSERT_NULL(address);
     TEST_ASSERT_NULL(params);
     TEST_ASSERT_NULL(namespaces);
+}
+
+static char reference_camera_base[128];
+static char reference_pull_request[8192];
+
+static void *reference_subscription_server(void *unused) {
+    (void)unused;
+    const char *paths[] = {"/onvif/device_service", "/onvif/service",
+                           "/onvif/pull?session=123"};
+    for (size_t i = 0; i < 3; i++) {
+        struct pollfd pending = {.fd = origin, .events = POLLIN};
+        if (poll(&pending, 1, 3000) != 1) { server_failed = 1; return NULL; }
+        int client = accept(origin, NULL, NULL);
+        if (client < 0) { server_failed = 2; return NULL; }
+        struct timeval timeout = {.tv_sec = 3};
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        char request[8192] = {0};
+        size_t used = 0;
+        while (used < sizeof(request) - 1 && !strstr(request, "</s:Envelope>")) {
+            ssize_t n = recv(client, request + used, sizeof(request) - 1 - used, 0);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) { server_failed = 3; break; }
+            used += (size_t)n;
+            request[used] = '\0';
+        }
+        char target[128];
+        snprintf(target, sizeof(target), "POST %s HTTP/", paths[i]);
+        if (strncmp(request, target, strlen(target)) != 0) server_failed = 4;
+        if (i == 2) safe_strcpy(reference_pull_request, request,
+                                 sizeof(reference_pull_request), 0);
+
+        char body[1500];
+        if (i == 0) {
+            snprintf(body, sizeof(body),
+                "<s:Envelope><s:Body><GetServicesResponse><Service>"
+                "<Namespace>http://www.onvif.org/ver10/events/wsdl</Namespace>"
+                "<XAddr>%s/onvif/service</XAddr></Service></GetServicesResponse>"
+                "</s:Body></s:Envelope>", reference_camera_base);
+        } else if (i == 1) {
+            snprintf(body, sizeof(body),
+                "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
+                "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" "
+                "xmlns:tt=\"urn:camera:token\"><s:Body>"
+                "<CreatePullPointSubscriptionResponse><SubscriptionReference>"
+                "<wsa:Address>%s/onvif/pull?session=123</wsa:Address>"
+                "<wsa:ReferenceParameters><tt:Token>abc</tt:Token>"
+                "</wsa:ReferenceParameters></SubscriptionReference>"
+                "</CreatePullPointSubscriptionResponse></s:Body></s:Envelope>",
+                reference_camera_base);
+        } else {
+            snprintf(body, sizeof(body),
+                "<s:Envelope><s:Body><PullMessagesResponse/>"
+                "</s:Body></s:Envelope>");
+        }
+        char response[1800];
+        int length = snprintf(response, sizeof(response),
+            "HTTP/1.1 200 OK\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
+            strlen(body), body);
+        if (length < 0 || (size_t)length >= sizeof(response) ||
+            !fixture_send_all(client, response, (size_t)length)) server_failed = 5;
+        close(client);
+        if (server_failed) return NULL;
+    }
+    return NULL;
+}
+
+static void test_created_subscription_carries_reference_to_pull(void) {
+    unsigned short port;
+    origin = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    snprintf(reference_camera_base, sizeof(reference_camera_base),
+             "http://127.0.0.1:%u", port);
+    reference_pull_request[0] = '\0';
+    curl_handle = create_curl_handle();
+    TEST_ASSERT_NOT_NULL(curl_handle);
+    curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
+    pthread_t worker;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL,
+                                             reference_subscription_server, NULL));
+    onvif_subscription_t *sub = get_subscription(reference_camera_base, "", "");
+    TEST_ASSERT_NOT_NULL(sub);
+    char expected_service[160], expected_pull[160];
+    snprintf(expected_service, sizeof(expected_service), "%s/onvif/service",
+             reference_camera_base);
+    snprintf(expected_pull, sizeof(expected_pull), "%s/onvif/pull?session=123",
+             reference_camera_base);
+    TEST_ASSERT_EQUAL_STRING(expected_service, sub->service_url);
+    TEST_ASSERT_EQUAL_STRING(expected_pull, sub->subscription_address);
+    TEST_ASSERT_NOT_NULL(strstr(sub->reference_parameters,
+                                "wsa:IsReferenceParameter=\"true\""));
+    TEST_ASSERT_NOT_NULL(strstr(sub->reference_namespaces,
+                                "xmlns:tt=\"urn:camera:token\""));
+    sub->curl = create_curl_handle();
+    TEST_ASSERT_NOT_NULL(sub->curl);
+    curl_easy_setopt(sub->curl, CURLOPT_PROXY, "");
+    char *response = send_subscription_request(sub, "<PullMessages/>",
+                               ONVIF_OPERATION_PULL_MESSAGES, NULL, NULL);
+    TEST_ASSERT_NOT_NULL(response);
+    free(response);
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+    TEST_ASSERT_EQUAL_INT(0, server_failed);
+    TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
+                                "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
+                                "<wsa:To>http://127.0.0.1:"));
+}
+
+static void test_onvif_camera_logs_redact_query_credentials(void) {
+    const char *camera = "http://user:password@127.0.0.1/onvif?token=private-token";
+    subscription_count = 1;
+    onvif_subscription_t *sub = &subscriptions[0];
+    safe_strcpy(sub->camera_url, camera, sizeof(sub->camera_url), 0);
+    sub->active = true;
+    for (int i = 0; i < ONVIF_PULL_FAILURE_WARN_COUNT; i++)
+        note_pull_failure(camera);
+    note_pull_success(camera);
+    safe_strcpy(sub->subscription_address, "ftp://invalid/pull",
+                sizeof(sub->subscription_address), 0);
+    unsubscribe_subscription_locked(sub);
+    TEST_ASSERT_NOT_NULL(strstr(log_capture, "127.0.0.1/onvif"));
+    TEST_ASSERT_NULL(strstr(log_capture, "private-token"));
+    TEST_ASSERT_NULL(strstr(log_capture, "password"));
+    TEST_ASSERT_NULL(strstr(log_capture, "user:"));
 }
 
 static void test_motion_requires_asserted_state_not_truthy_metadata(void) {
@@ -762,6 +889,8 @@ int main(void) {
     RUN_TEST(test_malformed_motion_message_uses_truthy_fallback);
     RUN_TEST(test_subscription_reference_parameters_become_soap_headers);
     RUN_TEST(test_subscription_reference_cannot_rebind_soap_namespace);
+    RUN_TEST(test_created_subscription_carries_reference_to_pull);
+    RUN_TEST(test_onvif_camera_logs_redact_query_credentials);
     RUN_TEST(test_motion_requires_asserted_state_not_truthy_metadata);
     RUN_TEST(test_class_flags_ignore_camera_metadata);
     return UNITY_END();

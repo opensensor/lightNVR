@@ -288,62 +288,6 @@ typedef struct {
  * destination URL; both are required (strict ONVIF servers
  * such as Reolink reject requests missing either — #374).
  */
-static char *normalize_reference_parameters(const char *ref_params) {
-    if (!ref_params || ref_params[0] == '\0') {
-        return strdup("");
-    }
-
-    size_t wrapped_len = strlen(ref_params) + 128;
-    char *wrapped = malloc(wrapped_len);
-    if (!wrapped) return NULL;
-
-    snprintf(wrapped, wrapped_len,
-             "<rp-root xmlns:wsa=\"http://www.w3.org/2005/08/addressing\">%s</rp-root>",
-             ref_params);
-
-    ezxml_t root = ezxml_parse_str(wrapped, (size_t)strlen(wrapped));
-    free(wrapped);
-    if (!root) {
-        return NULL;
-    }
-
-    for (ezxml_t child = ezxml_child(root, NULL); child; child = child->next) {
-        const char *is_ref = ezxml_attr(child, "wsa:IsReferenceParameter");
-        if (!is_ref) {
-            ezxml_set_attr(child, "wsa:IsReferenceParameter", "true");
-        }
-    }
-
-    char *xml = ezxml_toxml(root);
-    if (!xml) {
-        ezxml_free(root);
-        return NULL;
-    }
-
-    char *start = strchr(xml, '>');
-    char *end = strrchr(xml, '<');
-    if (!start || !end || end <= start) {
-        free(xml);
-        ezxml_free(root);
-        return NULL;
-    }
-
-    start++;
-    size_t out_len = (size_t)(end - start);
-    char *out = malloc(out_len + 1);
-    if (!out) {
-        free(xml);
-        ezxml_free(root);
-        return NULL;
-    }
-    memcpy(out, start, out_len);
-    out[out_len] = '\0';
-
-    free(xml);
-    ezxml_free(root);
-    return out;
-}
-
 static char *create_onvif_request(const char *username, const char *password,
                                   const char *request_body,
                                   onvif_operation_t operation, const char *to,
@@ -353,7 +297,6 @@ static char *create_onvif_request(const char *username, const char *password,
     if (!action || !request_body) return NULL;
     bool has_credentials = (username && strlen(username) > 0 && password && strlen(password) > 0);
     char *security_header = NULL;
-    char *normalized_ref_params = NULL;
 
     if (!has_credentials) {
         log_debug("Creating ONVIF request without authentication (no credentials provided)");
@@ -393,22 +336,14 @@ static char *create_onvif_request(const char *username, const char *password,
      * MessageID (urn:uuid:… = ~45 chars), the action URI, the destination URL,
      * the security header, and the body. 2 KB of slack above those sizes is
      * plenty. */
-    normalized_ref_params = normalize_reference_parameters(ref_params);
-    if (!normalized_ref_params) {
-        free(security_header);
-        free(destination_xml);
-        return NULL;
-    }
-
     size_t envelope_size = strlen(request_body) + strlen(security_header)
                            + strlen(action) + strlen(destination_xml)
-                           + strlen(normalized_ref_params)
+                           + (ref_params ? strlen(ref_params) : 0)
                            + (ref_namespaces ? strlen(ref_namespaces) : 0) + 2048;
     char *soap_request = malloc(envelope_size);
     if (!soap_request) {
         free(security_header);
         free(destination_xml);
-        free(normalized_ref_params);
         return NULL;
     }
 
@@ -427,11 +362,10 @@ static char *create_onvif_request(const char *username, const char *password,
                 "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
         "</s:Envelope>",
         ref_namespaces ? ref_namespaces : "", uuid, destination_xml, action,
-        normalized_ref_params, security_header, request_body);
+        ref_params ? ref_params : "", security_header, request_body);
 
     free(security_header);
     free(destination_xml);
-    free(normalized_ref_params);
     return soap_request;
 }
 
@@ -661,6 +595,16 @@ static bool extract_subscription_endpoint_reference(const char *response,
             if (*out_address) {
                 ok = true;
                 if (out_ref_params_xml && out_ref_namespaces && ref_params && ref_params->child) {
+                    for (ezxml_t param = ref_params->child; param; param = param->ordered) {
+                        const char *binding = ezxml_attr(param, "xmlns:wsa");
+                        if (binding && strcmp(binding,
+                            "http://www.w3.org/2005/08/addressing") != 0) {
+                            ok = false;
+                            break;
+                        }
+                        ezxml_set_attr(param, "wsa:IsReferenceParameter", "true");
+                    }
+                    if (!ok) goto endpoint_parsed;
                     char *xml = ezxml_toxml(ref_params);
                     const char *start = xml ? strchr(xml, '>') : NULL;
                     const char *end = xml ? strrchr(xml, '<') : NULL;
@@ -710,6 +654,8 @@ static bool extract_subscription_endpoint_reference(const char *response,
             }
         }
     }
+
+endpoint_parsed:
 
     if (root) ezxml_free(root);
     free(copy);
@@ -893,6 +839,11 @@ cleanup:
     return ok;
 }
 
+static void onvif_camera_log_id(const char *url, char *out, size_t size) {
+    if (url_redact_for_logging(url, out, size) != 0)
+        safe_strcpy(out, "[invalid-url]", size, 0);
+}
+
 /* Send a subscription-scoped request (PullMessages, Renew, Unsubscribe) to the
  * SubscriptionReference address on the subscription's own connection.
  * Transport drops are retried on the same subscription
@@ -956,8 +907,10 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         if (!subscription->curl) {
             free(target_url);
             pthread_mutex_unlock(lock);
+            char camera_id[sizeof(subscription->camera_url)];
+            onvif_camera_log_id(subscription->camera_url, camera_id, sizeof(camera_id));
             log_error("Failed to create a curl handle for the ONVIF subscription of %s",
-                      subscription->camera_url);
+                      camera_id);
             return NULL;
         }
         while (attempts < ONVIF_PULL_DROP_MAX_ATTEMPTS) {
@@ -1013,8 +966,10 @@ static bool renew_subscription_locked(onvif_subscription_t *subscription) {
     int lease_seconds = subscription_lease_seconds(response);
     free(response);
     apply_subscription_lease(subscription, lease_seconds);
+    char camera_id[sizeof(subscription->camera_url)];
+    onvif_camera_log_id(subscription->camera_url, camera_id, sizeof(camera_id));
     log_debug("Renewed ONVIF subscription for %s for %d seconds",
-              subscription->camera_url, lease_seconds);
+              camera_id, lease_seconds);
     return true;
 }
 
@@ -1031,12 +986,14 @@ static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) 
         "<Unsubscribe xmlns=\"http://docs.oasis-open.org/wsn/b-2\"/>";
     char *response = send_subscription_request(subscription, request_body,
                                                ONVIF_OPERATION_UNSUBSCRIBE, NULL, NULL);
+    char camera_id[sizeof(subscription->camera_url)];
+    onvif_camera_log_id(subscription->camera_url, camera_id, sizeof(camera_id));
     if (response) {
         free(response);
-        log_debug("Unsubscribed ONVIF PullPoint for %s", subscription->camera_url);
+        log_debug("Unsubscribed ONVIF PullPoint for %s", camera_id);
     } else {
         log_warn("Unable to unsubscribe ONVIF PullPoint for %s",
-                 subscription->camera_url);
+                 camera_id);
     }
     subscription->active = false;
     release_subscription_curl(subscription);
@@ -1339,18 +1296,12 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         // Store subscription address
         safe_strcpy(subscriptions[slot].subscription_address, subscription_address, 
                 sizeof(subscriptions[slot].subscription_address), 0);
-        if (reference_parameters) {
+        if (reference_parameters)
             safe_strcpy(subscriptions[slot].reference_parameters, reference_parameters,
                         sizeof(subscriptions[slot].reference_parameters), 0);
-        } else {
-            subscriptions[slot].reference_parameters[0] = '\0';
-        }
-        if (reference_namespaces) {
+        if (reference_namespaces)
             safe_strcpy(subscriptions[slot].reference_namespaces, reference_namespaces,
                         sizeof(subscriptions[slot].reference_namespaces), 0);
-        } else {
-            subscriptions[slot].reference_namespaces[0] = '\0';
-        }
         safe_strcpy(subscriptions[slot].service_url, attempted_event_url,
                     sizeof(subscriptions[slot].service_url), 0);
         
@@ -1392,8 +1343,9 @@ static void note_pull_failure(const char *camera_url) {
             subscription->first_pull_failure_time = now;
         }
         subscription->consecutive_pull_failures++;
+        char camera_id[sizeof(subscription->camera_url)];
+        onvif_camera_log_id(camera_url, camera_id, sizeof(camera_id));
 
-        const char *camera_id = url_sanitize_for_logging(camera_url);
         if (subscription->consecutive_pull_failures ==
             ONVIF_PULL_FAILURE_WARN_COUNT) {
             log_warn("ONVIF PullPoint for %s has failed %d consecutive pulls; "
@@ -1427,8 +1379,10 @@ static void note_pull_success(const char *camera_url) {
 
         if (subscription->consecutive_pull_failures >=
             ONVIF_PULL_FAILURE_WARN_COUNT) {
+            char camera_id[sizeof(subscription->camera_url)];
+            onvif_camera_log_id(camera_url, camera_id, sizeof(camera_id));
             log_info("ONVIF PullPoint for %s recovered after %d failed pulls",
-                     camera_url, subscription->consecutive_pull_failures);
+                     camera_id, subscription->consecutive_pull_failures);
         }
         subscription->consecutive_pull_failures = 0;
         subscription->first_pull_failure_time = 0;
