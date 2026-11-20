@@ -250,7 +250,7 @@ it('aborts an in-flight manifest preflight on unmount without creating a player'
 });
 
 it('force-native preference bypasses go2rtc settings and uses native recovery',async()=>{
-  const {browser,page}=await openPlayer({enabled:true,forceNative:true});
+  const {browser,page}=await openPlayer({enabled:true,forceNative:true,nativePlayer:true});
   try {
     const nativeManifest='/hls/fixture%20camera/index.m3u8';
     await page.waitForFunction(url=>window.requests.some(r=>r.url===url)&&
