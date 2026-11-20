@@ -105,6 +105,13 @@ export function HLSVideoCell({
     return stream && stream.go2rtc_hls_available ? 'go2rtc' : 'native';
   });
 
+  // Reset transport mode when stream identity changes.
+  // This avoids carrying over fallback mode between different streams while
+  // preserving runtime fallback decisions within the same stream instance.
+  useEffect(() => {
+    setHlsMode(stream && stream.go2rtc_hls_available ? 'go2rtc' : 'native');
+  }, [streamId, stream?.go2rtc_hls_available]);
+
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
 
@@ -807,6 +814,7 @@ export function HLSVideoCell({
       onPointerCancel={mobileGestures.onPointerCancel}
       onContextMenu={mobileGestures.onContextMenu}
       onClick={(event) => {
+        if (privacyActive) return;
         if (mobileGestures.onClick(event)) return;
         if (shouldToggleFullscreenFromTap(event, alwaysFullscreenOnTap, zoom.isZoomed,
           cellRef.current, getNativeFullscreenElement())) {
@@ -814,6 +822,7 @@ export function HLSVideoCell({
         }
       }}
       onDblClick={(event) => {
+        if (privacyActive) return;
         if (shouldToggleFullscreenFromDoubleClick(
           event,
           alwaysFullscreenOnTap,
@@ -837,6 +846,8 @@ export function HLSVideoCell({
         touchAction: zoom.touchAction
       }}
     >
+      <div inert={privacyActive} aria-hidden={privacyActive}
+        style={{ position: 'relative', width: '100%', height: '100%' }}>
       {/* Video element */}
       <video /* eslint-disable-line jsx-a11y/media-has-caption -- camera footage has no caption source */
         id={`video-${streamId.replace(/\s+/g, '-')}`}
@@ -1386,6 +1397,7 @@ export function HLSVideoCell({
         message={t('live.pauseForPrivacyConfirm')}
         confirmLabel={t('live.pauseForPrivacy')}
       />
+      </div>
 
       {/* Privacy mode overlay — shown when the stream is paused for privacy */}
       {privacyActive && (
