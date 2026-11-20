@@ -696,14 +696,32 @@ static void test_subscription_reference_cannot_rebind_soap_namespace(void) {
     TEST_ASSERT_NULL(namespaces);
 }
 
+static void test_reference_parameter_cannot_rebind_addressing_namespace(void) {
+    const char *reply =
+        "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
+        "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\"><s:Body>"
+        "<CreatePullPointSubscriptionResponse><SubscriptionReference>"
+        "<wsa:Address>http://camera/onvif/pull</wsa:Address>"
+        "<wsa:ReferenceParameters><Token xmlns:wsa=\"urn:wrong\">abc</Token>"
+        "</wsa:ReferenceParameters></SubscriptionReference>"
+        "</CreatePullPointSubscriptionResponse></s:Body></s:Envelope>";
+    char *address = NULL, *params = NULL, *namespaces = NULL;
+    TEST_ASSERT_FALSE(extract_subscription_endpoint_reference(reply, &address,
+                                                               &params, &namespaces));
+    TEST_ASSERT_NULL(address);
+    TEST_ASSERT_NULL(params);
+    TEST_ASSERT_NULL(namespaces);
+}
+
 static char reference_camera_base[128];
 static char reference_pull_request[8192];
 
 static void *reference_subscription_server(void *unused) {
     (void)unused;
     const char *paths[] = {"/onvif/device_service", "/onvif/service",
+                           "/onvif/pull?session=123", "/onvif/pull?session=123",
                            "/onvif/pull?session=123"};
-    for (size_t i = 0; i < 3; i++) {
+    for (size_t i = 0; i < 5; i++) {
         struct pollfd pending = {.fd = origin, .events = POLLIN};
         if (poll(&pending, 1, 3000) != 1) { server_failed = 1; return NULL; }
         int client = accept(origin, NULL, NULL);
@@ -743,10 +761,14 @@ static void *reference_subscription_server(void *unused) {
                 "</wsa:ReferenceParameters></SubscriptionReference>"
                 "</CreatePullPointSubscriptionResponse></s:Body></s:Envelope>",
                 reference_camera_base);
-        } else {
+        } else if (i == 2) {
             snprintf(body, sizeof(body),
                 "<s:Envelope><s:Body><PullMessagesResponse/>"
                 "</s:Body></s:Envelope>");
+        } else {
+            snprintf(body, sizeof(body),
+                "<s:Envelope><s:Body><%sResponse/>"
+                "</s:Body></s:Envelope>", i == 3 ? "Renew" : "Unsubscribe");
         }
         char response[1800];
         int length = snprintf(response, sizeof(response),
@@ -793,6 +815,8 @@ static void test_created_subscription_carries_reference_to_pull(void) {
                                ONVIF_OPERATION_PULL_MESSAGES, NULL, NULL);
     TEST_ASSERT_NOT_NULL(response);
     free(response);
+    TEST_ASSERT_TRUE(renew_subscription_locked(sub));
+    unsubscribe_subscription_locked(sub);
     TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
     TEST_ASSERT_EQUAL_INT(0, server_failed);
     TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
@@ -812,7 +836,10 @@ static void test_onvif_camera_logs_redact_query_credentials(void) {
     note_pull_success(camera);
     safe_strcpy(sub->subscription_address, "ftp://invalid/pull",
                 sizeof(sub->subscription_address), 0);
-    unsubscribe_subscription_locked(sub);
+    sub->consecutive_pull_failures = ONVIF_PULL_FAILURE_WARN_COUNT - 1;
+    sub->first_pull_failure_time = time(NULL) - ONVIF_PULL_FAILURE_REFRESH_SECONDS - 1;
+    note_pull_failure(camera);
+    TEST_ASSERT_NOT_NULL(strstr(log_capture, "has not completed a pull"));
     TEST_ASSERT_NOT_NULL(strstr(log_capture, "127.0.0.1/onvif"));
     TEST_ASSERT_NULL(strstr(log_capture, "private-token"));
     TEST_ASSERT_NULL(strstr(log_capture, "password"));
@@ -889,6 +916,7 @@ int main(void) {
     RUN_TEST(test_malformed_motion_message_uses_truthy_fallback);
     RUN_TEST(test_subscription_reference_parameters_become_soap_headers);
     RUN_TEST(test_subscription_reference_cannot_rebind_soap_namespace);
+    RUN_TEST(test_reference_parameter_cannot_rebind_addressing_namespace);
     RUN_TEST(test_created_subscription_carries_reference_to_pull);
     RUN_TEST(test_onvif_camera_logs_redact_query_credentials);
     RUN_TEST(test_motion_requires_asserted_state_not_truthy_metadata);
