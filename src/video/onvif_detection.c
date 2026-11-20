@@ -595,6 +595,16 @@ static bool extract_subscription_endpoint_reference(const char *response,
             if (*out_address) {
                 ok = true;
                 if (out_ref_params_xml && out_ref_namespaces && ref_params && ref_params->child) {
+                    for (ezxml_t param = ref_params->child; param; param = param->ordered) {
+                        const char *binding = ezxml_attr(param, "xmlns:wsa");
+                        if (binding && strcmp(binding,
+                            "http://www.w3.org/2005/08/addressing") != 0) {
+                            ok = false;
+                            break;
+                        }
+                        ezxml_set_attr(param, "wsa:IsReferenceParameter", "true");
+                    }
+                    if (!ok) goto endpoint_parsed;
                     char *xml = ezxml_toxml(ref_params);
                     const char *start = xml ? strchr(xml, '>') : NULL;
                     const char *end = xml ? strrchr(xml, '<') : NULL;
@@ -644,6 +654,8 @@ static bool extract_subscription_endpoint_reference(const char *response,
             }
         }
     }
+
+endpoint_parsed:
 
     if (root) ezxml_free(root);
     free(copy);
@@ -827,6 +839,11 @@ cleanup:
     return ok;
 }
 
+static void onvif_camera_log_id(const char *url, char *out, size_t size) {
+    if (url_redact_for_logging(url, out, size) != 0)
+        safe_strcpy(out, "[invalid-url]", size, 0);
+}
+
 /* Send a subscription-scoped request (PullMessages, Renew, Unsubscribe) to the
  * SubscriptionReference address on the subscription's own connection.
  * Transport drops are retried on the same subscription
@@ -890,8 +907,10 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         if (!subscription->curl) {
             free(target_url);
             pthread_mutex_unlock(lock);
+            char camera_id[sizeof(subscription->camera_url)];
+            onvif_camera_log_id(subscription->camera_url, camera_id, sizeof(camera_id));
             log_error("Failed to create a curl handle for the ONVIF subscription of %s",
-                      subscription->camera_url);
+                      camera_id);
             return NULL;
         }
         while (attempts < ONVIF_PULL_DROP_MAX_ATTEMPTS) {
@@ -947,8 +966,10 @@ static bool renew_subscription_locked(onvif_subscription_t *subscription) {
     int lease_seconds = subscription_lease_seconds(response);
     free(response);
     apply_subscription_lease(subscription, lease_seconds);
+    char camera_id[sizeof(subscription->camera_url)];
+    onvif_camera_log_id(subscription->camera_url, camera_id, sizeof(camera_id));
     log_debug("Renewed ONVIF subscription for %s for %d seconds",
-              subscription->camera_url, lease_seconds);
+              camera_id, lease_seconds);
     return true;
 }
 
@@ -965,12 +986,14 @@ static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) 
         "<Unsubscribe xmlns=\"http://docs.oasis-open.org/wsn/b-2\"/>";
     char *response = send_subscription_request(subscription, request_body,
                                                ONVIF_OPERATION_UNSUBSCRIBE, NULL, NULL);
+    char camera_id[sizeof(subscription->camera_url)];
+    onvif_camera_log_id(subscription->camera_url, camera_id, sizeof(camera_id));
     if (response) {
         free(response);
-        log_debug("Unsubscribed ONVIF PullPoint for %s", subscription->camera_url);
+        log_debug("Unsubscribed ONVIF PullPoint for %s", camera_id);
     } else {
         log_warn("Unable to unsubscribe ONVIF PullPoint for %s",
-                 subscription->camera_url);
+                 camera_id);
     }
     subscription->active = false;
     release_subscription_curl(subscription);
@@ -1320,12 +1343,14 @@ static void note_pull_failure(const char *camera_url) {
             subscription->first_pull_failure_time = now;
         }
         subscription->consecutive_pull_failures++;
+        char camera_id[sizeof(subscription->camera_url)];
+        onvif_camera_log_id(camera_url, camera_id, sizeof(camera_id));
 
         if (subscription->consecutive_pull_failures ==
             ONVIF_PULL_FAILURE_WARN_COUNT) {
             log_warn("ONVIF PullPoint for %s has failed %d consecutive pulls; "
                      "retaining the same subscription",
-                     camera_url, subscription->consecutive_pull_failures);
+                     camera_id, subscription->consecutive_pull_failures);
         }
 
         if (subscription->consecutive_pull_failures >=
@@ -1334,7 +1359,7 @@ static void note_pull_failure(const char *camera_url) {
                 ONVIF_PULL_FAILURE_REFRESH_SECONDS) {
             log_warn("ONVIF PullPoint for %s has not completed a pull for %d "
                      "seconds; unsubscribing before refresh",
-                     camera_url, ONVIF_PULL_FAILURE_REFRESH_SECONDS);
+                     camera_id, ONVIF_PULL_FAILURE_REFRESH_SECONDS);
             subscription->reserved = true;
             pthread_mutex_unlock(&subscription_mutex);
             unsubscribe_subscription_locked(subscription);
@@ -1354,8 +1379,10 @@ static void note_pull_success(const char *camera_url) {
 
         if (subscription->consecutive_pull_failures >=
             ONVIF_PULL_FAILURE_WARN_COUNT) {
+            char camera_id[sizeof(subscription->camera_url)];
+            onvif_camera_log_id(camera_url, camera_id, sizeof(camera_id));
             log_info("ONVIF PullPoint for %s recovered after %d failed pulls",
-                     camera_url, subscription->consecutive_pull_failures);
+                     camera_id, subscription->consecutive_pull_failures);
         }
         subscription->consecutive_pull_failures = 0;
         subscription->first_pull_failure_time = 0;
