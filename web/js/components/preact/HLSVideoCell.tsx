@@ -4,7 +4,7 @@ import { refreshStream } from '../../api/mediaLifecycle.ts';
  * A self-contained component for displaying an HLS video stream
  */
 
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.tsx';
 import { SnapshotButton } from './SnapshotManager.tsx';
 import { ManualRecordingButton } from './ManualRecordingButton.tsx';
@@ -738,6 +738,17 @@ export function HLSVideoCell({
   // Auto-retry while the error overlay is visible — see WebRTCVideoCell for rationale.
   const autoRetryCountdown = useAutoRetry(privacyActive ? null : error, handleRetry);
 
+  const privacyRequestGenerationRef = useRef(0);
+  const streamIdentityRef = useRef(stream.name);
+
+  useLayoutEffect(() => {
+    streamIdentityRef.current = stream.name;
+    privacyRequestGenerationRef.current += 1;
+    setIsTogglingEnabled(false);
+    setShowPrivacyConfirm(false);
+    return () => { privacyRequestGenerationRef.current += 1; };
+  }, [stream.name]);
+
   useEffect(() => {
     if (error && onTransportFailure) onTransportFailure(error);
   }, [error, onTransportFailure]);
@@ -747,22 +758,41 @@ export function HLSVideoCell({
    * The stream stays in the Live View grid under a privacy overlay.
    */
   const handlePauseForPrivacy = async () => {
+    const requestStreamIdentity = stream.name;
+    const requestGeneration = ++privacyRequestGenerationRef.current;
     setIsTogglingEnabled(true);
     try {
-      const res = await fetch(`/api/streams/${encodeURIComponent(stream.name)}`, {
+      const res = await fetch(`/api/streams/${encodeURIComponent(requestStreamIdentity)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ set_privacy_mode: true }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (
+        privacyRequestGenerationRef.current !== requestGeneration ||
+        streamIdentityRef.current !== requestStreamIdentity
+      ) {
+        return;
+      }
       setPrivacyActive(true);
       setShowPrivacyConfirm(false);
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     } catch (err) {
+      if (
+        privacyRequestGenerationRef.current !== requestGeneration ||
+        streamIdentityRef.current !== requestStreamIdentity
+      ) {
+        return;
+      }
       showStatusMessage(`${t('live.pauseForPrivacy')}: ${(err as Error).message}`, 'error', 5000);
       setShowPrivacyConfirm(false);
     } finally {
-      setIsTogglingEnabled(false);
+      if (
+        privacyRequestGenerationRef.current === requestGeneration &&
+        streamIdentityRef.current === requestStreamIdentity
+      ) {
+        setIsTogglingEnabled(false);
+      }
     }
   };
 
@@ -770,20 +800,39 @@ export function HLSVideoCell({
    * Resume stream from privacy mode — sets privacy_mode=false and re-starts the stream.
    */
   const handleResumeFromPrivacy = async () => {
+    const requestStreamIdentity = stream.name;
+    const requestGeneration = ++privacyRequestGenerationRef.current;
     setIsTogglingEnabled(true);
     try {
-      const res = await fetch(`/api/streams/${encodeURIComponent(stream.name)}`, {
+      const res = await fetch(`/api/streams/${encodeURIComponent(requestStreamIdentity)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ set_privacy_mode: false }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (
+        privacyRequestGenerationRef.current !== requestGeneration ||
+        streamIdentityRef.current !== requestStreamIdentity
+      ) {
+        return;
+      }
       setPrivacyActive(false);
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     } catch (err) {
+      if (
+        privacyRequestGenerationRef.current !== requestGeneration ||
+        streamIdentityRef.current !== requestStreamIdentity
+      ) {
+        return;
+      }
       showStatusMessage(`${t('live.resumeStream')}: ${(err as Error).message}`, 'error', 5000);
     } finally {
-      setIsTogglingEnabled(false);
+      if (
+        privacyRequestGenerationRef.current === requestGeneration &&
+        streamIdentityRef.current === requestStreamIdentity
+      ) {
+        setIsTogglingEnabled(false);
+      }
     }
   };
 

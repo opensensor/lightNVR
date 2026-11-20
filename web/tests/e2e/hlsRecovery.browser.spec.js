@@ -36,6 +36,9 @@ beforeAll(async () => {
       HTMLMediaElement.prototype.load=()=>{};
       window.fetch=async(input,options={})=>{
         window.requests.push({url:String(input),signal:options.signal});
+        if(options.method==='PUT'&&window.config.deferPrivacy) return new Promise(resolve=>{
+          window.resolvePrivacyRequest=()=>{window.privacyResolved=true;resolve(new Response('',{status:200}));};
+        });
         if(window.config.deferManifest) return new Promise((resolve,reject)=>{
           options.signal.addEventListener('abort',()=>{window.fetchAborted=true;reject(new DOMException('Aborted','AbortError'));},{once:true});
         });
@@ -161,6 +164,25 @@ it('focuses the resume control when privacy mode starts active',async()=>{
     expect(await page.locator('video').evaluate(video=>video.parentElement.inert)).toBe(true);
     await page.locator('.video-cell').evaluate(cell=>cell.click());
     expect(await page.evaluate(()=>window.fullscreenToggles)).toBe(0);
+  } finally {await browser.close();}
+});
+
+it('ignores an old privacy response after the tile changes streams',async()=>{
+  const {browser,page}=await openPlayer({privacyMode:true,deferPrivacy:true});
+  try {
+    await page.locator('button[aria-label="live.resumeStream"]').click();
+    await page.waitForFunction(()=>!!window.resolvePrivacyRequest);
+    await page.evaluate(()=>{
+      window.config.streamName='second camera';
+      window.config.streamId='second';
+      window.mount();
+      window.resolvePrivacyRequest();
+    });
+    await page.waitForFunction(()=>window.privacyResolved&&
+      document.querySelector('.video-cell')?.dataset.streamName==='second camera');
+    expect(await page.locator('button[aria-label="live.resumeStream"]').isVisible()).toBe(true);
+    expect(await page.locator('button[aria-label="live.resumeStream"]').isEnabled()).toBe(true);
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
 
