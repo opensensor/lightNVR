@@ -359,7 +359,7 @@ static void test_every_operation_preserves_action_headers_and_transport_destinat
 static void test_https_destination_preserves_standard_soap_action_identifiers(void) {
     for (size_t i = 0; i < sizeof(fixture_operations) / sizeof(fixture_operations[0]); ++i) {
         char *soap = create_onvif_request(NULL, NULL, "<Fixture/>", fixture_operations[i],
-                                         "https://127.0.0.1/onvif/fixture");
+                                         "https://127.0.0.1/onvif/fixture", NULL, NULL);
         TEST_ASSERT_NOT_NULL(soap);
         char element[512];
         snprintf(element, sizeof(element), "<wsa:Action>%s</wsa:Action>", expected_actions[i]);
@@ -379,7 +379,8 @@ static void test_invalid_operation_is_rejected_before_transfer(void) {
     CURL *handle = create_curl_handle(); TEST_ASSERT_NOT_NULL(handle);
     const onvif_operation_t invalid[] = {(onvif_operation_t)-1, ONVIF_OPERATION_COUNT, (onvif_operation_t)(ONVIF_OPERATION_COUNT + 1)};
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
-        TEST_ASSERT_NULL(create_onvif_request(NULL, NULL, "<Fixture/>", invalid[i], url));
+        TEST_ASSERT_NULL(create_onvif_request(NULL, NULL, "<Fixture/>", invalid[i], url,
+                                              NULL, NULL));
         TEST_ASSERT_NULL(perform_onvif_request_locked(handle, url, NULL, NULL, "<Fixture/>", invalid[i], NULL));
     }
     curl_easy_cleanup(handle);
@@ -639,6 +640,38 @@ static void test_malformed_motion_message_uses_truthy_fallback(void) {
     TEST_ASSERT_TRUE(has_motion_event("<Motion Value='true'", label, sizeof(label)));
 }
 
+static void test_subscription_reference_parameters_become_soap_headers(void) {
+    const char *reply =
+        "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
+        "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" "
+        "xmlns:tt=\"urn:camera:token\"><s:Body>"
+        "<CreatePullPointSubscriptionResponse><SubscriptionReference>"
+        "<wsa:Address>http://camera/onvif/pull</wsa:Address>"
+        "<wsa:ReferenceParameters><tt:Token>abc&amp;123</tt:Token>"
+        "</wsa:ReferenceParameters></SubscriptionReference>"
+        "</CreatePullPointSubscriptionResponse></s:Body></s:Envelope>";
+    char *address = NULL, *params = NULL, *namespaces = NULL;
+    TEST_ASSERT_TRUE(extract_subscription_endpoint_reference(reply, &address,
+                                                              &params, &namespaces));
+    TEST_ASSERT_EQUAL_STRING("http://camera/onvif/pull", address);
+    TEST_ASSERT_NOT_NULL(strstr(params, "<tt:Token>abc&amp;123</tt:Token>"));
+    TEST_ASSERT_NOT_NULL(strstr(namespaces, "xmlns:tt=\"urn:camera:token\""));
+    char *request = create_onvif_request("", "", "<PullMessages/>",
+                         ONVIF_OPERATION_PULL_MESSAGES, address, params, namespaces);
+    TEST_ASSERT_NOT_NULL(request);
+    TEST_ASSERT_NOT_NULL(strstr(request, "<tt:Token>abc&amp;123</tt:Token>"));
+    TEST_ASSERT_NULL(strstr(request, "<wsa:ReferenceParameters>"));
+    TEST_ASSERT_NOT_NULL(strstr(request, "xmlns:tt=\"urn:camera:token\""));
+    ezxml_t parsed = ezxml_parse_str(request, strlen(request));
+    TEST_ASSERT_NOT_NULL(parsed);
+    TEST_ASSERT_EQUAL_STRING("", ezxml_error(parsed));
+    ezxml_free(parsed);
+    free(request);
+    free(namespaces);
+    free(params);
+    free(address);
+}
+
 static void test_motion_requires_asserted_state_not_truthy_metadata(void) {
     char label[32];
     const char *metadata_only =
@@ -707,6 +740,7 @@ int main(void) {
     RUN_TEST(test_fixture_send_stops_on_zero_progress_or_closed_peer);
     RUN_TEST(test_motorcycle_class_precedes_bicycle_substrings);
     RUN_TEST(test_malformed_motion_message_uses_truthy_fallback);
+    RUN_TEST(test_subscription_reference_parameters_become_soap_headers);
     RUN_TEST(test_motion_requires_asserted_state_not_truthy_metadata);
     RUN_TEST(test_class_flags_ignore_camera_metadata);
     return UNITY_END();

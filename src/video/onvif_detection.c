@@ -130,6 +130,8 @@ static void secure_clear(void *data, size_t size) {
 typedef struct {
     char camera_url[512];           // URL of the camera (used as the key for lookup)
     char subscription_address[512]; // Address returned by CreatePullPointSubscription (full URL)
+    char reference_parameters[2048]; // SOAP header children from the endpoint reference
+    char reference_namespaces[1024]; // Namespace bindings inherited by those children
     char service_url[512];          // Endpoint that created this PullPoint
     char username[64];              // Username for authentication
     char password[64];              // Password for authentication
@@ -288,7 +290,9 @@ typedef struct {
  */
 static char *create_onvif_request(const char *username, const char *password,
                                   const char *request_body,
-                                  onvif_operation_t operation, const char *to) {
+                                  onvif_operation_t operation, const char *to,
+                                  const char *ref_params,
+                                  const char *ref_namespaces) {
     const char *action = onvif_operation_action(operation);
     if (!action || !request_body) return NULL;
     bool has_credentials = (username && strlen(username) > 0 && password && strlen(password) > 0);
@@ -333,7 +337,9 @@ static char *create_onvif_request(const char *username, const char *password,
      * the security header, and the body. 2 KB of slack above those sizes is
      * plenty. */
     size_t envelope_size = strlen(request_body) + strlen(security_header)
-                           + strlen(action) + strlen(destination_xml) + 2048;
+                           + strlen(action) + strlen(destination_xml)
+                           + (ref_params ? strlen(ref_params) : 0)
+                           + (ref_namespaces ? strlen(ref_namespaces) : 0) + 2048;
     char *soap_request = malloc(envelope_size);
     if (!soap_request) {
         free(security_header);
@@ -345,16 +351,18 @@ static char *create_onvif_request(const char *username, const char *password,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
         "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
                    "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\">"
-        "<s:Header>"
+        "<s:Header%s>"
             "<wsa:MessageID>urn:uuid:%s</wsa:MessageID>"
             "%s"
             "<wsa:Action>%s</wsa:Action>"
+            "%s"
             "%s"
         "</s:Header>"
         "<s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
                 "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
         "</s:Envelope>",
-        uuid, destination_xml, action, security_header, request_body);
+        ref_namespaces ? ref_namespaces : "", uuid, destination_xml, action,
+        ref_params ? ref_params : "", security_header, request_body);
 
     free(security_header);
     free(destination_xml);
@@ -374,11 +382,14 @@ static char *create_onvif_request(const char *username, const char *password,
  */
 /* The caller holds the lock that serializes `handle` (curl_mutex for the
  * shared handle, the slot lock for a subscription's own). */
-static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
-                                          const char *username,
-                                          const char *password, const char *request_body,
-                                          onvif_operation_t operation,
-                                          onvif_request_status_t *status) {
+static char *perform_onvif_request_with_reference_locked(CURL *handle, const char *full_url,
+                                                          const char *username,
+                                                          const char *password,
+                                                          const char *request_body,
+                                                          onvif_operation_t operation,
+                                                          onvif_request_status_t *status,
+                                                          const char *ref_params,
+                                                          const char *ref_namespaces) {
     if (status) memset(status, 0, sizeof(*status));
     const char *action = onvif_operation_action(operation);
     if (!action || !request_body) return NULL;
@@ -396,7 +407,8 @@ static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
     /* Use full_url as the WS-Addressing To, which is exactly what the request
      * is being POSTed to. */
     char *soap_request = create_onvif_request(username, password, request_body,
-                                              operation, full_url);
+                                              operation, full_url, ref_params,
+                                              ref_namespaces);
     if (!soap_request) {
         log_error("Failed to create ONVIF request");
         return NULL;
@@ -478,6 +490,15 @@ static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
     return chunk.memory;
 }
 
+static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
+                                          const char *username, const char *password,
+                                          const char *request_body, onvif_operation_t operation,
+                                          onvif_request_status_t *status) {
+    return perform_onvif_request_with_reference_locked(handle, full_url, username,
+                                                       password, request_body, operation,
+                                                       status, NULL, NULL);
+}
+
 /* One-shot ONVIF request to a full URL. */
 static char *send_onvif_request_to_url(const char *full_url, const char *username,
                                        const char *password, const char *request_body,
@@ -528,23 +549,98 @@ static ezxml_t child_by_local_name(ezxml_t parent, const char *local) {
 /* The destination belongs to SubscriptionReference, not an unrelated
  * WS-Addressing header. XML parsing also handles vendor prefixes, attributes,
  * and escaped query-string separators in the returned URL. */
-static char *extract_subscription_address(const char *response) {
-    if (!response) return NULL;
+static bool append_reference_namespace(char *dst, size_t capacity, const char *name,
+                                       const char *value) {
+    size_t used = strlen(dst);
+    int written = snprintf(dst + used, capacity - used, " %s=\"", name);
+    if (written < 0 || (size_t)written >= capacity - used) return false;
+    used += (size_t)written;
+    for (const char *p = value; *p; p++) {
+        const char *escaped = *p == '&' ? "&amp;" : *p == '"' ? "&quot;" :
+                              *p == '<' ? "&lt;" : NULL;
+        size_t len = escaped ? strlen(escaped) : 1;
+        if (len + 2 > capacity - used) return false;
+        if (escaped) memcpy(dst + used, escaped, len);
+        else dst[used] = *p;
+        used += len;
+    }
+    dst[used++] = '"';
+    dst[used] = '\0';
+    return true;
+}
+
+static bool extract_subscription_endpoint_reference(const char *response,
+                                                   char **out_address,
+                                                   char **out_ref_params_xml,
+                                                   char **out_ref_namespaces) {
+    if (out_address) *out_address = NULL;
+    if (out_ref_params_xml) *out_ref_params_xml = NULL;
+    if (out_ref_namespaces) *out_ref_namespaces = NULL;
+    if (!response || !out_address) return false;
+
     char *copy = strdup(response);
-    if (!copy) return NULL;
+    if (!copy) return false;
+
     ezxml_t root = ezxml_parse_str(copy, strlen(copy));
-    char *address = NULL;
+    bool ok = false;
     if (root && !ezxml_error(root)[0]) {
         ezxml_t body = child_by_local_name(root, "Body");
         ezxml_t reply = child_by_local_name(body, "CreatePullPointSubscriptionResponse");
         ezxml_t reference = child_by_local_name(reply, "SubscriptionReference");
         ezxml_t destination = child_by_local_name(reference, "Address");
-        if (destination && destination->txt && destination->txt[0])
-            address = strdup(destination->txt);
+        ezxml_t ref_params = child_by_local_name(reference, "ReferenceParameters");
+
+        if (destination && destination->txt && destination->txt[0]) {
+            *out_address = strdup(destination->txt);
+            if (*out_address) {
+                ok = true;
+                if (out_ref_params_xml && out_ref_namespaces && ref_params && ref_params->child) {
+                    char *xml = ezxml_toxml(ref_params);
+                    const char *start = xml ? strchr(xml, '>') : NULL;
+                    const char *end = xml ? strrchr(xml, '<') : NULL;
+                    if (start && end && end > start + 1) {
+                        *out_ref_params_xml = strndup(start + 1, (size_t)(end - start - 1));
+                    }
+                    if (xml) free(xml);
+
+                    char namespaces[sizeof(subscriptions[0].reference_namespaces)] = {0};
+                    const char *names[32] = {0};
+                    size_t count = 0;
+                    for (ezxml_t node = ref_params; node; node = node->parent) {
+                        for (size_t i = 0; node->attr && node->attr[i]; i += 2) {
+                            const char *name = node->attr[i];
+                            if (strcmp(name, "xmlns") != 0 && strncmp(name, "xmlns:", 6) != 0)
+                                continue;
+                            bool seen = false;
+                            for (size_t j = 0; j < count; j++)
+                                if (strcmp(name, names[j]) == 0) seen = true;
+                            if (seen) continue;
+                            if (count >= sizeof(names) / sizeof(names[0]) ||
+                                !append_reference_namespace(namespaces, sizeof(namespaces),
+                                                            name, node->attr[i + 1])) {
+                                ok = false;
+                                break;
+                            }
+                            names[count++] = name;
+                        }
+                        if (!ok) break;
+                    }
+                    if (ok) *out_ref_namespaces = strdup(namespaces);
+                    if (!*out_ref_params_xml || !*out_ref_namespaces) ok = false;
+                }
+            }
+        }
     }
+
     if (root) ezxml_free(root);
     free(copy);
-    return address;
+    if (!ok) {
+        free(*out_address);
+        *out_address = NULL;
+        if (out_ref_params_xml) { free(*out_ref_params_xml); *out_ref_params_xml = NULL; }
+        if (out_ref_namespaces) { free(*out_ref_namespaces); *out_ref_namespaces = NULL; }
+    }
+    return ok;
 }
 
 /* Find the first descendant with the given local name. */
@@ -787,11 +883,11 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         }
         while (attempts < ONVIF_PULL_DROP_MAX_ATTEMPTS) {
             attempts++;
-            response = perform_onvif_request_locked(subscription->curl,
-                                                    target_url,
-                                                    subscription->username,
-                                                    subscription->password,
-                                                    request_body, operation, &status);
+            response = perform_onvif_request_with_reference_locked(
+                subscription->curl, target_url, subscription->username,
+                subscription->password, request_body, operation, &status,
+                subscription->reference_parameters,
+                subscription->reference_namespaces);
             if (response || !is_transport_drop(&status) ||
                 attempts >= ONVIF_PULL_DROP_MAX_ATTEMPTS || is_shutdown_initiated()) {
                 break;
@@ -1104,19 +1200,30 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         return NULL;
     }
 
-    char *subscription_address = extract_subscription_address(response);
+    char *subscription_address = NULL;
+    char *reference_parameters = NULL;
+    char *reference_namespaces = NULL;
+    bool parsed = extract_subscription_endpoint_reference(response, &subscription_address,
+                                                          &reference_parameters,
+                                                          &reference_namespaces);
     int lease_seconds = subscription_lease_seconds(response);
     free(response);
 
-    if (!subscription_address) {
-        log_error("Failed to extract subscription address");
+    if (!parsed) {
+        log_error("Failed to extract subscription endpoint reference");
         release_subscription_reservation(slot);
         return NULL;
     }
 
-    if (strlen(subscription_address) >= sizeof(subscriptions[0].subscription_address)) {
-        log_warn("ONVIF subscription address exceeds local capacity; rejecting it");
+    if (strlen(subscription_address) >= sizeof(subscriptions[0].subscription_address) ||
+        (reference_parameters && strlen(reference_parameters) >=
+         sizeof(subscriptions[0].reference_parameters)) ||
+        (reference_namespaces && strlen(reference_namespaces) >=
+         sizeof(subscriptions[0].reference_namespaces))) {
+        log_warn("ONVIF subscription endpoint reference exceeds local capacity; rejecting it");
         free(subscription_address);
+        free(reference_parameters);
+        free(reference_namespaces);
         release_subscription_reservation(slot);
         return NULL;
     }
@@ -1130,6 +1237,8 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         pthread_mutex_t *slot_lock = subscription_lock(&subscriptions[slot]);
         if (!slot_lock) {
             free(subscription_address);
+            free(reference_parameters);
+            free(reference_namespaces);
             subscriptions[slot].reserved = false;
             pthread_mutex_unlock(&subscription_mutex);
             return NULL;
@@ -1151,6 +1260,12 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         // Store subscription address
         safe_strcpy(subscriptions[slot].subscription_address, subscription_address, 
                 sizeof(subscriptions[slot].subscription_address), 0);
+        if (reference_parameters)
+            safe_strcpy(subscriptions[slot].reference_parameters, reference_parameters,
+                        sizeof(subscriptions[slot].reference_parameters), 0);
+        if (reference_namespaces)
+            safe_strcpy(subscriptions[slot].reference_namespaces, reference_namespaces,
+                        sizeof(subscriptions[slot].reference_namespaces), 0);
         safe_strcpy(subscriptions[slot].service_url, attempted_event_url,
                     sizeof(subscriptions[slot].service_url), 0);
         
@@ -1161,12 +1276,16 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         
         log_info("Successfully created ONVIF subscription (lease: %d seconds)", lease_seconds);
         free(subscription_address);
+        free(reference_parameters);
+        free(reference_namespaces);
         pthread_mutex_unlock(&subscription_mutex);
         return &subscriptions[slot];
     }
 
     log_error("No space for new ONVIF subscription");
     free(subscription_address);
+    free(reference_parameters);
+    free(reference_namespaces);
     pthread_mutex_unlock(&subscription_mutex);
     return NULL;
 }
@@ -1433,11 +1552,8 @@ static bool xml_find_active_motion(ezxml_t node, char *label, size_t label_sz) {
  * without accepting a truthy Value from an unrelated field in the payload. */
 static bool malformed_motion_element_asserted(const char *response) {
     for (const char *tag = strchr(response, '<'); tag; tag = strchr(tag + 1, '<')) {
-        const char *gt_end = strchr(tag, '>');
-        const char *lt_end = strchr(tag + 1, '<');
-        const char *end = gt_end;
-        if (!end || (lt_end && lt_end < end)) end = lt_end;
-        if (!end) end = tag + strlen(tag);
+        const char *end = tag + 1;
+        while (*end && *end != '<' && *end != '>') end++;
         const char *name = tag + 1;
         const char *name_end = name;
         while (name_end < end && *name_end != ' ' && *name_end != '\t' &&
