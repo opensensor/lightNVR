@@ -105,6 +105,13 @@ export function HLSVideoCell({
     return stream && stream.go2rtc_hls_available ? 'go2rtc' : 'native';
   });
 
+  // Reset transport mode when stream identity changes.
+  // This avoids carrying over fallback mode between different streams while
+  // preserving runtime fallback decisions within the same stream instance.
+  useEffect(() => {
+    setHlsMode(stream && stream.go2rtc_hls_available ? 'go2rtc' : 'native');
+  }, [streamId, stream?.go2rtc_hls_available]);
+
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
 
