@@ -4,7 +4,7 @@ import { refreshStream } from '../../api/mediaLifecycle.ts';
  * A self-contained component for displaying an HLS video stream
  */
 
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.tsx';
 import { SnapshotButton } from './SnapshotManager.tsx';
 import { ManualRecordingButton } from './ManualRecordingButton.tsx';
@@ -741,9 +741,12 @@ export function HLSVideoCell({
   const privacyRequestGenerationRef = useRef(0);
   const streamIdentityRef = useRef(stream.name);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     streamIdentityRef.current = stream.name;
     privacyRequestGenerationRef.current += 1;
+    setIsTogglingEnabled(false);
+    setShowPrivacyConfirm(false);
+    return () => { privacyRequestGenerationRef.current += 1; };
   }, [stream.name]);
 
   useEffect(() => {
