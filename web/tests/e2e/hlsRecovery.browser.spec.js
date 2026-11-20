@@ -159,6 +159,8 @@ it('focuses the resume control when privacy mode starts active',async()=>{
     await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='live.resumeStream');
     expect(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label'))).toBe('live.resumeStream');
     expect(await page.locator('video').evaluate(video=>video.parentElement.inert)).toBe(true);
+    await page.locator('.video-cell').evaluate(cell=>cell.click());
+    expect(await page.evaluate(()=>window.fullscreenToggles)).toBe(0);
     await page.locator('.video-cell').dblclick();
     expect(await page.evaluate(()=>window.fullscreenToggles)).toBe(0);
   } finally {await browser.close();}
