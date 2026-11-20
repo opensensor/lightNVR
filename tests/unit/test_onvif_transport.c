@@ -822,6 +822,20 @@ static void test_created_subscription_carries_reference_to_pull(void) {
     TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
                                 "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
     TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
+                                "xmlns:tt=\"urn:camera:token\""));
+    TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
+                                "<wsa:To>http://127.0.0.1:"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_renew_request,
+                                "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_renew_request,
+                                "xmlns:tt=\"urn:camera:token\""));
+    TEST_ASSERT_NOT_NULL(strstr(reference_renew_request,
+                                "<wsa:To>http://127.0.0.1:"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request,
+                                "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request,
+                                "xmlns:tt=\"urn:camera:token\""));
+    TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request,
                                 "<wsa:To>http://127.0.0.1:"));
 }
 
