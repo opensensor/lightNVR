@@ -221,12 +221,15 @@ it('resets fallback transport when the tile receives a different stream',async()
   } finally {await browser.close();}
 });
 
-it.each(['exhausted','unrecoverable','native'])(
+it.each(['exhausted','networkExhausted','unrecoverable','native'])(
   '%s recovery falls back when go2rtc was only auto-detected',async branch=>{
     const {browser,page}=await openPlayer({enabled:false,nativePlayer:branch==='native'});
     try {
       if(branch==='native') await page.locator('video').dispatchEvent('error');
-      else await page.evaluate(value=>window.emitFatal(value==='exhausted'?'media':'other',value==='exhausted'?4:1),branch);
+      else await page.evaluate(value=>window.emitFatal(
+        value==='exhausted'?'media':value==='networkExhausted'?'network':'other',
+        value==='exhausted'||value==='networkExhausted'?4:1,
+      ),branch);
       expect(await page.evaluate(()=>window.errors)).toEqual([]);
       await page.waitForFunction(currentBranch=>{
         const fallbackUrl='/hls/fixture%20camera/index.m3u8';
@@ -313,5 +316,18 @@ it('force-native preference bypasses go2rtc settings and uses native recovery',a
     await page.locator('video').dispatchEvent('error');
     await page.waitForFunction(()=>window.failures.includes('live.hlsStreamFailedToLoad'));
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
+  } finally {await browser.close();}
+});
+
+it('force-native selects the lightNVR manifest when hls.js is available',async()=>{
+  const {browser,page}=await openPlayer({enabled:true,forceNative:true,nativePlayer:false});
+  try {
+    const nativeManifest='/hls/fixture%20camera/index.m3u8';
+    await page.waitForFunction(url=>window.requests.some(r=>r.url===url)&&
+      window.players.some(p=>!p.destroyed&&p.sources.includes(url)),nativeManifest);
+    expect(await page.evaluate(()=>window.requests.length>0&&
+      window.requests.every(r=>r.url==='/hls/fixture%20camera/index.m3u8'))).toBe(true);
+    expect(await page.evaluate(()=>window.nativeSources.length)).toBe(0);
+    expect(await page.evaluate(()=>window.settingsReads.includes('enabled'))).toBe(false);
   } finally {await browser.close();}
 });
