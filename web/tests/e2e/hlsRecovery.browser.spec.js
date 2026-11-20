@@ -204,12 +204,15 @@ it('resets fallback transport when the tile receives a different stream',async()
   } finally {await browser.close();}
 });
 
-it.each(['exhausted','unrecoverable','native'])(
+it.each(['exhausted','networkExhausted','unrecoverable','native'])(
   '%s recovery falls back when go2rtc was only auto-detected',async branch=>{
     const {browser,page}=await openPlayer({enabled:false,nativePlayer:branch==='native'});
     try {
       if(branch==='native') await page.locator('video').dispatchEvent('error');
-      else await page.evaluate(value=>window.emitFatal(value==='exhausted'?'media':'other',value==='exhausted'?4:1),branch);
+      else await page.evaluate(value=>window.emitFatal(
+        value==='exhausted'?'media':value==='networkExhausted'?'network':'other',
+        value==='exhausted'||value==='networkExhausted'?4:1,
+      ),branch);
       expect(await page.evaluate(()=>window.errors)).toEqual([]);
       await page.waitForFunction(currentBranch=>{
         const fallbackUrl='/hls/fixture%20camera/index.m3u8';
