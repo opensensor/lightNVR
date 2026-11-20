@@ -350,19 +350,22 @@ static char *create_onvif_request(const char *username, const char *password,
     snprintf(soap_request, envelope_size,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
         "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
-                   "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\">"
-        "<s:Header%s>"
+                   "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" "
+                   "xmlns:onvif=\"urn:lightsensor:onvif:internal\">"
+        "<s:Header>"
             "<wsa:MessageID>urn:uuid:%s</wsa:MessageID>"
             "%s"
             "<wsa:Action>%s</wsa:Action>"
-            "%s"
+            "<onvif:RefParams%s>%s</onvif:RefParams>"
             "%s"
         "</s:Header>"
         "<s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
                 "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
         "</s:Envelope>",
-        ref_namespaces ? ref_namespaces : "", uuid, destination_xml, action,
-        ref_params ? ref_params : "", security_header, request_body);
+        uuid, destination_xml, action,
+        ref_namespaces ? ref_namespaces : "",
+        ref_params ? ref_params : "",
+        security_header, request_body);
 
     free(security_header);
     free(destination_xml);
