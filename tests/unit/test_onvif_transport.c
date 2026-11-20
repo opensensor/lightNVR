@@ -665,11 +665,31 @@ static void test_subscription_reference_parameters_become_soap_headers(void) {
     ezxml_t parsed = ezxml_parse_str(request, strlen(request));
     TEST_ASSERT_NOT_NULL(parsed);
     TEST_ASSERT_EQUAL_STRING("", ezxml_error(parsed));
+    TEST_ASSERT_NOT_NULL(child_by_local_name(child_by_local_name(parsed, "Header"),
+                                             "Token"));
     ezxml_free(parsed);
     free(request);
     free(namespaces);
     free(params);
     free(address);
+}
+
+static void test_subscription_reference_cannot_rebind_soap_namespace(void) {
+    const char *reply =
+        "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
+        "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\"><s:Body>"
+        "<CreatePullPointSubscriptionResponse><SubscriptionReference>"
+        "<wsa:Address>http://camera/onvif/pull</wsa:Address>"
+        "<wsa:ReferenceParameters xmlns:s=\"urn:wrong-soap-namespace\">"
+        "<s:Token>abc</s:Token></wsa:ReferenceParameters>"
+        "</SubscriptionReference></CreatePullPointSubscriptionResponse>"
+        "</s:Body></s:Envelope>";
+    char *address = NULL, *params = NULL, *namespaces = NULL;
+    TEST_ASSERT_FALSE(extract_subscription_endpoint_reference(reply, &address,
+                                                               &params, &namespaces));
+    TEST_ASSERT_NULL(address);
+    TEST_ASSERT_NULL(params);
+    TEST_ASSERT_NULL(namespaces);
 }
 
 static void test_motion_requires_asserted_state_not_truthy_metadata(void) {
@@ -741,6 +761,7 @@ int main(void) {
     RUN_TEST(test_motorcycle_class_precedes_bicycle_substrings);
     RUN_TEST(test_malformed_motion_message_uses_truthy_fallback);
     RUN_TEST(test_subscription_reference_parameters_become_soap_headers);
+    RUN_TEST(test_subscription_reference_cannot_rebind_soap_namespace);
     RUN_TEST(test_motion_requires_asserted_state_not_truthy_metadata);
     RUN_TEST(test_class_flags_ignore_camera_metadata);
     return UNITY_END();

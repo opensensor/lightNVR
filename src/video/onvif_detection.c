@@ -611,6 +611,19 @@ static bool extract_subscription_endpoint_reference(const char *response,
                             const char *name = node->attr[i];
                             if (strcmp(name, "xmlns") != 0 && strncmp(name, "xmlns:", 6) != 0)
                                 continue;
+                            /* Keep SOAP and WS-Addressing header names bound to their
+                             * required namespaces. Camera-supplied bindings may only
+                             * provide namespaces for reference parameter children. */
+                            if (strcmp(name, "xmlns:s") == 0 ||
+                                strcmp(name, "xmlns:wsa") == 0) {
+                                const char *expected = strcmp(name, "xmlns:s") == 0 ?
+                                    "http://www.w3.org/2003/05/soap-envelope" :
+                                    "http://www.w3.org/2005/08/addressing";
+                                if (strcmp(node->attr[i + 1], expected) != 0) ok = false;
+                                continue;
+                            }
+                            if (strcmp(name, "xmlns:xml") == 0 ||
+                                strcmp(name, "xmlns:xmlns") == 0) continue;
                             bool seen = false;
                             for (size_t j = 0; j < count; j++)
                                 if (strcmp(name, names[j]) == 0) seen = true;
