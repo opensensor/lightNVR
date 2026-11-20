@@ -3160,36 +3160,75 @@ unsafe extern "C" fn extract_subscription_endpoint_reference(
                                     6 as size_t,
                                 ) != 0 as ::core::ffi::c_int)
                             {
-                                let mut seen: bool = r#false != 0;
-                                let mut j: size_t = 0 as size_t;
-                                while j < count {
-                                    if strcmp(name, names[j]) == 0 as ::core::ffi::c_int {
-                                        seen = r#true != 0;
-                                    }
-                                    j = j.wrapping_add(1);
-                                }
-                                if !seen {
-                                    if count
-                                        >= ::core::mem::size_of::<[*const ::core::ffi::c_char; 32]>(
-                                        )
-                                        .wrapping_div(
-                                            ::core::mem::size_of::<*const ::core::ffi::c_char>(),
-                                        )
-                                        || !append_reference_namespace(
-                                            &raw mut namespaces as *mut ::core::ffi::c_char,
-                                            ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
-                                            name,
-                                            *(*node)
-                                                .attr
-                                                .offset(i.wrapping_add(1 as size_t) as isize),
-                                        )
+                                if strcmp(name, b"xmlns:s\0".as_ptr() as *const ::core::ffi::c_char)
+                                    == 0 as ::core::ffi::c_int
+                                    || strcmp(
+                                        name,
+                                        b"xmlns:wsa\0".as_ptr() as *const ::core::ffi::c_char,
+                                    ) == 0 as ::core::ffi::c_int
+                                {
+                                    let mut expected: *const ::core::ffi::c_char = if strcmp(
+                                        name,
+                                        b"xmlns:s\0".as_ptr() as *const ::core::ffi::c_char,
+                                    ) == 0
+                                        as ::core::ffi::c_int
+                                    {
+                                        b"http://www.w3.org/2003/05/soap-envelope\0".as_ptr()
+                                            as *const ::core::ffi::c_char
+                                    } else {
+                                        b"http://www.w3.org/2005/08/addressing\0".as_ptr()
+                                            as *const ::core::ffi::c_char
+                                    };
+                                    if strcmp(
+                                        *(*node).attr.offset(i.wrapping_add(1 as size_t) as isize),
+                                        expected,
+                                    ) != 0 as ::core::ffi::c_int
                                     {
                                         ok = r#false != 0;
-                                        break;
-                                    } else {
-                                        let c2rust_fresh2 = count;
-                                        count = count.wrapping_add(1);
-                                        names[c2rust_fresh2] = name;
+                                    }
+                                } else if !(strcmp(
+                                    name,
+                                    b"xmlns:xml\0".as_ptr() as *const ::core::ffi::c_char,
+                                ) == 0 as ::core::ffi::c_int
+                                    || strcmp(
+                                        name,
+                                        b"xmlns:xmlns\0".as_ptr() as *const ::core::ffi::c_char,
+                                    ) == 0 as ::core::ffi::c_int)
+                                {
+                                    let mut seen: bool = r#false != 0;
+                                    let mut j: size_t = 0 as size_t;
+                                    while j < count {
+                                        if strcmp(name, names[j]) == 0 as ::core::ffi::c_int {
+                                            seen = r#true != 0;
+                                        }
+                                        j = j.wrapping_add(1);
+                                    }
+                                    if !seen {
+                                        if count
+                                            >= ::core::mem::size_of::<
+                                                [*const ::core::ffi::c_char; 32],
+                                            >()
+                                            .wrapping_div(::core::mem::size_of::<
+                                                *const ::core::ffi::c_char,
+                                            >(
+                                            ))
+                                            || !append_reference_namespace(
+                                                &raw mut namespaces as *mut ::core::ffi::c_char,
+                                                ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(
+                                                ),
+                                                name,
+                                                *(*node)
+                                                    .attr
+                                                    .offset(i.wrapping_add(1 as size_t) as isize),
+                                            )
+                                        {
+                                            ok = r#false != 0;
+                                            break;
+                                        } else {
+                                            let c2rust_fresh2 = count;
+                                            count = count.wrapping_add(1);
+                                            names[c2rust_fresh2] = name;
+                                        }
                                     }
                                 }
                             }
