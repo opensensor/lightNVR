@@ -1321,11 +1321,12 @@ static void note_pull_failure(const char *camera_url) {
         }
         subscription->consecutive_pull_failures++;
 
+        const char *camera_id = url_sanitize_for_logging(camera_url);
         if (subscription->consecutive_pull_failures ==
             ONVIF_PULL_FAILURE_WARN_COUNT) {
             log_warn("ONVIF PullPoint for %s has failed %d consecutive pulls; "
                      "retaining the same subscription",
-                     camera_url, subscription->consecutive_pull_failures);
+                     camera_id, subscription->consecutive_pull_failures);
         }
 
         if (subscription->consecutive_pull_failures >=
@@ -1334,7 +1335,7 @@ static void note_pull_failure(const char *camera_url) {
                 ONVIF_PULL_FAILURE_REFRESH_SECONDS) {
             log_warn("ONVIF PullPoint for %s has not completed a pull for %d "
                      "seconds; unsubscribing before refresh",
-                     camera_url, ONVIF_PULL_FAILURE_REFRESH_SECONDS);
+                     camera_id, ONVIF_PULL_FAILURE_REFRESH_SECONDS);
             subscription->reserved = true;
             pthread_mutex_unlock(&subscription_mutex);
             unsubscribe_subscription_locked(subscription);
