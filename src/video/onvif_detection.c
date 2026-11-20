@@ -1273,12 +1273,18 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         // Store subscription address
         safe_strcpy(subscriptions[slot].subscription_address, subscription_address, 
                 sizeof(subscriptions[slot].subscription_address), 0);
-        if (reference_parameters)
+        if (reference_parameters) {
             safe_strcpy(subscriptions[slot].reference_parameters, reference_parameters,
                         sizeof(subscriptions[slot].reference_parameters), 0);
-        if (reference_namespaces)
+        } else {
+            subscriptions[slot].reference_parameters[0] = '\0';
+        }
+        if (reference_namespaces) {
             safe_strcpy(subscriptions[slot].reference_namespaces, reference_namespaces,
                         sizeof(subscriptions[slot].reference_namespaces), 0);
+        } else {
+            subscriptions[slot].reference_namespaces[0] = '\0';
+        }
         safe_strcpy(subscriptions[slot].service_url, attempted_event_url,
                     sizeof(subscriptions[slot].service_url), 0);
         
