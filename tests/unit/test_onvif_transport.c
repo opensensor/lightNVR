@@ -120,9 +120,10 @@ static void test_soap_authentication_body_is_not_forwarded_to_redirect_target(vo
     destination = listen_local(&destination_port);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, destination);
+    CURL *handle = create_curl_handle();
+    TEST_ASSERT_NOT_NULL(handle);
     pthread_t worker;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, redirect_server, NULL));
-    CURL *handle = create_curl_handle(); TEST_ASSERT_NOT_NULL(handle);
     curl_easy_setopt(handle, CURLOPT_PROXY, "");
     curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT_MS, 500L);
     char url[128]; snprintf(url, sizeof(url), "http://127.0.0.1:%u/onvif/events?token=fixture-token", port);
