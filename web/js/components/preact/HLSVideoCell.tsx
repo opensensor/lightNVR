@@ -96,7 +96,7 @@ export function HLSVideoCell({
 
   useEffect(() => {
     setPrivacyActive(!!stream.privacy_mode);
-  }, [streamId, stream.privacy_mode]);
+  }, [streamId, stream.name, stream.privacy_mode]);
 
   // HLS source state: 'go2rtc' (go2rtc's dynamic HLS), 'native' (lightNVR FFmpeg-based HLS), or 'failed'
   // Default to native lightNVR HLS (reliable, always running when streaming enabled)
@@ -110,7 +110,7 @@ export function HLSVideoCell({
   // preserving runtime fallback decisions within the same stream instance.
   useEffect(() => {
     setHlsMode(stream && stream.go2rtc_hls_available ? 'go2rtc' : 'native');
-  }, [streamId, stream?.go2rtc_hls_available]);
+  }, [streamId, stream?.name, stream?.go2rtc_hls_available]);
 
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
