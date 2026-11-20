@@ -505,22 +505,13 @@ static void test_relative_subscription_preserves_full_path(void) {
 }
 
 static void test_full_registry_rejects_before_remote_create(void) {
-    /* TODO: initialize curl_handle for this test using existing fixture helper(s). */
-    /* TODO: start existing loopback listener helper and build camera URL from its port. */
-
     unsigned short port;
     origin = listen_local(&port);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
     char camera_url[128];
     snprintf(camera_url, sizeof(camera_url), "http://127.0.0.1:%u", port);
 
-
-    /* Replace with loopback URL once helper data is available. */
     subscription_count = MAX_SUBSCRIPTIONS;
-
-    /* TODO: assert loopback listener observed zero incoming connections/requests. */
-    /* TODO: stop listener and cleanup curl_handle via existing fixture helper(s). */
-
     for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
         subscriptions[i].active = true;
         snprintf(subscriptions[i].camera_url, sizeof(subscriptions[i].camera_url),
