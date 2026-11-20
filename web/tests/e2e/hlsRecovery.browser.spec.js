@@ -188,6 +188,23 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
   } finally {await browser.close();}
 });
 
+it('resets local privacy state when a different stream has the same server flag',async()=>{
+  const {browser,page}=await openPlayer({enabled:true,showControls:true});
+  try {
+    await page.locator('button[aria-label="live.pauseForPrivacy"]').click();
+    await page.locator('.btn-primary').click();
+    await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'visible'});
+    await page.evaluate(()=>{
+      window.config.streamName='second camera';
+      window.config.streamId='second';
+      window.mount();
+    });
+    await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'detached'});
+    expect(await page.evaluate(()=>document.querySelector('.video-cell')?.dataset.streamName)).toBe('second camera');
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
+  } finally {await browser.close();}
+});
+
 it('resets fallback transport when the tile receives a different stream',async()=>{
   const {browser,page}=await openPlayer({enabled:false});
   try {
