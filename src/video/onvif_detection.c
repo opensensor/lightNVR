@@ -1433,11 +1433,8 @@ static bool xml_find_active_motion(ezxml_t node, char *label, size_t label_sz) {
  * without accepting a truthy Value from an unrelated field in the payload. */
 static bool malformed_motion_element_asserted(const char *response) {
     for (const char *tag = strchr(response, '<'); tag; tag = strchr(tag + 1, '<')) {
-        const char *gt_end = strchr(tag, '>');
-        const char *lt_end = strchr(tag + 1, '<');
-        const char *end = gt_end;
-        if (!end || (lt_end && lt_end < end)) end = lt_end;
-        if (!end) end = tag + strlen(tag);
+        const char *end = tag + 1;
+        while (*end && *end != '<' && *end != '>') end++;
         const char *name = tag + 1;
         const char *name_end = name;
         while (name_end < end && *name_end != ' ' && *name_end != '\t' &&
