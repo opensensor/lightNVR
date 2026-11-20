@@ -1890,18 +1890,26 @@ unsafe extern "C" fn child_by_local_name(
     }
     return ::core::ptr::null_mut::<ezxml>();
 }
-unsafe extern "C" fn extract_subscription_address(
+unsafe extern "C" fn extract_subscription_endpoint_reference(
     mut response: *const ::core::ffi::c_char,
-) -> *mut ::core::ffi::c_char {
-    if response.is_null() {
-        return ::core::ptr::null_mut::<::core::ffi::c_char>();
+    mut out_address: *mut *mut ::core::ffi::c_char,
+    mut out_ref_params_xml: *mut *mut ::core::ffi::c_char,
+) -> bool {
+    if !out_address.is_null() {
+        *out_address = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    }
+    if !out_ref_params_xml.is_null() {
+        *out_ref_params_xml = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    }
+    if response.is_null() || out_address.is_null() {
+        return r#false != 0;
     }
     let mut copy: *mut ::core::ffi::c_char = strdup(response);
     if copy.is_null() {
-        return ::core::ptr::null_mut::<::core::ffi::c_char>();
+        return r#false != 0;
     }
     let mut root: ezxml_t = ezxml_parse_str(copy, strlen(copy));
-    let mut address: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut ok: bool = r#false != 0;
     if !root.is_null() && *ezxml_error(root).offset(0isize) == 0 {
         let mut body: ezxml_t =
             child_by_local_name(root, b"Body\0".as_ptr() as *const ::core::ffi::c_char);
@@ -1917,17 +1925,48 @@ unsafe extern "C" fn extract_subscription_address(
             reference,
             b"Address\0".as_ptr() as *const ::core::ffi::c_char,
         );
+        let mut ref_params: ezxml_t = child_by_local_name(
+            reference,
+            b"ReferenceParameters\0".as_ptr() as *const ::core::ffi::c_char,
+        );
         if !destination.is_null()
             && !(*destination).txt.is_null()
             && *(*destination).txt.offset(0isize) as ::core::ffi::c_int != 0
         {
-            address = strdup((*destination).txt);
+            *out_address = strdup((*destination).txt);
+            if !(*out_address).is_null() {
+                ok = r#true != 0;
+                if !out_ref_params_xml.is_null() && !ref_params.is_null() {
+                    let mut xml: *mut ::core::ffi::c_char = ezxml_toxml(ref_params);
+                    if !xml.is_null() && *xml.offset(0isize) as ::core::ffi::c_int != 0 {
+                        *out_ref_params_xml = strdup(xml);
+                    }
+                    if !xml.is_null() {
+                        free(xml as *mut ::core::ffi::c_void);
+                    }
+                }
+            }
         }
     }
     if !root.is_null() {
         ezxml_free(root);
     }
     free(copy as *mut ::core::ffi::c_void);
+    return ok;
+}
+unsafe extern "C" fn extract_subscription_address(
+    mut response: *const ::core::ffi::c_char,
+) -> *mut ::core::ffi::c_char {
+    let mut address: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut ref_params_xml: *mut ::core::ffi::c_char =
+        ::core::ptr::null_mut::<::core::ffi::c_char>();
+    if !extract_subscription_endpoint_reference(response, &raw mut address, &raw mut ref_params_xml)
+    {
+        return ::core::ptr::null_mut::<::core::ffi::c_char>();
+    }
+    if !ref_params_xml.is_null() {
+        free(ref_params_xml as *mut ::core::ffi::c_void);
+    }
     return address;
 }
 unsafe extern "C" fn descendant_by_local_name(
@@ -4159,17 +4198,12 @@ unsafe extern "C" fn malformed_motion_element_asserted(
 ) -> bool {
     let mut tag: *const ::core::ffi::c_char = strchr(response, '<' as ::core::ffi::c_int);
     while !tag.is_null() {
-        let mut gt_end: *const ::core::ffi::c_char = strchr(tag, '>' as ::core::ffi::c_int);
-        let mut lt_end: *const ::core::ffi::c_char = strchr(
-            tag.offset(1 as ::core::ffi::c_int as isize),
-            '<' as ::core::ffi::c_int,
-        );
-        let mut end: *const ::core::ffi::c_char = gt_end;
-        if end.is_null() || !lt_end.is_null() && lt_end < end {
-            end = lt_end;
-        }
-        if end.is_null() {
-            end = tag.offset(strlen(tag) as isize);
+        let mut end: *const ::core::ffi::c_char = tag.offset(1 as ::core::ffi::c_int as isize);
+        while *end as ::core::ffi::c_int != 0
+            && *end as ::core::ffi::c_int != '<' as ::core::ffi::c_int
+            && *end as ::core::ffi::c_int != '>' as ::core::ffi::c_int
+        {
+            end = end.offset(1);
         }
         let mut name: *const ::core::ffi::c_char = tag.offset(1 as ::core::ffi::c_int as isize);
         let mut name_end: *const ::core::ffi::c_char = name;
