@@ -814,6 +814,7 @@ export function HLSVideoCell({
       onPointerCancel={mobileGestures.onPointerCancel}
       onContextMenu={mobileGestures.onContextMenu}
       onClick={(event) => {
+        if (privacyActive) return;
         if (mobileGestures.onClick(event)) return;
         if (shouldToggleFullscreenFromTap(event, alwaysFullscreenOnTap, zoom.isZoomed,
           cellRef.current, getNativeFullscreenElement())) {
@@ -821,6 +822,7 @@ export function HLSVideoCell({
         }
       }}
       onDblClick={(event) => {
+        if (privacyActive) return;
         if (shouldToggleFullscreenFromDoubleClick(
           event,
           alwaysFullscreenOnTap,
@@ -844,6 +846,8 @@ export function HLSVideoCell({
         touchAction: zoom.touchAction
       }}
     >
+      <div inert={privacyActive} aria-hidden={privacyActive}
+        style={{ position: 'relative', width: '100%', height: '100%' }}>
       {/* Video element */}
       <video /* eslint-disable-line jsx-a11y/media-has-caption -- camera footage has no caption source */
         id={`video-${streamId.replace(/\s+/g, '-')}`}
@@ -1341,7 +1345,6 @@ export function HLSVideoCell({
       )}
 
       {/* Play button overlay (for browsers that block autoplay) */}
-      <div inert={privacyActive ? '' : undefined} aria-hidden={privacyActive}>
       {!isPlaying && !isLoading && !error && !privacyActive && (
         <div role="button" tabIndex={0} onKeyDown={clickOnActivationKey} aria-label={t('recordings.play')}
           className="play-overlay"

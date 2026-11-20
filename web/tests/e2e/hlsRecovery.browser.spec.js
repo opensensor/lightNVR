@@ -11,6 +11,7 @@ beforeAll(async () => {
       import {QueryClient,QueryClientProvider} from './js/query-client.ts';
       import {HLSVideoCell} from './js/components/preact/HLSVideoCell.tsx';
       window.players=[];window.requests=[];window.failures=[];window.errors=[];
+      window.fullscreenToggles=0;
       window.recoveries=[];window.settingsReads=[];window.nativeSources=[];window.cleanups=0;
       window.addEventListener('error',event=>{if(event instanceof ErrorEvent){window.errors.push(event.message);event.preventDefault();}});
       window.addEventListener('unhandledrejection',event=>{
@@ -42,10 +43,10 @@ beforeAll(async () => {
       };
       const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
       window.mount=()=>render(h(QueryClientProvider,{client},h(HLSVideoCell,{
-        stream:{name:'fixture camera',status:'Running',go2rtc_hls_available:true,
+        stream:{name:window.config.streamName||'fixture camera',status:'Running',go2rtc_hls_available:true,
           privacy_mode:!!window.config.privacyMode},
-        streamId:'fixture',showControls:!!window.config.showControls,showLabels:false,globalShowDetections:false,
-        onToggleFullscreen:()=>{},onTransportFailure:error=>window.failures.push(error)
+        streamId:window.config.streamId||'fixture',showControls:!!window.config.showControls,showLabels:false,globalShowDetections:false,
+        onToggleFullscreen:()=>{window.fullscreenToggles++;},onTransportFailure:error=>window.failures.push(error)
       })),document.getElementById('root'));
       window.unmount=()=>render(null,document.getElementById('root'));
       window.emitFatal=(type,count=1)=>{
@@ -147,6 +148,25 @@ it('focuses the resume control when privacy mode starts active',async()=>{
   try {
     await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='live.resumeStream');
     expect(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label'))).toBe('live.resumeStream');
+    expect(await page.locator('video').evaluate(video=>video.parentElement.inert)).toBe(true);
+    await page.locator('.video-cell').evaluate(cell=>cell.click());
+    expect(await page.evaluate(()=>window.fullscreenToggles)).toBe(0);
+  } finally {await browser.close();}
+});
+
+it('resets fallback transport when the tile receives a different stream',async()=>{
+  const {browser,page}=await openPlayer({enabled:false});
+  try {
+    await page.evaluate(()=>window.emitFatal('other'));
+    await page.waitForFunction(()=>window.requests.some(r=>r.url==='/hls/fixture%20camera/index.m3u8'));
+    await page.evaluate(()=>{
+      window.config.streamName='second camera';
+      window.config.streamId='second';
+      window.mount();
+    });
+    await page.waitForFunction(()=>window.players.some(p=>!p.destroyed&&
+      p.sources.some(s=>String(s?.src||s).includes('src=second%20camera'))));
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
 
