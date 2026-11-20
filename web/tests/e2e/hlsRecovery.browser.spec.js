@@ -298,3 +298,16 @@ it('force-native preference bypasses go2rtc settings and uses native recovery',a
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
+
+it('force-native uses native playback even when hls.js support is available',async()=>{
+  const {browser,page}=await openPlayer({enabled:true,forceNative:true,nativePlayer:false});
+  try {
+    const nativeManifest='/hls/fixture%20camera/index.m3u8';
+    await page.waitForFunction(url=>window.requests.some(r=>r.url===url)&&
+      window.nativeSources.includes(url),nativeManifest);
+    expect(await page.evaluate(()=>window.requests.length>0&&
+      window.requests.every(r=>r.url==='/hls/fixture%20camera/index.m3u8'))).toBe(true);
+    expect(await page.evaluate(()=>window.players.length)).toBe(0);
+    expect(await page.evaluate(()=>window.settingsReads.includes('enabled'))).toBe(false);
+  } finally {await browser.close();}
+});
