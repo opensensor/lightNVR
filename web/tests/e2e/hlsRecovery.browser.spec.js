@@ -260,16 +260,17 @@ it('aborts an in-flight manifest preflight on unmount without creating a player'
 });
 
 it('force-native preference bypasses go2rtc settings and uses native recovery',async()=>{
-  const {browser,page}=await openPlayer({enabled:true,forceNative:true});
+  const {browser,page}=await openPlayer({enabled:true,forceNative:true,nativePlayer:true});
   try {
     const nativeManifest='/hls/fixture%20camera/index.m3u8';
     await page.waitForFunction(url=>window.requests.some(r=>r.url===url)&&
-      window.players.some(p=>!p.destroyed&&p.sources.includes(url)),nativeManifest);
+      window.nativeSources.includes(url),nativeManifest);
     expect(await page.evaluate(()=>window.requests.length>0&&
       window.requests.every(r=>r.url==='/hls/fixture%20camera/index.m3u8'))).toBe(true);
+    expect(await page.evaluate(()=>window.players.length)).toBe(0);
     expect(await page.evaluate(()=>window.settingsReads.includes('enabled'))).toBe(false);
-    await page.evaluate(()=>window.players.find(p=>!p.destroyed).emit('error',{fatal:true,type:'other',details:'native fatal'}));
-    await page.waitForFunction(()=>window.failures.includes('native fatal'));
+    await page.locator('video').dispatchEvent('error');
+    await page.waitForFunction(()=>window.failures.includes('live.hlsStreamFailedToLoad'));
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
