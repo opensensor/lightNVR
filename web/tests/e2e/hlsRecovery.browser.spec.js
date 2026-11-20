@@ -79,7 +79,7 @@ beforeAll(async () => {
           startLoad(){this.starts++;}
           recoverMediaError(){this.mediaRecoveries++;}
         }` : args.path.endsWith('settings-utils.ts') ? `
-          export const isForceNativeHls=async()=>{window.settingsReads.push('forceNative');return !!window.config.forceNative;};
+          export const isForceNativeHls=async()=>{window.settingsReads.push('forceNative');if(window.config.rejectForceNative)throw new Error('settings unavailable');return !!window.config.forceNative;};
           export const isGo2rtcEnabled=async()=>{
             window.settingsReads.push('enabled');
             if(window.config.deferSettings) return new Promise(resolve=>window.resolveSettings=resolve);
@@ -109,7 +109,8 @@ async function openPlayer(config={}) {
     await page.goto('http://fixture.invalid/');
     await page.evaluate(value=>{window.config=value;},config);
     await page.addScriptTag({content:bundle});
-    await page.waitForFunction(()=>window.config.privacyMode ?
+    await page.waitForFunction(()=>window.config.expectInitFailure ? window.failures.length>0 :
+      window.config.privacyMode ?
       !!document.querySelector('button[aria-label="live.resumeStream"]') :
       window.config.deferSettings ? !!window.resolveSettings :
       window.config.deferManifest ? window.requests.length>0 :
@@ -120,6 +121,15 @@ async function openPlayer(config={}) {
     throw error;
   }
 }
+
+it('reports asynchronous initialization failures and stops loading',async()=>{
+  const {browser,page}=await openPlayer({rejectForceNative:true,expectInitFailure:true});
+  try {
+    expect(await page.evaluate(()=>window.failures)).toContain('settings unavailable');
+    expect(await page.locator('.retry-button').isVisible()).toBe(true);
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
+  } finally {await browser.close();}
+});
 
 it('keeps audio enabled when an older play request rejects',async()=>{
   const {browser,page}=await openPlayer({enabled:true,showControls:true});
