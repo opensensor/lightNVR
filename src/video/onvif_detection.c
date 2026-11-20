@@ -350,22 +350,19 @@ static char *create_onvif_request(const char *username, const char *password,
     snprintf(soap_request, envelope_size,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
         "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
-                   "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" "
-                   "xmlns:onvif=\"urn:lightsensor:onvif:internal\">"
-        "<s:Header>"
+                   "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\">"
+        "<s:Header%s>"
             "<wsa:MessageID>urn:uuid:%s</wsa:MessageID>"
             "%s"
             "<wsa:Action>%s</wsa:Action>"
-            "<onvif:RefParams%s>%s</onvif:RefParams>"
+            "%s"
             "%s"
         "</s:Header>"
         "<s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
                 "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
         "</s:Envelope>",
-        uuid, destination_xml, action,
-        ref_namespaces ? ref_namespaces : "",
-        ref_params ? ref_params : "",
-        security_header, request_body);
+        ref_namespaces ? ref_namespaces : "", uuid, destination_xml, action,
+        ref_params ? ref_params : "", security_header, request_body);
 
     free(security_header);
     free(destination_xml);
@@ -614,6 +611,19 @@ static bool extract_subscription_endpoint_reference(const char *response,
                             const char *name = node->attr[i];
                             if (strcmp(name, "xmlns") != 0 && strncmp(name, "xmlns:", 6) != 0)
                                 continue;
+                            /* Keep SOAP and WS-Addressing header names bound to their
+                             * required namespaces. Camera-supplied bindings may only
+                             * provide namespaces for reference parameter children. */
+                            if (strcmp(name, "xmlns:s") == 0 ||
+                                strcmp(name, "xmlns:wsa") == 0) {
+                                const char *expected = strcmp(name, "xmlns:s") == 0 ?
+                                    "http://www.w3.org/2003/05/soap-envelope" :
+                                    "http://www.w3.org/2005/08/addressing";
+                                if (strcmp(node->attr[i + 1], expected) != 0) ok = false;
+                                continue;
+                            }
+                            if (strcmp(name, "xmlns:xml") == 0 ||
+                                strcmp(name, "xmlns:xmlns") == 0) continue;
                             bool seen = false;
                             for (size_t j = 0; j < count; j++)
                                 if (strcmp(name, names[j]) == 0) seen = true;
