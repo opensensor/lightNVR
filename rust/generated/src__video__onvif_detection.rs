@@ -181,6 +181,10 @@ unsafe extern "C" {
         __s: *const ::core::ffi::c_char,
         __c: ::core::ffi::c_int,
     ) -> *mut ::core::ffi::c_char;
+    unsafe fn strrchr(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
     unsafe fn strstr(
         __haystack: *const ::core::ffi::c_char,
         __needle: *const ::core::ffi::c_char,
@@ -986,6 +990,8 @@ pub struct detection_result_t {
 pub struct onvif_subscription_t {
     pub camera_url: [::core::ffi::c_char; 512],
     pub subscription_address: [::core::ffi::c_char; 512],
+    pub reference_parameters: [::core::ffi::c_char; 2048],
+    pub reference_namespaces: [::core::ffi::c_char; 1024],
     pub service_url: [::core::ffi::c_char; 512],
     pub username: [::core::ffi::c_char; 64],
     pub password: [::core::ffi::c_char; 64],
@@ -1196,19 +1202,21 @@ pub const ONVIF_RESPONSE_MAX_BYTES: ::core::ffi::c_uint = (4 as ::core::ffi::c_u
 unsafe extern "C" fn secure_clear(mut data: *mut ::core::ffi::c_void, mut size: size_t) {
     let mut bytes: *mut ::core::ffi::c_uchar = data as *mut ::core::ffi::c_uchar;
     while !bytes.is_null() && {
-        let c2rust_fresh3 = size;
+        let c2rust_fresh5 = size;
         size = size.wrapping_sub(1);
-        c2rust_fresh3 > 0 as size_t
+        c2rust_fresh5 > 0 as size_t
     } {
-        let c2rust_fresh4 = bytes;
+        let c2rust_fresh6 = bytes;
         bytes = bytes.offset(1);
-        ::core::ptr::write_volatile(c2rust_fresh4, 0 as ::core::ffi::c_uchar);
+        ::core::ptr::write_volatile(c2rust_fresh6, 0 as ::core::ffi::c_uchar);
     }
 }
 pub const MAX_SUBSCRIPTIONS: ::core::ffi::c_int = 100 as ::core::ffi::c_int;
 static mut subscriptions: [onvif_subscription_t; 100] = [onvif_subscription_t {
     camera_url: [0; 512],
     subscription_address: [0; 512],
+    reference_parameters: [0; 2048],
+    reference_namespaces: [0; 1024],
     service_url: [0; 512],
     username: [0; 64],
     password: [0; 64],
@@ -1475,6 +1483,8 @@ unsafe extern "C" fn create_onvif_request(
     mut request_body: *const ::core::ffi::c_char,
     mut operation: onvif_operation_t,
     mut to: *const ::core::ffi::c_char,
+    mut ref_params: *const ::core::ffi::c_char,
+    mut ref_namespaces: *const ::core::ffi::c_char,
 ) -> *mut ::core::ffi::c_char {
     let mut action: *const ::core::ffi::c_char = onvif_operation_action(operation);
     if action.is_null() || request_body.is_null() {
@@ -1594,6 +1604,16 @@ unsafe extern "C" fn create_onvif_request(
         .wrapping_add(strlen(security_header))
         .wrapping_add(strlen(action))
         .wrapping_add(strlen(destination_xml))
+        .wrapping_add(if !ref_params.is_null() {
+            strlen(ref_params)
+        } else {
+            0 as size_t
+        })
+        .wrapping_add(if !ref_namespaces.is_null() {
+            strlen(ref_namespaces)
+        } else {
+            0 as size_t
+        })
         .wrapping_add(2048 as size_t);
     let mut soap_request: *mut ::core::ffi::c_char =
         malloc(envelope_size) as *mut ::core::ffi::c_char;
@@ -1605,11 +1625,21 @@ unsafe extern "C" fn create_onvif_request(
     snprintf(
         soap_request,
         envelope_size,
-        b"<?xml version=\"1.0\" encoding=\"UTF-8\"?><s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:wsa=\"http://www.w3.org/2005/08/addressing\"><s:Header><wsa:MessageID>urn:uuid:%s</wsa:MessageID>%s<wsa:Action>%s</wsa:Action>%s</s:Header><s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body></s:Envelope>\0"
+        b"<?xml version=\"1.0\" encoding=\"UTF-8\"?><s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:wsa=\"http://www.w3.org/2005/08/addressing\"><s:Header%s><wsa:MessageID>urn:uuid:%s</wsa:MessageID>%s<wsa:Action>%s</wsa:Action>%s%s</s:Header><s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body></s:Envelope>\0"
             .as_ptr() as *const ::core::ffi::c_char,
+        if !ref_namespaces.is_null() {
+            ref_namespaces
+        } else {
+            b"\0".as_ptr() as *const ::core::ffi::c_char
+        },
         &raw mut uuid as *mut ::core::ffi::c_char,
         destination_xml,
         action,
+        if !ref_params.is_null() {
+            ref_params
+        } else {
+            b"\0".as_ptr() as *const ::core::ffi::c_char
+        },
         security_header,
         request_body,
     );
@@ -1617,7 +1647,7 @@ unsafe extern "C" fn create_onvif_request(
     free(destination_xml as *mut ::core::ffi::c_void);
     return soap_request;
 }
-unsafe extern "C" fn perform_onvif_request_locked(
+unsafe extern "C" fn perform_onvif_request_with_reference_locked(
     mut handle: *mut ::core::ffi::c_void,
     mut full_url: *const ::core::ffi::c_char,
     mut username: *const ::core::ffi::c_char,
@@ -1625,6 +1655,8 @@ unsafe extern "C" fn perform_onvif_request_locked(
     mut request_body: *const ::core::ffi::c_char,
     mut operation: onvif_operation_t,
     mut status: *mut onvif_request_status_t,
+    mut ref_params: *const ::core::ffi::c_char,
+    mut ref_namespaces: *const ::core::ffi::c_char,
 ) -> *mut ::core::ffi::c_char {
     if !status.is_null() {
         memset(
@@ -1661,8 +1693,15 @@ unsafe extern "C" fn perform_onvif_request_locked(
         _log_stream_name,
         b"ONVIF Detection: Sending SOAP request\0".as_ptr() as *const ::core::ffi::c_char,
     );
-    let mut soap_request: *mut ::core::ffi::c_char =
-        create_onvif_request(username, password, request_body, operation, full_url);
+    let mut soap_request: *mut ::core::ffi::c_char = create_onvif_request(
+        username,
+        password,
+        request_body,
+        operation,
+        full_url,
+        ref_params,
+        ref_namespaces,
+    );
     if soap_request.is_null() {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
@@ -1798,6 +1837,27 @@ unsafe extern "C" fn perform_onvif_request_locked(
     }
     return chunk.memory;
 }
+unsafe extern "C" fn perform_onvif_request_locked(
+    mut handle: *mut ::core::ffi::c_void,
+    mut full_url: *const ::core::ffi::c_char,
+    mut username: *const ::core::ffi::c_char,
+    mut password: *const ::core::ffi::c_char,
+    mut request_body: *const ::core::ffi::c_char,
+    mut operation: onvif_operation_t,
+    mut status: *mut onvif_request_status_t,
+) -> *mut ::core::ffi::c_char {
+    return perform_onvif_request_with_reference_locked(
+        handle,
+        full_url,
+        username,
+        password,
+        request_body,
+        operation,
+        status,
+        ::core::ptr::null::<::core::ffi::c_char>(),
+        ::core::ptr::null::<::core::ffi::c_char>(),
+    );
+}
 unsafe extern "C" fn send_onvif_request_to_url(
     mut full_url: *const ::core::ffi::c_char,
     mut username: *const ::core::ffi::c_char,
@@ -1890,16 +1950,75 @@ unsafe extern "C" fn child_by_local_name(
     }
     return ::core::ptr::null_mut::<ezxml>();
 }
+unsafe extern "C" fn append_reference_namespace(
+    mut dst: *mut ::core::ffi::c_char,
+    mut capacity: size_t,
+    mut name: *const ::core::ffi::c_char,
+    mut value: *const ::core::ffi::c_char,
+) -> bool {
+    let mut used: size_t = strlen(dst);
+    let mut written: ::core::ffi::c_int = snprintf(
+        dst.offset(used as isize),
+        capacity.wrapping_sub(used),
+        b" %s=\"\0".as_ptr() as *const ::core::ffi::c_char,
+        name,
+    );
+    if written < 0 as ::core::ffi::c_int || written as size_t >= capacity.wrapping_sub(used) {
+        return r#false != 0;
+    }
+    used = used.wrapping_add(written as size_t);
+    let mut p: *const ::core::ffi::c_char = value;
+    while *p != 0 {
+        let mut escaped: *const ::core::ffi::c_char =
+            if *p as ::core::ffi::c_int == '&' as ::core::ffi::c_int {
+                b"&amp;\0".as_ptr() as *const ::core::ffi::c_char
+            } else if *p as ::core::ffi::c_int == '"' as ::core::ffi::c_int {
+                b"&quot;\0".as_ptr() as *const ::core::ffi::c_char
+            } else if *p as ::core::ffi::c_int == '<' as ::core::ffi::c_int {
+                b"&lt;\0".as_ptr() as *const ::core::ffi::c_char
+            } else {
+                ::core::ptr::null::<::core::ffi::c_char>()
+            };
+        let mut len: size_t = if !escaped.is_null() {
+            strlen(escaped)
+        } else {
+            1 as size_t
+        };
+        if len.wrapping_add(2 as size_t) > capacity.wrapping_sub(used) {
+            return r#false != 0;
+        }
+        if !escaped.is_null() {
+            memcpy(
+                dst.offset(used as isize) as *mut ::core::ffi::c_void,
+                escaped as *const ::core::ffi::c_void,
+                len,
+            );
+        } else {
+            *dst.offset(used as isize) = *p;
+        }
+        used = used.wrapping_add(len);
+        p = p.offset(1);
+    }
+    let c2rust_fresh3 = used;
+    used = used.wrapping_add(1);
+    *dst.offset(c2rust_fresh3 as isize) = '"' as ::core::ffi::c_char;
+    *dst.offset(used as isize) = '\0' as ::core::ffi::c_char;
+    return r#true != 0;
+}
 unsafe extern "C" fn extract_subscription_endpoint_reference(
     mut response: *const ::core::ffi::c_char,
     mut out_address: *mut *mut ::core::ffi::c_char,
     mut out_ref_params_xml: *mut *mut ::core::ffi::c_char,
+    mut out_ref_namespaces: *mut *mut ::core::ffi::c_char,
 ) -> bool {
     if !out_address.is_null() {
         *out_address = ::core::ptr::null_mut::<::core::ffi::c_char>();
     }
     if !out_ref_params_xml.is_null() {
         *out_ref_params_xml = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    }
+    if !out_ref_namespaces.is_null() {
+        *out_ref_namespaces = ::core::ptr::null_mut::<::core::ffi::c_char>();
     }
     if response.is_null() || out_address.is_null() {
         return r#false != 0;
@@ -1936,13 +2055,1157 @@ unsafe extern "C" fn extract_subscription_endpoint_reference(
             *out_address = strdup((*destination).txt);
             if !(*out_address).is_null() {
                 ok = r#true != 0;
-                if !out_ref_params_xml.is_null() && !ref_params.is_null() {
+                if !out_ref_params_xml.is_null()
+                    && !out_ref_namespaces.is_null()
+                    && !ref_params.is_null()
+                    && !(*ref_params).child.is_null()
+                {
                     let mut xml: *mut ::core::ffi::c_char = ezxml_toxml(ref_params);
-                    if !xml.is_null() && *xml.offset(0isize) as ::core::ffi::c_int != 0 {
-                        *out_ref_params_xml = strdup(xml);
+                    let mut start: *const ::core::ffi::c_char = if !xml.is_null() {
+                        strchr(xml, '>' as ::core::ffi::c_int)
+                    } else {
+                        ::core::ptr::null_mut::<::core::ffi::c_char>()
+                    };
+                    let mut end: *const ::core::ffi::c_char = if !xml.is_null() {
+                        strrchr(xml, '<' as ::core::ffi::c_int)
+                    } else {
+                        ::core::ptr::null_mut::<::core::ffi::c_char>()
+                    };
+                    if !start.is_null()
+                        && !end.is_null()
+                        && end > start.offset(1 as ::core::ffi::c_int as isize)
+                    {
+                        *out_ref_params_xml = strndup(
+                            start.offset(1 as ::core::ffi::c_int as isize),
+                            (end.offset_from(start) - 1isize) as size_t,
+                        );
                     }
                     if !xml.is_null() {
                         free(xml as *mut ::core::ffi::c_void);
+                    }
+                    let mut namespaces: [::core::ffi::c_char; 1024] = [
+                        0 as ::core::ffi::c_char,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ];
+                    let mut names: [*const ::core::ffi::c_char; 32] = [
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                        ::core::ptr::null::<::core::ffi::c_char>(),
+                    ];
+                    let mut count: size_t = 0 as size_t;
+                    let mut node: ezxml_t = ref_params;
+                    while !node.is_null() {
+                        let mut i: size_t = 0 as size_t;
+                        while !(*node).attr.is_null()
+                            && !(*(*node).attr.offset(i as isize)).is_null()
+                        {
+                            let mut name: *const ::core::ffi::c_char =
+                                *(*node).attr.offset(i as isize);
+                            if !(strcmp(name, b"xmlns\0".as_ptr() as *const ::core::ffi::c_char)
+                                != 0 as ::core::ffi::c_int
+                                && strncmp(
+                                    name,
+                                    b"xmlns:\0".as_ptr() as *const ::core::ffi::c_char,
+                                    6 as size_t,
+                                ) != 0 as ::core::ffi::c_int)
+                            {
+                                let mut seen: bool = r#false != 0;
+                                let mut j: size_t = 0 as size_t;
+                                while j < count {
+                                    if strcmp(name, names[j]) == 0 as ::core::ffi::c_int {
+                                        seen = r#true != 0;
+                                    }
+                                    j = j.wrapping_add(1);
+                                }
+                                if !seen {
+                                    if count
+                                        >= ::core::mem::size_of::<[*const ::core::ffi::c_char; 32]>(
+                                        )
+                                        .wrapping_div(
+                                            ::core::mem::size_of::<*const ::core::ffi::c_char>(),
+                                        )
+                                        || !append_reference_namespace(
+                                            &raw mut namespaces as *mut ::core::ffi::c_char,
+                                            ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
+                                            name,
+                                            *(*node)
+                                                .attr
+                                                .offset(i.wrapping_add(1 as size_t) as isize),
+                                        )
+                                    {
+                                        ok = r#false != 0;
+                                        break;
+                                    } else {
+                                        let c2rust_fresh2 = count;
+                                        count = count.wrapping_add(1);
+                                        names[c2rust_fresh2] = name;
+                                    }
+                                }
+                            }
+                            i = i.wrapping_add(2 as size_t);
+                        }
+                        if !ok {
+                            break;
+                        }
+                        node = (*node).parent;
+                    }
+                    if ok {
+                        *out_ref_namespaces =
+                            strdup(&raw mut namespaces as *mut ::core::ffi::c_char);
+                    }
+                    if (*out_ref_params_xml).is_null() || (*out_ref_namespaces).is_null() {
+                        ok = r#false != 0;
                     }
                 }
             }
@@ -1952,22 +3215,19 @@ unsafe extern "C" fn extract_subscription_endpoint_reference(
         ezxml_free(root);
     }
     free(copy as *mut ::core::ffi::c_void);
+    if !ok {
+        free(*out_address as *mut ::core::ffi::c_void);
+        *out_address = ::core::ptr::null_mut::<::core::ffi::c_char>();
+        if !out_ref_params_xml.is_null() {
+            free(*out_ref_params_xml as *mut ::core::ffi::c_void);
+            *out_ref_params_xml = ::core::ptr::null_mut::<::core::ffi::c_char>();
+        }
+        if !out_ref_namespaces.is_null() {
+            free(*out_ref_namespaces as *mut ::core::ffi::c_void);
+            *out_ref_namespaces = ::core::ptr::null_mut::<::core::ffi::c_char>();
+        }
+    }
     return ok;
-}
-unsafe extern "C" fn extract_subscription_address(
-    mut response: *const ::core::ffi::c_char,
-) -> *mut ::core::ffi::c_char {
-    let mut address: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
-    let mut ref_params_xml: *mut ::core::ffi::c_char =
-        ::core::ptr::null_mut::<::core::ffi::c_char>();
-    if !extract_subscription_endpoint_reference(response, &raw mut address, &raw mut ref_params_xml)
-    {
-        return ::core::ptr::null_mut::<::core::ffi::c_char>();
-    }
-    if !ref_params_xml.is_null() {
-        free(ref_params_xml as *mut ::core::ffi::c_void);
-    }
-    return address;
 }
 unsafe extern "C" fn descendant_by_local_name(
     mut node: ezxml_t,
@@ -2496,7 +3756,7 @@ unsafe extern "C" fn send_subscription_request(
     }
     while attempts < ONVIF_PULL_DROP_MAX_ATTEMPTS {
         attempts += 1;
-        response = perform_onvif_request_locked(
+        response = perform_onvif_request_with_reference_locked(
             (*subscription).curl,
             target_url,
             &raw mut (*subscription).username as *mut ::core::ffi::c_char,
@@ -2504,6 +3764,8 @@ unsafe extern "C" fn send_subscription_request(
             request_body,
             operation,
             &raw mut status,
+            &raw mut (*subscription).reference_parameters as *mut ::core::ffi::c_char,
+            &raw mut (*subscription).reference_namespaces as *mut ::core::ffi::c_char,
         );
         if !response.is_null()
             || !is_transport_drop(&raw mut status)
@@ -3556,28 +4818,47 @@ unsafe extern "C" fn get_subscription(
         release_subscription_reservation(slot);
         return ::core::ptr::null_mut::<onvif_subscription_t>();
     }
-    let mut subscription_address: *mut ::core::ffi::c_char = extract_subscription_address(response);
+    let mut subscription_address: *mut ::core::ffi::c_char =
+        ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut reference_parameters: *mut ::core::ffi::c_char =
+        ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut reference_namespaces: *mut ::core::ffi::c_char =
+        ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut parsed: bool = extract_subscription_endpoint_reference(
+        response,
+        &raw mut subscription_address,
+        &raw mut reference_parameters,
+        &raw mut reference_namespaces,
+    );
     let mut lease_seconds: ::core::ffi::c_int = subscription_lease_seconds(response);
     free(response as *mut ::core::ffi::c_void);
-    if subscription_address.is_null() {
+    if !parsed {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Failed to extract subscription address\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Failed to extract subscription endpoint reference\0".as_ptr()
+                as *const ::core::ffi::c_char,
         );
         release_subscription_reservation(slot);
         return ::core::ptr::null_mut::<onvif_subscription_t>();
     }
-    if strlen(subscription_address) >= ::core::mem::size_of::<[::core::ffi::c_char; 512]>() {
+    if strlen(subscription_address) >= ::core::mem::size_of::<[::core::ffi::c_char; 512]>()
+        || !reference_parameters.is_null()
+            && strlen(reference_parameters) >= ::core::mem::size_of::<[::core::ffi::c_char; 2048]>()
+        || !reference_namespaces.is_null()
+            && strlen(reference_namespaces) >= ::core::mem::size_of::<[::core::ffi::c_char; 1024]>()
+    {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
             _log_stream_name,
-            b"ONVIF subscription address exceeds local capacity; rejecting it\0".as_ptr()
+            b"ONVIF subscription endpoint reference exceeds local capacity; rejecting it\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
         free(subscription_address as *mut ::core::ffi::c_void);
+        free(reference_parameters as *mut ::core::ffi::c_void);
+        free(reference_namespaces as *mut ::core::ffi::c_void);
         release_subscription_reservation(slot);
         return ::core::ptr::null_mut::<onvif_subscription_t>();
     }
@@ -3588,6 +4869,8 @@ unsafe extern "C" fn get_subscription(
         );
         if slot_lock.is_null() {
             free(subscription_address as *mut ::core::ffi::c_void);
+            free(reference_parameters as *mut ::core::ffi::c_void);
+            free(reference_namespaces as *mut ::core::ffi::c_void);
             subscriptions[slot as usize].reserved = r#false != 0;
             pthread_mutex_unlock(&raw mut subscription_mutex);
             return ::core::ptr::null_mut::<onvif_subscription_t>();
@@ -3631,6 +4914,26 @@ unsafe extern "C" fn get_subscription(
             ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
             0 as size_t,
         );
+        if !reference_parameters.is_null() {
+            safe_strcpy(
+                &raw mut (*(&raw mut subscriptions as *mut onvif_subscription_t)
+                    .offset(slot as isize))
+                .reference_parameters as *mut ::core::ffi::c_char,
+                reference_parameters,
+                ::core::mem::size_of::<[::core::ffi::c_char; 2048]>(),
+                0 as size_t,
+            );
+        }
+        if !reference_namespaces.is_null() {
+            safe_strcpy(
+                &raw mut (*(&raw mut subscriptions as *mut onvif_subscription_t)
+                    .offset(slot as isize))
+                .reference_namespaces as *mut ::core::ffi::c_char,
+                reference_namespaces,
+                ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
+                0 as size_t,
+            );
+        }
         safe_strcpy(
             &raw mut (*(&raw mut subscriptions as *mut onvif_subscription_t).offset(slot as isize))
                 .service_url as *mut ::core::ffi::c_char,
@@ -3653,6 +4956,8 @@ unsafe extern "C" fn get_subscription(
             lease_seconds,
         );
         free(subscription_address as *mut ::core::ffi::c_void);
+        free(reference_parameters as *mut ::core::ffi::c_void);
+        free(reference_namespaces as *mut ::core::ffi::c_void);
         pthread_mutex_unlock(&raw mut subscription_mutex);
         return (&raw mut subscriptions as *mut onvif_subscription_t).offset(slot as isize);
     }
@@ -3663,6 +4968,8 @@ unsafe extern "C" fn get_subscription(
         b"No space for new ONVIF subscription\0".as_ptr() as *const ::core::ffi::c_char,
     );
     free(subscription_address as *mut ::core::ffi::c_void);
+    free(reference_parameters as *mut ::core::ffi::c_void);
+    free(reference_namespaces as *mut ::core::ffi::c_void);
     pthread_mutex_unlock(&raw mut subscription_mutex);
     return ::core::ptr::null_mut::<onvif_subscription_t>();
 }
@@ -4308,9 +5615,9 @@ unsafe extern "C" fn malformed_motion_element_asserted(
                     {
                         continue;
                     }
-                    let c2rust_fresh2 = p;
+                    let c2rust_fresh4 = p;
                     p = p.offset(1);
-                    let mut quote: ::core::ffi::c_char = *c2rust_fresh2;
+                    let mut quote: ::core::ffi::c_char = *c2rust_fresh4;
                     let mut attr_val: *const ::core::ffi::c_char = p;
                     while p < end && *p as ::core::ffi::c_int != quote as ::core::ffi::c_int {
                         p = p.offset(1);
