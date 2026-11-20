@@ -612,7 +612,15 @@ export function HLSVideoCell({
       setError(null);
       setIsPlaying(false);
 
-      await initHls();
+      try {
+        await initHls();
+      } catch (err) {
+        if (!isMounted) return;
+        console.error(`[HLS ${stream.name}] Failed to initialize player:`, err);
+        setError(err instanceof Error ? err.message : 'Failed to initialize video stream');
+        setIsLoading(false);
+        setIsPlaying(false);
+      }
     };
 
     // Connection concurrency is bounded by the shared stream connection gate
