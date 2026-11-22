@@ -89,9 +89,26 @@ export function HLSVideoCell({
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
   const canControlPrivacy = stream.can_control_privacy !== false;
   const privacyResumeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const shouldFocusPrivacyResumeRef = useRef(false);
+  const previousFocusedElementRef = useRef<HTMLElement | null>(null);
+  const tileContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (privacyActive) privacyResumeButtonRef.current?.focus();
+    if (privacyActive) {
+      if (shouldFocusPrivacyResumeRef.current) {
+        privacyResumeButtonRef.current?.focus();
+        shouldFocusPrivacyResumeRef.current = false;
+      }
+      return;
+    }
+
+    const previous = previousFocusedElementRef.current;
+    if (previous && previous.isConnected) {
+      previous.focus();
+    } else {
+      tileContainerRef.current?.focus();
+    }
+    previousFocusedElementRef.current = null;
   }, [privacyActive]);
 
   useEffect(() => {
