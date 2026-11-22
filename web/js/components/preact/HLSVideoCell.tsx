@@ -403,8 +403,8 @@ export function HLSVideoCell({
         console.log(`Using HLS.js for stream ${stream.name} (mode: ${usingGo2rtc ? 'go2rtc' : 'native'})`);
 
         // Shared low-memory budget: keep only a small forward buffer and zero back-buffer.
-        // backBufferLength: 0 is the single biggest win — HLS.js default keeps decoded
-        // frames forever for seeking, which multiplies by stream count and crashes the tab.
+        // backBufferLength: 0 removes played media from the buffer as playback advances,
+        // which helps reduce memory pressure across many concurrent streams.
         const sharedMemoryConfig = {
           maxBufferLength: 4,        // seconds of forward buffer (default: 30)
           maxMaxBufferLength: 8,     // hard ceiling (default: 600)
