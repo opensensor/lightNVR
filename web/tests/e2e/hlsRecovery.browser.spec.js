@@ -182,7 +182,9 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
     await page.waitForFunction(()=>
       document.querySelector('.video-cell')?.dataset.streamName==='second camera');
     await page.evaluate(()=>window.resolvePrivacyRequest());
-    await page.waitForFunction(()=>window.privacyResolved);
+    await page.waitForFunction(()=>
+      window.privacyResponseProcessed===true || window.privacyResolved===true);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>resolve())));
     await page.waitForFunction(()=>
       document.querySelector('.video-cell')?.dataset.streamName==='second camera');
     expect(await page.locator('button[aria-label="live.resumeStream"]').isVisible()).toBe(true);
