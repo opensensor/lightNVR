@@ -148,8 +148,14 @@ it('keeps audio enabled when an older play request rejects',async()=>{
     await audio.click();
     await audio.click();
     await audio.click();
+    await page.waitForFunction(()=>window.audioRejects.length>=2);
     await page.evaluate(()=>window.audioRejects[0](new Error('older request rejected')));
-    await page.waitForFunction(()=>window.audioRejects.length===2);
+    await page.evaluate(async()=>{
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await page.waitForFunction(()=>document.querySelector('.audio-toggle-btn')?.getAttribute('aria-pressed')==='true');
+    await page.waitForFunction(()=>!!document.querySelector('video') && !document.querySelector('video').muted);
     expect(await audio.getAttribute('aria-pressed')).toBe('true');
     expect(await page.locator('video').evaluate(video=>video.muted)).toBe(false);
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
@@ -169,6 +175,17 @@ it('focuses the resume control when privacy mode starts active',async()=>{
   } finally {await browser.close();}
 });
 
+it('restores focus to the tile after resuming initial privacy mode',async()=>{
+  const {browser,page}=await openPlayer({privacyMode:true});
+  try {
+    await page.locator('button[aria-label="live.resumeStream"]').click();
+    await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'detached'});
+    await page.waitForFunction(()=>document.activeElement?.classList.contains('video-cell'));
+    expect(await page.evaluate(()=>document.activeElement?.classList.contains('video-cell'))).toBe(true);
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
+  } finally {await browser.close();}
+});
+
 it('ignores an old privacy response after the tile changes streams',async()=>{
   const {browser,page}=await openPlayer({privacyMode:true,deferPrivacy:true});
   try {
@@ -182,7 +199,9 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
     await page.waitForFunction(()=>
       document.querySelector('.video-cell')?.dataset.streamName==='second camera');
     await page.evaluate(()=>window.resolvePrivacyRequest());
-    await page.waitForFunction(()=>window.privacyResolved);
+    await page.waitForFunction(()=>
+      window.privacyResponseProcessed===true || window.privacyResolved===true);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>resolve())));
     await page.waitForFunction(()=>
       document.querySelector('.video-cell')?.dataset.streamName==='second camera');
     expect(await page.locator('button[aria-label="live.resumeStream"]').isVisible()).toBe(true);
