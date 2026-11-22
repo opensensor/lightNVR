@@ -99,7 +99,7 @@ export function HLSVideoCell({
       const container = tileContainerRef.current;
       const focusedInTile = focused instanceof Node && !!container?.contains(focused);
 
-      if (!focusedInTile) {
+      if (!focusedInTile && focused !== document.body) {
         hadPrivacyFocusRef.current = false;
         previousFocusedElementRef.current = null;
         return;
