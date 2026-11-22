@@ -175,13 +175,12 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
     await page.locator('button[aria-label="live.resumeStream"]').click();
     await page.waitForFunction(()=>!!window.resolvePrivacyRequest);
     await page.evaluate(()=>{
-      window.config.streamName='second camera';
       window.config.streamId='second';
       window.mount();
       window.resolvePrivacyRequest();
     });
     await page.waitForFunction(()=>window.privacyResolved&&
-      document.querySelector('.video-cell')?.dataset.streamName==='second camera');
+      document.querySelector('.video-cell')?.dataset.streamName==='fixture camera');
     expect(await page.locator('button[aria-label="live.resumeStream"]').isVisible()).toBe(true);
     expect(await page.locator('button[aria-label="live.resumeStream"]').isEnabled()).toBe(true);
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
@@ -195,12 +194,15 @@ it.each([true,false])('resets local privacy when stream ID changes: %s',async ch
     await page.locator('.btn-primary').click();
     await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'visible'});
     await page.evaluate(shouldChangeId=>{
-      window.config.streamName='second camera';
-      if(shouldChangeId) window.config.streamId='second';
+      if(shouldChangeId) {
+        window.config.streamId='second';
+      } else {
+        window.config.streamName='second camera';
+      }
       window.mount();
     },changeId);
     await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'detached'});
-    expect(await page.evaluate(()=>document.querySelector('.video-cell')?.dataset.streamName)).toBe('second camera');
+    expect(await page.evaluate(()=>document.querySelector('.video-cell')?.dataset.streamName)).toBe(changeId?'fixture camera':'second camera');
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
@@ -210,13 +212,19 @@ it.each([true,false])('resets fallback transport when stream ID changes: %s',asy
   try {
     await page.evaluate(()=>window.emitFatal('other'));
     await page.waitForFunction(()=>window.requests.some(r=>r.url==='/hls/fixture%20camera/index.m3u8'));
+    const playerCount=await page.evaluate(()=>window.players.length);
     await page.evaluate(shouldChangeId=>{
-      window.config.streamName='second camera';
-      if(shouldChangeId) window.config.streamId='second';
+      if(shouldChangeId) {
+        window.config.streamId='second';
+      } else {
+        window.config.streamName='second camera';
+      }
       window.mount();
     },changeId);
-    await page.waitForFunction(()=>window.players.some(p=>!p.destroyed&&
-      p.sources.some(s=>String(s?.src||s).includes('src=second%20camera'))));
+    await page.waitForFunction(({previousCount,shouldChangeId})=>window.players.length>previousCount&&
+      window.players.slice(previousCount).some(p=>!p.destroyed&&p.sources.some(s=>
+        String(s?.src||s).includes(shouldChangeId?'src=fixture%20camera':'src=second%20camera'))),
+    {previousCount:playerCount,shouldChangeId:changeId});
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
