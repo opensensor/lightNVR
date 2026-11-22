@@ -770,6 +770,7 @@ export function HLSVideoCell({
     privacyRequestGenerationRef.current += 1;
     setIsTogglingEnabled(false);
     setShowPrivacyConfirm(false);
+    setShowRefreshConfirm(false);
     return () => { privacyRequestGenerationRef.current += 1; };
   }, [stream.name, streamId]);
 
