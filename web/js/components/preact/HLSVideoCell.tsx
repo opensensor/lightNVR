@@ -99,7 +99,7 @@ export function HLSVideoCell({
       const container = tileContainerRef.current;
       const focusedInTile = focused instanceof Node && !!container?.contains(focused);
 
-      if (!focusedInTile) {
+      if (!focusedInTile && focused !== document.body) {
         hadPrivacyFocusRef.current = false;
         previousFocusedElementRef.current = null;
         return;
@@ -115,7 +115,8 @@ export function HLSVideoCell({
     }
 
     if (!hadPrivacyFocusRef.current) return;
-    if (document.activeElement !== privacyResumeButtonRef.current) {
+    if (document.activeElement !== privacyResumeButtonRef.current &&
+        document.activeElement !== document.body) {
       hadPrivacyFocusRef.current = false;
       previousFocusedElementRef.current = null;
       return;
