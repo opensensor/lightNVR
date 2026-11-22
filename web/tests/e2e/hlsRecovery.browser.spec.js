@@ -186,6 +186,25 @@ it('restores focus to the tile after resuming initial privacy mode',async()=>{
   } finally {await browser.close();}
 });
 
+it('does not steal focus from outside the tile when privacy changes',async()=>{
+  const {browser,page}=await openPlayer({});
+  try {
+    await page.evaluate(()=>{
+      const outside=document.createElement('button');
+      outside.id='outside-focus';
+      document.body.appendChild(outside);
+      outside.focus();
+      window.config.privacyMode=true;
+      window.mount();
+    });
+    await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'visible'});
+    expect(await page.evaluate(()=>document.activeElement?.id)).toBe('outside-focus');
+    await page.evaluate(()=>{window.config.privacyMode=false;window.mount();});
+    await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'detached'});
+    expect(await page.evaluate(()=>document.activeElement?.id)).toBe('outside-focus');
+  } finally {await browser.close();}
+});
+
 it('ignores an old privacy response after the tile changes streams',async()=>{
   const {browser,page}=await openPlayer({privacyMode:true,deferPrivacy:true});
   try {
@@ -200,10 +219,11 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
       document.querySelector('.video-cell')?.dataset.streamName==='second camera');
     await page.evaluate(()=>window.resolvePrivacyRequest());
     await page.waitForFunction(()=>
-      window.privacyResponseProcessed===true || window.privacyResolved===true);
-    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>resolve())));
-    await page.waitForFunction(()=>
-      document.querySelector('.video-cell')?.dataset.streamName==='second camera');
+      window.privacyResolved===true &&
+      document.querySelector('.video-cell')?.dataset.streamName==='second camera' &&
+      !!document.querySelector('button[aria-label="live.resumeStream"]') &&
+      !document.querySelector('button[aria-label="live.resumeStream"]')?.disabled);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     expect(await page.locator('button[aria-label="live.resumeStream"]').isVisible()).toBe(true);
     expect(await page.locator('button[aria-label="live.resumeStream"]').isEnabled()).toBe(true);
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
@@ -307,6 +327,10 @@ it('retries the go2rtc master manifest and prevents pending recovery after unmou
     await page.evaluate(()=>{window.emitFatal('network');window.recoveries.shift()();});
     expect(await page.evaluate(()=>({starts:window.players[0].starts,sources:window.players[0].sources})))
       .toEqual({starts:1,sources:Array(2).fill('/go2rtc/api/stream.m3u8?src=fixture%20camera&mp4=flac')});
+    await page.evaluate(()=>{window.emitFatal('media');window.recoveries.shift()();});
+    expect(await page.evaluate(()=>({media:window.players[0].mediaRecoveries,sources:window.players[0].sources,
+      failures:window.failures})))
+      .toEqual({media:1,sources:Array(2).fill('/go2rtc/api/stream.m3u8?src=fixture%20camera&mp4=flac'),failures:[]});
     await page.evaluate(()=>{window.emitFatal('network');window.emitFatal('media');window.unmount();});
     // Preact schedules passive effect cleanup after paint; observe its completion.
     await page.waitForFunction(()=>window.cleanups>0);
@@ -314,7 +338,7 @@ it('retries the go2rtc master manifest and prevents pending recovery after unmou
       window.players[0].emit('error',{fatal:true,type:'other'});});
     expect(await page.evaluate(()=>({starts:window.players[0].starts,media:window.players[0].mediaRecoveries,
       destroyed:window.players[0].destroyed,errors:window.errors})))
-      .toEqual({starts:1,media:0,destroyed:1,errors:[]});
+      .toEqual({starts:1,media:1,destroyed:1,errors:[]});
   } finally {await browser.close();}
 });
 
