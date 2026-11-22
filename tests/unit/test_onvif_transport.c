@@ -244,7 +244,7 @@ static void test_discovered_endpoint_on_other_host_is_not_contacted(void) {
     char base[128];
     snprintf(base, sizeof(base), "http://127.0.0.1:%u", port);
     snprintf(advertised_endpoint, sizeof(advertised_endpoint),
-             "http://localhost:%u/steal", destination_port);
+             "http://127.0.0.2:%u/steal", destination_port);
     fallback_requests = 0;
     curl_handle = create_curl_handle();
     TEST_ASSERT_NOT_NULL(curl_handle);
@@ -746,13 +746,10 @@ static void *reference_subscription_server(void *unused) {
         struct timeval timeout = {.tv_sec = 3};
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
         char request[8192] = {0};
-        size_t used = 0;
-        while (used < sizeof(request) - 1 && !strstr(request, "</s:Envelope>")) {
-            ssize_t n = recv(client, request + used, sizeof(request) - 1 - used, 0);
-            if (n < 0 && errno == EINTR) continue;
-            if (n <= 0) { server_failed = 3; break; }
-            used += (size_t)n;
-            request[used] = '\0';
+        if (!fixture_read_soap_request(client, request, sizeof(request))) {
+            server_failed = 3;
+            close(client);
+            return NULL;
         }
         char target[128];
         snprintf(target, sizeof(target), "POST %s HTTP/", paths[i]);
