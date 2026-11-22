@@ -176,11 +176,15 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
     await page.waitForFunction(()=>!!window.resolvePrivacyRequest);
     await page.evaluate(()=>{
       window.config.streamId='second';
+      window.config.streamName='second camera';
       window.mount();
-      window.resolvePrivacyRequest();
     });
-    await page.waitForFunction(()=>window.privacyResolved&&
-      document.querySelector('.video-cell')?.dataset.streamName==='fixture camera');
+    await page.waitForFunction(()=>
+      document.querySelector('.video-cell')?.dataset.streamName==='second camera');
+    await page.evaluate(()=>window.resolvePrivacyRequest());
+    await page.waitForFunction(()=>window.privacyResolved);
+    await page.waitForFunction(()=>
+      document.querySelector('.video-cell')?.dataset.streamName==='second camera');
     expect(await page.locator('button[aria-label="live.resumeStream"]').isVisible()).toBe(true);
     expect(await page.locator('button[aria-label="live.resumeStream"]').isEnabled()).toBe(true);
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
