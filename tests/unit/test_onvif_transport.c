@@ -300,23 +300,37 @@ static const onvif_operation_t fixture_operations[] = {
     ONVIF_OPERATION_PULL_MESSAGES, ONVIF_OPERATION_RENEW, ONVIF_OPERATION_UNSUBSCRIBE
 };
 
+static int fixture_accept_with_timeouts(int listen_fd, int timeout_seconds) {
+    int client = accept(listen_fd, NULL, NULL);
+    if (client < 0) return -1;
+    struct timeval timeout = {.tv_sec = timeout_seconds};
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    return client;
+}
+
+static bool fixture_read_soap_request(int client, char *request, size_t request_size) {
+    size_t used = 0;
+    request[0] = '\0';
+    while (used < request_size - 1 && !strstr(request, "</s:Envelope>")) {
+        ssize_t n = recv(client, request + used, request_size - 1 - used, 0);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return false;
+        used += (size_t)n;
+        request[used] = '\0';
+    }
+    return true;
+}
+
 static void *operation_server(void *unused) {
     (void)unused;
     for (size_t i = 0; i < sizeof(expected_actions) / sizeof(expected_actions[0]); ++i) {
         struct pollfd wait = {.fd = origin, .events = POLLIN};
         if (poll(&wait, 1, 3000) != 1) { server_failed = 1; return NULL; }
-        int client = accept(origin, NULL, NULL);
+        int client = fixture_accept_with_timeouts(origin, 3);
         if (client < 0) { server_failed = 2; return NULL; }
-        struct timeval timeout = {.tv_sec = 3};
-        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-        char request[8192] = {0}; size_t used = 0;
-        while (used < sizeof(request) - 1 && !strstr(request, "</s:Envelope>")) {
-            ssize_t n = recv(client, request + used, sizeof(request) - 1 - used, 0);
-            if (n < 0 && errno == EINTR) continue;
-            if (n <= 0) { server_failed = 3; break; }
-            used += (size_t)n; request[used] = '\0';
-        }
+        char request[8192] = {0};
+        if (!fixture_read_soap_request(client, request, sizeof(request))) server_failed = 3;
         char header[512], element[512], destination_element[512];
         snprintf(header, sizeof(header), "Content-Type: application/soap+xml; charset=utf-8; action=\"%s\"\r\n", expected_actions[i]);
         snprintf(element, sizeof(element), "<wsa:Action>%s</wsa:Action>", expected_actions[i]);
