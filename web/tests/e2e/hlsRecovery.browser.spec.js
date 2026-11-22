@@ -175,6 +175,17 @@ it('focuses the resume control when privacy mode starts active',async()=>{
   } finally {await browser.close();}
 });
 
+it('restores focus to the tile after resuming initial privacy mode',async()=>{
+  const {browser,page}=await openPlayer({privacyMode:true});
+  try {
+    await page.locator('button[aria-label="live.resumeStream"]').click();
+    await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'detached'});
+    await page.waitForFunction(()=>document.activeElement?.classList.contains('video-cell'));
+    expect(await page.evaluate(()=>document.activeElement?.classList.contains('video-cell'))).toBe(true);
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
+  } finally {await browser.close();}
+});
+
 it('ignores an old privacy response after the tile changes streams',async()=>{
   const {browser,page}=await openPlayer({privacyMode:true,deferPrivacy:true});
   try {
