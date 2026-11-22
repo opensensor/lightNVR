@@ -746,13 +746,10 @@ static void *reference_subscription_server(void *unused) {
         struct timeval timeout = {.tv_sec = 3};
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
         char request[8192] = {0};
-        size_t used = 0;
-        while (used < sizeof(request) - 1 && !strstr(request, "</s:Envelope>")) {
-            ssize_t n = recv(client, request + used, sizeof(request) - 1 - used, 0);
-            if (n < 0 && errno == EINTR) continue;
-            if (n <= 0) { server_failed = 3; break; }
-            used += (size_t)n;
-            request[used] = '\0';
+        if (!fixture_read_soap_request(client, request, sizeof(request))) {
+            server_failed = 3;
+            close(client);
+            return NULL;
         }
         char target[128];
         snprintf(target, sizeof(target), "POST %s HTTP/", paths[i]);
