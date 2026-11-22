@@ -730,8 +730,32 @@ export function HLSVideoCell({
   };
 
   const handleForceRefresh = async () => {
+    const generationAtStart = privacyRequestGenerationRef.current;
+    const streamNameAtStart = stream.name;
+    const streamIdAtStart = streamId;
+
     await refreshStreamRegistration();
+
+    if (
+      privacyRequestGenerationRef.current !== generationAtStart ||
+      streamIdentityRef.current !== streamNameAtStart ||
+      stream.name !== streamNameAtStart ||
+      streamId !== streamIdAtStart
+    ) {
+      return;
+    }
+
     await new Promise(resolve => setTimeout(resolve, 500));
+
+    if (
+      privacyRequestGenerationRef.current !== generationAtStart ||
+      streamIdentityRef.current !== streamNameAtStart ||
+      stream.name !== streamNameAtStart ||
+      streamId !== streamIdAtStart
+    ) {
+      return;
+    }
+
     handleRetry();
   };
 
