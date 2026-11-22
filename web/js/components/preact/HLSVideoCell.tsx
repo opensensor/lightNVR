@@ -538,12 +538,18 @@ export function HLSVideoCell({
             console.warn(`[HLS ${stream.name}] Network error recovery attempt ${attemptNum}/${MAX_RECOVERY}`);
             setTimeout(() => {
               if (isMounted && hlsPlayerRef.current) {
-                if (usingGo2rtc && hlsUrlRef.current) {
+                const isManifestLoadFailure =
+                  data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+                  data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT;
+
+                if ((usingGo2rtc || isManifestLoadFailure) && hlsUrlRef.current) {
                   // go2rtc sessions expire after 5 s of inactivity. Simply
                   // calling startLoad() retries the same (now-expired) session
                   // ID and keeps 404-ing. Re-fetching the master manifest via
                   // loadSource() creates a brand-new go2rtc session.
-                  console.log(`[HLS ${stream.name}] Reloading master manifest to create fresh go2rtc session`);
+                  // For native HLS, manifest load failures/timeouts can also
+                  // require reloading the source URL before startLoad().
+                  console.log(`[HLS ${stream.name}] Reloading master manifest for network recovery`);
                   hlsPlayerRef.current.loadSource(hlsUrlRef.current);
                   hlsPlayerRef.current.startLoad();
                 } else {
