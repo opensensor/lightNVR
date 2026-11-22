@@ -805,11 +805,13 @@ static void test_created_subscription_carries_reference_to_pull(void) {
                                              reference_subscription_server, NULL));
     onvif_subscription_t *sub = get_subscription(reference_camera_base, "", "");
     TEST_ASSERT_NOT_NULL(sub);
-    char expected_service[160], expected_pull[160];
+    char expected_service[160], expected_pull[160], expected_to[220];
     snprintf(expected_service, sizeof(expected_service), "%s/onvif/service",
              reference_camera_base);
     snprintf(expected_pull, sizeof(expected_pull), "%s/onvif/pull?session=123",
              reference_camera_base);
+    snprintf(expected_to, sizeof(expected_to), "<wsa:To>%s</wsa:To>",
+             expected_pull);
     TEST_ASSERT_EQUAL_STRING(expected_service, sub->service_url);
     TEST_ASSERT_EQUAL_STRING(expected_pull, sub->subscription_address);
     TEST_ASSERT_NOT_NULL(strstr(sub->reference_parameters,
@@ -831,20 +833,17 @@ static void test_created_subscription_carries_reference_to_pull(void) {
                                 "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
     TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
                                 "xmlns:tt=\"urn:camera:token\""));
-    TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
-                                "<wsa:To>http://127.0.0.1:"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_pull_request, expected_to));
     TEST_ASSERT_NOT_NULL(strstr(reference_renew_request,
                                 "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
     TEST_ASSERT_NOT_NULL(strstr(reference_renew_request,
                                 "xmlns:tt=\"urn:camera:token\""));
-    TEST_ASSERT_NOT_NULL(strstr(reference_renew_request,
-                                "<wsa:To>http://127.0.0.1:"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_renew_request, expected_to));
     TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request,
                                 "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
     TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request,
                                 "xmlns:tt=\"urn:camera:token\""));
-    TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request,
-                                "<wsa:To>http://127.0.0.1:"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request, expected_to));
 }
 
 static void test_onvif_camera_logs_redact_query_credentials(void) {
