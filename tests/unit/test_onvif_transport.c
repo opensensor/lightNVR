@@ -244,7 +244,7 @@ static void test_discovered_endpoint_on_other_host_is_not_contacted(void) {
     char base[128];
     snprintf(base, sizeof(base), "http://127.0.0.1:%u", port);
     snprintf(advertised_endpoint, sizeof(advertised_endpoint),
-             "http://localhost:%u/steal", destination_port);
+             "http://127.0.0.2:%u/steal", destination_port);
     fallback_requests = 0;
     curl_handle = create_curl_handle();
     TEST_ASSERT_NOT_NULL(curl_handle);
