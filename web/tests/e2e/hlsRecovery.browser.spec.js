@@ -264,7 +264,7 @@ it.each(['exhausted','networkExhausted','unrecoverable','native'])(
       expect(await page.evaluate(()=>window.requests.map(r=>r.url).filter(url=>url.includes('.m3u8'))))
         .toEqual(['/go2rtc/api/stream.m3u8?src=fixture%20camera&mp4=flac']);
       expect(await page.evaluate(()=>window.failures[0])).toBe(
-        branch==='unrecoverable'||branch==='networkExhausted'?'fixture fatal':'live.go2rtcHlsFailedRetry',
+        branch==='unrecoverable'?'fixture fatal':'live.go2rtcHlsFailedRetry',
       );
     } finally {await browser.close();}
   },
