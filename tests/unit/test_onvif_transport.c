@@ -319,7 +319,7 @@ static bool fixture_read_soap_request(int client, char *request, size_t request_
         used += (size_t)n;
         request[used] = '\0';
     }
-    return true;
+    return strstr(request, "</s:Envelope>") != NULL;
 }
 
 static void *operation_server(void *unused) {
