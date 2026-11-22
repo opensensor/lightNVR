@@ -89,9 +89,31 @@ export function HLSVideoCell({
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
   const canControlPrivacy = stream.can_control_privacy !== false;
   const privacyResumeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const hadPrivacyFocusRef = useRef(false);
+  const previousFocusedElementRef = useRef<HTMLElement | null>(null);
+  const tileContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (privacyActive) privacyResumeButtonRef.current?.focus();
+    if (privacyActive) {
+      if (!hadPrivacyFocusRef.current) {
+        const focused = document.activeElement;
+        previousFocusedElementRef.current = focused instanceof HTMLElement && focused !== document.body
+          ? focused : null;
+      }
+      privacyResumeButtonRef.current?.focus();
+      hadPrivacyFocusRef.current = true;
+      return;
+    }
+
+    if (!hadPrivacyFocusRef.current) return;
+    hadPrivacyFocusRef.current = false;
+    const previous = previousFocusedElementRef.current;
+    if (previous && previous.isConnected) {
+      previous.focus();
+    } else {
+      tileContainerRef.current?.focus();
+    }
+    previousFocusedElementRef.current = null;
   }, [privacyActive]);
 
   useEffect(() => {
@@ -770,6 +792,7 @@ export function HLSVideoCell({
     privacyRequestGenerationRef.current += 1;
     setIsTogglingEnabled(false);
     setShowPrivacyConfirm(false);
+    setShowRefreshConfirm(false);
     return () => { privacyRequestGenerationRef.current += 1; };
   }, [stream.name, streamId]);
 
@@ -886,6 +909,7 @@ export function HLSVideoCell({
   return (
     <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- pointer shortcut; the tile toolbar has a keyboard-reachable fullscreen button */
       className="video-cell"
+      tabIndex={-1}
       data-stream-name={stream.name}
       data-stream-id={streamId}
       data-sub-stream={useSubStream ? 'true' : 'false'}
@@ -920,6 +944,7 @@ export function HLSVideoCell({
         // the overlays beside it stay put.
         cellRef.current = el;
         zoom.containerRef.current = el;
+        tileContainerRef.current = el;
       }}
       style={{
         position: 'relative',
