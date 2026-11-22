@@ -1,4 +1,4 @@
-/** Real component/browser lifecycle; only settings, telemetry and the player API are fixtures. */
+/** Real component/browser lifecycle, with a simulated harness for settings/telemetry/player APIs plus fetch, media-element methods, selected timers, and i18n (including recovery timing). */
 const path = require('node:path');
 const {build} = require('esbuild');
 const {chromium} = require('../../../node_modules/playwright');
