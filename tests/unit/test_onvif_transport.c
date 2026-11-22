@@ -300,23 +300,37 @@ static const onvif_operation_t fixture_operations[] = {
     ONVIF_OPERATION_PULL_MESSAGES, ONVIF_OPERATION_RENEW, ONVIF_OPERATION_UNSUBSCRIBE
 };
 
+static int fixture_accept_with_timeouts(int listen_fd, int timeout_seconds) {
+    int client = accept(listen_fd, NULL, NULL);
+    if (client < 0) return -1;
+    struct timeval timeout = {.tv_sec = timeout_seconds};
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    return client;
+}
+
+static bool fixture_read_soap_request(int client, char *request, size_t request_size) {
+    size_t used = 0;
+    request[0] = '\0';
+    while (used < request_size - 1 && !strstr(request, "</s:Envelope>")) {
+        ssize_t n = recv(client, request + used, request_size - 1 - used, 0);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return false;
+        used += (size_t)n;
+        request[used] = '\0';
+    }
+    return true;
+}
+
 static void *operation_server(void *unused) {
     (void)unused;
     for (size_t i = 0; i < sizeof(expected_actions) / sizeof(expected_actions[0]); ++i) {
         struct pollfd wait = {.fd = origin, .events = POLLIN};
         if (poll(&wait, 1, 3000) != 1) { server_failed = 1; return NULL; }
-        int client = accept(origin, NULL, NULL);
+        int client = fixture_accept_with_timeouts(origin, 3);
         if (client < 0) { server_failed = 2; return NULL; }
-        struct timeval timeout = {.tv_sec = 3};
-        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-        char request[8192] = {0}; size_t used = 0;
-        while (used < sizeof(request) - 1 && !strstr(request, "</s:Envelope>")) {
-            ssize_t n = recv(client, request + used, sizeof(request) - 1 - used, 0);
-            if (n < 0 && errno == EINTR) continue;
-            if (n <= 0) { server_failed = 3; break; }
-            used += (size_t)n; request[used] = '\0';
-        }
+        char request[8192] = {0};
+        if (!fixture_read_soap_request(client, request, sizeof(request))) server_failed = 3;
         char header[512], element[512], destination_element[512];
         snprintf(header, sizeof(header), "Content-Type: application/soap+xml; charset=utf-8; action=\"%s\"\r\n", expected_actions[i]);
         snprintf(element, sizeof(element), "<wsa:Action>%s</wsa:Action>", expected_actions[i]);
@@ -803,8 +817,11 @@ static void test_created_subscription_carries_reference_to_pull(void) {
     pthread_t worker;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL,
                                              reference_subscription_server, NULL));
-    onvif_subscription_t *sub = get_subscription(reference_camera_base, "", "");
-    TEST_ASSERT_NOT_NULL(sub);
+    onvif_subscription_t *sub = NULL;
+    char *response = NULL;
+    bool renew_ok = false;
+    bool ok = true;
+    const char *fail_msg = NULL;
     char expected_service[160], expected_pull[160], expected_to[220];
     snprintf(expected_service, sizeof(expected_service), "%s/onvif/service",
              reference_camera_base);
@@ -812,22 +829,63 @@ static void test_created_subscription_carries_reference_to_pull(void) {
              reference_camera_base);
     snprintf(expected_to, sizeof(expected_to), "<wsa:To>%s</wsa:To>",
              expected_pull);
-    TEST_ASSERT_EQUAL_STRING(expected_service, sub->service_url);
-    TEST_ASSERT_EQUAL_STRING(expected_pull, sub->subscription_address);
-    TEST_ASSERT_NOT_NULL(strstr(sub->reference_parameters,
-                                "wsa:IsReferenceParameter=\"true\""));
-    TEST_ASSERT_NOT_NULL(strstr(sub->reference_namespaces,
-                                "xmlns:tt=\"urn:camera:token\""));
-    sub->curl = create_curl_handle();
-    TEST_ASSERT_NOT_NULL(sub->curl);
-    curl_easy_setopt(sub->curl, CURLOPT_PROXY, "");
-    char *response = send_subscription_request(sub, "<PullMessages/>",
+
+    sub = get_subscription(reference_camera_base, "", "");
+    if (sub == NULL) {
+        ok = false;
+        fail_msg = "get_subscription returned NULL";
+    }
+    if (ok && strcmp(expected_service, sub->service_url) != 0) {
+        ok = false;
+        fail_msg = "service_url mismatch";
+    }
+    if (ok && strcmp(expected_pull, sub->subscription_address) != 0) {
+        ok = false;
+        fail_msg = "subscription_address mismatch";
+    }
+    if (ok && strstr(sub->reference_parameters,
+                     "wsa:IsReferenceParameter=\"true\"") == NULL) {
+        ok = false;
+        fail_msg = "missing reference parameter marker";
+    }
+    if (ok && strstr(sub->reference_namespaces,
+                     "xmlns:tt=\"urn:camera:token\"") == NULL) {
+        ok = false;
+        fail_msg = "missing reference namespace";
+    }
+    if (ok) {
+        sub->curl = create_curl_handle();
+        if (sub->curl == NULL) {
+            ok = false;
+            fail_msg = "sub curl handle is NULL";
+        } else {
+            curl_easy_setopt(sub->curl, CURLOPT_PROXY, "");
+        }
+    }
+    if (ok) {
+        response = send_subscription_request(sub, "<PullMessages/>",
                                ONVIF_OPERATION_PULL_MESSAGES, NULL, NULL);
-    TEST_ASSERT_NOT_NULL(response);
-    free(response);
-    TEST_ASSERT_TRUE(renew_subscription_locked(sub));
-    unsubscribe_subscription_locked(sub);
+        if (response == NULL) {
+            ok = false;
+            fail_msg = "send_subscription_request returned NULL";
+        }
+    }
+    if (response != NULL) {
+        free(response);
+    }
+    if (ok) {
+        renew_ok = renew_subscription_locked(sub);
+        if (!renew_ok) {
+            ok = false;
+            fail_msg = "renew_subscription_locked failed";
+        }
+    }
+    if (sub != NULL) {
+        unsubscribe_subscription_locked(sub);
+    }
     TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+
+    TEST_ASSERT_TRUE_MESSAGE(ok, fail_msg != NULL ? fail_msg : "operation failed");
     TEST_ASSERT_EQUAL_INT(0, server_failed);
     TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
                                 "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
