@@ -95,8 +95,17 @@ export function HLSVideoCell({
 
   useEffect(() => {
     if (privacyActive) {
+      const focused = document.activeElement;
+      const container = tileContainerRef.current;
+      const focusedInTile = focused instanceof Node && !!container?.contains(focused);
+
+      if (!focusedInTile) {
+        hadPrivacyFocusRef.current = false;
+        previousFocusedElementRef.current = null;
+        return;
+      }
+
       if (!hadPrivacyFocusRef.current) {
-        const focused = document.activeElement;
         previousFocusedElementRef.current = focused instanceof HTMLElement && focused !== document.body
           ? focused : null;
       }
@@ -106,6 +115,12 @@ export function HLSVideoCell({
     }
 
     if (!hadPrivacyFocusRef.current) return;
+    if (document.activeElement !== privacyResumeButtonRef.current) {
+      hadPrivacyFocusRef.current = false;
+      previousFocusedElementRef.current = null;
+      return;
+    }
+
     hadPrivacyFocusRef.current = false;
     const previous = previousFocusedElementRef.current;
     if (previous && previous.isConnected) {
