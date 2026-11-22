@@ -186,6 +186,25 @@ it('restores focus to the tile after resuming initial privacy mode',async()=>{
   } finally {await browser.close();}
 });
 
+it('does not steal focus from outside the tile when privacy changes',async()=>{
+  const {browser,page}=await openPlayer({});
+  try {
+    await page.evaluate(()=>{
+      const outside=document.createElement('button');
+      outside.id='outside-focus';
+      document.body.appendChild(outside);
+      outside.focus();
+      window.config.privacyMode=true;
+      window.mount();
+    });
+    await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'visible'});
+    expect(await page.evaluate(()=>document.activeElement?.id)).toBe('outside-focus');
+    await page.evaluate(()=>{window.config.privacyMode=false;window.mount();});
+    await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'detached'});
+    expect(await page.evaluate(()=>document.activeElement?.id)).toBe('outside-focus');
+  } finally {await browser.close();}
+});
+
 it('ignores an old privacy response after the tile changes streams',async()=>{
   const {browser,page}=await openPlayer({privacyMode:true,deferPrivacy:true});
   try {
@@ -200,9 +219,11 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
       document.querySelector('.video-cell')?.dataset.streamName==='second camera');
     await page.evaluate(()=>window.resolvePrivacyRequest());
     await page.waitForFunction(()=>
+      window.privacyResolved===true &&
       document.querySelector('.video-cell')?.dataset.streamName==='second camera' &&
       !!document.querySelector('button[aria-label="live.resumeStream"]') &&
       !document.querySelector('button[aria-label="live.resumeStream"]')?.disabled);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     expect(await page.locator('button[aria-label="live.resumeStream"]').isVisible()).toBe(true);
     expect(await page.locator('button[aria-label="live.resumeStream"]').isEnabled()).toBe(true);
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
