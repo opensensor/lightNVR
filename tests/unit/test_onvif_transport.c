@@ -715,6 +715,8 @@ static void test_reference_parameter_cannot_rebind_addressing_namespace(void) {
 
 static char reference_camera_base[128];
 static char reference_pull_request[8192];
+static char reference_renew_request[8192];
+static char reference_unsubscribe_request[8192];
 
 static void *reference_subscription_server(void *unused) {
     (void)unused;
@@ -742,6 +744,10 @@ static void *reference_subscription_server(void *unused) {
         if (strncmp(request, target, strlen(target)) != 0) server_failed = 4;
         if (i == 2) safe_strcpy(reference_pull_request, request,
                                  sizeof(reference_pull_request), 0);
+        if (i == 3) safe_strcpy(reference_renew_request, request,
+                                 sizeof(reference_renew_request), 0);
+        if (i == 4) safe_strcpy(reference_unsubscribe_request, request,
+                                 sizeof(reference_unsubscribe_request), 0);
 
         char body[1500];
         if (i == 0) {
@@ -789,6 +795,8 @@ static void test_created_subscription_carries_reference_to_pull(void) {
     snprintf(reference_camera_base, sizeof(reference_camera_base),
              "http://127.0.0.1:%u", port);
     reference_pull_request[0] = '\0';
+    reference_renew_request[0] = '\0';
+    reference_unsubscribe_request[0] = '\0';
     curl_handle = create_curl_handle();
     TEST_ASSERT_NOT_NULL(curl_handle);
     curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
@@ -822,6 +830,20 @@ static void test_created_subscription_carries_reference_to_pull(void) {
     TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
                                 "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
     TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
+                                "xmlns:tt=\"urn:camera:token\""));
+    TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
+                                "<wsa:To>http://127.0.0.1:"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_renew_request,
+                                "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_renew_request,
+                                "xmlns:tt=\"urn:camera:token\""));
+    TEST_ASSERT_NOT_NULL(strstr(reference_renew_request,
+                                "<wsa:To>http://127.0.0.1:"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request,
+                                "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
+    TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request,
+                                "xmlns:tt=\"urn:camera:token\""));
+    TEST_ASSERT_NOT_NULL(strstr(reference_unsubscribe_request,
                                 "<wsa:To>http://127.0.0.1:"));
 }
 
