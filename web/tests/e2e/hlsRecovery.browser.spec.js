@@ -1,4 +1,4 @@
-/** Real component/browser lifecycle; only settings, telemetry and the player API are fixtures. */
+/** Real component/browser lifecycle, with a simulated harness for settings/telemetry/player APIs plus fetch, media-element methods, selected timers, and i18n (including recovery timing). */
 const path = require('node:path');
 const {build} = require('esbuild');
 const {chromium} = require('../../../node_modules/playwright');
@@ -72,6 +72,7 @@ beforeAll(async () => {
         args.path==='hls.js' ? `export default class Hls {
           static Events={ERROR:'error',MANIFEST_PARSED:'manifest',FRAG_BUFFERED:'fragment'};
           static ErrorTypes={NETWORK_ERROR:'network',MEDIA_ERROR:'media'};
+          static ErrorDetails={MANIFEST_LOAD_ERROR:'manifestLoadError',MANIFEST_LOAD_TIMEOUT:'manifestLoadTimeOut'};
           static isSupported(){return !window.config.nativePlayer;}
           constructor(){this.handlers={};this.sources=[];this.destroyed=0;this.starts=0;this.mediaRecoveries=0;window.players.push(this);}
           on(name,callback){this.handlers[name]=callback;}
@@ -341,6 +342,25 @@ it('retries the go2rtc master manifest and prevents pending recovery after unmou
       .toEqual({starts:1,media:1,destroyed:1,errors:[]});
   } finally {await browser.close();}
 });
+
+it.each(['manifestLoadError','manifestLoadTimeOut'])(
+  'reloads the native manifest after %s',async detail=>{
+    const {browser,page}=await openPlayer({forceNative:true});
+    try {
+      await page.waitForFunction(()=>window.players.some(p=>!p.destroyed&&
+        p.sources.includes('/hls/fixture%20camera/index.m3u8')));
+      await page.evaluate(value=>{
+        window.captureRecovery=true;
+        window.players.find(p=>!p.destroyed).emit('error',{fatal:true,type:'network',details:value});
+        window.captureRecovery=false;
+        window.recoveries.shift()();
+      },detail);
+      expect(await page.evaluate(()=>({sources:window.players.find(p=>!p.destroyed).sources,
+        starts:window.players.find(p=>!p.destroyed).starts,errors:window.errors})))
+        .toEqual({sources:Array(2).fill('/hls/fixture%20camera/index.m3u8'),starts:1,errors:[]});
+    } finally {await browser.close();}
+  },
+);
 
 it('does not initialize after unmount while runtime settings are unresolved',async()=>{
   const {browser,page}=await openPlayer({enabled:true,deferSettings:true});
