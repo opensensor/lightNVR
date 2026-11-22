@@ -148,8 +148,14 @@ it('keeps audio enabled when an older play request rejects',async()=>{
     await audio.click();
     await audio.click();
     await audio.click();
+    await page.waitForFunction(()=>window.audioRejects.length>=2);
     await page.evaluate(()=>window.audioRejects[0](new Error('older request rejected')));
-    await page.waitForFunction(()=>window.audioRejects.length===2);
+    await page.evaluate(async()=>{
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await page.waitForFunction(()=>document.querySelector('.audio-toggle-btn')?.getAttribute('aria-pressed')==='true');
+    await page.waitForFunction(()=>!!document.querySelector('video') && !document.querySelector('video').muted);
     expect(await audio.getAttribute('aria-pressed')).toBe('true');
     expect(await page.locator('video').evaluate(video=>video.muted)).toBe(false);
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
