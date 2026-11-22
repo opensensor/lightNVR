@@ -803,8 +803,11 @@ static void test_created_subscription_carries_reference_to_pull(void) {
     pthread_t worker;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL,
                                              reference_subscription_server, NULL));
-    onvif_subscription_t *sub = get_subscription(reference_camera_base, "", "");
-    TEST_ASSERT_NOT_NULL(sub);
+    onvif_subscription_t *sub = NULL;
+    char *response = NULL;
+    bool renew_ok = false;
+    bool ok = true;
+    const char *fail_msg = NULL;
     char expected_service[160], expected_pull[160], expected_to[220];
     snprintf(expected_service, sizeof(expected_service), "%s/onvif/service",
              reference_camera_base);
@@ -812,22 +815,63 @@ static void test_created_subscription_carries_reference_to_pull(void) {
              reference_camera_base);
     snprintf(expected_to, sizeof(expected_to), "<wsa:To>%s</wsa:To>",
              expected_pull);
-    TEST_ASSERT_EQUAL_STRING(expected_service, sub->service_url);
-    TEST_ASSERT_EQUAL_STRING(expected_pull, sub->subscription_address);
-    TEST_ASSERT_NOT_NULL(strstr(sub->reference_parameters,
-                                "wsa:IsReferenceParameter=\"true\""));
-    TEST_ASSERT_NOT_NULL(strstr(sub->reference_namespaces,
-                                "xmlns:tt=\"urn:camera:token\""));
-    sub->curl = create_curl_handle();
-    TEST_ASSERT_NOT_NULL(sub->curl);
-    curl_easy_setopt(sub->curl, CURLOPT_PROXY, "");
-    char *response = send_subscription_request(sub, "<PullMessages/>",
+
+    sub = get_subscription(reference_camera_base, "", "");
+    if (sub == NULL) {
+        ok = false;
+        fail_msg = "get_subscription returned NULL";
+    }
+    if (ok && strcmp(expected_service, sub->service_url) != 0) {
+        ok = false;
+        fail_msg = "service_url mismatch";
+    }
+    if (ok && strcmp(expected_pull, sub->subscription_address) != 0) {
+        ok = false;
+        fail_msg = "subscription_address mismatch";
+    }
+    if (ok && strstr(sub->reference_parameters,
+                     "wsa:IsReferenceParameter=\"true\"") == NULL) {
+        ok = false;
+        fail_msg = "missing reference parameter marker";
+    }
+    if (ok && strstr(sub->reference_namespaces,
+                     "xmlns:tt=\"urn:camera:token\"") == NULL) {
+        ok = false;
+        fail_msg = "missing reference namespace";
+    }
+    if (ok) {
+        sub->curl = create_curl_handle();
+        if (sub->curl == NULL) {
+            ok = false;
+            fail_msg = "sub curl handle is NULL";
+        } else {
+            curl_easy_setopt(sub->curl, CURLOPT_PROXY, "");
+        }
+    }
+    if (ok) {
+        response = send_subscription_request(sub, "<PullMessages/>",
                                ONVIF_OPERATION_PULL_MESSAGES, NULL, NULL);
-    TEST_ASSERT_NOT_NULL(response);
-    free(response);
-    TEST_ASSERT_TRUE(renew_subscription_locked(sub));
-    unsubscribe_subscription_locked(sub);
+        if (response == NULL) {
+            ok = false;
+            fail_msg = "send_subscription_request returned NULL";
+        }
+    }
+    if (response != NULL) {
+        free(response);
+    }
+    if (ok) {
+        renew_ok = renew_subscription_locked(sub);
+        if (!renew_ok) {
+            ok = false;
+            fail_msg = "renew_subscription_locked failed";
+        }
+    }
+    if (sub != NULL) {
+        unsubscribe_subscription_locked(sub);
+    }
     TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+
+    TEST_ASSERT_TRUE_MESSAGE(ok, fail_msg != NULL ? fail_msg : "operation failed");
     TEST_ASSERT_EQUAL_INT(0, server_failed);
     TEST_ASSERT_NOT_NULL(strstr(reference_pull_request,
                                 "<tt:Token wsa:IsReferenceParameter=\"true\">abc</tt:Token>"));
