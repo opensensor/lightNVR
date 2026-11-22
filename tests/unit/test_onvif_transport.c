@@ -279,8 +279,9 @@ static void test_oversized_discovered_endpoint_is_not_contacted(void) {
     curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
     pthread_t worker;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, fallback_server, NULL));
-    TEST_ASSERT_NULL(get_subscription(base, "fixture-user", "fixture-password"));
+    onvif_subscription_t *subscription = get_subscription(base, "fixture-user", "fixture-password");
     TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+    TEST_ASSERT_NULL(subscription);
     TEST_ASSERT_EQUAL_INT(0, server_failed);
     TEST_ASSERT_EQUAL_INT(4, fallback_requests);
     TEST_ASSERT_NOT_NULL(strstr(log_capture, "Ignoring oversized discovered event endpoint"));
