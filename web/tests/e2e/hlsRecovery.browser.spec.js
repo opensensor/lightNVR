@@ -307,6 +307,10 @@ it('retries the go2rtc master manifest and prevents pending recovery after unmou
     await page.evaluate(()=>{window.emitFatal('network');window.recoveries.shift()();});
     expect(await page.evaluate(()=>({starts:window.players[0].starts,sources:window.players[0].sources})))
       .toEqual({starts:1,sources:Array(2).fill('/go2rtc/api/stream.m3u8?src=fixture%20camera&mp4=flac')});
+    await page.evaluate(()=>{window.emitFatal('media');window.recoveries.shift()();});
+    expect(await page.evaluate(()=>({media:window.players[0].mediaRecoveries,sources:window.players[0].sources,
+      failures:window.failures})))
+      .toEqual({media:1,sources:Array(2).fill('/go2rtc/api/stream.m3u8?src=fixture%20camera&mp4=flac'),failures:[]});
     await page.evaluate(()=>{window.emitFatal('network');window.emitFatal('media');window.unmount();});
     // Preact schedules passive effect cleanup after paint; observe its completion.
     await page.waitForFunction(()=>window.cleanups>0);
@@ -314,7 +318,7 @@ it('retries the go2rtc master manifest and prevents pending recovery after unmou
       window.players[0].emit('error',{fatal:true,type:'other'});});
     expect(await page.evaluate(()=>({starts:window.players[0].starts,media:window.players[0].mediaRecoveries,
       destroyed:window.players[0].destroyed,errors:window.errors})))
-      .toEqual({starts:1,media:0,destroyed:1,errors:[]});
+      .toEqual({starts:1,media:1,destroyed:1,errors:[]});
   } finally {await browser.close();}
 });
 
