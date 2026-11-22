@@ -747,7 +747,7 @@ export function HLSVideoCell({
     setIsTogglingEnabled(false);
     setShowPrivacyConfirm(false);
     return () => { privacyRequestGenerationRef.current += 1; };
-  }, [stream.name]);
+  }, [stream.name, streamId]);
 
   useEffect(() => {
     if (error && onTransportFailure) onTransportFailure(error);
