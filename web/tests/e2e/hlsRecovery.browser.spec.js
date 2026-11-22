@@ -212,6 +212,7 @@ it.each([true,false])('resets fallback transport when stream ID changes: %s',asy
   try {
     await page.evaluate(()=>window.emitFatal('other'));
     await page.waitForFunction(()=>window.requests.some(r=>r.url==='/hls/fixture%20camera/index.m3u8'));
+    const playerCount=await page.evaluate(()=>window.players.length);
     await page.evaluate(shouldChangeId=>{
       if(shouldChangeId) {
         window.config.streamId='second';
@@ -220,8 +221,10 @@ it.each([true,false])('resets fallback transport when stream ID changes: %s',asy
       }
       window.mount();
     },changeId);
-    await page.waitForFunction(()=>window.players.some(p=>!p.destroyed&&
-      p.sources.some(s=>String(s?.src||s).includes(changeId?'stream=second':'src=second%20camera'))));
+    await page.waitForFunction(({previousCount,shouldChangeId})=>window.players.length>previousCount&&
+      window.players.slice(previousCount).some(p=>!p.destroyed&&p.sources.some(s=>
+        String(s?.src||s).includes(shouldChangeId?'src=fixture%20camera':'src=second%20camera'))),
+    {previousCount:playerCount,shouldChangeId:changeId});
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
