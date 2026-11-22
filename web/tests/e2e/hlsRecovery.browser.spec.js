@@ -188,33 +188,33 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
   } finally {await browser.close();}
 });
 
-it('resets local privacy state when a different stream has the same server flag',async()=>{
+it.each([true,false])('resets local privacy when stream ID changes: %s',async changeId=>{
   const {browser,page}=await openPlayer({enabled:true,showControls:true});
   try {
     await page.locator('button[aria-label="live.pauseForPrivacy"]').click();
     await page.locator('.btn-primary').click();
     await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'visible'});
-    await page.evaluate(()=>{
+    await page.evaluate(shouldChangeId=>{
       window.config.streamName='second camera';
-      window.config.streamId='second';
+      if(shouldChangeId) window.config.streamId='second';
       window.mount();
-    });
+    },changeId);
     await page.locator('button[aria-label="live.resumeStream"]').waitFor({state:'detached'});
     expect(await page.evaluate(()=>document.querySelector('.video-cell')?.dataset.streamName)).toBe('second camera');
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
 
-it('resets fallback transport when the tile receives a different stream',async()=>{
+it.each([true,false])('resets fallback transport when stream ID changes: %s',async changeId=>{
   const {browser,page}=await openPlayer({enabled:false});
   try {
     await page.evaluate(()=>window.emitFatal('other'));
     await page.waitForFunction(()=>window.requests.some(r=>r.url==='/hls/fixture%20camera/index.m3u8'));
-    await page.evaluate(()=>{
+    await page.evaluate(shouldChangeId=>{
       window.config.streamName='second camera';
-      window.config.streamId='second';
+      if(shouldChangeId) window.config.streamId='second';
       window.mount();
-    });
+    },changeId);
     await page.waitForFunction(()=>window.players.some(p=>!p.destroyed&&
       p.sources.some(s=>String(s?.src||s).includes('src=second%20camera'))));
     expect(await page.evaluate(()=>window.errors)).toEqual([]);
