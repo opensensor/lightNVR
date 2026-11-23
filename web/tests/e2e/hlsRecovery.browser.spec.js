@@ -282,7 +282,6 @@ it.each(['exhausted','networkExhausted','unrecoverable','native'])(
         value==='exhausted'?'media':value==='networkExhausted'?'network':'other',
         value==='exhausted'||value==='networkExhausted'?4:1,
       ),branch);
-      expect(await page.evaluate(()=>window.errors)).toEqual([]);
       await page.waitForFunction(currentBranch=>{
         const fallbackUrl='/hls/fixture%20camera/index.m3u8';
         const requested=window.requests.some(r=>r.url===fallbackUrl);
@@ -296,6 +295,7 @@ it.each(['exhausted','networkExhausted','unrecoverable','native'])(
       },branch);
       expect(await page.evaluate(()=>window.failures)).toEqual([]);
       if(branch!=='native') expect(await page.evaluate(()=>window.players[0].destroyed)).toBe(1);
+      expect(await page.evaluate(()=>window.errors)).toEqual([]);
     } finally {await browser.close();}
   },
 );
