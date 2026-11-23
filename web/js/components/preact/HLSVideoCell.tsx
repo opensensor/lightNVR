@@ -459,6 +459,19 @@ export function HLSVideoCell({
         hls.loadSource(hlsStreamUrl);
         hls.attachMedia(videoRef.current!);
 
+        let lastPlaybackTime = -1;
+        const handlePlaybackProgress = () => {
+          if (!isMounted || !videoRef.current) return;
+          const currentTime = videoRef.current.currentTime;
+          if (recoveringRef.current && currentTime > lastPlaybackTime && !videoRef.current.paused && !videoRef.current.ended) {
+            console.log(`[HLS ${stream.name}] Recovery successful - playback progressed`);
+            recoveringRef.current = false;
+            fatalErrorCountRef.current = 0;
+          }
+          lastPlaybackTime = currentTime;
+        };
+        videoRef.current?.addEventListener('timeupdate', handlePlaybackProgress);
+
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
           if (!isMounted) return;
           if (!recoveringRef.current) {
@@ -479,15 +492,7 @@ export function HLSVideoCell({
           }
         });
 
-        // Reset fatal error counter after successful fragment buffering (real recovery signal)
-        hls.on(Hls.Events.FRAG_BUFFERED, function() {
-          if (!isMounted) return;
-          if (recoveringRef.current) {
-            console.log(`[HLS ${stream.name}] Recovery successful - fragment buffered`);
-            recoveringRef.current = false;
-            fatalErrorCountRef.current = 0;
-          }
-        });
+        // FRAG_BUFFERED only confirms append-to-buffer; recovery reset now happens on playback progress.
 
         hls.on(Hls.Events.ERROR, function(event, data) {
           if (!isMounted) return;
@@ -586,6 +591,13 @@ export function HLSVideoCell({
             }
           }
         });
+
+        // Cleanup playback progress listener
+        const originalCleanup = cleanup;
+        cleanup = () => {
+          videoRef.current?.removeEventListener('timeupdate', handlePlaybackProgress);
+          originalCleanup();
+        };
       }
       // Check if HLS is supported natively (Safari)
       else if (videoRef.current!.canPlayType('application/vnd.apple.mpegurl')) {
