@@ -231,7 +231,10 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
   } finally {await browser.close();}
 });
 
-it.each([true,false])('resets local privacy when stream ID changes: %s',async changeId=>{
+it.each([
+  ['stream ID',{changeId:true}],
+  ['stream name',{changeId:false}],
+])('resets local privacy when %s changes',async(_label,{changeId})=>{
   const {browser,page}=await openPlayer({enabled:true,showControls:true});
   try {
     await page.locator('button[aria-label="live.pauseForPrivacy"]').click();
@@ -251,7 +254,10 @@ it.each([true,false])('resets local privacy when stream ID changes: %s',async ch
   } finally {await browser.close();}
 });
 
-it.each([true,false])('resets fallback transport when stream ID changes: %s',async changeId=>{
+it.each([
+  ['stream ID',{changeId:true}],
+  ['stream name',{changeId:false}],
+])('resets fallback transport when %s changes',async(_label,{changeId})=>{
   const {browser,page}=await openPlayer({enabled:false});
   try {
     await page.evaluate(()=>window.emitFatal('other'));
