@@ -98,7 +98,6 @@ export function HLSVideoCell({
       const focused = document.activeElement;
       const container = tileContainerRef.current;
       const focusedInTile = focused instanceof Node && !!container?.contains(focused);
-
       if (!focusedInTile && focused !== document.body) {
         hadPrivacyFocusRef.current = false;
         previousFocusedElementRef.current = null;
@@ -276,6 +275,7 @@ export function HLSVideoCell({
     let nativeLoadedHandler: (() => void) | null = null;
     let nativePlayingHandler: (() => void) | null = null;
     let nativeErrorHandler: (() => void) | null = null;
+    let playbackProgressCleanup: (() => void) | null = null;
 
     // Async initialization function - MUST be defined before doInit to avoid TDZ errors
     const initHls = async () => {
@@ -459,6 +459,21 @@ export function HLSVideoCell({
         hls.loadSource(hlsStreamUrl);
         hls.attachMedia(videoRef.current!);
 
+        const playbackVideo = videoRef.current!;
+        let lastPlaybackTime = playbackVideo.currentTime;
+        const handlePlaybackProgress = () => {
+          if (!isMounted) return;
+          const currentTime = playbackVideo.currentTime;
+          if (recoveringRef.current && currentTime > lastPlaybackTime && !playbackVideo.paused && !playbackVideo.ended) {
+            console.log(`[HLS ${stream.name}] Recovery successful - playback progressed`);
+            recoveringRef.current = false;
+            fatalErrorCountRef.current = 0;
+          }
+          lastPlaybackTime = currentTime;
+        };
+        playbackVideo.addEventListener('timeupdate', handlePlaybackProgress);
+        playbackProgressCleanup = () => playbackVideo.removeEventListener('timeupdate', handlePlaybackProgress);
+
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
           if (!isMounted) return;
           if (!recoveringRef.current) {
@@ -479,15 +494,7 @@ export function HLSVideoCell({
           }
         });
 
-        // Reset fatal error counter after successful fragment buffering (real recovery signal)
-        hls.on(Hls.Events.FRAG_BUFFERED, function() {
-          if (!isMounted) return;
-          if (recoveringRef.current) {
-            console.log(`[HLS ${stream.name}] Recovery successful - fragment buffered`);
-            recoveringRef.current = false;
-            fatalErrorCountRef.current = 0;
-          }
-        });
+        // FRAG_BUFFERED only confirms append-to-buffer; recovery reset now happens on playback progress.
 
         hls.on(Hls.Events.ERROR, function(event, data) {
           if (!isMounted) return;
@@ -586,6 +593,7 @@ export function HLSVideoCell({
             }
           }
         });
+
       }
       // Check if HLS is supported natively (Safari)
       else if (videoRef.current!.canPlayType('application/vnd.apple.mpegurl')) {
@@ -681,6 +689,7 @@ export function HLSVideoCell({
       audioPlayRequestTokenRef.current++;
       manualPlayRequestTokenRef.current++;
       isMounted = false;
+      playbackProgressCleanup?.();
 
       // Cancel any queued/in-flight gated preflight
       if (cellAbortRef.current) {
