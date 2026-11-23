@@ -231,7 +231,10 @@ it('ignores an old privacy response after the tile changes streams',async()=>{
   } finally {await browser.close();}
 });
 
-it.each([true,false])('resets local privacy when stream ID changes: %s',async changeId=>{
+it.each([
+  ['stream ID',{changeId:true}],
+  ['stream name',{changeId:false}],
+])('resets local privacy when %s changes',async(_label,{changeId})=>{
   const {browser,page}=await openPlayer({enabled:true,showControls:true});
   try {
     await page.locator('button[aria-label="live.pauseForPrivacy"]').click();
@@ -251,7 +254,10 @@ it.each([true,false])('resets local privacy when stream ID changes: %s',async ch
   } finally {await browser.close();}
 });
 
-it.each([true,false])('resets fallback transport when stream ID changes: %s',async changeId=>{
+it.each([
+  ['stream ID',{changeId:true}],
+  ['stream name',{changeId:false}],
+])('resets fallback transport when %s changes',async(_label,{changeId})=>{
   const {browser,page}=await openPlayer({enabled:false});
   try {
     await page.evaluate(()=>window.emitFatal('other'));
@@ -282,7 +288,6 @@ it.each(['exhausted','networkExhausted','unrecoverable','native'])(
         value==='exhausted'?'media':value==='networkExhausted'?'network':'other',
         value==='exhausted'||value==='networkExhausted'?4:1,
       ),branch);
-      expect(await page.evaluate(()=>window.errors)).toEqual([]);
       await page.waitForFunction(currentBranch=>{
         const fallbackUrl='/hls/fixture%20camera/index.m3u8';
         const requested=window.requests.some(r=>r.url===fallbackUrl);
@@ -296,6 +301,7 @@ it.each(['exhausted','networkExhausted','unrecoverable','native'])(
       },branch);
       expect(await page.evaluate(()=>window.failures)).toEqual([]);
       if(branch!=='native') expect(await page.evaluate(()=>window.players[0].destroyed)).toBe(1);
+      expect(await page.evaluate(()=>window.errors)).toEqual([]);
     } finally {await browser.close();}
   },
 );
@@ -340,6 +346,36 @@ it('retries the go2rtc master manifest and prevents pending recovery after unmou
     expect(await page.evaluate(()=>({starts:window.players[0].starts,media:window.players[0].mediaRecoveries,
       destroyed:window.players[0].destroyed,errors:window.errors})))
       .toEqual({starts:1,media:1,destroyed:1,errors:[]});
+  } finally {await browser.close();}
+});
+
+it('resets the fatal recovery budget only after playback advances',async()=>{
+  const {browser,page}=await openPlayer({enabled:true});
+  try {
+    await page.evaluate(()=>{
+      window.emitFatal('network',3);
+      window.players[0].emit('fragment');
+      const video=document.querySelector('video');
+      Object.defineProperty(video,'paused',{configurable:true,get:()=>false});
+      video.currentTime=1;
+      video.dispatchEvent(new Event('timeupdate'));
+      window.emitFatal('network');
+    });
+    expect(await page.evaluate(()=>({failures:window.failures,errors:window.errors})))
+      .toEqual({failures:[],errors:[]});
+  } finally {await browser.close();}
+});
+
+it('does not reset the fatal recovery budget for buffered fragments alone',async()=>{
+  const {browser,page}=await openPlayer({enabled:true});
+  try {
+    await page.evaluate(()=>{
+      window.emitFatal('network',3);
+      window.players[0].emit('fragment');
+      window.emitFatal('network');
+    });
+    await page.waitForFunction(()=>window.failures.length>0);
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
 
