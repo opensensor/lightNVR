@@ -349,6 +349,36 @@ it('retries the go2rtc master manifest and prevents pending recovery after unmou
   } finally {await browser.close();}
 });
 
+it('resets the fatal recovery budget only after playback advances',async()=>{
+  const {browser,page}=await openPlayer({enabled:true});
+  try {
+    await page.evaluate(()=>{
+      window.emitFatal('network',3);
+      window.players[0].emit('fragment');
+      const video=document.querySelector('video');
+      Object.defineProperty(video,'paused',{configurable:true,get:()=>false});
+      video.currentTime=1;
+      video.dispatchEvent(new Event('timeupdate'));
+      window.emitFatal('network');
+    });
+    expect(await page.evaluate(()=>({failures:window.failures,errors:window.errors})))
+      .toEqual({failures:[],errors:[]});
+  } finally {await browser.close();}
+});
+
+it('does not reset the fatal recovery budget for buffered fragments alone',async()=>{
+  const {browser,page}=await openPlayer({enabled:true});
+  try {
+    await page.evaluate(()=>{
+      window.emitFatal('network',3);
+      window.players[0].emit('fragment');
+      window.emitFatal('network');
+    });
+    await page.waitForFunction(()=>window.failures.length>0);
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
+  } finally {await browser.close();}
+});
+
 it.each(['manifestLoadError','manifestLoadTimeOut'])(
   'reloads the native manifest after %s',async detail=>{
     const {browser,page}=await openPlayer({forceNative:true});
