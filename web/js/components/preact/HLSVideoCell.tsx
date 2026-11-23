@@ -92,28 +92,15 @@ export function HLSVideoCell({
   const hadPrivacyFocusRef = useRef(false);
   const previousFocusedElementRef = useRef<HTMLElement | null>(null);
   const tileContainerRef = useRef<HTMLDivElement | null>(null);
-  const privacyFocusInitializedRef = useRef(false);
-  const previousPrivacyActiveRef = useRef(privacyActive);
 
   useEffect(() => {
     if (privacyActive) {
       const focused = document.activeElement;
       const container = tileContainerRef.current;
       const focusedInTile = focused instanceof Node && !!container?.contains(focused);
-      const becamePrivacyActive = !previousPrivacyActiveRef.current && privacyActive;
-
-      if (!privacyFocusInitializedRef.current) {
-        privacyFocusInitializedRef.current = true;
+      if (!focusedInTile && focused !== document.body) {
         hadPrivacyFocusRef.current = false;
         previousFocusedElementRef.current = null;
-        previousPrivacyActiveRef.current = privacyActive;
-        return;
-      }
-
-      if (!becamePrivacyActive || !focusedInTile) {
-        hadPrivacyFocusRef.current = false;
-        previousFocusedElementRef.current = null;
-        previousPrivacyActiveRef.current = privacyActive;
         return;
       }
 
@@ -123,19 +110,14 @@ export function HLSVideoCell({
       }
       privacyResumeButtonRef.current?.focus();
       hadPrivacyFocusRef.current = true;
-      previousPrivacyActiveRef.current = privacyActive;
       return;
     }
 
-    if (!hadPrivacyFocusRef.current) {
-      previousPrivacyActiveRef.current = privacyActive;
-      return;
-    }
+    if (!hadPrivacyFocusRef.current) return;
     if (document.activeElement !== privacyResumeButtonRef.current &&
         document.activeElement !== document.body) {
       hadPrivacyFocusRef.current = false;
       previousFocusedElementRef.current = null;
-      previousPrivacyActiveRef.current = privacyActive;
       return;
     }
 
@@ -147,7 +129,6 @@ export function HLSVideoCell({
       tileContainerRef.current?.focus();
     }
     previousFocusedElementRef.current = null;
-    previousPrivacyActiveRef.current = privacyActive;
   }, [privacyActive]);
 
   useEffect(() => {
@@ -294,6 +275,7 @@ export function HLSVideoCell({
     let nativeLoadedHandler: (() => void) | null = null;
     let nativePlayingHandler: (() => void) | null = null;
     let nativeErrorHandler: (() => void) | null = null;
+    let playbackProgressCleanup: (() => void) | null = null;
 
     // Async initialization function - MUST be defined before doInit to avoid TDZ errors
     const initHls = async () => {
@@ -477,18 +459,20 @@ export function HLSVideoCell({
         hls.loadSource(hlsStreamUrl);
         hls.attachMedia(videoRef.current!);
 
-        let lastPlaybackTime = -1;
+        const playbackVideo = videoRef.current!;
+        let lastPlaybackTime = playbackVideo.currentTime;
         const handlePlaybackProgress = () => {
-          if (!isMounted || !videoRef.current) return;
-          const currentTime = videoRef.current.currentTime;
-          if (recoveringRef.current && currentTime > lastPlaybackTime && !videoRef.current.paused && !videoRef.current.ended) {
+          if (!isMounted) return;
+          const currentTime = playbackVideo.currentTime;
+          if (recoveringRef.current && currentTime > lastPlaybackTime && !playbackVideo.paused && !playbackVideo.ended) {
             console.log(`[HLS ${stream.name}] Recovery successful - playback progressed`);
             recoveringRef.current = false;
             fatalErrorCountRef.current = 0;
           }
           lastPlaybackTime = currentTime;
         };
-        videoRef.current?.addEventListener('timeupdate', handlePlaybackProgress);
+        playbackVideo.addEventListener('timeupdate', handlePlaybackProgress);
+        playbackProgressCleanup = () => playbackVideo.removeEventListener('timeupdate', handlePlaybackProgress);
 
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
           if (!isMounted) return;
@@ -610,12 +594,6 @@ export function HLSVideoCell({
           }
         });
 
-        // Cleanup playback progress listener
-        const originalCleanup = cleanup;
-        cleanup = () => {
-          videoRef.current?.removeEventListener('timeupdate', handlePlaybackProgress);
-          originalCleanup();
-        };
       }
       // Check if HLS is supported natively (Safari)
       else if (videoRef.current!.canPlayType('application/vnd.apple.mpegurl')) {
@@ -711,6 +689,7 @@ export function HLSVideoCell({
       audioPlayRequestTokenRef.current++;
       manualPlayRequestTokenRef.current++;
       isMounted = false;
+      playbackProgressCleanup?.();
 
       // Cancel any queued/in-flight gated preflight
       if (cellAbortRef.current) {
