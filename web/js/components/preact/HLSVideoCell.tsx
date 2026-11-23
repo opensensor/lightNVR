@@ -92,16 +92,28 @@ export function HLSVideoCell({
   const hadPrivacyFocusRef = useRef(false);
   const previousFocusedElementRef = useRef<HTMLElement | null>(null);
   const tileContainerRef = useRef<HTMLDivElement | null>(null);
+  const privacyFocusInitializedRef = useRef(false);
+  const previousPrivacyActiveRef = useRef(privacyActive);
 
   useEffect(() => {
     if (privacyActive) {
       const focused = document.activeElement;
       const container = tileContainerRef.current;
       const focusedInTile = focused instanceof Node && !!container?.contains(focused);
+      const becamePrivacyActive = !previousPrivacyActiveRef.current && privacyActive;
 
-      if (!focusedInTile && focused !== document.body) {
+      if (!privacyFocusInitializedRef.current) {
+        privacyFocusInitializedRef.current = true;
         hadPrivacyFocusRef.current = false;
         previousFocusedElementRef.current = null;
+        previousPrivacyActiveRef.current = privacyActive;
+        return;
+      }
+
+      if (!becamePrivacyActive || !focusedInTile) {
+        hadPrivacyFocusRef.current = false;
+        previousFocusedElementRef.current = null;
+        previousPrivacyActiveRef.current = privacyActive;
         return;
       }
 
@@ -111,14 +123,19 @@ export function HLSVideoCell({
       }
       privacyResumeButtonRef.current?.focus();
       hadPrivacyFocusRef.current = true;
+      previousPrivacyActiveRef.current = privacyActive;
       return;
     }
 
-    if (!hadPrivacyFocusRef.current) return;
+    if (!hadPrivacyFocusRef.current) {
+      previousPrivacyActiveRef.current = privacyActive;
+      return;
+    }
     if (document.activeElement !== privacyResumeButtonRef.current &&
         document.activeElement !== document.body) {
       hadPrivacyFocusRef.current = false;
       previousFocusedElementRef.current = null;
+      previousPrivacyActiveRef.current = privacyActive;
       return;
     }
 
@@ -130,6 +147,7 @@ export function HLSVideoCell({
       tileContainerRef.current?.focus();
     }
     previousFocusedElementRef.current = null;
+    previousPrivacyActiveRef.current = privacyActive;
   }, [privacyActive]);
 
   useEffect(() => {
