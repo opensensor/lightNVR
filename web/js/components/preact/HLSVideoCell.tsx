@@ -377,7 +377,15 @@ export function HLSVideoCell({
       // hls.js, whose own retry policy handles them.
       try {
         const preflight = await streamConnectionGate.run(
-          (signal) => fetch(hlsStreamUrl, { signal }),
+          async (signal) => {
+            const response = await fetch(hlsStreamUrl, { signal });
+            const bodyText = response.ok ? '' : await response.text().catch(() => '');
+            return {
+              ok: response.ok,
+              status: response.status,
+              bodyText,
+            };
+          },
           {
             priority: priorityForStreamStatus(stream.status),
             signal: cellAbortRef.current ? cellAbortRef.current.signal : undefined
@@ -386,10 +394,9 @@ export function HLSVideoCell({
         // A successful cross-origin fetch proves the endpoint permits anonymous CORS.
         corsPreflightSucceeded = true;
         if (!preflight.ok) {
-          const bodyText = await preflight.text().catch(() => '');
-          const isSourceUnreachable = /dial tcp|no route to host|connection refused|connect:/i.test(bodyText);
+          const isSourceUnreachable = /dial tcp|no route to host|connection refused|connect:/i.test(preflight.bodyText);
           if (isSourceUnreachable) {
-            console.error(`[HLS ${stream.name}] Manifest preflight: source unreachable (${preflight.status}): ${bodyText}`);
+            console.error(`[HLS ${stream.name}] Manifest preflight: source unreachable (${preflight.status}): ${preflight.bodyText}`);
             if (isMounted) {
               setError(t('live.cannotConnectToSource'));
               setIsLoading(false);
