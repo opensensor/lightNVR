@@ -344,8 +344,10 @@ it('retries the go2rtc master manifest and prevents pending recovery after unmou
     await page.evaluate(()=>{window.recoveries.splice(0).forEach(fn=>fn());
       window.players[0].emit('error',{fatal:true,type:'other'});});
     expect(await page.evaluate(()=>({starts:window.players[0].starts,media:window.players[0].mediaRecoveries,
-      destroyed:window.players[0].destroyed,errors:window.errors})))
-      .toEqual({starts:1,media:1,destroyed:1,errors:[]});
+      destroyed:window.players[0].destroyed,sources:window.players[0].sources,failures:window.failures,
+      errors:window.errors})))
+      .toEqual({starts:1,media:1,destroyed:1,sources:Array(2).fill('/go2rtc/api/stream.m3u8?src=fixture%20camera&mp4=flac'),
+        failures:[],errors:[]});
   } finally {await browser.close();}
 });
 
