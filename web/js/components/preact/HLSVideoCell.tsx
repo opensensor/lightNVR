@@ -471,8 +471,24 @@ export function HLSVideoCell({
           }
           lastPlaybackTime = currentTime;
         };
+        const handlePlaying = () => {
+          if (!isMounted) return;
+          setIsPlaying(true);
+        };
+        const handlePausedOrEnded = () => {
+          if (!isMounted) return;
+          setIsPlaying(false);
+        };
         playbackVideo.addEventListener('timeupdate', handlePlaybackProgress);
-        playbackProgressCleanup = () => playbackVideo.removeEventListener('timeupdate', handlePlaybackProgress);
+        playbackVideo.addEventListener('playing', handlePlaying);
+        playbackVideo.addEventListener('pause', handlePausedOrEnded);
+        playbackVideo.addEventListener('ended', handlePausedOrEnded);
+        playbackProgressCleanup = () => {
+          playbackVideo.removeEventListener('timeupdate', handlePlaybackProgress);
+          playbackVideo.removeEventListener('playing', handlePlaying);
+          playbackVideo.removeEventListener('pause', handlePausedOrEnded);
+          playbackVideo.removeEventListener('ended', handlePausedOrEnded);
+        };
 
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
           if (!isMounted) return;
