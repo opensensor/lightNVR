@@ -1502,9 +1502,8 @@ cleanup:
     cleanup_health_check_system();
 
     // Block most signals during cleanup to prevent interruptions
-    // But keep SIGUSR1, SIGALRM, and SIGKILL unblocked for emergency shutdown
-    sigset_t block_mask, old_mask;
-    sigfillset(&block_mask);
+            // Post-fork child from multithreaded parent: avoid stdio/logger calls here.
+            // Continue best-effort even if setpgid fails.
     sigdelset(&block_mask, SIGUSR1);   // Keep USR1 unblocked for watchdog
     sigdelset(&block_mask, SIGALRM);   // Keep ALRM unblocked for timeouts
     sigdelset(&block_mask, SIGKILL);   // SIGKILL can't be blocked anyway
@@ -1516,7 +1515,7 @@ cleanup:
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
 
-        // CRITICAL FIX: Create a new process group immediately so we won't be killed
+        // Unblock all signals in the child
         // by the parent's kill(0, SIGKILL) which kills all processes in the same group
         // Post-fork child from a multithreaded parent: keep this path free of
         // stdio and logger calls. Continue best-effort if setpgid fails.
@@ -1527,23 +1526,18 @@ cleanup:
         memset(&sa_default, 0, sizeof(sa_default));
         sa_default.sa_handler = SIG_DFL;
         sigaction(SIGTERM, &sa_default, NULL);
-        sigaction(SIGINT, &sa_default, NULL);
         sigaction(SIGALRM, &sa_default, NULL);
         sigaction(SIGUSR1, &sa_default, NULL);
 
         // Unblock all signals in the child
-        sigset_t empty_mask;
         sigemptyset(&empty_mask);
         sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 
         // Save the parent PID before it gets killed
         pid_t parent_pid = getppid();
 
-        // Allow the same final-backup deadline as the thread watchdog.
-        // Large databases can take several minutes to copy and verify.
+                _exit(EXIT_SUCCESS);
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
-        kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
-
         // Wait a bit longer for emergency cleanup before giving up entirely
         sleep(15);
         kill(parent_pid, SIGKILL);  // Force kill the parent process
@@ -1565,20 +1559,13 @@ cleanup:
                     if (kill(parent_pid, 0) != 0) {
                         // Parent is gone
                         break;
-                    }
-                    usleep(500000);  // 500ms
                 }
 
-                // Get the executable path
-                char exe_path[MAX_PATH_LENGTH];
-                ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-                if (len > 0) {
-                    exe_path[len] = '\0';
 
                     // Re-exec the program with the same arguments
                     execv(exe_path, saved_argv);
                 }
-            }
+        _exit(EXIT_FAILURE);
         }
 
         _exit(EXIT_FAILURE);
