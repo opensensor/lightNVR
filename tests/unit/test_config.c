@@ -625,21 +625,30 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
     FILE *saved = fopen(config_path, "r");
     TEST_ASSERT_NOT_NULL(saved);
     if (saved) {
-        char file_buffer[4096] = {0};
-        size_t bytes_read = fread(file_buffer, 1, sizeof(file_buffer) - 1, saved);
-        TEST_ASSERT_GREATER_THAN(0, (int)bytes_read);
-        file_buffer[bytes_read] = '\0';
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "; LightNVR Configuration File"));
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "backup_interval_minutes = 15"));
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "backup_retention_count = 8"));
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "post_backup_script = /usr/local/bin/post-backup"));
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "mp4_directory_format = year_month_day"));
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "audio_disabled = true"));
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "auto_disabled = true"));
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "[health]"));
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "profile = conservative"));
-        TEST_ASSERT_NOT_NULL(strstr(file_buffer,
-                                    "presence_interval_seconds = 120"));
+        TEST_ASSERT_EQUAL_INT(0, fseek(saved, 0, SEEK_END));
+        long file_size = ftell(saved);
+        TEST_ASSERT_GREATER_THAN(0, file_size);
+        rewind(saved);
+
+        char *file_buffer = malloc((size_t)file_size + 1U);
+        TEST_ASSERT_NOT_NULL(file_buffer);
+        if (file_buffer) {
+            size_t bytes_read = fread(file_buffer, 1, (size_t)file_size, saved);
+            TEST_ASSERT_EQUAL_size_t((size_t)file_size, bytes_read);
+            file_buffer[bytes_read] = '\0';
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "; LightNVR Configuration File"));
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "backup_interval_minutes = 15"));
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "backup_retention_count = 8"));
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "post_backup_script = /usr/local/bin/post-backup"));
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "mp4_directory_format = year_month_day"));
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "audio_disabled = true"));
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "auto_disabled = true"));
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "[health]"));
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "profile = conservative"));
+            TEST_ASSERT_NOT_NULL(strstr(file_buffer,
+                                        "presence_interval_seconds = 120"));
+            free(file_buffer);
+        }
         fclose(saved);
     }
 
