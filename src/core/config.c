@@ -1895,6 +1895,12 @@ int save_config(const config_t *config, const char *path) {
         log_error("Invalid config parameter for save_config: config=%p", config);
         return -1;
     }
+    if (contains_unsupported_ini_credential_chars(config->turn_username) ||
+        contains_unsupported_ini_credential_chars(config->turn_password) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_password)) {
+        log_error("Credential contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save");
+        return -1;
+    }
     
     // If no path is specified, try tracked paths then well-known defaults
     const char *save_path = path;
@@ -2356,19 +2362,9 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "turn_server_url = %s\n", config->turn_server_url);
     }
     if (config->turn_username[0] != '\0') {
-        if (contains_unsupported_ini_credential_chars(config->turn_username)) {
-            log_error("TURN username contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save.");
-            fclose(file);
-            return false;
-        }
         fprintf(file, "turn_username = %s\n", config->turn_username);
     }
     if (config->turn_password[0] != '\0') {
-        if (contains_unsupported_ini_credential_chars(config->turn_password)) {
-            log_error("TURN password contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save.");
-            fclose(file);
-            return false;
-        }
         fprintf(file, "turn_password = %s\n", config->turn_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
 
@@ -2383,11 +2379,6 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "username = %s\n", config->mqtt_username);
     }
     if (config->mqtt_password[0] != '\0') {
-        if (contains_unsupported_ini_credential_chars(config->mqtt_password)) {
-            log_error("MQTT password contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save.");
-            fclose(file);
-            return false;
-        }
         fprintf(file, "password = %s\n", config->mqtt_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
     fprintf(file, "client_id = %s\n", config->mqtt_client_id);
