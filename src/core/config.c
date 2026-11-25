@@ -1724,10 +1724,12 @@ int save_config(const config_t *config, const char *path) {
         safe_strcpy(tmp, save_path, MAX_PATH_LENGTH, 0);
 
         const char *fname;
+        char fname_buf[MAX_PATH_LENGTH];
 
         char *sl = strrchr(tmp, '/');
         if (sl) {
-            fname = sl + 1;
+            safe_strcpy(fname_buf, sl + 1, MAX_PATH_LENGTH, 0);
+            fname = fname_buf;
             if (sl == tmp) {
                 /* Root-level path, e.g. "/lightnvr.ini": keep directory as "/" */
                 tmp[0] = '/';
@@ -1740,7 +1742,8 @@ int save_config(const config_t *config, const char *path) {
                 return -1;
             }
         } else {
-            fname = tmp;
+            safe_strcpy(fname_buf, tmp, MAX_PATH_LENGTH, 0);
+            fname = fname_buf;
             /* No directory separator — resolve CWD as the directory. */
             char cwd[PATH_MAX];
             if (getcwd(cwd, sizeof(cwd)) == NULL ||
