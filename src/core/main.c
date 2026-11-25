@@ -2167,16 +2167,12 @@ static void check_and_ensure_services(void) {
             is_detection_recording_scheduled(&current_config->streams[i])) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = current_config->streams[i].record;
-            if (current_config->streams[i].detection_model[0] == '\0') {
-                log_warn("Detection model is empty for stream: %s",
-                         current_config->streams[i].name);
-                continue;
-            }
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
             char resolved_detection_model[MAX_PATH_LENGTH];
             const char *detection_model_path = current_config->streams[i].detection_model;
-            if (detection_model_path[0] != '/' &&
+            if (detection_model_path[0] != '\0' &&
+                detection_model_path[0] != '/' &&
                 strcmp(detection_model_path, "motion") != 0 &&
                 strcmp(detection_model_path, "onvif") != 0 &&
                 strcmp(detection_model_path, "api-detection") != 0 &&
