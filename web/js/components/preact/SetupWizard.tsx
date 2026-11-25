@@ -284,12 +284,47 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const saveSettings = async () => {
     setSaving(true);
     try {
+      const parsedMaxStorageGb = Number.parseFloat(form.maxStorageSize);
+      if (!Number.isFinite(parsedMaxStorageGb) || parsedMaxStorageGb < 0) {
+        showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size must be a finite number greater than or equal to 0.' }), 'error');
+        return false;
+      }
+      const validatedMaxStorageBytes = Math.round(parsedMaxStorageGb * BYTES_PER_GB);
+
+      let validatedThreadPoolSize: number | undefined = undefined;
+      if (form.threadPoolSize.trim() !== '') {
+        const parsedThreadPoolSize = Number(form.threadPoolSize);
+        if (!Number.isFinite(parsedThreadPoolSize) || !Number.isInteger(parsedThreadPoolSize)) {
+          showStatusMessage(t('setupWizard.saveFailed', { error: 'Thread pool size must be an integer.' }), 'error');
+          return false;
+        }
+        if (parsedThreadPoolSize < 1) {
+          showStatusMessage(t('setupWizard.saveFailed', { error: 'Thread pool size must be at least 1.' }), 'error');
+          return false;
+        }
+        if (cpuCores > 0 && parsedThreadPoolSize > cpuCores) {
+          showStatusMessage(t('setupWizard.saveFailed', { error: `Thread pool size must be less than or equal to ${cpuCores}.` }), 'error');
+          return false;
+        }
+        validatedThreadPoolSize = parsedThreadPoolSize;
+      }
+
+      const parsedMaxStreams = Number(form.maxStreams);
+      if (!Number.isFinite(parsedMaxStreams) || !Number.isInteger(parsedMaxStreams)) {
+        showStatusMessage(t('setupWizard.saveFailed', { error: 'Max streams must be an integer.' }), 'error');
+        return false;
+      }
+      if (parsedMaxStreams < 1 || parsedMaxStreams > maxStreamsCeiling) {
+        showStatusMessage(t('setupWizard.saveFailed', { error: `Max streams must be between 1 and ${maxStreamsCeiling}.` }), 'error');
+        return false;
+      }
+
       const payload: SetupSettingsPayload = {
         storage_path:         form.storagePath    || undefined,
-        max_storage_size:     gbStringToBytes(form.maxStorageSize),
+        max_storage_size:     validatedMaxStorageBytes,
         db_path:              form.dbPath         || undefined,
-        web_thread_pool_size: form.threadPoolSize ? parseInt(form.threadPoolSize, 10) : undefined,
-        max_streams:          parseInt(form.maxStreams, 10) || 32,
+        web_thread_pool_size: validatedThreadPoolSize,
+        max_streams:          parsedMaxStreams,
       };
       (Object.keys(payload) as (keyof SetupSettingsPayload)[]).forEach(k => payload[k] === undefined && delete payload[k]);
 
