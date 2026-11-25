@@ -106,10 +106,18 @@ config_t* get_streaming_config(void) {
     // Log the storage path for debugging
     log_debug("get_streaming_config: Using storage path: %s", db_config.storage_path);
     log_debug("get_streaming_config: Using database path: %s", db_config.db_path);
+
+    // Return a caller-owned snapshot to avoid exposing shared mutable static state.
+    config_t *snapshot = calloc(1, sizeof(*snapshot));
+    if (!snapshot || !config_copy(snapshot, &db_config)) {
+        free(snapshot);
+        pthread_mutex_unlock(&config_mutex);
+        return &g_config;
+    }
     
     pthread_mutex_unlock(&config_mutex);
     
-    return &db_config;
+    return snapshot;
 }
 
 /**
