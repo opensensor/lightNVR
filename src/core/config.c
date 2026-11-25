@@ -1909,7 +1909,8 @@ int save_config(const config_t *config, const char *path) {
     if (contains_unsupported_ini_credential_chars(config->turn_username) ||
         contains_unsupported_ini_credential_chars(config->turn_password) ||
         contains_unsupported_ini_credential_chars(config->mqtt_username) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_password)) {
+        contains_unsupported_ini_credential_chars(config->mqtt_password) ||
+        contains_unsupported_ini_credential_chars(config->web_username)) {
         log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
         return -1;
     }
@@ -2310,11 +2311,6 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "ssl_cert_path = %s  ; PEM certificate chain, leaf first\n", config->web_ssl_cert_path);
     fprintf(file, "ssl_key_path = %s  ; PEM private key (unencrypted)\n", config->web_ssl_key_path);
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
-    if (contains_unsupported_ini_credential_chars(config->web_username)) {
-        LOG_ERROR("Refusing to save config: web_username contains unsupported INI characters");
-        fclose(file);
-        return false;
-    }
     fprintf(file, "username = %s\n", config->web_username);
     // Note: web_password is no longer saved to config - user passwords are managed in the database
     fprintf(file, "audio_disabled = %s  ; Instance-wide audio compliance policy\n", config->audio_disabled ? "true" : "false");
@@ -2420,6 +2416,14 @@ int save_config(const config_t *config, const char *path) {
     
     int write_failed = ferror(file);
     if (fflush(file) != 0 || fsync(fileno(file)) != 0) write_failed = 1;
+    /* Keep a stable handle to the private staging file for the in-place
+     * fallback, but close the stream before publishing so close errors count. */
+    int staged_fd = -1;
+    if (!write_failed) {
+        staged_fd = dup(fileno(file));
+        if (staged_fd < 0) write_failed = 1;
+    }
+    if (fclose(file) != 0) write_failed = 1;
     if (!write_failed) {
         /* Do not replace a symlink, hardlink, or changed target introduced
          * while the replacement was being written. */
@@ -2432,14 +2436,11 @@ int save_config(const config_t *config, const char *path) {
         if (!unchanged) {
             write_failed = 1;
         } else if (external_staging) {
-            int staged_fd = open(external_staging_path, O_RDONLY | O_CLOEXEC);
-            if (staged_fd < 0 || publish_config_in_place(dir_fd, validated_filename,
+            if (publish_config_in_place(dir_fd, validated_filename,
                     &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
-            if (staged_fd >= 0) close(staged_fd);
         } else if (renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
             if (errno == EBUSY && original_fd >= 0) {
-                int staged_fd = fileno(file);
-                if (staged_fd < 0 || publish_config_in_place(dir_fd, validated_filename,
+                if (publish_config_in_place(dir_fd, validated_filename,
                         &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
             } else {
                 write_failed = 1;
@@ -2448,7 +2449,7 @@ int save_config(const config_t *config, const char *path) {
             log_warn("Could not sync config directory after replacement: %s", strerror(errno));
         }
     }
-    if (fclose(file) != 0) write_failed = 1;
+    if (staged_fd >= 0) close(staged_fd);
     if (external_staging) unlink(external_staging_path);
     else unlinkat(dir_fd, replacement_name, 0);
     if (original_fd >= 0) close(original_fd);
