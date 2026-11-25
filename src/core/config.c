@@ -38,6 +38,14 @@ static bool contains_unsupported_ini_credential_chars(const char *value) {
         return false;
     }
 
+    size_t len = strlen(value);
+    if (len > 0) {
+        if (isspace((unsigned char)value[0]) ||
+            isspace((unsigned char)value[len - 1])) {
+            return true;
+        }
+    }
+
     for (const unsigned char *p = (const unsigned char *)value; *p != '\0'; ++p) {
         if (*p == '\n' || *p == '\r' || *p == ';' || *p == '#') {
             return true;
@@ -1897,8 +1905,9 @@ int save_config(const config_t *config, const char *path) {
     }
     if (contains_unsupported_ini_credential_chars(config->turn_username) ||
         contains_unsupported_ini_credential_chars(config->turn_password) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_username) ||
         contains_unsupported_ini_credential_chars(config->mqtt_password)) {
-        log_error("Credential contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save");
+        log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
         return -1;
     }
     
