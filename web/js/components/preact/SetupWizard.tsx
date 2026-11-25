@@ -480,6 +480,18 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    stepHeadingRef.current?.focus();
+  }, [step]);
+
+  const stepTitle =
+    step === 0 ? t('setupWizard.welcomeTitle')
+    : step === 1 ? t('setupWizard.storageTitle')
+    : step === 2 ? t('setupWizard.performanceTitle')
+    : t('setupWizard.completeTitle');
+
   return (
     <div data-testid="setup-wizard" class="app-modal-overlay app-modal-overlay--dialog fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div
@@ -490,7 +502,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
         tabIndex={-1}
         class="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-lg p-8 max-h-[calc(100vh-2rem)] overflow-y-auto"
       >
-        <h2 id={dialogTitleId} class="sr-only">{t('setupWizard.welcomeTitle')}</h2>
+        <h2 id={dialogTitleId} ref={stepHeadingRef} tabIndex={-1} class="sr-only">{stepTitle}</h2>
         {step === 0 && <WelcomeStep />}
         {step === 1 && <StorageStep     form={form} onChange={handleChange} />}
         {step === 2 && <PerformanceStep form={form} onChange={handleChange} cpuCores={cpuCores} maxStreamsCeiling={maxStreamsCeiling} />}
