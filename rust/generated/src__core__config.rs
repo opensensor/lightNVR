@@ -31,9 +31,22 @@ unsafe extern "C" {
         __type: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
     unsafe fn close(__fd: ::core::ffi::c_int) -> ::core::ffi::c_int;
+    unsafe fn pread(
+        __fd: ::core::ffi::c_int,
+        __buf: *mut ::core::ffi::c_void,
+        __nbytes: size_t,
+        __offset: __off_t,
+    ) -> ssize_t;
+    unsafe fn pwrite(
+        __fd: ::core::ffi::c_int,
+        __buf: *const ::core::ffi::c_void,
+        __n: size_t,
+        __offset: __off_t,
+    ) -> ssize_t;
     unsafe fn getcwd(__buf: *mut ::core::ffi::c_char, __size: size_t) -> *mut ::core::ffi::c_char;
     unsafe fn sysconf(__name: ::core::ffi::c_int) -> ::core::ffi::c_long;
     unsafe fn getpid() -> __pid_t;
+    unsafe fn unlink(__name: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn unlinkat(
         __fd: ::core::ffi::c_int,
         __name: *const ::core::ffi::c_char,
@@ -63,6 +76,7 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
     unsafe fn fchmod(__fd: ::core::ffi::c_int, __mode: __mode_t) -> ::core::ffi::c_int;
     unsafe fn __ctype_b_loc() -> *mut *const ::core::ffi::c_ushort;
+    unsafe fn __ctype_toupper_loc() -> *mut *const __int32_t;
     unsafe fn pthread_mutex_lock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_unlock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
     unsafe fn ini_parse(
@@ -139,6 +153,7 @@ unsafe extern "C" {
         __needle: *const ::core::ffi::c_char,
     ) -> *mut ::core::ffi::c_char;
     unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
+    unsafe fn strnlen(__string: *const ::core::ffi::c_char, __maxlen: size_t) -> size_t;
     unsafe fn strerror(__errnum: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
     unsafe fn strcasecmp(
         __s1: *const ::core::ffi::c_char,
@@ -163,12 +178,14 @@ unsafe extern "C" {
     unsafe fn realloc(__ptr: *mut ::core::ffi::c_void, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
     unsafe fn getenv(__name: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
+    unsafe fn mkstemp(__template: *mut ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn realpath(
         __name: *const ::core::ffi::c_char,
         __resolved: *mut ::core::ffi::c_char,
     ) -> *mut ::core::ffi::c_char;
 }
 pub type size_t = usize;
+pub type __int32_t = i32;
 pub type __uint64_t = u64;
 pub type __dev_t = ::core::ffi::c_ulong;
 pub type __uid_t = ::core::ffi::c_uint;
@@ -184,6 +201,8 @@ pub type __blksize_t = ::core::ffi::c_long;
 pub type __blkcnt_t = ::core::ffi::c_long;
 pub type __syscall_slong_t = ::core::ffi::c_long;
 pub type mode_t = __mode_t;
+pub type off_t = __off_t;
+pub type ssize_t = isize;
 pub type int64_t = i64;
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -791,10 +810,17 @@ impl config_field_type_t {
     pub const CONFIG_TYPE_INT: Self = Self(1);
     pub const CONFIG_TYPE_STRING: Self = Self(2);
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct config_ini_context_t {
+    pub config: *mut config_t,
+    pub ini_present: *mut bool,
+}
 pub const R_OK: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
 pub const W_OK: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const O_RDONLY: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const O_WRONLY: ::core::ffi::c_int = 0o1 as ::core::ffi::c_int;
+pub const O_RDWR: ::core::ffi::c_int = 0o2 as ::core::ffi::c_int;
 pub const O_CREAT: ::core::ffi::c_int = 0o100 as ::core::ffi::c_int;
 pub const O_EXCL: ::core::ffi::c_int = 0o200 as ::core::ffi::c_int;
 pub const O_APPEND: ::core::ffi::c_int = 0o2000 as ::core::ffi::c_int;
@@ -805,6 +831,14 @@ pub const O_DIRECTORY: ::core::ffi::c_int = __O_DIRECTORY;
 pub const O_NOFOLLOW: ::core::ffi::c_int = __O_NOFOLLOW;
 pub const O_CLOEXEC: ::core::ffi::c_int = __O_CLOEXEC;
 pub const AT_SYMLINK_NOFOLLOW: ::core::ffi::c_int = 0x100 as ::core::ffi::c_int;
+#[inline]
+unsafe extern "C" fn toupper(mut __c: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    return if __c >= -128 as ::core::ffi::c_int && __c < 256 as ::core::ffi::c_int {
+        *(*__ctype_toupper_loc()).offset(__c as isize) as ::core::ffi::c_int
+    } else {
+        __c
+    };
+}
 pub const LOG_USER: ::core::ffi::c_int = (1 as ::core::ffi::c_int) << 3 as ::core::ffi::c_int;
 pub const LOG_DAEMON: ::core::ffi::c_int = (3 as ::core::ffi::c_int) << 3 as ::core::ffi::c_int;
 pub const LOG_LOCAL0: ::core::ffi::c_int = (16 as ::core::ffi::c_int) << 3 as ::core::ffi::c_int;
@@ -1006,13 +1040,64 @@ pub unsafe extern "C" fn config_set_mp4_faststart(mut config: *mut config_t, mut
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn config_copy(mut destination: *mut config_t, mut source: *const config_t) {
+    if destination.is_null() || source.is_null() || destination == source as *mut config_t {
+        return;
+    }
     pthread_mutex_lock(&raw mut mp4_faststart_mutex);
-    if destination != source as *mut config_t {
+    let mut copy: *mut stream_config_t = ::core::ptr::null_mut::<stream_config_t>();
+    if !(*source).streams.is_null() {
+        if (*source).max_streams <= 0 as ::core::ffi::c_int
+            || (*source).max_streams > MAX_STREAMS
+            || (*source).max_streams as size_t
+                > (SIZE_MAX as usize).wrapping_div(::core::mem::size_of::<stream_config_t>())
+        {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"config_copy: invalid stream capacity %d\0".as_ptr() as *const ::core::ffi::c_char,
+                (*source).max_streams,
+            );
+            pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+            return;
+        }
+        let mut bytes: size_t = ((*source).max_streams as size_t)
+            .wrapping_mul(::core::mem::size_of::<stream_config_t>());
+        if !(*destination).streams.is_null()
+            && (*destination).streams != (*source).streams
+            && (*destination).max_streams == (*source).max_streams
+        {
+            copy = (*destination).streams;
+        } else {
+            copy = malloc(bytes) as *mut stream_config_t;
+            if copy.is_null() {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"config_copy: could not allocate %zu stream bytes\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    bytes,
+                );
+                pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+                return;
+            }
+        }
         memcpy(
-            destination as *mut ::core::ffi::c_void,
-            source as *const ::core::ffi::c_void,
-            ::core::mem::size_of::<config_t>(),
+            copy as *mut ::core::ffi::c_void,
+            (*source).streams as *const ::core::ffi::c_void,
+            bytes,
         );
+    }
+    let mut old_streams: *mut stream_config_t = (*destination).streams;
+    memcpy(
+        destination as *mut ::core::ffi::c_void,
+        source as *const ::core::ffi::c_void,
+        ::core::mem::size_of::<config_t>(),
+    );
+    (*destination).streams = copy;
+    if old_streams != copy && old_streams != (*source).streams {
+        free(old_streams as *mut ::core::ffi::c_void);
     }
     pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
 }
@@ -1407,19 +1492,10 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
         default_bool_value: r#false != 0,
     },
 ];
-unsafe extern "C" fn is_string_default(
-    mut current: *const ::core::ffi::c_char,
-    mut default_val: *const ::core::ffi::c_char,
-) -> bool {
-    if default_val.is_null()
-        || *default_val.offset(0isize) as ::core::ffi::c_int == '\0' as ::core::ffi::c_int
-    {
-        return current.is_null()
-            || *current.offset(0isize) as ::core::ffi::c_int == '\0' as ::core::ffi::c_int;
-    }
-    return !current.is_null() && strcmp(current, default_val) == 0 as ::core::ffi::c_int;
-}
-unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t) {
+pub const ENV_MAPPING_COUNT: usize = ::core::mem::size_of::<[env_config_mapping_t; 33]>()
+    .wrapping_div(::core::mem::size_of::<env_config_mapping_t>())
+    .wrapping_sub(1usize);
+unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t, mut ini_present: *const bool) {
     if config.is_null() {
         return;
     }
@@ -1447,25 +1523,7 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t) {
             let mut field_ptr: *mut ::core::ffi::c_void = (config as *mut ::core::ffi::c_char)
                 .offset((*mapping).offset as isize)
                 as *mut ::core::ffi::c_void;
-            let mut is_default: bool = r#false != 0;
-            match (*mapping).r#type {
-                config_field_type_t::CONFIG_TYPE_BOOL => {
-                    let mut bool_ptr: *const bool = field_ptr as *const bool;
-                    is_default = *bool_ptr as ::core::ffi::c_int
-                        == (*mapping).default_bool_value as ::core::ffi::c_int;
-                }
-                config_field_type_t::CONFIG_TYPE_INT => {
-                    let mut int_ptr: *const ::core::ffi::c_int =
-                        field_ptr as *const ::core::ffi::c_int;
-                    is_default = *int_ptr == (*mapping).default_int_value;
-                }
-                config_field_type_t::CONFIG_TYPE_STRING => {
-                    let mut str_ptr: *const ::core::ffi::c_char =
-                        field_ptr as *const ::core::ffi::c_char;
-                    is_default = is_string_default(str_ptr, (*mapping).default_str_value);
-                }
-                _ => {}
-            }
+            let mut is_default: bool = !*ini_present.offset(i as isize);
             if !is_default {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_DEBUG,
@@ -1478,7 +1536,7 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t) {
             } else {
                 match (*mapping).r#type {
                     config_field_type_t::CONFIG_TYPE_BOOL => {
-                        let mut bool_ptr_0: *mut bool = field_ptr as *mut bool;
+                        let mut bool_ptr: *mut bool = field_ptr as *mut bool;
                         let mut new_value: bool = false;
                         if !parse_bool_strict(env_value, &raw mut new_value) {
                             _log_message_ctx(
@@ -1490,14 +1548,14 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t) {
                                     as *const ::core::ffi::c_char,
                                 &raw mut env_name as *mut ::core::ffi::c_char,
                                 env_value,
-                                if *bool_ptr_0 as ::core::ffi::c_int != 0 {
+                                if *bool_ptr as ::core::ffi::c_int != 0 {
                                     b"true\0".as_ptr() as *const ::core::ffi::c_char
                                 } else {
                                     b"false\0".as_ptr() as *const ::core::ffi::c_char
                                 },
                             );
                         } else {
-                            *bool_ptr_0 = new_value;
+                            *bool_ptr = new_value;
                             _log_message_ctx(
                                 log_level_t::LOG_LEVEL_INFO,
                                 LOG_COMPONENT,
@@ -1515,7 +1573,7 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t) {
                         }
                     }
                     config_field_type_t::CONFIG_TYPE_INT => {
-                        let mut int_ptr_0: *mut ::core::ffi::c_int =
+                        let mut int_ptr: *mut ::core::ffi::c_int =
                             field_ptr as *mut ::core::ffi::c_int;
                         let mut endptr: *mut ::core::ffi::c_char =
                             ::core::ptr::null_mut::<::core::ffi::c_char>();
@@ -1550,27 +1608,81 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t) {
                                     as *const ::core::ffi::c_char,
                                 &raw mut env_name as *mut ::core::ffi::c_char,
                                 env_value,
-                                *int_ptr_0,
+                                *int_ptr,
                             );
                         } else {
                             new_value_0 = parsed as ::core::ffi::c_int;
-                            *int_ptr_0 = new_value_0;
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_INFO,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"Applied env override: %s=%s (int: %d)\0".as_ptr()
+                            if strcmp(
+                                (*mapping).env_name,
+                                b"WEB_PORT\0".as_ptr() as *const ::core::ffi::c_char,
+                            ) == 0 as ::core::ffi::c_int
+                                && (new_value_0 <= 0 as ::core::ffi::c_int
+                                    || new_value_0 > 65535 as ::core::ffi::c_int)
+                            {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_WARN,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Invalid web port for %s: '%s'; keeping existing value %d\0"
+                                        .as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                    &raw mut env_name as *mut ::core::ffi::c_char,
+                                    env_value,
+                                    *int_ptr,
+                                );
+                            } else if strcmp(
+                                (*mapping).env_name,
+                                b"WEBRTC_CONNECTION_TIMEOUT_MS\0".as_ptr()
                                     as *const ::core::ffi::c_char,
-                                &raw mut env_name as *mut ::core::ffi::c_char,
-                                env_value,
-                                new_value_0,
-                            );
+                            ) == 0 as ::core::ffi::c_int
+                                && new_value_0 < 1000 as ::core::ffi::c_int
+                            {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_WARN,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Invalid WebRTC connection timeout for %s: '%s'; minimum is 1000 ms; keeping existing value %d\0"
+                                        .as_ptr() as *const ::core::ffi::c_char,
+                                    &raw mut env_name as *mut ::core::ffi::c_char,
+                                    env_value,
+                                    *int_ptr,
+                                );
+                            } else if strcmp(
+                                (*mapping).env_name,
+                                b"WEBRTC_ICE_RECOVERY_TIMEOUT_MS\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            ) == 0 as ::core::ffi::c_int
+                                && new_value_0 < 0 as ::core::ffi::c_int
+                            {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_WARN,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Invalid WebRTC ICE recovery timeout for %s: '%s'; minimum is 0 ms; keeping existing value %d\0"
+                                        .as_ptr() as *const ::core::ffi::c_char,
+                                    &raw mut env_name as *mut ::core::ffi::c_char,
+                                    env_value,
+                                    *int_ptr,
+                                );
+                            } else {
+                                *int_ptr = new_value_0;
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_INFO,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Applied env override: %s=%s (int: %d)\0".as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                    &raw mut env_name as *mut ::core::ffi::c_char,
+                                    env_value,
+                                    new_value_0,
+                                );
+                            }
                         }
                     }
                     config_field_type_t::CONFIG_TYPE_STRING => {
-                        let mut str_ptr_0: *mut ::core::ffi::c_char =
+                        let mut str_ptr: *mut ::core::ffi::c_char =
                             field_ptr as *mut ::core::ffi::c_char;
-                        safe_strcpy(str_ptr_0, env_value, (*mapping).size, 0 as size_t);
+                        safe_strcpy(str_ptr, env_value, (*mapping).size, 0 as size_t);
                         if !strstr(
                             (*mapping).env_name,
                             b"PASSWORD\0".as_ptr() as *const ::core::ffi::c_char,
@@ -1608,6 +1720,36 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t) {
         }
         i += 1;
     }
+}
+unsafe extern "C" fn init_stream_config_defaults(mut stream: *mut stream_config_t) {
+    memset(
+        stream as *mut ::core::ffi::c_void,
+        0 as ::core::ffi::c_int,
+        ::core::mem::size_of::<stream_config_t>(),
+    );
+    (*stream).detection_based_recording = r#false != 0;
+    (*stream).detection_model[0usize] = '\0' as ::core::ffi::c_char;
+    (*stream).detection_interval = 10 as ::core::ffi::c_int;
+    (*stream).detection_threshold = 0.5f32;
+    (*stream).pre_detection_buffer = 5 as ::core::ffi::c_int;
+    (*stream).post_detection_buffer = 10 as ::core::ffi::c_int;
+    (*stream).detection_api_url[0usize] = '\0' as ::core::ffi::c_char;
+    safe_strcpy(
+        &raw mut (*stream).detection_object_filter as *mut ::core::ffi::c_char,
+        b"none\0".as_ptr() as *const ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 16]>(),
+        0 as size_t,
+    );
+    (*stream).streaming_enabled = r#true != 0;
+    (*stream).record_audio = r#false != 0;
+    (*stream).tier_critical_multiplier = 3.0f64;
+    (*stream).tier_important_multiplier = 2.0f64;
+    (*stream).tier_ephemeral_multiplier = 0.25f64;
+    (*stream).storage_priority = 5 as ::core::ffi::c_int;
+    (*stream).observation_evidence_enabled = r#false != 0;
+    (*stream).observation_labels[0usize] = '\0' as ::core::ffi::c_char;
+    (*stream).observation_max_age_days = OBSERVATION_DEFAULT_MAX_AGE_DAYS;
+    (*stream).observation_max_bytes = OBSERVATION_DEFAULT_MAX_BYTES as int64_t;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
@@ -1885,35 +2027,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     );
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < (*config).max_streams {
-        (*(*config).streams.offset(i as isize)).detection_based_recording = r#false != 0;
-        (*(*config).streams.offset(i as isize)).detection_model[0usize] =
-            '\0' as ::core::ffi::c_char;
-        (*(*config).streams.offset(i as isize)).detection_interval = 10 as ::core::ffi::c_int;
-        (*(*config).streams.offset(i as isize)).detection_threshold = 0.5f32;
-        (*(*config).streams.offset(i as isize)).pre_detection_buffer = 5 as ::core::ffi::c_int;
-        (*(*config).streams.offset(i as isize)).post_detection_buffer = 10 as ::core::ffi::c_int;
-        (*(*config).streams.offset(i as isize)).detection_api_url[0usize] =
-            '\0' as ::core::ffi::c_char;
-        safe_strcpy(
-            &raw mut (*(*config).streams.offset(i as isize)).detection_object_filter
-                as *mut ::core::ffi::c_char,
-            b"none\0".as_ptr() as *const ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 16]>(),
-            0 as size_t,
-        );
-        (*(*config).streams.offset(i as isize)).streaming_enabled = r#true != 0;
-        (*(*config).streams.offset(i as isize)).record_audio = r#false != 0;
-        (*(*config).streams.offset(i as isize)).tier_critical_multiplier = 3.0f64;
-        (*(*config).streams.offset(i as isize)).tier_important_multiplier = 2.0f64;
-        (*(*config).streams.offset(i as isize)).tier_ephemeral_multiplier = 0.25f64;
-        (*(*config).streams.offset(i as isize)).storage_priority = 5 as ::core::ffi::c_int;
-        (*(*config).streams.offset(i as isize)).observation_evidence_enabled = r#false != 0;
-        (*(*config).streams.offset(i as isize)).observation_labels[0usize] =
-            '\0' as ::core::ffi::c_char;
-        (*(*config).streams.offset(i as isize)).observation_max_age_days =
-            OBSERVATION_DEFAULT_MAX_AGE_DAYS;
-        (*(*config).streams.offset(i as isize)).observation_max_bytes =
-            OBSERVATION_DEFAULT_MAX_BYTES as int64_t;
+        init_stream_config_defaults((*config).streams.offset(i as isize));
         i += 1;
     }
     (*config).mqtt_enabled = r#false != 0;
@@ -2304,13 +2418,152 @@ pub unsafe extern "C" fn config_set_detection_engine_delegate(
     );
     return r#true != 0;
 }
+unsafe extern "C" fn mark_ini_option(
+    mut section: *const ::core::ffi::c_char,
+    mut name: *const ::core::ffi::c_char,
+    mut ini_present: *mut bool,
+) {
+    let mut prefix: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut key: *const ::core::ffi::c_char = name;
+    if strcmp(section, b"general\0".as_ptr() as *const ::core::ffi::c_char)
+        == 0 as ::core::ffi::c_int
+    {
+        prefix = b"\0".as_ptr() as *const ::core::ffi::c_char;
+    } else if strcmp(section, b"storage\0".as_ptr() as *const ::core::ffi::c_char)
+        == 0 as ::core::ffi::c_int
+    {
+        prefix = if strcmp(
+            name,
+            b"retention_days\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            b"\0".as_ptr() as *const ::core::ffi::c_char
+        } else {
+            b"STORAGE_\0".as_ptr() as *const ::core::ffi::c_char
+        };
+        if strcmp(name, b"path\0".as_ptr() as *const ::core::ffi::c_char) != 0 as ::core::ffi::c_int
+            && strcmp(
+                name,
+                b"retention_days\0".as_ptr() as *const ::core::ffi::c_char,
+            ) != 0 as ::core::ffi::c_int
+        {
+            return;
+        }
+    } else if strcmp(
+        section,
+        b"database\0".as_ptr() as *const ::core::ffi::c_char,
+    ) == 0 as ::core::ffi::c_int
+    {
+        prefix = b"DB_\0".as_ptr() as *const ::core::ffi::c_char;
+    } else if strcmp(section, b"web\0".as_ptr() as *const ::core::ffi::c_char)
+        == 0 as ::core::ffi::c_int
+    {
+        prefix = if strcmp(
+            name,
+            b"audio_disabled\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+            || strcmp(name, b"demo_mode\0".as_ptr() as *const ::core::ffi::c_char)
+                == 0 as ::core::ffi::c_int
+        {
+            b"\0".as_ptr() as *const ::core::ffi::c_char
+        } else {
+            b"WEB_\0".as_ptr() as *const ::core::ffi::c_char
+        };
+    } else if strcmp(section, b"go2rtc\0".as_ptr() as *const ::core::ffi::c_char)
+        == 0 as ::core::ffi::c_int
+    {
+        prefix = if strncmp(
+            name,
+            b"turn_\0".as_ptr() as *const ::core::ffi::c_char,
+            5 as size_t,
+        ) == 0 as ::core::ffi::c_int
+            || strncmp(
+                name,
+                b"webrtc_connection_\0".as_ptr() as *const ::core::ffi::c_char,
+                18 as size_t,
+            ) == 0 as ::core::ffi::c_int
+            || strncmp(
+                name,
+                b"webrtc_ice_\0".as_ptr() as *const ::core::ffi::c_char,
+                11 as size_t,
+            ) == 0 as ::core::ffi::c_int
+        {
+            b"\0".as_ptr() as *const ::core::ffi::c_char
+        } else {
+            b"GO2RTC_\0".as_ptr() as *const ::core::ffi::c_char
+        };
+        if strcmp(
+            name,
+            b"webrtc_port\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            key = b"webrtc_listen_port\0".as_ptr() as *const ::core::ffi::c_char;
+        }
+    } else {
+        return;
+    }
+    let mut mapped_name: [::core::ffi::c_char; 128] = [0; 128];
+    let mut length: ::core::ffi::c_int = snprintf(
+        &raw mut mapped_name as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
+        b"%s%s\0".as_ptr() as *const ::core::ffi::c_char,
+        prefix,
+        key,
+    );
+    if length < 0 as ::core::ffi::c_int
+        || length as size_t >= ::core::mem::size_of::<[::core::ffi::c_char; 128]>()
+    {
+        return;
+    }
+    let mut p: *mut ::core::ffi::c_char = &raw mut mapped_name as *mut ::core::ffi::c_char;
+    while *p != 0 {
+        *p = ({
+            let mut __res: ::core::ffi::c_int = 0;
+            if ::core::mem::size_of::<::core::ffi::c_uchar>() > 1usize {
+                if 0 as ::core::ffi::c_int != 0 {
+                    let mut __c: ::core::ffi::c_int =
+                        *p as ::core::ffi::c_uchar as ::core::ffi::c_int;
+                    __res = (if __c < -128 as ::core::ffi::c_int || __c > 255 as ::core::ffi::c_int
+                    {
+                        __c as __int32_t
+                    } else {
+                        *(*__ctype_toupper_loc()).offset(__c as isize)
+                    }) as ::core::ffi::c_int;
+                } else {
+                    __res = toupper(*p as ::core::ffi::c_uchar as ::core::ffi::c_int);
+                }
+            } else {
+                __res = *(*__ctype_toupper_loc())
+                    .offset(*p as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                    as ::core::ffi::c_int;
+            }
+            __res
+        }) as ::core::ffi::c_char;
+        p = p.offset(1);
+    }
+    let mut i: size_t = 0 as size_t;
+    while i < ENV_MAPPING_COUNT {
+        if strcmp(
+            &raw mut mapped_name as *mut ::core::ffi::c_char,
+            env_config_mappings[i].env_name,
+        ) == 0 as ::core::ffi::c_int
+        {
+            *ini_present.offset(i as isize) = r#true != 0;
+            break;
+        } else {
+            i = i.wrapping_add(1);
+        }
+    }
+}
 unsafe extern "C" fn config_ini_handler(
     mut user: *mut ::core::ffi::c_void,
     mut section: *const ::core::ffi::c_char,
     mut name: *const ::core::ffi::c_char,
     mut value: *const ::core::ffi::c_char,
 ) -> ::core::ffi::c_int {
-    let mut config: *mut config_t = user as *mut config_t;
+    let mut context: *mut config_ini_context_t = user as *mut config_ini_context_t;
+    let mut config: *mut config_t = (*context).config;
+    mark_ini_option(section, name, (*context).ini_present);
     if strcmp(section, b"general\0".as_ptr() as *const ::core::ffi::c_char)
         == 0 as ::core::ffi::c_int
     {
@@ -3325,18 +3578,16 @@ unsafe extern "C" fn config_ini_handler(
                 new_max = MAX_STREAMS;
             }
             if new_max != (*config).max_streams {
+                let mut old_max: ::core::ffi::c_int = (*config).max_streams;
                 let mut p: *mut stream_config_t = realloc(
                     (*config).streams as *mut ::core::ffi::c_void,
                     (new_max as size_t).wrapping_mul(::core::mem::size_of::<stream_config_t>()),
                 ) as *mut stream_config_t;
                 if !p.is_null() {
-                    if new_max > (*config).max_streams {
-                        memset(
-                            p.offset((*config).max_streams as isize) as *mut ::core::ffi::c_void,
-                            0 as ::core::ffi::c_int,
-                            ((new_max - (*config).max_streams) as size_t)
-                                .wrapping_mul(::core::mem::size_of::<stream_config_t>()),
-                        );
+                    let mut i: ::core::ffi::c_int = old_max;
+                    while i < new_max {
+                        init_stream_config_defaults(p.offset(i as isize));
+                        i += 1;
                     }
                     (*config).streams = p;
                     (*config).max_streams = new_max;
@@ -4076,6 +4327,7 @@ unsafe extern "C" fn config_ini_handler(
 unsafe extern "C" fn load_config_from_file(
     mut filename: *const ::core::ffi::c_char,
     mut config: *mut config_t,
+    mut ini_present: *mut bool,
 ) -> ::core::ffi::c_int {
     let mut temp_config: config_t = *config;
     temp_config.streams = ::core::ptr::null_mut::<stream_config_t>();
@@ -4100,6 +4352,10 @@ unsafe extern "C" fn load_config_from_file(
             bytes,
         );
     }
+    let mut context: config_ini_context_t = config_ini_context_t {
+        config: &raw mut temp_config,
+        ini_present: ini_present,
+    };
     let mut result: ::core::ffi::c_int = ini_parse(
         filename,
         Some(
@@ -4111,7 +4367,7 @@ unsafe extern "C" fn load_config_from_file(
                     *const ::core::ffi::c_char,
                 ) -> ::core::ffi::c_int,
         ),
-        &raw mut temp_config as *mut ::core::ffi::c_void,
+        &raw mut context as *mut ::core::ffi::c_void,
     );
     if result < 0 as ::core::ffi::c_int {
         free(temp_config.streams as *mut ::core::ffi::c_void);
@@ -4166,11 +4422,11 @@ pub unsafe extern "C" fn load_stream_configs(mut config: *mut config_t) -> ::cor
         );
         return -1 as ::core::ffi::c_int;
     }
-    memset(
-        (*config).streams as *mut ::core::ffi::c_void,
-        0 as ::core::ffi::c_int,
-        ::core::mem::size_of::<stream_config_t>().wrapping_mul(max_streams),
-    );
+    let mut i: size_t = 0 as size_t;
+    while i < max_streams {
+        init_stream_config_defaults((*config).streams.offset(i as isize));
+        i = i.wrapping_add(1);
+    }
     let mut count: ::core::ffi::c_int = count_stream_configs();
     if count < 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -4233,14 +4489,14 @@ pub unsafe extern "C" fn load_stream_configs(mut config: *mut config_t) -> ::cor
         free(db_streams as *mut ::core::ffi::c_void);
         return -1 as ::core::ffi::c_int;
     }
-    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while i < loaded {
+    let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_0 < loaded {
         memcpy(
-            (*config).streams.offset(i as isize) as *mut ::core::ffi::c_void,
-            db_streams.offset(i as isize) as *const ::core::ffi::c_void,
+            (*config).streams.offset(i_0 as isize) as *mut ::core::ffi::c_void,
+            db_streams.offset(i_0 as isize) as *const ::core::ffi::c_void,
             ::core::mem::size_of::<stream_config_t>(),
         );
-        i += 1;
+        i_0 += 1;
     }
     free(db_streams as *mut ::core::ffi::c_void);
     _log_message_ctx(
@@ -4310,95 +4566,50 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
             return -1 as ::core::ffi::c_int;
         }
     }
-    if loaded == count {
-        let mut identical: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-        let mut config_named_streams: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-        let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-        while i < (*config).max_streams {
-            if (*(*config).streams.offset(i as isize)).name[0usize] as ::core::ffi::c_int
-                != '\0' as ::core::ffi::c_int
-            {
-                config_named_streams += 1;
-            }
-            i += 1;
-        }
-        if config_named_streams != loaded {
-            identical = 0 as ::core::ffi::c_int;
-        }
-        let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-        while i_0 < (*config).max_streams && identical != 0 {
-            if (*(*config).streams.offset(i_0 as isize)).name[0usize] as ::core::ffi::c_int
-                != '\0' as ::core::ffi::c_int
-            {
-                let mut found: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-                let mut j: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-                while j < loaded {
-                    if strcmp(
-                        &raw mut (*(*config).streams.offset(i_0 as isize)).name
-                            as *mut ::core::ffi::c_char,
-                        &raw mut (*db_streams.offset(j as isize)).name as *mut ::core::ffi::c_char,
-                    ) == 0 as ::core::ffi::c_int
-                    {
-                        found = 1 as ::core::ffi::c_int;
-                        break;
-                    } else {
-                        j += 1;
-                    }
-                }
-                if found == 0 {
-                    identical = 0 as ::core::ffi::c_int;
-                }
-            }
-            i_0 += 1;
-        }
-        if identical != 0 {
-            let mut i_1: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-            while i_1 < (*config).max_streams {
-                if (*(*config).streams.offset(i_1 as isize)).name[0usize] as ::core::ffi::c_int
-                    != '\0' as ::core::ffi::c_int
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < (*config).max_streams {
+        if (*(*config).streams.offset(i as isize)).name[0usize] as ::core::ffi::c_int
+            != '\0' as ::core::ffi::c_int
+        {
+            let mut j: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+            while j < loaded {
+                if strcmp(
+                    &raw mut (*(*config).streams.offset(i as isize)).name
+                        as *mut ::core::ffi::c_char,
+                    &raw mut (*db_streams.offset(j as isize)).name as *mut ::core::ffi::c_char,
+                ) == 0 as ::core::ffi::c_int
                 {
-                    let mut j_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-                    while j_0 < loaded {
-                        if strcmp(
-                            &raw mut (*(*config).streams.offset(i_1 as isize)).name
-                                as *mut ::core::ffi::c_char,
-                            &raw mut (*db_streams.offset(j_0 as isize)).name
-                                as *mut ::core::ffi::c_char,
-                        ) == 0 as ::core::ffi::c_int
-                        {
-                            safe_strcpy(
-                                &raw mut (*(*config).streams.offset(i_1 as isize)).camera_uuid
-                                    as *mut ::core::ffi::c_char,
-                                &raw mut (*db_streams.offset(j_0 as isize)).camera_uuid
-                                    as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
-                                0 as size_t,
-                            );
-                            safe_strcpy(
-                                &raw mut (*(*config).streams.offset(i_1 as isize)).location_uuid
-                                    as *mut ::core::ffi::c_char,
-                                &raw mut (*db_streams.offset(j_0 as isize)).location_uuid
-                                    as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
-                                0 as size_t,
-                            );
-                            break;
-                        } else {
-                            j_0 += 1;
-                        }
-                    }
+                    safe_strcpy(
+                        &raw mut (*(*config).streams.offset(i as isize)).camera_uuid
+                            as *mut ::core::ffi::c_char,
+                        &raw mut (*db_streams.offset(j as isize)).camera_uuid
+                            as *mut ::core::ffi::c_char,
+                        ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
+                        0 as size_t,
+                    );
+                    safe_strcpy(
+                        &raw mut (*(*config).streams.offset(i as isize)).location_uuid
+                            as *mut ::core::ffi::c_char,
+                        &raw mut (*db_streams.offset(j as isize)).location_uuid
+                            as *mut ::core::ffi::c_char,
+                        ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
+                        0 as size_t,
+                    );
+                    break;
+                } else {
+                    j += 1;
                 }
-                i_1 += 1;
             }
         }
+        i += 1;
     }
     if loaded > (*config).max_streams {
         loaded = (*config).max_streams;
     }
-    let mut i_2: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while i_2 < loaded {
+    let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_0 < loaded {
         if delete_stream_config(
-            &raw mut (*db_streams.offset(i_2 as isize)).name as *mut ::core::ffi::c_char,
+            &raw mut (*db_streams.offset(i_0 as isize)).name as *mut ::core::ffi::c_char,
         ) != 0 as ::core::ffi::c_int
         {
             _log_message_ctx(
@@ -4407,29 +4618,29 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
                 _log_stream_name,
                 b"Failed to delete stream configuration: %s\0".as_ptr()
                     as *const ::core::ffi::c_char,
-                &raw mut (*db_streams.offset(i_2 as isize)).name as *mut ::core::ffi::c_char,
+                &raw mut (*db_streams.offset(i_0 as isize)).name as *mut ::core::ffi::c_char,
             );
             free(db_streams as *mut ::core::ffi::c_void);
             rollback_transaction();
             return -1 as ::core::ffi::c_int;
         }
-        i_2 += 1;
+        i_0 += 1;
     }
     free(db_streams as *mut ::core::ffi::c_void);
-    let mut i_3: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while i_3 < (*config).max_streams {
+    let mut i_1: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_1 < (*config).max_streams {
         if strlen(
-            &raw mut (*(*config).streams.offset(i_3 as isize)).name as *mut ::core::ffi::c_char,
+            &raw mut (*(*config).streams.offset(i_1 as isize)).name as *mut ::core::ffi::c_char,
         ) > 0 as size_t
         {
             let mut stream_name: [::core::ffi::c_char; 256] = [0; 256];
             safe_strcpy(
                 &raw mut stream_name as *mut ::core::ffi::c_char,
-                &raw mut (*(*config).streams.offset(i_3 as isize)).name as *mut ::core::ffi::c_char,
+                &raw mut (*(*config).streams.offset(i_1 as isize)).name as *mut ::core::ffi::c_char,
                 ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
                 0 as size_t,
             );
-            let mut result: uint64_t = add_stream_config((*config).streams.offset(i_3 as isize));
+            let mut result: uint64_t = add_stream_config((*config).streams.offset(i_1 as isize));
             if result == 0 as uint64_t {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
@@ -4444,7 +4655,7 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
             }
             if get_stream_config_by_name(
                 &raw mut stream_name as *mut ::core::ffi::c_char,
-                (*config).streams.offset(i_3 as isize),
+                (*config).streams.offset(i_1 as isize),
             ) != 0 as ::core::ffi::c_int
             {
                 _log_message_ctx(
@@ -4460,7 +4671,7 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
             }
             saved += 1;
         }
-        i_3 += 1;
+        i_1 += 1;
     }
     if commit_transaction() != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -5596,6 +5807,40 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
     if config.is_null() {
         return -1 as ::core::ffi::c_int;
     }
+    let mut ini_present: [bool; 32] = [
+        r#false != 0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+    ];
     load_default_config(config);
     let mut loaded: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     if g_custom_config_path[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
@@ -5620,7 +5865,9 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
                     strerror(*__errno_location()),
                 );
                 return -1 as ::core::ffi::c_int;
-            } else if load_config_from_file(canon_path, config) == 0 as ::core::ffi::c_int {
+            } else if load_config_from_file(canon_path, config, &raw mut ini_present as *mut bool)
+                == 0 as ::core::ffi::c_int
+            {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_INFO,
                     LOG_COMPONENT,
@@ -5663,8 +5910,11 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
         let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
         while !config_paths[i as usize].is_null() && loaded == 0 {
             if access(config_paths[i as usize], R_OK) == 0 as ::core::ffi::c_int {
-                if load_config_from_file(config_paths[i as usize], config)
-                    == 0 as ::core::ffi::c_int
+                if load_config_from_file(
+                    config_paths[i as usize],
+                    config,
+                    &raw mut ini_present as *mut bool,
+                ) == 0 as ::core::ffi::c_int
                 {
                     _log_message_ctx(
                         log_level_t::LOG_LEVEL_INFO,
@@ -5700,7 +5950,7 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
             b"No configuration file found, using defaults\0".as_ptr() as *const ::core::ffi::c_char,
         );
     }
-    apply_env_overrides(config);
+    apply_env_overrides(config, &raw mut ini_present as *mut bool);
     if strlen(&raw mut (*config).web_root as *mut ::core::ffi::c_char) == 0 as size_t {
         safe_strcpy(
             &raw mut (*config).web_root as *mut ::core::ffi::c_char,
@@ -5777,6 +6027,137 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
     }
     return 0 as ::core::ffi::c_int;
 }
+unsafe extern "C" fn copy_config_fd(
+    mut source_fd: ::core::ffi::c_int,
+    mut destination_fd: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    if ftruncate(destination_fd, 0 as __off_t) != 0 as ::core::ffi::c_int {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut buffer: [::core::ffi::c_char; 16384] = [0; 16384];
+    let mut offset: off_t = 0 as off_t;
+    loop {
+        let mut count: ssize_t = pread(
+            source_fd,
+            &raw mut buffer as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void,
+            ::core::mem::size_of::<[::core::ffi::c_char; 16384]>(),
+            offset,
+        );
+        if count < 0 as ssize_t && *__errno_location() == EINTR {
+            continue;
+        }
+        if count < 0 as ssize_t {
+            return -1 as ::core::ffi::c_int;
+        }
+        if count == 0 as ssize_t {
+            break;
+        }
+        let mut written: ssize_t = 0 as ssize_t;
+        while written < count {
+            let mut n: ssize_t = pwrite(
+                destination_fd,
+                (&raw mut buffer as *mut ::core::ffi::c_char).offset(written as isize)
+                    as *const ::core::ffi::c_void,
+                (count - written) as size_t,
+                offset + written as __off_t,
+            );
+            if n < 0 as ssize_t && *__errno_location() == EINTR {
+                continue;
+            }
+            if n <= 0 as ssize_t {
+                return -1 as ::core::ffi::c_int;
+            }
+            written += n;
+        }
+        offset += count as ::core::ffi::c_long;
+    }
+    return fsync(destination_fd);
+}
+unsafe extern "C" fn publish_config_in_place(
+    mut dir_fd: ::core::ffi::c_int,
+    mut filename: *const ::core::ffi::c_char,
+    mut original_stat: *const stat,
+    mut original_fd: ::core::ffi::c_int,
+    mut staged_fd: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    if original_fd < 0 as ::core::ffi::c_int || original_stat.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut read_fd: ::core::ffi::c_int =
+        openat(dir_fd, filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    let mut current: stat = stat {
+        st_dev: 0,
+        st_ino: 0,
+        st_nlink: 0,
+        st_mode: 0,
+        st_uid: 0,
+        st_gid: 0,
+        __pad0: 0,
+        st_rdev: 0,
+        st_size: 0,
+        st_blksize: 0,
+        st_blocks: 0,
+        st_atim: timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        st_mtim: timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        st_ctim: timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        __glibc_reserved: [0; 3],
+    };
+    if read_fd < 0 as ::core::ffi::c_int
+        || fstat(read_fd, &raw mut current) != 0 as ::core::ffi::c_int
+        || current.st_dev != (*original_stat).st_dev
+        || current.st_ino != (*original_stat).st_ino
+        || current.st_nlink != 1 as __nlink_t
+    {
+        if read_fd >= 0 as ::core::ffi::c_int {
+            close(read_fd);
+        }
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut backup_path: [::core::ffi::c_char; 35] = ::core::mem::transmute::<
+        [u8; 35],
+        [::core::ffi::c_char; 35],
+    >(*b"/tmp/lightnvr-config-backup-XXXXXX\0");
+    let mut backup_fd: ::core::ffi::c_int =
+        mkstemp(&raw mut backup_path as *mut ::core::ffi::c_char);
+    if backup_fd < 0 as ::core::ffi::c_int {
+        close(read_fd);
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut result: ::core::ffi::c_int = copy_config_fd(read_fd, backup_fd);
+    close(read_fd);
+    if result != 0 as ::core::ffi::c_int {
+        close(backup_fd);
+        unlink(&raw mut backup_path as *mut ::core::ffi::c_char);
+        return -1 as ::core::ffi::c_int;
+    }
+    result = copy_config_fd(staged_fd, original_fd);
+    if result != 0 as ::core::ffi::c_int {
+        if copy_config_fd(backup_fd, original_fd) != 0 as ::core::ffi::c_int {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Could not restore config; private backup retained at %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                &raw mut backup_path as *mut ::core::ffi::c_char,
+            );
+            close(backup_fd);
+            return -1 as ::core::ffi::c_int;
+        }
+    }
+    close(backup_fd);
+    unlink(&raw mut backup_path as *mut ::core::ffi::c_char);
+    return result;
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn save_config(
     mut config: *const config_t,
@@ -5844,6 +6225,15 @@ pub unsafe extern "C" fn save_config(
         b"Attempting to save configuration to %s\0".as_ptr() as *const ::core::ffi::c_char,
         save_path,
     );
+    if strnlen(save_path, MAX_PATH_LENGTH as size_t) == MAX_PATH_LENGTH as size_t {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Config path exceeds the supported length\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
     let mut dir_path: [::core::ffi::c_char; 512] = [0; 512];
     safe_strcpy(
         &raw mut dir_path as *mut ::core::ffi::c_char,
@@ -6147,27 +6537,25 @@ pub unsafe extern "C" fn save_config(
         );
         return -1 as ::core::ffi::c_int;
     }
-    let mut config_fd: ::core::ffi::c_int = openat(
+    let mut original_fd: ::core::ffi::c_int = openat(
         dir_fd,
         &raw mut validated_filename as *mut ::core::ffi::c_char,
-        O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
-        0o600 as ::core::ffi::c_int,
+        O_WRONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
     );
-    if config_fd < 0 as ::core::ffi::c_int {
+    let mut target_exists: bool = original_fd >= 0 as ::core::ffi::c_int;
+    if !target_exists && *__errno_location() != ENOENT {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Could not open config file for writing: %s (error: %s)\0".as_ptr()
-                as *const ::core::ffi::c_char,
-            &raw mut canonical_save_path as *mut ::core::ffi::c_char,
+            b"Could not open config file for writing: %s\0".as_ptr() as *const ::core::ffi::c_char,
             strerror(*__errno_location()),
         );
         close(dir_fd);
         return -1 as ::core::ffi::c_int;
     }
     let mut config_stat: stat = stat {
-        st_dev: 0,
+        st_dev: 0 as __dev_t,
         st_ino: 0,
         st_nlink: 0,
         st_mode: 0,
@@ -6192,34 +6580,39 @@ pub unsafe extern "C" fn save_config(
         },
         __glibc_reserved: [0; 3],
     };
-    if fstat(config_fd, &raw mut config_stat) != 0 as ::core::ffi::c_int {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Could not stat config file after opening: %s (error: %s)\0".as_ptr()
-                as *const ::core::ffi::c_char,
-            &raw mut canonical_save_path as *mut ::core::ffi::c_char,
-            strerror(*__errno_location()),
-        );
-        close(config_fd);
-        close(dir_fd);
-        return -1 as ::core::ffi::c_int;
-    }
-    if !(config_stat.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t)
-        || config_stat.st_nlink != 1 as __nlink_t
-    {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Config save target must be a regular file with one link: %s\0".as_ptr()
-                as *const ::core::ffi::c_char,
-            &raw mut canonical_save_path as *mut ::core::ffi::c_char,
-        );
-        close(config_fd);
-        close(dir_fd);
-        return -1 as ::core::ffi::c_int;
+    if target_exists {
+        if fstat(original_fd, &raw mut config_stat) != 0 as ::core::ffi::c_int
+            || !(config_stat.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t)
+            || config_stat.st_nlink != 1 as __nlink_t
+        {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Config save target must be a regular file with one link: %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                &raw mut canonical_save_path as *mut ::core::ffi::c_char,
+            );
+            close(original_fd);
+            close(dir_fd);
+            return -1 as ::core::ffi::c_int;
+        }
+        if fchmod(original_fd, 0o600 as __mode_t) != 0 as ::core::ffi::c_int {
+            if *__errno_location() != EPERM {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Could not restrict config file: %s\0".as_ptr() as *const ::core::ffi::c_char,
+                    strerror(*__errno_location()),
+                );
+                close(original_fd);
+                close(dir_fd);
+                return -1 as ::core::ffi::c_int;
+            }
+            close(original_fd);
+            original_fd = -1 as ::core::ffi::c_int;
+        }
     }
     let mut replacement_name: [::core::ffi::c_char; 96] = [
         0 as ::core::ffi::c_char,
@@ -6319,55 +6712,61 @@ pub unsafe extern "C" fn save_config(
         0,
         0,
     ];
-    if fchmod(config_fd, 0o600 as __mode_t) != 0 as ::core::ffi::c_int {
-        let mut mode_error: ::core::ffi::c_int = *__errno_location();
-        close(config_fd);
-        config_fd = -1 as ::core::ffi::c_int;
-        if mode_error == EPERM {
-            static mut replacement_sequence: atomic_uint = 0 as ::core::ffi::c_uint;
-            let mut attempt: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-            while attempt < 100 as ::core::ffi::c_int {
-                snprintf(
-                    &raw mut replacement_name as *mut ::core::ffi::c_char,
-                    ::core::mem::size_of::<[::core::ffi::c_char; 96]>(),
-                    b".lightnvr-config-%ld-%u.tmp\0".as_ptr() as *const ::core::ffi::c_char,
-                    getpid() as ::core::ffi::c_long,
-                    ::core::intrinsics::atomic_xadd::<
-                        _,
-                        _,
-                        { ::core::intrinsics::AtomicOrdering::SeqCst },
-                    >(&raw mut replacement_sequence, 1 as ::core::ffi::c_uint),
-                );
-                config_fd = openat(
-                    dir_fd,
-                    &raw mut replacement_name as *mut ::core::ffi::c_char,
-                    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
-                    0o600 as ::core::ffi::c_int,
-                );
-                if config_fd >= 0 as ::core::ffi::c_int || *__errno_location() != EEXIST {
-                    break;
-                }
-                attempt += 1;
-            }
+    let mut external_staging_path: [::core::ffi::c_char; 34] =
+        ::core::mem::transmute::<[u8; 34], [::core::ffi::c_char; 34]>(
+            *b"/tmp/lightnvr-config-stage-XXXXXX\0",
+        );
+    let mut external_staging: bool = r#false != 0;
+    static mut replacement_sequence: atomic_uint = 0 as ::core::ffi::c_uint;
+    let mut config_fd: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut attempt: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while attempt < 100 as ::core::ffi::c_int {
+        snprintf(
+            &raw mut replacement_name as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 96]>(),
+            b".lightnvr-config-%ld-%u.tmp\0".as_ptr() as *const ::core::ffi::c_char,
+            getpid() as ::core::ffi::c_long,
+            ::core::intrinsics::atomic_xadd::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+                &raw mut replacement_sequence,
+                1 as ::core::ffi::c_uint,
+            ),
+        );
+        config_fd = openat(
+            dir_fd,
+            &raw mut replacement_name as *mut ::core::ffi::c_char,
+            O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+            0o600 as ::core::ffi::c_int,
+        );
+        if config_fd >= 0 as ::core::ffi::c_int || *__errno_location() != EEXIST {
+            break;
         }
-        if config_fd < 0 as ::core::ffi::c_int {
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_ERROR,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"Could not prepare private config replacement: %s\0".as_ptr()
-                    as *const ::core::ffi::c_char,
-                strerror(*__errno_location()),
-            );
-            close(dir_fd);
-            return -1 as ::core::ffi::c_int;
+        attempt += 1;
+    }
+    if config_fd < 0 as ::core::ffi::c_int
+        && original_fd >= 0 as ::core::ffi::c_int
+        && (*__errno_location() == EACCES || *__errno_location() == EROFS)
+    {
+        config_fd = mkstemp(&raw mut external_staging_path as *mut ::core::ffi::c_char);
+        if config_fd >= 0 as ::core::ffi::c_int {
+            external_staging = r#true != 0;
         }
     }
-    if replacement_name[0usize] as ::core::ffi::c_int != 0
-        && fchmod(config_fd, 0o600 as __mode_t) != 0 as ::core::ffi::c_int
-        || replacement_name[0usize] == 0
-            && ftruncate(config_fd, 0 as __off_t) != 0 as ::core::ffi::c_int
-    {
+    if config_fd < 0 as ::core::ffi::c_int {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Could not prepare private config staging file: %s\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            strerror(*__errno_location()),
+        );
+        if original_fd >= 0 as ::core::ffi::c_int {
+            close(original_fd);
+        }
+        close(dir_fd);
+        return -1 as ::core::ffi::c_int;
+    }
+    if fchmod(config_fd, 0o600 as __mode_t) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
@@ -6376,12 +6775,17 @@ pub unsafe extern "C" fn save_config(
             strerror(*__errno_location()),
         );
         close(config_fd);
-        if replacement_name[0usize] != 0 {
+        if external_staging {
+            unlink(&raw mut external_staging_path as *mut ::core::ffi::c_char);
+        } else {
             unlinkat(
                 dir_fd,
                 &raw mut replacement_name as *mut ::core::ffi::c_char,
                 0 as ::core::ffi::c_int,
             );
+        }
+        if original_fd >= 0 as ::core::ffi::c_int {
+            close(original_fd);
         }
         close(dir_fd);
         return -1 as ::core::ffi::c_int;
@@ -6398,12 +6802,17 @@ pub unsafe extern "C" fn save_config(
             strerror(*__errno_location()),
         );
         close(config_fd);
-        if replacement_name[0usize] != 0 {
+        if external_staging {
+            unlink(&raw mut external_staging_path as *mut ::core::ffi::c_char);
+        } else {
             unlinkat(
                 dir_fd,
                 &raw mut replacement_name as *mut ::core::ffi::c_char,
                 0 as ::core::ffi::c_int,
             );
+        }
+        if original_fd >= 0 as ::core::ffi::c_int {
+            close(original_fd);
         }
         close(dir_fd);
         return -1 as ::core::ffi::c_int;
@@ -7304,16 +7713,13 @@ pub unsafe extern "C" fn save_config(
         &raw const (*config).onvif_discovery_network as *const ::core::ffi::c_char,
     );
     let mut write_failed: ::core::ffi::c_int = ferror(file);
-    if replacement_name[0usize] as ::core::ffi::c_int != 0
-        && (fflush(file) != 0 as ::core::ffi::c_int
-            || fsync(fileno(file)) != 0 as ::core::ffi::c_int)
-    {
+    if fflush(file) != 0 as ::core::ffi::c_int || fsync(fileno(file)) != 0 as ::core::ffi::c_int {
         write_failed = 1 as ::core::ffi::c_int;
     }
     if fclose(file) != 0 as ::core::ffi::c_int {
         write_failed = 1 as ::core::ffi::c_int;
     }
-    if write_failed == 0 && replacement_name[0usize] as ::core::ffi::c_int != 0 {
+    if write_failed == 0 {
         let mut current: stat = stat {
             st_dev: 0,
             st_ino: 0,
@@ -7340,32 +7746,95 @@ pub unsafe extern "C" fn save_config(
             },
             __glibc_reserved: [0; 3],
         };
-        if fstatat(
+        let mut stat_result: ::core::ffi::c_int = fstatat(
             dir_fd,
             &raw mut validated_filename as *mut ::core::ffi::c_char,
             &raw mut current,
             AT_SYMLINK_NOFOLLOW,
-        ) != 0 as ::core::ffi::c_int
-            || !(current.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t)
-            || current.st_nlink != 1 as __nlink_t
-            || current.st_dev != config_stat.st_dev
-            || current.st_ino != config_stat.st_ino
-            || renameat(
-                dir_fd,
-                &raw mut replacement_name as *mut ::core::ffi::c_char,
-                dir_fd,
-                &raw mut validated_filename as *mut ::core::ffi::c_char,
-            ) != 0 as ::core::ffi::c_int
-        {
+        );
+        let mut unchanged: bool = if target_exists as ::core::ffi::c_int != 0 {
+            (stat_result == 0 as ::core::ffi::c_int
+                && current.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t
+                && current.st_nlink == 1 as __nlink_t
+                && current.st_dev == config_stat.st_dev
+                && current.st_ino == config_stat.st_ino) as ::core::ffi::c_int
+        } else {
+            (stat_result != 0 as ::core::ffi::c_int && *__errno_location() == ENOENT)
+                as ::core::ffi::c_int
+        } != 0;
+        if !unchanged {
             write_failed = 1 as ::core::ffi::c_int;
+        } else if external_staging {
+            let mut staged_fd: ::core::ffi::c_int = open(
+                &raw mut external_staging_path as *mut ::core::ffi::c_char,
+                O_RDONLY | O_CLOEXEC,
+            );
+            if staged_fd < 0 as ::core::ffi::c_int
+                || publish_config_in_place(
+                    dir_fd,
+                    &raw mut validated_filename as *mut ::core::ffi::c_char,
+                    &raw mut config_stat,
+                    original_fd,
+                    staged_fd,
+                ) != 0 as ::core::ffi::c_int
+            {
+                write_failed = 1 as ::core::ffi::c_int;
+            }
+            if staged_fd >= 0 as ::core::ffi::c_int {
+                close(staged_fd);
+            }
+        } else if renameat(
+            dir_fd,
+            &raw mut replacement_name as *mut ::core::ffi::c_char,
+            dir_fd,
+            &raw mut validated_filename as *mut ::core::ffi::c_char,
+        ) != 0 as ::core::ffi::c_int
+        {
+            if *__errno_location() == EBUSY && original_fd >= 0 as ::core::ffi::c_int {
+                let mut staged_fd_0: ::core::ffi::c_int = openat(
+                    dir_fd,
+                    &raw mut replacement_name as *mut ::core::ffi::c_char,
+                    O_RDONLY | O_CLOEXEC,
+                );
+                if staged_fd_0 < 0 as ::core::ffi::c_int
+                    || publish_config_in_place(
+                        dir_fd,
+                        &raw mut validated_filename as *mut ::core::ffi::c_char,
+                        &raw mut config_stat,
+                        original_fd,
+                        staged_fd_0,
+                    ) != 0 as ::core::ffi::c_int
+                {
+                    write_failed = 1 as ::core::ffi::c_int;
+                }
+                if staged_fd_0 >= 0 as ::core::ffi::c_int {
+                    close(staged_fd_0);
+                }
+            } else {
+                write_failed = 1 as ::core::ffi::c_int;
+            }
+        } else if fsync(dir_fd) != 0 as ::core::ffi::c_int {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Could not sync config directory after replacement: %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                strerror(*__errno_location()),
+            );
         }
     }
-    if replacement_name[0usize] != 0 {
+    if external_staging {
+        unlink(&raw mut external_staging_path as *mut ::core::ffi::c_char);
+    } else {
         unlinkat(
             dir_fd,
             &raw mut replacement_name as *mut ::core::ffi::c_char,
             0 as ::core::ffi::c_int,
         );
+    }
+    if original_fd >= 0 as ::core::ffi::c_int {
+        close(original_fd);
     }
     close(dir_fd);
     if write_failed != 0 {
@@ -7879,7 +8348,11 @@ pub const __O_CLOEXEC: ::core::ffi::c_int = 0o2000000 as ::core::ffi::c_int;
 pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
 pub const EPERM: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const ENOENT: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
+pub const EINTR: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
+pub const EACCES: ::core::ffi::c_int = 13 as ::core::ffi::c_int;
+pub const EBUSY: ::core::ffi::c_int = 16 as ::core::ffi::c_int;
 pub const EEXIST: ::core::ffi::c_int = 17 as ::core::ffi::c_int;
+pub const EROFS: ::core::ffi::c_int = 30 as ::core::ffi::c_int;
 pub const ERANGE: ::core::ffi::c_int = 34 as ::core::ffi::c_int;
 pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
 pub const INT_MIN: ::core::ffi::c_int = -__INT_MAX__ - 1 as ::core::ffi::c_int;

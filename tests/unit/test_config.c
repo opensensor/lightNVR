@@ -267,15 +267,18 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&writer, NULL, toggle_faststart, NULL));
     int save_result = 0;
     int valid_saves = 0;
+    bool streams_distinct_ok = true;
     while (atomic_load(&faststart_writer_updates) == 0) {
         sched_yield();
     }
     for (int i = 0; i < 50; ++i) {
         (void)config_get_mp4_faststart(&cfg);
         config_t snapshot = {0};
-        config_copy(&snapshot, &cfg);
+        if (!config_copy(&snapshot, &cfg)) streams_distinct_ok = false;
         (void)config_get_mp4_faststart(&snapshot);
-        TEST_ASSERT_NOT_EQUAL_PTR(cfg.streams, snapshot.streams);
+        if (cfg.streams == snapshot.streams) {
+            streams_distinct_ok = false;
+        }
         free(snapshot.streams);
         save_result = save_config(&cfg, path);
         if (save_result != 0) break;
@@ -295,6 +298,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     unlink(path);
     rmdir(dir);
     TEST_ASSERT_EQUAL_INT(0, join_result);
+    TEST_ASSERT_TRUE(streams_distinct_ok);
     TEST_ASSERT_EQUAL_INT(0, save_result);
     TEST_ASSERT_EQUAL_INT(50, valid_saves);
 
