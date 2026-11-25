@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <sched.h>
@@ -1317,11 +1318,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
     char baseline_path[MAX_PATH_LENGTH];
-    const char *short_original = "previous configuration";
-    const char *long_original =
-        "previous configuration with extra trailing content that must be truncated "
-        "when the new serialized config is shorter than the existing file data";
-    const char *original = fail_copy ? short_original : long_original;
+    const char *original = "previous configuration";
     size_t original_len = strlen(original);
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
     snprintf(baseline_path, sizeof(baseline_path), "%s/settings.baseline.ini", directory);
@@ -1331,13 +1328,18 @@ static void check_bind_mount_fallback(bool fail_copy) {
     fclose(initial);
     struct stat before, after;
     struct stat baseline_stat;
-    TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
     load_default_config(&cfg);
 
     if (!fail_copy) {
         TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
         TEST_ASSERT_EQUAL_INT(0, stat(baseline_path, &baseline_stat));
+        int original_fd = open(path, O_WRONLY);
+        TEST_ASSERT_TRUE(original_fd >= 0);
+        TEST_ASSERT_EQUAL_INT(0, ftruncate(original_fd, baseline_stat.st_size + 128));
+        close(original_fd);
     }
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
+    if (!fail_copy) TEST_ASSERT_TRUE(before.st_size > baseline_stat.st_size);
 
     busy_config_rename = true;
     if (fail_copy) {
@@ -1495,21 +1497,16 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
 
     TEST_ASSERT_EQUAL_INT64((long long)baseline_size, (long long)saved_size);
 
-    char *saved_content = (char *)malloc((size_t)saved_size);
-    char *baseline_content = (char *)malloc((size_t)baseline_size);
-    TEST_ASSERT_NOT_NULL(saved_content);
-    TEST_ASSERT_NOT_NULL(baseline_content);
-
-    size_t saved_read = fread(saved_content, 1, (size_t)saved_size, saved);
-    size_t baseline_read = fread(baseline_content, 1, (size_t)baseline_size, baseline);
-    TEST_ASSERT_EQUAL_UINT64((unsigned long long)saved_size, (unsigned long long)saved_read);
-    TEST_ASSERT_EQUAL_UINT64((unsigned long long)baseline_size, (unsigned long long)baseline_read);
+    unsigned char saved_content[256], baseline_content[256];
+    while (true) {
+        size_t saved_read = fread(saved_content, 1, sizeof(saved_content), saved);
+        size_t baseline_read = fread(baseline_content, 1, sizeof(baseline_content), baseline);
+        TEST_ASSERT_EQUAL_UINT(baseline_read, saved_read);
+        if (saved_read == 0) break;
+        TEST_ASSERT_EQUAL_MEMORY(baseline_content, saved_content, saved_read);
+    }
     TEST_ASSERT_FALSE(ferror(saved));
     TEST_ASSERT_FALSE(ferror(baseline));
-    TEST_ASSERT_EQUAL_INT(0, memcmp(saved_content, baseline_content, (size_t)saved_size));
-
-    free(saved_content);
-    free(baseline_content);
     fclose(saved);
     fclose(baseline);
 
