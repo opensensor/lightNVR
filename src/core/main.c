@@ -264,8 +264,9 @@ static void start_shutdown_watchdog_thread(void) {
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    if (pthread_create(&thread, &attr, shutdown_watchdog_thread_func, NULL) != 0) {
-        log_error("Failed to start shutdown watchdog thread: %s", strerror(errno));
+    int rc = pthread_create(&thread, &attr, shutdown_watchdog_thread_func, NULL);
+    if (rc != 0) {
+        log_error("Failed to start shutdown watchdog thread: %s", strerror(rc));
     }
     pthread_attr_destroy(&attr);
 }
