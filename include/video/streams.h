@@ -52,6 +52,8 @@ typedef struct {
 // Returns a borrowed per-thread snapshot, valid until the next call on that
 // thread or thread exit. The caller must not free it. On allocation failure,
 // the global configuration is returned as a fallback.
+/* Borrowed per-thread snapshot, valid until the next call on that thread.
+ * Returns NULL if a snapshot cannot be created. */
 config_t* get_streaming_config(void);
 void init_streaming_backend(void);
 void cleanup_streaming_backend(void);

@@ -119,7 +119,7 @@ config_t* get_streaming_config(void) {
     // Clear stale startup or deleted stream rows while retaining per-slot defaults.
     if (config_reset_stream_slots(&db_config) != 0) {
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : &g_config;
+        return snapshot->streams ? snapshot : NULL;
     }
 
     // Load stream configurations from database.
@@ -128,7 +128,7 @@ config_t* get_streaming_config(void) {
     if (!db_streams) {
         if (!snapshot->streams) (void)config_copy(snapshot, &g_config);
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : &g_config;
+        return snapshot->streams ? snapshot : NULL;
     }
 
     int count = get_all_stream_configs(db_streams, ms);
@@ -136,7 +136,7 @@ config_t* get_streaming_config(void) {
         free(db_streams);
         if (!snapshot->streams) (void)config_copy(snapshot, &g_config);
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : &g_config;
+        return snapshot->streams ? snapshot : NULL;
     }
 
     if (count > 0) {
@@ -152,7 +152,7 @@ config_t* get_streaming_config(void) {
 
     if (!config_copy(snapshot, &db_config)) {
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : &g_config;
+        return snapshot->streams ? snapshot : NULL;
     }
     
     pthread_mutex_unlock(&config_mutex);
