@@ -391,7 +391,13 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         unlink(pid_file);  // Remove invalid PID file
         return 0;
     }
+    bool truncated_pid_line = strchr(pid_buf, '\n') == NULL && fgetc(fp) != EOF;
     fclose(fp);
+    if (truncated_pid_line) {
+        log_warn("Invalid PID file format");
+        unlink(pid_file);
+        return 0;
+    }
     char *end_ptr;
     errno = 0;
     long pid_val = strtol(pid_buf, &end_ptr, 10);
@@ -576,6 +582,7 @@ bool is_restart_requested(void) {
 }
 
 int main(int argc, char *argv[]) {
+    int exit_code = EXIT_FAILURE;
     int pid_fd = -1;
 
     // Disable Transparent Huge Pages (THP) for this process.
@@ -1464,6 +1471,7 @@ int main(int argc, char *argv[]) {
     // Now that we're in the main thread (not signal handler), we can safely
     // call initiate_shutdown() which uses mutexes and logging
     initiate_shutdown();
+    exit_code = EXIT_SUCCESS;
 
     // Cleanup
 cleanup:
@@ -1510,10 +1518,9 @@ cleanup:
 
         // CRITICAL FIX: Create a new process group immediately so we won't be killed
         // by the parent's kill(0, SIGKILL) which kills all processes in the same group
-        if (setpgid(0, 0) != 0) {
-            // Post-fork child from multithreaded parent: avoid stdio/logger calls here.
-            // Continue best-effort even if setpgid fails.
-        }
+        // Post-fork child from a multithreaded parent: keep this path free of
+        // stdio and logger calls. Continue best-effort if setpgid fails.
+        (void)setpgid(0, 0);
 
         // Reset signal handlers to default to avoid inheriting any problematic dispositions
         struct sigaction sa_default;
@@ -1527,7 +1534,7 @@ cleanup:
         // Unblock all signals in the child
         sigset_t empty_mask;
         sigemptyset(&empty_mask);
-        pthread_sigmask(SIG_SETMASK, &empty_mask, NULL);
+        sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 
         // Save the parent PID before it gets killed
         pid_t parent_pid = getppid();
