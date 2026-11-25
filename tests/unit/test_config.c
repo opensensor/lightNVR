@@ -58,6 +58,8 @@ void setUp(void) {
     saved_audio_disabled_env = audio_disabled ? strdup(audio_disabled) : NULL;
     if (web_port) TEST_ASSERT_NOT_NULL(saved_web_port_env);
     if (audio_disabled) TEST_ASSERT_NOT_NULL(saved_audio_disabled_env);
+    unsetenv("LIGHTNVR_WEB_PORT");
+    unsetenv("LIGHTNVR_AUDIO_DISABLED");
 }
 void tearDown(void) {
     deny_config_chmod = deny_config_rename = false;
@@ -322,6 +324,24 @@ void test_validate_config_rejects_unsafe_health_values(void) {
 
 void test_validate_config_resets_nonfinite_storage_pressure(void) {
     const double invalid[] = {NAN, INFINITY, -INFINITY};
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        load_default_config(&cfg);
+        cfg.storage_pressure_emergency_pct = invalid[i];
+        TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+        TEST_ASSERT_TRUE(cfg.storage_pressure_emergency_pct == 5.0);
+        TEST_ASSERT_TRUE(cfg.storage_pressure_critical_pct == 10.0);
+        TEST_ASSERT_TRUE(cfg.storage_pressure_warning_pct == 20.0);
+    }
+
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        load_default_config(&cfg);
+        cfg.storage_pressure_critical_pct = invalid[i];
+        TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+        TEST_ASSERT_TRUE(cfg.storage_pressure_emergency_pct == 5.0);
+        TEST_ASSERT_TRUE(cfg.storage_pressure_critical_pct == 10.0);
+        TEST_ASSERT_TRUE(cfg.storage_pressure_warning_pct == 20.0);
+    }
+
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
         load_default_config(&cfg);
         cfg.storage_pressure_warning_pct = invalid[i];
@@ -1019,6 +1039,11 @@ static void test_save_config_updates_owned_file_in_place(void) {
 }
 
 static void test_save_config_updates_file_in_read_only_directory(void) {
+    if (geteuid() == 0) {
+        TEST_IGNORE_MESSAGE("Skipping read-only directory permission test when running as root.");
+        return;
+    }
+
     char directory[] = "/tmp/lightnvr_config_read_only_dir_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
