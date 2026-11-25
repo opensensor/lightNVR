@@ -1892,6 +1892,9 @@ cleanup:
         cleanup_hls_streaming_backend();
         cleanup_transcoding_backend();
 
+        // Stop and join detection producers before INT_01 consumer teardown.
+
+
         /* INT_01 shutdown (reverse of startup): relay (L5) first. */
         observation_relay_stop();
         observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);  /* then L3 */
