@@ -190,7 +190,7 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }: Sto
             spellCheck={false} />
         </label>)}
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.archive.budget')}</span>
-          <input type="number" min="0" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.archive_budget_gb}
+          <input type="number" min="0" step="any" class="w-full p-2 border border-input rounded bg-background" value={value.archive_budget_gb}
             onInput={(event) => set('archive_budget_gb', event.currentTarget.value)} disabled={busy} />
         </label>
         <p class="text-sm text-muted-foreground md:col-span-2">{t('settings.archive.connectionHelp')}</p>
@@ -277,9 +277,13 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
     const low = Number(editor!.low_watermark_pct);
     const high = Number(editor!.high_watermark_pct);
     const migrationMbps = Number(editor!.migration_mbps);
+    const reserveBytes = Math.round(reserveGb * 1024 ** 3);
+    const migrationBandwidthBps = Math.round(migrationMbps * 1000000 / 8);
+    const archiveBudgetGb = Number(editor!.archive_budget_gb || 0);
+    const archiveBudgetBytes = Math.round(archiveBudgetGb * 1024 ** 3);
     const windowStart = timeToMinutes(editor!.archival_window_start);
     const windowEnd = timeToMinutes(editor!.archival_window_end);
-    if (!Number.isFinite(reserveGb) || reserveGb < 0 || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high >= 100 || low >= high || !Number.isFinite(migrationMbps) || migrationMbps < 0 || (migrationMbps > 0 && migrationMbps * 1000000 / 8 < 65536) || windowStart === null || windowEnd === null) {
+    if (!Number.isFinite(reserveGb) || reserveGb < 0 || !Number.isSafeInteger(reserveBytes) || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high >= 100 || low >= high || !Number.isFinite(migrationMbps) || migrationMbps < 0 || !Number.isSafeInteger(migrationBandwidthBps) || (migrationMbps > 0 && migrationBandwidthBps < 65536) || !Number.isFinite(archiveBudgetGb) || archiveBudgetGb < 0 || !Number.isSafeInteger(archiveBudgetBytes) || windowStart === null || windowEnd === null) {
       showStatusMessage(t('settings.storageTargets.invalidThresholds'), 'error');
       return;
     }
@@ -289,16 +293,16 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
         target_type: editor!.target_type || 'filesystem',
         endpoint: (editor!.endpoint || '').trim(), region: (editor!.region || '').trim(),
         bucket: (editor!.bucket || '').trim(), credential_ref: (editor!.credential_ref || '').trim(),
-        archive_budget_bytes: Math.round(Number(editor!.archive_budget_gb || 0) * 1024 ** 3),
+        archive_budget_bytes: archiveBudgetBytes,
         name: editor!.name.trim(),
         root_path: editor!.root_path.trim(),
         enabled: editor!.enabled,
         mount_required: editor!.mount_required,
         storage_class: editor!.storage_class,
-        reserve_bytes: Math.round(reserveGb * (1024 ** 3)),
+        reserve_bytes: reserveBytes,
         low_watermark_pct: low,
         high_watermark_pct: high,
-        migration_bandwidth_bps: Math.round(migrationMbps * 1000000 / 8),
+        migration_bandwidth_bps: migrationBandwidthBps,
         archival_window_start_minute: windowStart,
         archival_window_end_minute: windowEnd,
       };
@@ -581,7 +585,7 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" maxLength={127} value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} /></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.priority')}</span><input type="number" min="-1000000" max="1000000" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.priority} onInput={(event) => set('priority', event.currentTarget.value)} disabled={busy} /></label>
-        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primary')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_target_uuid} onChange={(event) => { const primary = event.currentTarget.value; onChange({ ...value, primary_target_uuid: primary, fallback_target_uuid: value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid }); }} disabled={busy}>{captureTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primary')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_target_uuid} onChange={(event) => { const primary = event.currentTarget.value; onChange({ ...value, primary_target_uuid: primary, fallback_target_uuid: value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid, migration_target_uuid: value.migration_target_uuid === primary ? '' : value.migration_target_uuid }); }} disabled={busy}>{captureTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primaryPool')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_pool_uuid || ''} onChange={(event) => set('primary_pool_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.exactTarget')}</option>{pools.map((pool) => <option key={pool.uuid} value={pool.uuid}>{pool.name}</option>)}</select></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.fallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_mode} onChange={(event) => { const mode = event.currentTarget.value; onChange({ ...value, fallback_mode: mode, fallback_target_uuid: mode === 'target' ? value.fallback_target_uuid : '' }); }} disabled={busy}><option value="default">{t('settings.storagePolicies.fallbackDefault')}</option><option value="target">{t('settings.storagePolicies.fallbackTarget')}</option><option value="pause">{t('settings.storagePolicies.fallbackPause')}</option><option value="fail">{t('settings.storagePolicies.fallbackFail')}</option></select></label>
         {value.fallback_mode === 'target' && <label class="text-sm font-medium md:col-start-2"><span class="block mb-1">{t('settings.storagePolicies.namedFallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_target_uuid} onChange={(event) => set('fallback_target_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.chooseTarget')}</option>{fallbackTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>}
