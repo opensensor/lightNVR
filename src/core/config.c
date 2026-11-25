@@ -2307,6 +2307,11 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "ssl_cert_path = %s  ; PEM certificate chain, leaf first\n", config->web_ssl_cert_path);
     fprintf(file, "ssl_key_path = %s  ; PEM private key (unencrypted)\n", config->web_ssl_key_path);
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
+    if (contains_unsupported_ini_credential_chars(config->web_username)) {
+        LOG_ERROR("Refusing to save config: web_username contains unsupported INI characters");
+        fclose(file);
+        return false;
+    }
     fprintf(file, "username = %s\n", config->web_username);
     // Note: web_password is no longer saved to config - user passwords are managed in the database
     fprintf(file, "audio_disabled = %s  ; Instance-wide audio compliance policy\n", config->audio_disabled ? "true" : "false");
