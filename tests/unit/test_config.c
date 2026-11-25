@@ -245,7 +245,7 @@ void test_config_copy_owns_streams_after_source_reload(void) {
     load_default_config(&cfg);
     snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "original-camera");
     config_t snapshot = {0};
-    config_copy(&snapshot, &cfg);
+    TEST_ASSERT_TRUE(config_copy(&snapshot, &cfg));
     TEST_ASSERT_NOT_EQUAL_PTR(cfg.streams, snapshot.streams);
     TEST_ASSERT_EQUAL_STRING("original-camera", snapshot.streams[0].name);
     load_default_config(&cfg);
@@ -274,7 +274,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     for (int i = 0; i < 50; ++i) {
         (void)config_get_mp4_faststart(&cfg);
         config_t snapshot = {0};
-        config_copy(&snapshot, &cfg);
+        if (!config_copy(&snapshot, &cfg)) streams_distinct_ok = false;
         (void)config_get_mp4_faststart(&snapshot);
         if (cfg.streams == snapshot.streams) {
             streams_distinct_ok = false;
@@ -304,7 +304,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
 
     config_set_mp4_faststart(&cfg, false);
     config_t snapshot = {0};
-    config_copy(&snapshot, &cfg);
+    TEST_ASSERT_TRUE(config_copy(&snapshot, &cfg));
     config_set_mp4_faststart(&cfg, true);
     TEST_ASSERT_FALSE(config_get_mp4_faststart(&snapshot));
     TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));

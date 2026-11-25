@@ -435,7 +435,7 @@ void config_set_mp4_faststart(config_t *config, bool enabled);
  *  needed. On allocation failure, the destination is left unchanged. Callers
  *  are responsible for external synchronization if source or destination may
  *  be accessed concurrently. */
-void config_copy(config_t *destination, const config_t *source);
+bool config_copy(config_t *destination, const config_t *source);
 
 /**
  * Set the detection grace period, clamped to its valid range (0..60 s).

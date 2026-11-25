@@ -49,8 +49,9 @@ void config_set_mp4_faststart(config_t *config, bool enabled) {
     pthread_mutex_unlock(&mp4_faststart_mutex);
 }
 
-void config_copy(config_t *destination, const config_t *source) {
-    if (!destination || !source || destination == source) return;
+bool config_copy(config_t *destination, const config_t *source) {
+    if (!destination || !source) return false;
+    if (destination == source) return true;
     pthread_mutex_lock(&mp4_faststart_mutex);
     stream_config_t *copy = NULL;
     if (source->streams) {
@@ -58,7 +59,7 @@ void config_copy(config_t *destination, const config_t *source) {
             (size_t)source->max_streams > SIZE_MAX / sizeof(*copy)) {
             log_error("config_copy: invalid stream capacity %d", source->max_streams);
             pthread_mutex_unlock(&mp4_faststart_mutex);
-            return;
+            return false;
         }
         size_t bytes = (size_t)source->max_streams * sizeof(*copy);
         if (destination->streams && destination->streams != source->streams &&
@@ -69,7 +70,7 @@ void config_copy(config_t *destination, const config_t *source) {
             if (!copy) {
                 log_error("config_copy: could not allocate %zu stream bytes", bytes);
                 pthread_mutex_unlock(&mp4_faststart_mutex);
-                return;
+                return false;
             }
         }
         memcpy(copy, source->streams, bytes);
@@ -79,6 +80,7 @@ void config_copy(config_t *destination, const config_t *source) {
     destination->streams = copy;
     if (old_streams != copy && old_streams != source->streams) free(old_streams);
     pthread_mutex_unlock(&mp4_faststart_mutex);
+    return true;
 }
 
 bool playback_transport_is_valid(const char *value) {
@@ -1758,22 +1760,43 @@ static int copy_config_fd(int source_fd, int destination_fd) {
 
 /* Bind mounts and read-only parent directories cannot accept rename. Keep a
  * private, synced backup until the in-place copy has completed or recovered. */
+static pthread_mutex_t config_in_place_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static int publish_config_in_place(int dir_fd, const char *filename,
                                    const struct stat *original_stat,
                                    int original_fd, int staged_fd) {
     if (original_fd < 0 || !original_stat) return -1;
+    pthread_mutex_lock(&config_in_place_mutex);
+
+    struct flock lock = {
+        .l_type = F_WRLCK,
+        .l_whence = SEEK_SET,
+        .l_start = 0,
+        .l_len = 0
+    };
+    if (fcntl(original_fd, F_SETLKW, &lock) != 0) {
+        pthread_mutex_unlock(&config_in_place_mutex);
+        return -1;
+    }
+
     int read_fd = openat(dir_fd, filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     struct stat current;
     if (read_fd < 0 || fstat(read_fd, &current) != 0 ||
         current.st_dev != original_stat->st_dev ||
         current.st_ino != original_stat->st_ino || current.st_nlink != 1) {
         if (read_fd >= 0) close(read_fd);
+        lock.l_type = F_UNLCK;
+        (void)fcntl(original_fd, F_SETLK, &lock);
+        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
     char backup_path[] = "/tmp/lightnvr-config-backup-XXXXXX";
     int backup_fd = mkstemp(backup_path);
     if (backup_fd < 0) {
         close(read_fd);
+        lock.l_type = F_UNLCK;
+        (void)fcntl(original_fd, F_SETLK, &lock);
+        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
     int result = copy_config_fd(read_fd, backup_fd);
@@ -1781,6 +1804,9 @@ static int publish_config_in_place(int dir_fd, const char *filename,
     if (result != 0) {
         close(backup_fd);
         unlink(backup_path);
+        lock.l_type = F_UNLCK;
+        (void)fcntl(original_fd, F_SETLK, &lock);
+        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
     result = copy_config_fd(staged_fd, original_fd);
@@ -1788,11 +1814,17 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         if (copy_config_fd(backup_fd, original_fd) != 0) {
             log_error("Could not restore config; private backup retained at %s", backup_path);
             close(backup_fd);
+            lock.l_type = F_UNLCK;
+            (void)fcntl(original_fd, F_SETLK, &lock);
+            pthread_mutex_unlock(&config_in_place_mutex);
             return -1;
         }
     }
     close(backup_fd);
     unlink(backup_path);
+    lock.l_type = F_UNLCK;
+    (void)fcntl(original_fd, F_SETLK, &lock);
+    pthread_mutex_unlock(&config_in_place_mutex);
     return result;
 }
 
