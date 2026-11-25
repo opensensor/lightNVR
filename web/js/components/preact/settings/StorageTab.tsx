@@ -612,7 +612,9 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
           <p class="text-xs text-muted-foreground md:col-span-2">{t('settings.archive.policyHelp')}</p>
         </div>
       </fieldset>
-      <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
+      <fieldset disabled={busy}>
+        <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
+      </fieldset>
       {value.selector_error && <p class="text-sm text-[hsl(var(--danger))]">{value.selector_error}</p>}
       {value.preview && <div class={`rounded-md border px-3 py-3 text-sm ${value.preview.conflict_policy_count > 0 ? 'border-amber-400/70 bg-amber-50/70 dark:bg-amber-950/20' : 'border-emerald-400/60 bg-emerald-50/70 dark:bg-emerald-950/20'}`}>
         <p class="font-semibold">{t('settings.storagePolicies.previewSummary', { matched: value.preview.matched_camera_count, effective: value.preview.effective_camera_count })}</p>
