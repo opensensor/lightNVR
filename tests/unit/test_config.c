@@ -1320,6 +1320,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     fail_config_pwrite_inode = before.st_ino;
     int result = save_config(&cfg, path);
     TEST_ASSERT_EQUAL_INT(fail_copy ? -1 : 0, result);
+    if (fail_copy) TEST_ASSERT_TRUE(short_config_pwrite_done);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
     TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
     if (fail_copy) TEST_ASSERT_EQUAL_UINT64(before.st_size, after.st_size);
@@ -1396,6 +1397,8 @@ static void test_save_config_bind_mount_retries_short_write(void) {
         }
         TEST_ASSERT_EQUAL_INT(0, memcmp(saved_buf, baseline_buf, saved_n));
     }
+    TEST_ASSERT_FALSE(ferror(saved));
+    TEST_ASSERT_FALSE(ferror(baseline));
 
     fclose(saved);
     fclose(baseline);
