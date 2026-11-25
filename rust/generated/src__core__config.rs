@@ -2579,22 +2579,108 @@ unsafe extern "C" fn config_ini_handler(
             b"pressure_warning_pct\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).storage_pressure_warning_pct =
-                strtod(value, ::core::ptr::null_mut::<*mut ::core::ffi::c_char>());
+            let mut endptr: *mut ::core::ffi::c_char =
+                ::core::ptr::null_mut::<::core::ffi::c_char>();
+            *__errno_location() = 0 as ::core::ffi::c_int;
+            let mut parsed: ::core::ffi::c_double = strtod(value, &raw mut endptr);
+            while !endptr.is_null()
+                && *(*__ctype_b_loc())
+                    .offset(*endptr as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                    as ::core::ffi::c_int
+                    & C2Rust_Unnamed_0::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                        as ::core::ffi::c_int
+                    != 0
+            {
+                endptr = endptr.offset(1);
+            }
+            if endptr == value as *mut ::core::ffi::c_char
+                || !endptr.is_null() && *endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                || *__errno_location() == ERANGE
+                || parsed.is_finite() as ::core::ffi::c_int == 0
+            {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Ignoring invalid pressure_warning_pct '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+            } else {
+                (*config).storage_pressure_warning_pct = parsed;
+            }
         } else if strcmp(
             name,
             b"pressure_critical_pct\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).storage_pressure_critical_pct =
-                strtod(value, ::core::ptr::null_mut::<*mut ::core::ffi::c_char>());
+            let mut endptr_0: *mut ::core::ffi::c_char =
+                ::core::ptr::null_mut::<::core::ffi::c_char>();
+            *__errno_location() = 0 as ::core::ffi::c_int;
+            let mut parsed_0: ::core::ffi::c_double = strtod(value, &raw mut endptr_0);
+            while !endptr_0.is_null()
+                && *(*__ctype_b_loc())
+                    .offset(*endptr_0 as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                    as ::core::ffi::c_int
+                    & C2Rust_Unnamed_0::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                        as ::core::ffi::c_int
+                    != 0
+            {
+                endptr_0 = endptr_0.offset(1);
+            }
+            if endptr_0 == value as *mut ::core::ffi::c_char
+                || !endptr_0.is_null()
+                    && *endptr_0 as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                || *__errno_location() == ERANGE
+                || parsed_0.is_finite() as ::core::ffi::c_int == 0
+            {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Ignoring invalid pressure_critical_pct '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+            } else {
+                (*config).storage_pressure_critical_pct = parsed_0;
+            }
         } else if strcmp(
             name,
             b"pressure_emergency_pct\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).storage_pressure_emergency_pct =
-                strtod(value, ::core::ptr::null_mut::<*mut ::core::ffi::c_char>());
+            let mut endptr_1: *mut ::core::ffi::c_char =
+                ::core::ptr::null_mut::<::core::ffi::c_char>();
+            *__errno_location() = 0 as ::core::ffi::c_int;
+            let mut parsed_1: ::core::ffi::c_double = strtod(value, &raw mut endptr_1);
+            while !endptr_1.is_null()
+                && *(*__ctype_b_loc())
+                    .offset(*endptr_1 as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                    as ::core::ffi::c_int
+                    & C2Rust_Unnamed_0::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                        as ::core::ffi::c_int
+                    != 0
+            {
+                endptr_1 = endptr_1.offset(1);
+            }
+            if endptr_1 == value as *mut ::core::ffi::c_char
+                || !endptr_1.is_null()
+                    && *endptr_1 as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                || *__errno_location() == ERANGE
+                || parsed_1.is_finite() as ::core::ffi::c_int == 0
+            {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Ignoring invalid pressure_emergency_pct '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+            } else {
+                (*config).storage_pressure_emergency_pct = parsed_1;
+            }
         } else if strcmp(
             name,
             b"record_mp4_directly\0".as_ptr() as *const ::core::ffi::c_char,
@@ -5787,13 +5873,65 @@ pub unsafe extern "C" fn save_config(
             );
             return -1 as ::core::ffi::c_int;
         }
-        if access(&raw mut dir_path as *mut ::core::ffi::c_char, W_OK) != 0 as ::core::ffi::c_int {
+        let mut file_st: stat = stat {
+            st_dev: 0,
+            st_ino: 0,
+            st_nlink: 0,
+            st_mode: 0,
+            st_uid: 0,
+            st_gid: 0,
+            __pad0: 0,
+            st_rdev: 0,
+            st_size: 0,
+            st_blksize: 0,
+            st_blocks: 0,
+            st_atim: timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            st_mtim: timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            st_ctim: timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            __glibc_reserved: [0; 3],
+        };
+        if stat(save_path, &raw mut file_st) == 0 as ::core::ffi::c_int {
+            if !(file_st.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Path %s exists but is not a regular file\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    save_path,
+                );
+                return -1 as ::core::ffi::c_int;
+            }
+        } else if *__errno_location() == ENOENT {
+            if access(&raw mut dir_path as *mut ::core::ffi::c_char, W_OK)
+                != 0 as ::core::ffi::c_int
+            {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Directory %s is not writable: %s\0".as_ptr() as *const ::core::ffi::c_char,
+                    &raw mut dir_path as *mut ::core::ffi::c_char,
+                    strerror(*__errno_location()),
+                );
+                return -1 as ::core::ffi::c_int;
+            }
+        } else {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_ERROR,
                 LOG_COMPONENT,
                 _log_stream_name,
-                b"Directory %s is not writable: %s\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut dir_path as *mut ::core::ffi::c_char,
+                b"Failed to inspect %s: %s\0".as_ptr() as *const ::core::ffi::c_char,
+                save_path,
                 strerror(*__errno_location()),
             );
             return -1 as ::core::ffi::c_int;
@@ -7687,6 +7825,7 @@ pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::
 pub const __O_CLOEXEC: ::core::ffi::c_int = 0o2000000 as ::core::ffi::c_int;
 pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
 pub const EPERM: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const ENOENT: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const EEXIST: ::core::ffi::c_int = 17 as ::core::ffi::c_int;
 pub const ERANGE: ::core::ffi::c_int = 34 as ::core::ffi::c_int;
 pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
