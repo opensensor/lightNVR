@@ -418,7 +418,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
     if (existing_pid == getpid()) {
         log_warn("PID file references current process (PID %d); removing stale PID file",
                  existing_pid);
-        unlink(pid_file);
+        if (unlink(pid_file) != 0 && errno != ENOENT) {
+            log_error("Failed to remove stale self-referencing PID file: %s",
+                      strerror(errno));
+            return -1;
+        }
         return 0;
     }
 
