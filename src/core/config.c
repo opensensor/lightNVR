@@ -299,6 +299,7 @@ static void apply_env_overrides(config_t *config) {
                 int *int_ptr = (int *)field_ptr;
                 char *endptr;
                 int new_value;
+                int old_value = *int_ptr;
                 errno = 0;
                 long parsed = strtol(env_value, &endptr, 10);
 
@@ -318,6 +319,16 @@ static void apply_env_overrides(config_t *config) {
 
                 new_value = (int)parsed;
                 *int_ptr = new_value;
+
+                // Keep env/INI behavior consistent by ensuring field-level validation
+                // still applies after env overrides.
+                if (!validate_config(&g_config)) {
+                    *int_ptr = old_value;
+                    log_warn("Rejected env override for %s='%s' due to field constraints; keeping existing value %d",
+                             env_name, env_value, old_value);
+                    break;
+                }
+
                 log_info("Applied env override: %s=%s (int: %d)",
                          env_name, env_value, new_value);
                 break;
