@@ -10,8 +10,9 @@ import {getSystemSettings,getSystemInformation,updateSystemSettings,updateSetupS
  *   3 – Complete / summary
  */
 
-import type { ComponentChildren } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { cloneElement } from 'preact';
+import type { ComponentChildren, VNode } from 'preact';
+import { useState, useEffect, useCallback, useId } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { useI18n } from '../../i18n.ts';
 
@@ -57,11 +58,23 @@ function StepDots({ current, total }: { current: number; total: number }) {
 }
 
 function Field({ label, hint, children }: { label: ComponentChildren; hint?: ComponentChildren; children?: ComponentChildren }) {
+  const inputId = useId();
+  const hintId = `${inputId}-hint`;
+
+  const childNode = children as VNode | undefined;
+  const enhancedChild =
+    childNode && typeof childNode === 'object' && 'type' in childNode
+      ? cloneElement(childNode, {
+          id: inputId,
+          'aria-describedby': hint ? hintId : undefined,
+        })
+      : children;
+
   return (
     <div class="mb-5">
-      <label class="block text-sm font-medium mb-1">{label}</label>
-      {children}
-      {hint && <p class="text-xs text-muted-foreground mt-1">{hint}</p>}
+      <label for={inputId} class="block text-sm font-medium mb-1">{label}</label>
+      {enhancedChild}
+      {hint && <p id={hintId} class="text-xs text-muted-foreground mt-1">{hint}</p>}
     </div>
   );
 }
