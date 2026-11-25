@@ -33,6 +33,20 @@
 // Global configuration variable
 config_t g_config;
 
+static bool contains_unsupported_ini_credential_chars(const char *value) {
+    if (!value) {
+        return false;
+    }
+
+    for (const unsigned char *p = (const unsigned char *)value; *p != '\0'; ++p) {
+        if (*p == '\n' || *p == '\r' || *p == ';' || *p == '#') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Also protects whole-config copies from racing with live option updates.
 static pthread_mutex_t mp4_faststart_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -2342,9 +2356,19 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "turn_server_url = %s\n", config->turn_server_url);
     }
     if (config->turn_username[0] != '\0') {
+        if (contains_unsupported_ini_credential_chars(config->turn_username)) {
+            log_error("TURN username contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save.");
+            fclose(file);
+            return false;
+        }
         fprintf(file, "turn_username = %s\n", config->turn_username);
     }
     if (config->turn_password[0] != '\0') {
+        if (contains_unsupported_ini_credential_chars(config->turn_password)) {
+            log_error("TURN password contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save.");
+            fclose(file);
+            return false;
+        }
         fprintf(file, "turn_password = %s\n", config->turn_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
 
@@ -2359,6 +2383,11 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "username = %s\n", config->mqtt_username);
     }
     if (config->mqtt_password[0] != '\0') {
+        if (contains_unsupported_ini_credential_chars(config->mqtt_password)) {
+            log_error("MQTT password contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save.");
+            fclose(file);
+            return false;
+        }
         fprintf(file, "password = %s\n", config->mqtt_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
     fprintf(file, "client_id = %s\n", config->mqtt_client_id);
