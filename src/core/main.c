@@ -2182,8 +2182,10 @@ static void check_and_ensure_services(void) {
                 strcmp(detection_model_path, "api-detection") != 0 &&
                 strncmp(detection_model_path, "http://", 7) != 0 &&
                 strncmp(detection_model_path, "https://", 8) != 0) {
+                const char *base_models_path =
+                    (current_config->models_path[0] != '\0') ? current_config->models_path : "/etc/lightnvr/models";
                 int n = snprintf(resolved_detection_model, sizeof(resolved_detection_model),
-                                 "%s/%s", current_config->models_path, detection_model_path);
+                                 "%s/%s", base_models_path, detection_model_path);
                 if (n < 0 || (size_t)n >= sizeof(resolved_detection_model)) {
                     log_warn("Detection model path too long for stream: %s",
                              current_config->streams[i].name);
