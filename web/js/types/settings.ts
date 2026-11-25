@@ -489,8 +489,8 @@ export interface StoragePoolEditorState {
   name: string;
   strategy: string;
   enabled: boolean;
-  /** Target UUIDs, in order. */
-  members: string[];
+  /** Pool members, in display order. */
+  members: Required<StoragePoolMember>[];
 }
 
 export interface StoragePoolPayload {
