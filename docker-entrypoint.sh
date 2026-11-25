@@ -437,10 +437,13 @@ chown_volumes() {
         -exec chown -h "$1:$2" {} + &&
     find "$data" -path "$data/recordings" -prune -o $mismatch \
         -exec chown -h "$1:$2" {} + &&
-    # Recordings: directories only, so startup does not walk every segment
-    # (#368). Old root-owned segments stay readable and, in a writable
-    # directory, deletable by retention.
-    find "$data/recordings" -type d $mismatch -exec chown -h "$1:$2" {} +
+    # Recordings: only the recordings root and camera directories, so startup
+    # does not walk every segment file (#368). Old root-owned segments stay
+    # readable and, in a writable directory, deletable by retention.
+    find "$data/recordings" -mindepth 0 -maxdepth 0 $mismatch \
+        -exec chown -h "$1:$2" {} + &&
+    find "$data/recordings" -mindepth 1 -maxdepth 1 -type d $mismatch \
+        -exec chown -h "$1:$2" {} +
 }
 
 migrate_volume_ownership() {
