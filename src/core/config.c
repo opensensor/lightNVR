@@ -254,9 +254,29 @@ static void apply_env_overrides(config_t *config) {
         // Get pointer to the config field
         void *field_ptr = (char *)config + mapping->offset;
 
-        // Environment overrides only apply when the key was absent from INI.
-        if (config_ini_key_present(mapping->env_name)) {
-            log_debug("Config key for %s explicitly set in config file, skipping env override", env_name);
+        // Check if the current value is still at default (not set by config file)
+        bool is_default = false;
+
+        switch (mapping->type) {
+            case CONFIG_TYPE_BOOL: {
+                const bool *bool_ptr = (const bool *)field_ptr;
+                is_default = (*bool_ptr == mapping->default_bool_value);
+                break;
+            }
+            case CONFIG_TYPE_INT: {
+                const int *int_ptr = (const int *)field_ptr;
+                is_default = (*int_ptr == mapping->default_int_value);
+                break;
+            }
+            case CONFIG_TYPE_STRING: {
+                const char *str_ptr = (const char *)field_ptr;
+                is_default = is_string_default(str_ptr, mapping->default_str_value);
+                break;
+            }
+        }
+
+        if (!is_default) {
+            log_debug("Config field for %s already set, skipping env override", env_name);
             continue;
         }
 
@@ -2291,73 +2311,7 @@ void print_config(const config_t *config) {
         if (strlen(config->streams[i].name) > 0) {
             printf("    Stream %d:\n", i);
             printf("      Name: %s\n", config->streams[i].name);
-            {
-                char redacted_url[1024];
-                snprintf(redacted_url, sizeof(redacted_url), "%s", config->streams[i].url ? config->streams[i].url : "");
-
-                // Redact userinfo in authority section: scheme://userinfo@host -> scheme://***@host
-                char *scheme = strstr(redacted_url, "://");
-                char *auth_start = scheme ? (scheme + 3) : redacted_url;
-                char *path_start = strpbrk(auth_start, "/?#");
-                char *at = strchr(auth_start, '@');
-                if (at != NULL && (path_start == NULL || at < path_start)) {
-                    size_t tail_len = strlen(at); // includes '@' and remainder
-                    memmove(auth_start + 3, at, tail_len + 1); // +1 for NUL
-                    auth_start[0] = '*';
-                    auth_start[1] = '*';
-                    auth_start[2] = '*';
-                }
-
-                // Redact sensitive query parameter values
-                char *q = strchr(redacted_url, '?');
-                if (q != NULL) {
-                    char *p = q + 1;
-                    while (*p != '\0') {
-                        char *pair_end = strchr(p, '&');
-                        if (pair_end == NULL) pair_end = p + strlen(p);
-
-                        char *eq = strchr(p, '=');
-                        if (eq != NULL && eq < pair_end) {
-                            size_t key_len = (size_t)(eq - p);
-                            if (key_len > 0 && key_len < 64) {
-                                char key[64];
-                                memcpy(key, p, key_len);
-                                key[key_len] = '\0';
-                                for (size_t k = 0; k < key_len; ++k) {
-                                    key[k] = (char)tolower((unsigned char)key[k]);
-                                }
-
-                                if (strcmp(key, "password") == 0 ||
-                                    strcmp(key, "passwd") == 0 ||
-                                    strcmp(key, "pwd") == 0 ||
-                                    strcmp(key, "token") == 0 ||
-                                    strcmp(key, "access_token") == 0 ||
-                                    strcmp(key, "auth") == 0 ||
-                                    strcmp(key, "apikey") == 0 ||
-                                    strcmp(key, "api_key") == 0 ||
-                                    strcmp(key, "secret") == 0) {
-                                    size_t tail_len = strlen(pair_end);
-                                    memmove(eq + 4, pair_end, tail_len + 1); // keep '=' then "***"
-                                    eq[1] = '*';
-                                    eq[2] = '*';
-                                    eq[3] = '*';
-                                    p = eq + 4;
-                                    if (*p == '&') p++;
-                                    continue;
-                                }
-                            }
-                        }
-
-                        if (*pair_end == '&') {
-                            p = pair_end + 1;
-                        } else {
-                            break;
-                        }
-                    }
-                }
-
-                printf("      URL: %s\n", redacted_url);
-            }
+            printf("      URL: %s\n", config->streams[i].url[0] ? "[redacted]" : "(empty)");
             printf("      Enabled: %s\n", config->streams[i].enabled ? "true" : "false");
             printf("      Resolution: %dx%d\n", config->streams[i].width, config->streams[i].height);
             printf("      FPS: %d\n", config->streams[i].fps);
