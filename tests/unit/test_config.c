@@ -1308,28 +1308,42 @@ static void check_bind_mount_fallback(bool fail_copy) {
     char directory[] = "/tmp/lightnvr_config_bind_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
+    const char *original = "previous configuration";
+    size_t original_len = strlen(original);
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
-    fputs("previous configuration", initial);
+    fputs(original, initial);
     fclose(initial);
     struct stat before, after;
     TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
     load_default_config(&cfg);
     busy_config_rename = true;
+    if (fail_copy) {
+        short_config_pwrite = true;
+        short_config_pwrite_inode = before.st_ino;
+        short_config_pwrite_max_bytes = 8;
+        short_config_pwrite_done = false;
+    }
     fail_config_pwrite = fail_copy;
     fail_config_pwrite_inode = before.st_ino;
     int result = save_config(&cfg, path);
     TEST_ASSERT_EQUAL_INT(fail_copy ? -1 : 0, result);
+    if (fail_copy) TEST_ASSERT_TRUE(short_config_pwrite_done);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
     TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
+    if (fail_copy) TEST_ASSERT_EQUAL_UINT64(before.st_size, after.st_size);
     char content[128] = {0};
     FILE *saved = fopen(path, "r");
     TEST_ASSERT_NOT_NULL(saved);
     size_t count = fread(content, 1, sizeof(content) - 1, saved);
     fclose(saved);
-    if (fail_copy) TEST_ASSERT_EQUAL_STRING("previous configuration", content);
-    else TEST_ASSERT_TRUE(count > 0 && strstr(content, "LightNVR Configuration File") != NULL);
+    if (fail_copy) {
+        TEST_ASSERT_EQUAL_UINT(original_len, count);
+        TEST_ASSERT_EQUAL_MEMORY(original, content, original_len);
+    } else {
+        TEST_ASSERT_TRUE(count > 0 && strstr(content, "LightNVR Configuration File") != NULL);
+    }
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
@@ -1362,14 +1376,45 @@ static void test_save_config_bind_mount_retries_short_write(void) {
     TEST_ASSERT_TRUE(short_config_pwrite_done);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
     TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
-    FILE *saved = fopen(path, "r");
+
+    char baseline_directory[] = "/tmp/lightnvr_config_short_write_baseline_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(baseline_directory));
+    char baseline_path[MAX_PATH_LENGTH];
+    snprintf(baseline_path, sizeof(baseline_path), "%s/settings.ini", baseline_directory);
+    short_config_pwrite = false;
+    busy_config_rename = false;
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
+
+    struct stat short_write_stat, baseline_stat;
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &short_write_stat));
+    TEST_ASSERT_EQUAL_INT(0, stat(baseline_path, &baseline_stat));
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_stat.st_size, (uint64_t)short_write_stat.st_size);
+
+    FILE *saved = fopen(path, "rb");
     TEST_ASSERT_NOT_NULL(saved);
-    char content[128] = {0};
-    TEST_ASSERT_TRUE(fread(content, 1, sizeof(content) - 1, saved) > 0);
+    FILE *baseline = fopen(baseline_path, "rb");
+    TEST_ASSERT_NOT_NULL(baseline);
+
+    unsigned char saved_buf[256];
+    unsigned char baseline_buf[256];
+    while (true) {
+        size_t saved_n = fread(saved_buf, 1, sizeof(saved_buf), saved);
+        size_t baseline_n = fread(baseline_buf, 1, sizeof(baseline_buf), baseline);
+        TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_n, (uint64_t)saved_n);
+        if (saved_n == 0) {
+            break;
+        }
+        TEST_ASSERT_EQUAL_INT(0, memcmp(saved_buf, baseline_buf, saved_n));
+    }
+    TEST_ASSERT_FALSE(ferror(saved));
+    TEST_ASSERT_FALSE(ferror(baseline));
+
     fclose(saved);
-    TEST_ASSERT_NOT_NULL(strstr(content, "LightNVR Configuration File"));
+    fclose(baseline);
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    unlink(baseline_path);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(baseline_directory));
 }
 
 static void test_save_config_updates_file_in_read_only_directory(void) {
