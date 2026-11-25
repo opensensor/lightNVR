@@ -991,9 +991,22 @@ void test_load_config_parses_api_detection_format(void) {
     TEST_ASSERT_EQUAL_STRING("light-object-detect", cfg.api_detection_format);
     TEST_ASSERT_EQUAL_STRING("default", cfg.api_detection_detector_name);
 
-    unlink(config_path);
-    rmdir(web_root);
-    rmdir(dir);
+    char storage_path[MAX_PATH_LENGTH];
+    char hls_path[MAX_PATH_LENGTH];
+    char models_path[MAX_PATH_LENGTH];
+    char log_path[MAX_PATH_LENGTH];
+    snprintf(storage_path, sizeof(storage_path), "%s/storage", dir);
+    snprintf(hls_path, sizeof(hls_path), "%s/hls", dir);
+    snprintf(models_path, sizeof(models_path), "%s/models", dir);
+    snprintf(log_path, sizeof(log_path), "%s/lightnvr.log", dir);
+
+    TEST_ASSERT_EQUAL_INT(0, unlink(config_path));
+    TEST_ASSERT_EQUAL_INT(0, unlink(log_path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(hls_path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(storage_path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(models_path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(web_root));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(dir));
 }
 
 void test_env_integer_whitespace_handling(void) {
