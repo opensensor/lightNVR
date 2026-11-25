@@ -94,6 +94,15 @@ void test_default_config_web_port(void) {
     TEST_ASSERT_EQUAL_INT(8080, cfg.web_port);
 }
 
+void test_default_data_paths_stay_inside_persistent_volume(void) {
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_STRING("/var/lib/lightnvr/data/recordings", cfg.storage_path);
+    TEST_ASSERT_EQUAL_STRING("/var/lib/lightnvr/data/recordings/mp4", cfg.mp4_storage_path);
+    TEST_ASSERT_EQUAL_STRING("/var/lib/lightnvr/data/database/lightnvr.db", cfg.db_path);
+    TEST_ASSERT_EQUAL_STRING("/var/lib/lightnvr/data/models", cfg.models_path);
+    TEST_ASSERT_EQUAL_STRING("/var/lib/lightnvr/data/swap", cfg.swap_file);
+}
+
 void test_default_config_log_level(void) {
     load_default_config(&cfg);
     TEST_ASSERT_EQUAL_INT(LOG_LEVEL_INFO, cfg.log_level);
@@ -959,6 +968,7 @@ int main(void) {
     RUN_TEST(test_max_stream_ceiling_is_valid);
 
     RUN_TEST(test_default_config_web_port);
+    RUN_TEST(test_default_data_paths_stay_inside_persistent_volume);
     RUN_TEST(test_default_config_log_level);
     RUN_TEST(test_default_config_retention_days);
     RUN_TEST(test_default_config_mp4_faststart_on);

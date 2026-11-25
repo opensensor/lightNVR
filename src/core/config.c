@@ -186,11 +186,11 @@ static const env_config_mapping_t env_config_mappings[] = {
     {"LOG_LEVEL",          CONFIG_TYPE_INT,    CONFIG_OFFSET(log_level),          0,   NULL, 2, false},
 
     // Storage settings
-    {"STORAGE_PATH",       CONFIG_TYPE_STRING, CONFIG_OFFSET(storage_path),       MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings", 0, false},
+    {"STORAGE_PATH",       CONFIG_TYPE_STRING, CONFIG_OFFSET(storage_path),       MAX_PATH_LENGTH, "/var/lib/lightnvr/data/recordings", 0, false},
     {"RETENTION_DAYS",     CONFIG_TYPE_INT,    CONFIG_OFFSET(retention_days),     0,   NULL, 30, false},
 
     // Database settings
-    {"DB_PATH",            CONFIG_TYPE_STRING, CONFIG_OFFSET(db_path),            MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db", 0, false},
+    {"DB_PATH",            CONFIG_TYPE_STRING, CONFIG_OFFSET(db_path),            MAX_PATH_LENGTH, "/var/lib/lightnvr/data/database/lightnvr.db", 0, false},
     {"DB_BACKUP_INTERVAL_MINUTES", CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_interval_minutes), 0, NULL, 0, false},
     {"DB_BACKUP_RETENTION_COUNT",  CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_retention_count),  0, NULL, 6, false},
     {"DB_POST_BACKUP_SCRIPT",      CONFIG_TYPE_STRING, CONFIG_OFFSET(db_post_backup_script),    MAX_PATH_LENGTH, "", 0, false},
@@ -386,7 +386,7 @@ void load_default_config(config_t *config) {
     config->syslog_facility = LOG_USER;
 
     // Storage settings
-    safe_strcpy(config->storage_path, "/var/lib/lightnvr/recordings", MAX_PATH_LENGTH, 0);
+    safe_strcpy(config->storage_path, "/var/lib/lightnvr/data/recordings", MAX_PATH_LENGTH, 0);
     config->storage_path_hls[0] = '\0'; // Empty by default, will use storage_path if not specified
     config->max_storage_size = 0; // 0 means unlimited
     config->retention_days = 30;
@@ -406,14 +406,14 @@ void load_default_config(config_t *config) {
 
     // MP4 recording settings
     config->record_mp4_directly = false;
-    safe_strcpy(config->mp4_storage_path, "/var/lib/lightnvr/recordings/mp4", sizeof(config->mp4_storage_path), 0);
+    safe_strcpy(config->mp4_storage_path, "/var/lib/lightnvr/data/recordings/mp4", sizeof(config->mp4_storage_path), 0);
     safe_strcpy(config->mp4_directory_format, "year_month_day",
                 sizeof(config->mp4_directory_format), 0);
     config->mp4_segment_duration = 900; // 15 minutes
     config->mp4_retention_days = 30;
 
     // Models settings
-    safe_strcpy(config->models_path, "/var/lib/lightnvr/models", MAX_PATH_LENGTH, 0);
+    safe_strcpy(config->models_path, "/var/lib/lightnvr/data/models", MAX_PATH_LENGTH, 0);
     
     // API detection settings
     safe_strcpy(config->api_detection_url, "http://localhost:8000/api/v1/detect", MAX_URL_LENGTH, 0);
@@ -437,7 +437,7 @@ void load_default_config(config_t *config) {
     safe_strcpy(config->detection_engine.delegate, "xnnpack", 16, 0);
 
     // Database settings
-    safe_strcpy(config->db_path, "/var/lib/lightnvr/lightnvr.db", MAX_PATH_LENGTH, 0);
+    safe_strcpy(config->db_path, "/var/lib/lightnvr/data/database/lightnvr.db", MAX_PATH_LENGTH, 0);
     /* Full runtime backups are opt-in.  Large, continuously-written NVR
      * databases can otherwise create substantial periodic I/O and page-cache
      * pressure.  Initial and clean-shutdown backups remain enabled. */
@@ -488,7 +488,7 @@ void load_default_config(config_t *config) {
     // Memory optimization
     config->buffer_size = 1024; // 1024 KB (1 MB) buffer size
     config->use_swap = true;
-    safe_strcpy(config->swap_file, "/var/lib/lightnvr/swap", MAX_PATH_LENGTH, 0);
+    safe_strcpy(config->swap_file, "/var/lib/lightnvr/data/swap", MAX_PATH_LENGTH, 0);
     config->swap_size = (uint64_t)128 * 1024 * 1024; // 128MB swap
     
     // Hardware acceleration

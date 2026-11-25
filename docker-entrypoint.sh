@@ -267,6 +267,12 @@ EOF
         log_info "Default configuration created at /etc/lightnvr/lightnvr.ini"
     else
         log_info "Configuration file already exists at /etc/lightnvr/lightnvr.ini"
+        # Existing config is operator-owned. Do not silently switch paths or
+        # create an empty database; tell the operator when it still references
+        # locations outside the persistent /data volume.
+        if grep -Eq '^[[:space:]]*(path|mp4_path)[[:space:]]*=[[:space:]]*/var/lib/lightnvr/(lightnvr\.db|recordings|models)([[:space:]/;#]|$)' /etc/lightnvr/lightnvr.ini; then
+            log_warn "Existing lightnvr.ini references legacy data paths outside /var/lib/lightnvr/data. Back up and migrate the data before changing paths; see docs/DOCKER.md#data-paths-in-existing-installations"
+        fi
     fi
     
     # Always regenerate go2rtc.yaml fresh at startup to avoid stale/corrupted

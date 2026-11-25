@@ -35,7 +35,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
               type="text"
               id="setting-detection-models-path"
               name="detectionModelsPath"
-              placeholder="/var/lib/lightnvr/models"
+              placeholder="/var/lib/lightnvr/data/models"
               class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.detectionModelsPath}
               onChange={handleInputChange}

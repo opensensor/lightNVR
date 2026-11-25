@@ -1339,7 +1339,8 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
         r#type: config_field_type_t::CONFIG_TYPE_STRING,
         offset: 1100 as size_t,
         size: MAX_PATH_LENGTH as size_t,
-        default_str_value: b"/var/lib/lightnvr/recordings\0".as_ptr() as *const ::core::ffi::c_char,
+        default_str_value: b"/var/lib/lightnvr/data/recordings\0".as_ptr()
+            as *const ::core::ffi::c_char,
         default_int_value: 0 as ::core::ffi::c_int,
         default_bool_value: r#false != 0,
     },
@@ -1357,7 +1358,7 @@ static mut env_config_mappings: [env_config_mapping_t; 33] = [
         r#type: config_field_type_t::CONFIG_TYPE_STRING,
         offset: 3932 as size_t,
         size: MAX_PATH_LENGTH as size_t,
-        default_str_value: b"/var/lib/lightnvr/lightnvr.db\0".as_ptr()
+        default_str_value: b"/var/lib/lightnvr/data/database/lightnvr.db\0".as_ptr()
             as *const ::core::ffi::c_char,
         default_int_value: 0 as ::core::ffi::c_int,
         default_bool_value: r#false != 0,
@@ -1693,7 +1694,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     (*config).syslog_facility = LOG_USER;
     safe_strcpy(
         &raw mut (*config).storage_path as *mut ::core::ffi::c_char,
-        b"/var/lib/lightnvr/recordings\0".as_ptr() as *const ::core::ffi::c_char,
+        b"/var/lib/lightnvr/data/recordings\0".as_ptr() as *const ::core::ffi::c_char,
         MAX_PATH_LENGTH as size_t,
         0 as size_t,
     );
@@ -1711,7 +1712,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     (*config).record_mp4_directly = r#false != 0;
     safe_strcpy(
         &raw mut (*config).mp4_storage_path as *mut ::core::ffi::c_char,
-        b"/var/lib/lightnvr/recordings/mp4\0".as_ptr() as *const ::core::ffi::c_char,
+        b"/var/lib/lightnvr/data/recordings/mp4\0".as_ptr() as *const ::core::ffi::c_char,
         ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
         0 as size_t,
     );
@@ -1725,7 +1726,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     (*config).mp4_retention_days = 30 as ::core::ffi::c_int;
     safe_strcpy(
         &raw mut (*config).models_path as *mut ::core::ffi::c_char,
-        b"/var/lib/lightnvr/models\0".as_ptr() as *const ::core::ffi::c_char,
+        b"/var/lib/lightnvr/data/models\0".as_ptr() as *const ::core::ffi::c_char,
         MAX_PATH_LENGTH as size_t,
         0 as size_t,
     );
@@ -1773,7 +1774,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     );
     safe_strcpy(
         &raw mut (*config).db_path as *mut ::core::ffi::c_char,
-        b"/var/lib/lightnvr/lightnvr.db\0".as_ptr() as *const ::core::ffi::c_char,
+        b"/var/lib/lightnvr/data/database/lightnvr.db\0".as_ptr() as *const ::core::ffi::c_char,
         MAX_PATH_LENGTH as size_t,
         0 as size_t,
     );
@@ -1832,7 +1833,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     (*config).use_swap = r#true != 0;
     safe_strcpy(
         &raw mut (*config).swap_file as *mut ::core::ffi::c_char,
-        b"/var/lib/lightnvr/swap\0".as_ptr() as *const ::core::ffi::c_char,
+        b"/var/lib/lightnvr/data/swap\0".as_ptr() as *const ::core::ffi::c_char,
         MAX_PATH_LENGTH as size_t,
         0 as size_t,
     );
