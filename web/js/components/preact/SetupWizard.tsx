@@ -154,7 +154,7 @@ function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }: {
   maxStreamsCeiling: number;
 }) {
   const { t } = useI18n();
-  const recommended = cpuCores > 0 ? cpuCores * 2 : '?';
+  const recommended = cpuCores > 0 ? Math.min(128, Math.max(2, cpuCores * 2)) : '?';
   return (
     <div>
       <h2 class="text-xl font-bold mb-1">{t('setupWizard.performanceTitle')}</h2>
@@ -335,7 +335,12 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       };
       const submittedSnapshotKey = JSON.stringify(submittedFormSnapshot);
 
-      const parsedMaxStorageGb = Number(submittedFormSnapshot.maxStorageSize);
+      const trimmedMaxStorageSize = submittedFormSnapshot.maxStorageSize.trim();
+      if (trimmedMaxStorageSize === '') {
+        showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size is required. Enter 0 explicitly to allow zero.' }), 'error');
+        return false;
+      }
+      const parsedMaxStorageGb = Number(trimmedMaxStorageSize);
       if (!Number.isFinite(parsedMaxStorageGb) || parsedMaxStorageGb < 0) {
         showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size must be a finite number greater than or equal to 0.' }), 'error');
         return false;
@@ -408,12 +413,15 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   };
 
   const handleComplete = async () => {
-    if (savingRef.current) return;
+    if (savingRef.current || completingRef.current) return;
+    completingRef.current = true;
     try {
       await updateSetupStatus({complete:true});
       onClose();
     } catch (err) {
       showStatusMessage(t('setupWizard.saveFailed', {error:(err as Error).message}), 'error');
+    } finally {
+      completingRef.current = false;
     }
   };
 
@@ -423,6 +431,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const handleCompleteRef = useRef(handleComplete);
   const savingRef = useRef(saving);
+  const completingRef = useRef(false);
   savingRef.current = saving;
   handleCompleteRef.current = handleComplete;
   const dialogTitleId = useId();
@@ -434,7 +443,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (savingRef.current) return;
+        if (savingRef.current || completingRef.current) return;
         void handleCompleteRef.current();
         return;
       }
