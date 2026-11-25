@@ -391,10 +391,22 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         unlink(pid_file);  // Remove invalid PID file
         return 0;
     }
+    bool truncated_pid_line = strchr(pid_buf, '\n') == NULL && fgetc(fp) != EOF;
     fclose(fp);
+    if (truncated_pid_line) {
+        log_warn("Invalid PID file format");
+        unlink(pid_file);
+        return 0;
+    }
     char *end_ptr;
+    errno = 0;
     long pid_val = strtol(pid_buf, &end_ptr, 10);
-    if (end_ptr == pid_buf || pid_val <= 0) {
+
+    // Validate conversion, trailing characters, positivity, and pid_t representability
+    while (*end_ptr == ' ' || *end_ptr == '\t' || *end_ptr == '\n' || *end_ptr == '\r' || *end_ptr == '\f' || *end_ptr == '\v') {
+        end_ptr++;
+    }
+    if (end_ptr == pid_buf || *end_ptr != '\0' || errno == ERANGE || pid_val <= 0 || (long)(pid_t)pid_val != pid_val) {
         log_warn("Invalid PID file format");
         unlink(pid_file);  // Remove invalid PID file
         return 0;
@@ -570,6 +582,7 @@ bool is_restart_requested(void) {
 }
 
 int main(int argc, char *argv[]) {
+    int exit_code = EXIT_FAILURE;
     int pid_fd = -1;
 
     // Disable Transparent Huge Pages (THP) for this process.
@@ -1458,9 +1471,13 @@ int main(int argc, char *argv[]) {
     // Now that we're in the main thread (not signal handler), we can safely
     // call initiate_shutdown() which uses mutexes and logging
     initiate_shutdown();
+    exit_code = EXIT_SUCCESS;
 
     // Cleanup
 cleanup:
+    // Ensure every path entering shared teardown (including startup-failure
+    // jumps) marks shutdown as started so watchdog/deadline logic is armed.
+    running = false;
     log_info("Starting cleanup process...");
 
     // Every path into this label is a restart/shutdown. signal_handler() and
@@ -1501,11 +1518,9 @@ cleanup:
 
         // CRITICAL FIX: Create a new process group immediately so we won't be killed
         // by the parent's kill(0, SIGKILL) which kills all processes in the same group
-        if (setpgid(0, 0) != 0) {
-            // If setpgid fails, log but continue - we'll try our best
-            // Note: can't use log_error here safely, use stderr
-            fprintf(stderr, "Watchdog: Failed to create new process group: %s\n", strerror(errno));
-        }
+        // Post-fork child from a multithreaded parent: keep this path free of
+        // stdio and logger calls. Continue best-effort if setpgid fails.
+        (void)setpgid(0, 0);
 
         // Reset signal handlers to default to avoid inheriting any problematic dispositions
         struct sigaction sa_default;
@@ -1516,10 +1531,10 @@ cleanup:
         sigaction(SIGALRM, &sa_default, NULL);
         sigaction(SIGUSR1, &sa_default, NULL);
 
-        // Unblock all signals in the child so it can log properly
+        // Unblock all signals in the child
         sigset_t empty_mask;
         sigemptyset(&empty_mask);
-        pthread_sigmask(SIG_SETMASK, &empty_mask, NULL);
+        sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 
         // Save the parent PID before it gets killed
         pid_t parent_pid = getppid();
@@ -1527,23 +1542,18 @@ cleanup:
         // Allow the same final-backup deadline as the thread watchdog.
         // Large databases can take several minutes to copy and verify.
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
-        log_error("Cleanup process phase 1 timed out after %d seconds", SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
         kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
 
         // Wait a bit longer for emergency cleanup before giving up entirely
         sleep(15);
-        log_error("Cleanup process phase 2 timed out after 15 more seconds, forcing exit");
         kill(parent_pid, SIGKILL);  // Force kill the parent process
 
         // If restart was requested, handle it here since the parent was killed
         if (restart_requested) {
             if (container_mode) {
                 // In container mode, just exit cleanly
-                log_info("Restart requested in container mode after forced cleanup - exiting for orchestrator restart");
-                exit(EXIT_SUCCESS);
+                _exit(EXIT_SUCCESS);
             } else if (saved_argv != NULL) {
-                log_info("Restart was requested, re-executing LightNVR after forced cleanup...");
-
                 // Give the system a moment to release resources
                 // The parent is now dead, wait for it to fully exit
                 usleep(2000000);  // 2 seconds
@@ -1565,20 +1575,13 @@ cleanup:
                 if (len > 0) {
                     exe_path[len] = '\0';
 
-                    log_info("Executing: %s", exe_path);
-
                     // Re-exec the program with the same arguments
                     execv(exe_path, saved_argv);
-
-                    // If execv returns, it failed
-                    log_error("Failed to restart after forced cleanup: %s", strerror(errno));
-                } else {
-                    log_error("Failed to get executable path for restart: %s", strerror(errno));
                 }
             }
         }
 
-        exit(EXIT_FAILURE);
+        _exit(EXIT_FAILURE);
     } else if (cleanup_pid > 0) {
         // Parent process - continue with cleanup
 
@@ -2002,7 +2005,7 @@ cleanup:
     // Shutdown logging
     shutdown_logger();
 
-    return EXIT_SUCCESS;
+    return exit_code;
 }
 
 /**
