@@ -2795,6 +2795,7 @@
   "settings.go2rtcLoadFailed": "Failed to load: {message}",
   "settings.go2rtcRedactionUnavailable": "libyaml unavailable on the server — secret redaction is SKIPPED. Treat this preview as if it contained your secrets in cleartext.",
   "settings.go2rtcBaseConfig": "go2rtc.yaml (base)",
+  "settings.go2rtcOverrideFile": "override.yaml",
   "settings.go2rtcEmpty": "(empty)",
   "settings.go2rtcNone": "(none)",
   "streamsConfig.detectionScheduleHelpShort": "— restrict detection-triggered clips independently",
