@@ -393,6 +393,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   };
 
   const handleComplete = async () => {
+    if (saving) return;
     try {
       await updateSetupStatus({complete:true});
       onClose();
@@ -406,6 +407,8 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const handleCompleteRef = useRef(handleComplete);
+  const savingRef = useRef(saving);
+  savingRef.current = saving;
   handleCompleteRef.current = handleComplete;
   const dialogTitleId = useId();
 
@@ -415,6 +418,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (savingRef.current) return;
         e.preventDefault();
         void handleCompleteRef.current();
         return;
