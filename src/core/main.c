@@ -1967,6 +1967,7 @@ cleanup:
         go2rtc_integration_cleanup();
 #endif
         shutdown_onvif_discovery();
+        cleanup_detection_resources();
 
         // Shutdown database
         log_info("Shutting down database...");
@@ -2180,10 +2181,10 @@ static void check_and_ensure_services(void) {
             current_config->streams[i].enabled &&
             current_config->streams[i].detection_based_recording &&
             is_detection_recording_scheduled(&current_config->streams[i])) {
-            // If continuous recording is currently scheduled/active, run detection in annotation-only mode
+            // Suppress detection recording only while continuous recording is active.
             bool annotation_only =
                 current_config->streams[i].record &&
-                is_recording_scheduled(&current_config->streams[i]);
+                get_recording_state(current_config->streams[i].name) == 1;
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
             char resolved_detection_model[MAX_PATH_LENGTH];
