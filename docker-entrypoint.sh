@@ -437,9 +437,8 @@ chown_volumes() {
         -exec chown -h "$1:$2" {} + &&
     find "$data" -path "$data/recordings" -prune -o $mismatch \
         -exec chown -h "$1:$2" {} + &&
-    # Recordings: directories only, so startup does not walk every segment
-    # (#368). Old root-owned segments stay readable and, in a writable
-    # directory, deletable by retention.
+    # Recordings: include nested camera/date directories so existing paths
+    # remain writable after migration. Files keep their original ownership.
     find "$data/recordings" -type d $mismatch -exec chown -h "$1:$2" {} +
 }
 
@@ -459,7 +458,14 @@ if [ "$(id -u)" = "0" ]; then
     runtime_gid="${PGID:-10001}"
     for id_value in "$runtime_uid" "$runtime_gid"; do
         case "$id_value" in
-            ''|*[!0-9]*|0)
+            ''|*[!0-9]*)
+                log_error "PUID and PGID must be non-zero numeric IDs; LightNVR does not run as root"
+                exit 1
+                ;;
+        esac
+        case "$id_value" in
+            *[1-9]*) ;;
+            *)
                 log_error "PUID and PGID must be non-zero numeric IDs; LightNVR does not run as root"
                 exit 1
                 ;;
@@ -480,7 +486,14 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 # Handle signals properly for graceful shutdown
-trap 'log_info "Received shutdown signal, stopping services..."; kill -TERM $PID 2>/dev/null || true; exit 0' TERM INT
+trap '
+    log_info "Received shutdown signal, stopping services..."
+    if [ -n "${PID:-}" ] && kill -0 "$PID" 2>/dev/null; then
+        kill -TERM "$PID" 2>/dev/null || true
+        wait "$PID" 2>/dev/null || true
+    fi
+    exit 0
+' TERM INT
 
 # Initialize configuration
 init_config
