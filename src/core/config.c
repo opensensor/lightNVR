@@ -1040,21 +1040,51 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "ssl_key_path") == 0) {
             safe_strcpy(config->web_ssl_key_path, value, sizeof(config->web_ssl_key_path), 0);
         } else if (strcmp(name, "auth_enabled") == 0) {
-            config->web_auth_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.auth_enabled: '%s'", value);
+                return 0;
+            }
+            config->web_auth_enabled = parsed_bool;
         } else if (strcmp(name, "username") == 0) {
             safe_strcpy(config->web_username, value, sizeof(config->web_username), 0);
         } else if (strcmp(name, "password") == 0) {
             safe_strcpy(config->web_password, value, sizeof(config->web_password), 0);
         } else if (strcmp(name, "audio_disabled") == 0) {
-            config->audio_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.audio_disabled: '%s'", value);
+                return 0;
+            }
+            config->audio_disabled = parsed_bool;
         } else if (strcmp(name, "auto_disabled") == 0) {
-            config->auto_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.auto_disabled: '%s'", value);
+                return 0;
+            }
+            config->auto_disabled = parsed_bool;
         } else if (strcmp(name, "webrtc_disabled") == 0) {
-            config->webrtc_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.webrtc_disabled: '%s'", value);
+                return 0;
+            }
+            config->webrtc_disabled = parsed_bool;
         } else if (strcmp(name, "hls_disabled") == 0) {
-            config->hls_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.hls_disabled: '%s'", value);
+                return 0;
+            }
+            config->hls_disabled = parsed_bool;
         } else if (strcmp(name, "mse_disabled") == 0) {
-            config->mse_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.mse_disabled: '%s'", value);
+                return 0;
+            }
+            config->mse_disabled = parsed_bool;
         } else if (strcmp(name, "default_playback_transport") == 0) {
             if (playback_transport_is_valid(value)) {
                 safe_strcpy(config->default_playback_transport, value,
@@ -1898,7 +1928,7 @@ int save_config(const config_t *config, const char *path) {
         }
     }
     if ((replacement_name[0] && fchmod(config_fd, 0600) != 0) ||
-        ftruncate(config_fd, 0) != 0) {
+        (!replacement_name[0] && ftruncate(config_fd, 0) != 0)) {
         log_error("Could not prepare private config file: %s", strerror(errno));
         close(config_fd);
         if (replacement_name[0]) unlinkat(dir_fd, replacement_name, 0);
@@ -1981,9 +2011,9 @@ int save_config(const config_t *config, const char *path) {
             config_get_mp4_faststart(config) ? "true" : "false");
     fprintf(file, "min_free_pct = %d  ; keep at least this %% of the volume free (0 disables capacity cap)\n",
             config->storage_min_free_pct);
-    fprintf(file, "pressure_warning_pct = %.1f\n", config->storage_pressure_warning_pct);
-    fprintf(file, "pressure_critical_pct = %.1f\n", config->storage_pressure_critical_pct);
-    fprintf(file, "pressure_emergency_pct = %.1f\n\n", config->storage_pressure_emergency_pct);
+    fprintf(file, "pressure_warning_pct = %.17g\n", config->storage_pressure_warning_pct);
+    fprintf(file, "pressure_critical_pct = %.17g\n", config->storage_pressure_critical_pct);
+    fprintf(file, "pressure_emergency_pct = %.17g\n\n", config->storage_pressure_emergency_pct);
 
     // Write MP4 recording settings
     fprintf(file, "; New recording format options\n");
@@ -2281,7 +2311,7 @@ void print_config(const config_t *config) {
         if (strlen(config->streams[i].name) > 0) {
             printf("    Stream %d:\n", i);
             printf("      Name: %s\n", config->streams[i].name);
-            printf("      URL: %s\n", config->streams[i].url);
+            printf("      URL: %s\n", config->streams[i].url[0] ? "[redacted]" : "(empty)");
             printf("      Enabled: %s\n", config->streams[i].enabled ? "true" : "false");
             printf("      Resolution: %dx%d\n", config->streams[i].width, config->streams[i].height);
             printf("      FPS: %d\n", config->streams[i].fps);
