@@ -8,10 +8,14 @@
  * target" imply footage will land there (#621).
  */
 
-import type { StoragePolicyEditorState, StoragePolicy, StoragePool, StorageTarget } from '../../../types/settings.ts';
+import type { StoragePolicy, StoragePool, StorageTarget } from '../../../types/settings.ts';
 
 /** Read from a saved policy or from the policy editor's form values. */
-type ArchiveTriggerValues = Partial<Pick<StoragePolicyEditorState, 'migration_after_days' | 'archive_after_seconds' | 'archive_protected' | 'archive_on_pressure'>> & {
+type ArchiveTriggerValues = {
+  migration_after_days?: string | number | null;
+  archive_after_seconds?: string | number | null;
+  archive_protected?: boolean | null;
+  archive_on_pressure?: boolean | null;
   migration_target_uuid?: string | null;
 };
 

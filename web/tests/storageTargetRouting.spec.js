@@ -22,13 +22,17 @@ describe('storage target routing helpers (#621)', () => {
     expect(targetIsRouted(targets.usb, referenced)).toBe(false);
   });
 
-  test('primary, fallback and archive targets of enabled policies count', () => {
+  test('archive targets count only when an enabled policy has a move trigger', () => {
     const referenced = referencedTargetUuids([
       { enabled: true, primary_target_uuid: 'usb', migration_target_uuid: 'nas' },
     ], []);
     expect(targetIsRouted(targets.usb, referenced)).toBe(true);
-    expect(targetIsRouted(targets.nas, referenced)).toBe(true);
+    expect(targetIsRouted(targets.nas, referenced)).toBe(false);
     expect(targetIsRouted(targets.pooled, referenced)).toBe(false);
+    const triggered = referencedTargetUuids([
+      { enabled: true, primary_target_uuid: 'usb', migration_target_uuid: 'nas', migration_after_days: 7 },
+    ], []);
+    expect(targetIsRouted(targets.nas, triggered)).toBe(true);
   });
 
   test('a disabled policy routes nothing', () => {
@@ -70,6 +74,7 @@ describe('storage target routing helpers (#621)', () => {
   test('an archive target needs a trigger, mirroring the lifecycle scheduler', () => {
     const base = { migration_target_uuid: 'nas', migration_after_days: '0', archive_after_seconds: '-1' };
     expect(policyHasArchiveTrigger(base)).toBe(false);
+    expect(policyHasArchiveTrigger({ ...base, archive_after_seconds: '' })).toBe(false);
     expect(archiveTargetWithoutTrigger(base)).toBe(true);
     expect(archiveTargetWithoutTrigger({ ...base, migration_after_days: '7' })).toBe(false);
     expect(archiveTargetWithoutTrigger({ ...base, archive_after_seconds: '0' })).toBe(false);
