@@ -1324,19 +1324,13 @@ static void check_bind_mount_fallback(bool fail_copy) {
     fclose(initial);
     struct stat before, after;
     struct stat baseline_stat;
-    char *baseline_content = NULL;
     TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
     load_default_config(&cfg);
 
-    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
-    TEST_ASSERT_EQUAL_INT(0, stat(baseline_path, &baseline_stat));
-    baseline_content = (char *)malloc((size_t)baseline_stat.st_size);
-    TEST_ASSERT_NOT_NULL(baseline_content);
-    FILE *baseline_file = fopen(baseline_path, "r");
-    TEST_ASSERT_NOT_NULL(baseline_file);
-    size_t baseline_count = fread(baseline_content, 1, (size_t)baseline_stat.st_size, baseline_file);
-    fclose(baseline_file);
-    TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_stat.st_size, (uint64_t)baseline_count);
+    if (!fail_copy) {
+        TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
+        TEST_ASSERT_EQUAL_INT(0, stat(baseline_path, &baseline_stat));
+    }
 
     busy_config_rename = true;
     if (fail_copy) {
@@ -1353,24 +1347,31 @@ static void check_bind_mount_fallback(bool fail_copy) {
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
     TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
     if (fail_copy) TEST_ASSERT_EQUAL_UINT64(before.st_size, after.st_size);
-    size_t read_size = fail_copy ? (size_t)(sizeof(char) * 127) : (size_t)after.st_size;
-    char *content = (char *)calloc(read_size + 1, 1);
-    TEST_ASSERT_NOT_NULL(content);
-    FILE *saved = fopen(path, "r");
+    FILE *saved = fopen(path, "rb");
     TEST_ASSERT_NOT_NULL(saved);
-    size_t count = fread(content, 1, read_size, saved);
-    fclose(saved);
     if (fail_copy) {
+        char content[128] = {0};
+        size_t count = fread(content, 1, sizeof(content) - 1, saved);
         TEST_ASSERT_EQUAL_UINT(original_len, count);
         TEST_ASSERT_EQUAL_MEMORY(original, content, original_len);
     } else {
         TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_stat.st_size, (uint64_t)after.st_size);
-        TEST_ASSERT_EQUAL_UINT64((uint64_t)after.st_size, (uint64_t)count);
-        TEST_ASSERT_EQUAL_MEMORY(baseline_content, content, (size_t)after.st_size);
+        FILE *baseline_file = fopen(baseline_path, "rb");
+        TEST_ASSERT_NOT_NULL(baseline_file);
+        unsigned char actual[256], expected[256];
+        while (true) {
+            size_t actual_count = fread(actual, 1, sizeof(actual), saved);
+            size_t expected_count = fread(expected, 1, sizeof(expected), baseline_file);
+            TEST_ASSERT_EQUAL_UINT(expected_count, actual_count);
+            if (actual_count == 0) break;
+            TEST_ASSERT_EQUAL_MEMORY(expected, actual, actual_count);
+        }
+        TEST_ASSERT_FALSE(ferror(baseline_file));
+        fclose(baseline_file);
     }
-    free(content);
-    free(baseline_content);
-    unlink(baseline_path);
+    TEST_ASSERT_FALSE(ferror(saved));
+    fclose(saved);
+    if (!fail_copy) unlink(baseline_path);
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
