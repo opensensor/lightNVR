@@ -650,7 +650,7 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
       const result = await storageJSON<StoragePolicyApplyResult>(`/api/storage-policies/${policy.uuid}/apply`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: policy.revision, preview }), retries: 0,
       });
-      if (preview) setApplyPreview({ policy, policyName: policy.name, ...result });
+      if (preview) setApplyPreview({ policy, ...result });
       else { setApplyPreview(null); showStatusMessage(t('settings.archive.applied'), 'success'); }
     } catch (failure) { showStatusMessage((failure as Error).message, 'error'); }
     finally { setBusyKey(''); }
