@@ -1713,10 +1713,22 @@ int save_config(const config_t *config, const char *path) {
             log_error("Path %s exists but is not a directory", dir_path);
             return -1;
         }
-        
-        // Check if directory is writable
-        if (access(dir_path, W_OK) != 0) {
-            log_error("Directory %s is not writable: %s", dir_path, strerror(errno));
+
+        // Only require directory write permission when a new file may need to be created.
+        // Updating an existing writable file in place does not require writable parent dir.
+        struct stat file_st;
+        if (stat(save_path, &file_st) == 0) {
+            if (!S_ISREG(file_st.st_mode)) {
+                log_error("Path %s exists but is not a regular file", save_path);
+                return -1;
+            }
+        } else if (errno == ENOENT) {
+            if (access(dir_path, W_OK) != 0) {
+                log_error("Directory %s is not writable: %s", dir_path, strerror(errno));
+                return -1;
+            }
+        } else {
+            log_error("Failed to inspect %s: %s", save_path, strerror(errno));
             return -1;
         }
     }
