@@ -149,7 +149,7 @@ A `go2rtc_override_validated_version` marker prevents re-checking on subsequent 
 | Override saves but doesn't take effect | Check the banner — your override may be quarantined. Click "Show effective config" to confirm `override.yaml` is listed under `merged_source_order`. |
 | `"port already in use"` | Check LightNVR's configured go2rtc API/RTSP ports and any WebRTC listener override for conflicts. API/RTSP listener overrides are superseded by the managed policy. |
 | ICE/STUN settings ignored | Sequences are replaced, not merged. Your `webrtc.ice_servers` overwrites lightNVR's defaults — list every server you want. |
-| Block-scalar password not redacted in preview | Make sure libyaml is installed in your runtime container; the response field `redaction_available` tells you. The Docker images ship with `libyaml` and `libyaml-dev`. |
+| Block-scalar password not redacted in preview | Redaction support is compile-time: use a LightNVR build compiled with libyaml support (runtime `libyaml` alone is not sufficient). The response field `redaction_available` tells you whether redaction is available. |
 
 ## Examples
 
