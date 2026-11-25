@@ -1511,10 +1511,12 @@ cleanup:
     sigdelset(&block_mask, SIGKILL);   // SIGKILL can't be blocked anyway
     pthread_sigmask(SIG_BLOCK, &block_mask, &old_mask);
 
+    // Capture the original PID before fork so the child never mistakes itself
+    // for its parent if the parent exits before the child is scheduled.
+    pid_t expected_parent_pid = getpid();
     // Set up a watchdog timer to force exit if cleanup takes too long
     pid_t cleanup_pid = fork();
 
-    pid_t expected_parent_pid = getpid();
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
 
@@ -2165,13 +2167,23 @@ static void check_and_ensure_services(void) {
             is_detection_recording_scheduled(&current_config->streams[i])) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = current_config->streams[i].record;
+            if (current_config->streams[i].detection_model[0] == '\0') {
+                log_warn("Detection model is empty for stream: %s",
+                         current_config->streams[i].name);
+                continue;
+            }
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
-            char resolved_detection_model[PATH_MAX];
+            char resolved_detection_model[MAX_PATH_LENGTH];
             const char *detection_model_path = current_config->streams[i].detection_model;
-            if (current_config->streams[i].detection_model[0] != '/') {
+            if (detection_model_path[0] != '/' &&
+                strcmp(detection_model_path, "motion") != 0 &&
+                strcmp(detection_model_path, "onvif") != 0 &&
+                strcmp(detection_model_path, "api-detection") != 0 &&
+                strncmp(detection_model_path, "http://", 7) != 0 &&
+                strncmp(detection_model_path, "https://", 8) != 0) {
                 int n = snprintf(resolved_detection_model, sizeof(resolved_detection_model),
-                                 "%s/%s", config.models_path, current_config->streams[i].detection_model);
+                                 "%s/%s", current_config->models_path, detection_model_path);
                 if (n < 0 || (size_t)n >= sizeof(resolved_detection_model)) {
                     log_warn("Detection model path too long for stream: %s",
                              current_config->streams[i].name);
