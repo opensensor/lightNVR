@@ -486,6 +486,8 @@ void test_validate_config_resets_nonfinite_storage_pressure(void) {
     const double invalid[] = {NAN, INFINITY, -INFINITY};
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
         load_default_config(&cfg);
+        cfg.storage_pressure_critical_pct = 12.0;
+        cfg.storage_pressure_warning_pct = 24.0;
         cfg.storage_pressure_emergency_pct = invalid[i];
         TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
         TEST_ASSERT_TRUE(cfg.storage_pressure_emergency_pct == 5.0);
@@ -495,6 +497,8 @@ void test_validate_config_resets_nonfinite_storage_pressure(void) {
 
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
         load_default_config(&cfg);
+        cfg.storage_pressure_emergency_pct = 6.0;
+        cfg.storage_pressure_warning_pct = 24.0;
         cfg.storage_pressure_critical_pct = invalid[i];
         TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
         TEST_ASSERT_TRUE(cfg.storage_pressure_emergency_pct == 5.0);
@@ -504,6 +508,8 @@ void test_validate_config_resets_nonfinite_storage_pressure(void) {
 
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
         load_default_config(&cfg);
+        cfg.storage_pressure_emergency_pct = 6.0;
+        cfg.storage_pressure_critical_pct = 12.0;
         cfg.storage_pressure_warning_pct = invalid[i];
         TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
         TEST_ASSERT_TRUE(cfg.storage_pressure_emergency_pct == 5.0);
