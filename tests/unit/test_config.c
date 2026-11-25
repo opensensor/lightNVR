@@ -132,19 +132,13 @@ void test_save_config_round_trips_mp4_faststart(void) {
     config_set_mp4_faststart(&cfg, false);
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
-    FILE *saved = fopen(config_path, "r");
-    TEST_ASSERT_NOT_NULL(saved);
-    char line[512];
-    bool found = false;
-    while (fgets(line, sizeof(line), saved)) {
-        if (strncmp(line, "mp4_faststart = false", 21) == 0) {
-            found = true;
-        }
-    }
-    fclose(saved);
+    config_t reloaded;
+    memset(&reloaded, 0, sizeof(reloaded));
+    TEST_ASSERT_EQUAL_INT(0, load_config(config_path, &reloaded));
+    TEST_ASSERT_FALSE(config_get_mp4_faststart(&reloaded));
+
     unlink(config_path);
     rmdir(dir);
-    TEST_ASSERT_TRUE(found);
 }
 
 static atomic_bool faststart_writer_stop;
