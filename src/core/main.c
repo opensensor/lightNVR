@@ -2157,10 +2157,17 @@ static void check_and_ensure_services(void) {
             is_detection_recording_scheduled(&current_config->streams[i])) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = current_config->streams[i].record;
+            const char *resolved_detection_model = resolve_detection_model_path(current_config->streams[i].detection_model);
+            if (!resolved_detection_model || resolved_detection_model[0] == '\0') {
+                log_warn("Failed to resolve detection model path for stream: %s (model=%s)",
+                         current_config->streams[i].name,
+                         current_config->streams[i].detection_model);
+                continue;
+            }
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
             if (start_unified_detection_thread(current_config->streams[i].name,
-                                              current_config->streams[i].detection_model,
+                                              resolved_detection_model,
                                               current_config->streams[i].detection_threshold,
                                               current_config->streams[i].pre_detection_buffer,
                                               current_config->streams[i].post_detection_buffer,
