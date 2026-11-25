@@ -154,7 +154,7 @@ function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }: {
   maxStreamsCeiling: number;
 }) {
   const { t } = useI18n();
-  const recommended = cpuCores > 0 ? cpuCores * 2 : '?';
+  const recommended = cpuCores > 0 ? Math.min(128, Math.max(2, cpuCores * 2)) : '?';
   return (
     <div>
       <h2 class="text-xl font-bold mb-1">{t('setupWizard.performanceTitle')}</h2>
