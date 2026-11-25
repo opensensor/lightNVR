@@ -335,7 +335,12 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       };
       const submittedSnapshotKey = JSON.stringify(submittedFormSnapshot);
 
-      const parsedMaxStorageGb = Number(submittedFormSnapshot.maxStorageSize);
+      const trimmedMaxStorageSize = submittedFormSnapshot.maxStorageSize.trim();
+      if (trimmedMaxStorageSize === '') {
+        showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size is required. Enter 0 explicitly to allow zero.' }), 'error');
+        return false;
+      }
+      const parsedMaxStorageGb = Number(trimmedMaxStorageSize);
       if (!Number.isFinite(parsedMaxStorageGb) || parsedMaxStorageGb < 0) {
         showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size must be a finite number greater than or equal to 0.' }), 'error');
         return false;
