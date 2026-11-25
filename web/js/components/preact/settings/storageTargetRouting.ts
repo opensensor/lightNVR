@@ -70,7 +70,8 @@ export function targetIsRouted(target: StorageTarget | null | undefined, referen
 /** Mirrors the lifecycle scheduler: a move needs one of these triggers. */
 export function policyHasArchiveTrigger(values: ArchiveTriggerValues | null | undefined): boolean {
   const after = Number(values?.migration_after_days);
-  const archiveAfter = Number(values?.archive_after_seconds ?? -1);
+  const rawArchiveAfter = values?.archive_after_seconds;
+  const archiveAfter = Number(rawArchiveAfter === '' || rawArchiveAfter == null ? -1 : rawArchiveAfter);
   return (Number.isFinite(after) && after > 0)
     || (Number.isFinite(archiveAfter) && archiveAfter >= 0)
     || !!values?.archive_protected
