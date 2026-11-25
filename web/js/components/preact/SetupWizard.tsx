@@ -408,6 +408,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   };
 
   const handleNext = async () => {
+    if (savingRef.current || completingRef.current) return;
     if (step === TOTAL_STEPS - 2 && !await saveSettings()) return;
     if (step < TOTAL_STEPS - 1) setStep(s => s + 1);
   };
