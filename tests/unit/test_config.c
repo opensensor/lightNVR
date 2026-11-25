@@ -51,8 +51,10 @@ FILE *__wrap_fdopen(int fd, const char *mode) {
     if (monitor_secret_write_permissions) {
         observed_config_stream = true;
         struct stat st;
-        observed_config_stream_with_private_mode =
+        bool this_stream_private =
             fstat(fd, &st) == 0 && (st.st_mode & 0777) == 0600;
+        observed_config_stream_with_private_mode =
+            observed_config_stream_with_private_mode && this_stream_private;
     }
     return __real_fdopen(fd, mode);
 }
@@ -65,6 +67,8 @@ int __wrap_renameat(int from_fd, const char *from, int to_fd, const char *to) {
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
+    observed_config_stream = false;
+    observed_config_stream_with_private_mode = true;
     const char *web_port = getenv("LIGHTNVR_WEB_PORT");
     const char *audio_disabled = getenv("LIGHTNVR_AUDIO_DISABLED");
     saved_web_port_env = web_port ? strdup(web_port) : NULL;
@@ -77,6 +81,8 @@ void setUp(void) {
 void tearDown(void) {
     deny_config_chmod = deny_config_rename = false;
     monitor_secret_write_permissions = false;
+    observed_config_stream = false;
+    observed_config_stream_with_private_mode = false;
     if (saved_web_port_env) setenv("LIGHTNVR_WEB_PORT", saved_web_port_env, 1);
     else unsetenv("LIGHTNVR_WEB_PORT");
     if (saved_audio_disabled_env) setenv("LIGHTNVR_AUDIO_DISABLED", saved_audio_disabled_env, 1);
