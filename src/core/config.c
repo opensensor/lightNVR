@@ -1821,6 +1821,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
             return -1;
         }
     }
+    close(read_fd);
     close(backup_fd);
     unlink(backup_path);
     lock.l_type = F_UNLCK;
