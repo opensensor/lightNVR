@@ -1942,6 +1942,8 @@ int save_config(const config_t *config, const char *path) {
                                                   sizeof(config->mqtt_client_id)) ||
         contains_unsupported_ini_credential_chars(config->mqtt_topic_prefix,
                                                   sizeof(config->mqtt_topic_prefix)) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_ha_discovery_prefix,
+                                                  sizeof(config->mqtt_ha_discovery_prefix)) ||
         contains_unsupported_ini_credential_chars(config->db_post_backup_script,
                                                   sizeof(config->db_post_backup_script)) ||
         contains_unsupported_ini_credential_chars(config->web_username,
