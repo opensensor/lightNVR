@@ -432,12 +432,12 @@ function StoragePoolsPanel({ canModifySettings, t }: StoragePanelProps) {
   const targets = targetsQuery.data?.targets || [];
   const targetNames = new Map(targets.map((target) => [target.uuid, target.name]));
   const openNew = () => setEditor({ name: '', strategy: 'most_free', enabled: true, members: [] });
-  const openEdit = (pool: StoragePool) => setEditor({ ...pool, members: (pool.members || []).map((member) => member.target_uuid) });
-  const toggleMember = (uuid: string) => setEditor((current) => ({ ...current!, members: current!.members.includes(uuid) ? current!.members.filter((item) => item !== uuid) : [...current!.members, uuid] }));
+  const openEdit = (pool: StoragePool) => setEditor({ ...pool, members: (pool.members || []).map((member, position) => ({ target_uuid: member.target_uuid, position, weight: member.weight ?? 1 })) });
+  const toggleMember = (uuid: string) => setEditor((current) => ({ ...current!, members: current!.members.some((member) => member.target_uuid === uuid) ? current!.members.filter((member) => member.target_uuid !== uuid) : [...current!.members, { target_uuid: uuid, position: current!.members.length, weight: 1 }] }));
   const save = async () => {
     setBusy(true);
     try {
-      const payload: StoragePoolPayload = { name: editor!.name.trim(), strategy: editor!.strategy, enabled: editor!.enabled, members: editor!.members.map((target_uuid, position) => ({ target_uuid, position, weight: 1 })) };
+      const payload: StoragePoolPayload = { name: editor!.name.trim(), strategy: editor!.strategy, enabled: editor!.enabled, members: editor!.members.map((member, position) => ({ target_uuid: member.target_uuid, position, weight: member.weight ?? 1 })) };
       if (editor!.uuid) payload.revision = editor!.revision;
       await storageJSON(editor!.uuid ? `/api/storage-pools/${encodeURIComponent(editor!.uuid)}` : '/api/storage-pools', { method: editor!.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
       await poolsQuery.refetch();
