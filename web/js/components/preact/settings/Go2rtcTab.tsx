@@ -292,15 +292,43 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     return null;
   };
 
+  const getTopLevelYamlKeys = (yaml: string): Set<string> => {
+    const keys = new Set<string>();
+    for (const rawLine of yaml.split('\n')) {
+      const line = rawLine.trimEnd();
+      if (!line || line.trimStart().startsWith('#')) continue;
+      if (/^\s/.test(rawLine)) continue;
+      const m = line.match(/^([A-Za-z0-9_-]+)\s*:/);
+      if (m?.[1]) keys.add(m[1]);
+    }
+    return keys;
+  };
+
   const handleInsertPreset = (e: Event) => {
     const idx = parseInt((e.target as HTMLSelectElement).value, 10);
     (e.target as HTMLSelectElement).value = '';
     if (Number.isNaN(idx) || idx < 0 || idx >= OVERRIDE_PRESETS.length) return;
     const preset = OVERRIDE_PRESETS[idx];
+
+    const cur = settings.go2rtcConfigOverride || '';
+    const existingKeys = getTopLevelYamlKeys(cur);
+    const presetKeys = getTopLevelYamlKeys(preset!.yaml);
+    const conflicts = Array.from(presetKeys).filter(k => existingKeys.has(k));
+    if (conflicts.length > 0) {
+      invalidateOverrideValidation();
+      setOverrideValidation({
+        valid: false,
+        error: {
+          message: `Preset insertion would duplicate top-level section(s): ${conflicts.join(', ')}. Merge into the existing section instead of inserting the full preset.`,
+        },
+      });
+      return;
+    }
+
     setSettings(prev => {
-      const cur = prev.go2rtcConfigOverride || '';
-      const sep = (cur && !cur.endsWith('\n')) ? '\n' : '';
-      return { ...prev, go2rtcConfigOverride: cur + sep + preset!.yaml };
+      const current = prev.go2rtcConfigOverride || '';
+      const sep = (current && !current.endsWith('\n')) ? '\n' : '';
+      return { ...prev, go2rtcConfigOverride: current + sep + preset!.yaml };
     });
     invalidateOverrideValidation();
   };
@@ -553,7 +581,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   autocorrect="off"
                   wrap="off"
                   value={settings.go2rtcConfigOverride}
-                  onChange={handleOverrideChange}
+                  onInput={handleOverrideChange}
                   onBlur={handleOverrideBlur}
                   disabled={!canModifySettings}
                   maxLength={GO2RTC_OVERRIDE_MAX_BYTES}
@@ -574,9 +602,11 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 {/* Inline error */}
                 {overrideValidation && overrideValidation.valid === false && overrideValidation.error ? (
                   <div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-800 dark:text-red-200">
-                    <div class="font-medium">
-                      {t('settings.go2rtcErrorPosition', { line: overrideValidation.error.line || '?', column: overrideValidation.error.column || '?' })}
-                    </div>
+                    {overrideValidation.error.line || overrideValidation.error.column ? (
+                      <div class="font-medium">
+                        {t('settings.go2rtcErrorPosition', { line: overrideValidation.error.line || '?', column: overrideValidation.error.column || '?' })}
+                      </div>
+                    ) : null}
                     <div class="text-xs mt-1 whitespace-pre-wrap">{overrideValidation.error.message}</div>
                   </div>
                 ) : null}
@@ -604,6 +634,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                     class="px-2 py-1 text-xs border border-input rounded bg-background disabled:opacity-60"
                     value=""
                     disabled={!canModifySettings}
+                    aria-label={t('settings.go2rtcLoadExample')}
                     onChange={handleInsertPreset}
                   >
                     <option value="">{t('settings.go2rtcLoadExample')}</option>
