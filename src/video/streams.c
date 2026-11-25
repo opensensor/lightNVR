@@ -76,6 +76,14 @@ static void init_streaming_snapshot_key(void) {
         pthread_key_create(&streaming_snapshot_key, destroy_streaming_snapshot);
 }
 
+static config_t *usable_streaming_snapshot(config_t *snapshot) {
+    if (!snapshot || !snapshot->streams ||
+        snapshot->max_streams <= 0 || snapshot->max_streams > MAX_STREAMS) {
+        return NULL;
+    }
+    return snapshot;
+}
+
 /**
  * Get current streaming configuration from database
  * 
@@ -113,13 +121,13 @@ config_t* get_streaming_config(void) {
     // This ensures we get the latest configuration including the database path
     if (!config_copy(&db_config, &g_config)) {
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : NULL;
+        return usable_streaming_snapshot(snapshot);
     }
 
     // Clear stale startup or deleted stream rows while retaining per-slot defaults.
     if (config_reset_stream_slots(&db_config) != 0) {
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : NULL;
+        return usable_streaming_snapshot(snapshot);
     }
 
     // Load stream configurations from database.
@@ -128,7 +136,7 @@ config_t* get_streaming_config(void) {
     if (!db_streams) {
         if (!snapshot->streams) (void)config_copy(snapshot, &g_config);
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : NULL;
+        return usable_streaming_snapshot(snapshot);
     }
 
     int count = get_all_stream_configs(db_streams, ms);
@@ -136,7 +144,7 @@ config_t* get_streaming_config(void) {
         free(db_streams);
         if (!snapshot->streams) (void)config_copy(snapshot, &g_config);
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : NULL;
+        return usable_streaming_snapshot(snapshot);
     }
 
     if (count > 0) {
@@ -152,7 +160,7 @@ config_t* get_streaming_config(void) {
 
     if (!config_copy(snapshot, &db_config)) {
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : NULL;
+        return usable_streaming_snapshot(snapshot);
     }
     
     pthread_mutex_unlock(&config_mutex);
