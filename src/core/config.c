@@ -211,15 +211,7 @@ static bool parse_env_bool(const char *value) {
             strcasecmp(value, "on") == 0);
 }
 
-// Helper function to check if a string field has the default value
-static bool is_string_default(const char *current, const char *default_val) {
-    if (!default_val || default_val[0] == '\0') {
-        // Default is empty string - check if current is also empty
-        return !current || current[0] == '\0';
-    }
-    // Check if current value matches the default
-    return current && strcmp(current, default_val) == 0;
-}
+#define ENV_MAPPING_COUNT (sizeof(env_config_mappings) / sizeof(env_config_mappings[0]) - 1)
 
 /**
  * Apply environment variable overrides to configuration
@@ -233,7 +225,7 @@ static bool is_string_default(const char *current, const char *default_val) {
  *
  * @param config Pointer to config structure to modify
  */
-static void apply_env_overrides(config_t *config) {
+static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAPPING_COUNT]) {
     if (!config) return;
 
     log_info("Checking for LIGHTNVR_ environment variable overrides");
@@ -254,26 +246,8 @@ static void apply_env_overrides(config_t *config) {
         // Get pointer to the config field
         void *field_ptr = (char *)config + mapping->offset;
 
-        // Check if the current value is still at default (not set by config file)
-        bool is_default = false;
-
-        switch (mapping->type) {
-            case CONFIG_TYPE_BOOL: {
-                const bool *bool_ptr = (const bool *)field_ptr;
-                is_default = (*bool_ptr == mapping->default_bool_value);
-                break;
-            }
-            case CONFIG_TYPE_INT: {
-                const int *int_ptr = (const int *)field_ptr;
-                is_default = (*int_ptr == mapping->default_int_value);
-                break;
-            }
-            case CONFIG_TYPE_STRING: {
-                const char *str_ptr = (const char *)field_ptr;
-                is_default = is_string_default(str_ptr, mapping->default_str_value);
-                break;
-            }
-        }
+        // Apply env override only if option was absent from INI.
+        bool is_default = !ini_present[i];
 
         if (!is_default) {
             log_debug("Config field for %s already set, skipping env override", env_name);
@@ -317,7 +291,14 @@ static void apply_env_overrides(config_t *config) {
                 }
 
                 new_value = (int)parsed;
+                if (strcmp(mapping->env_name, "WEB_PORT") == 0 &&
+                    (new_value <= 0 || new_value > 65535)) {
+                    log_warn("Invalid web port for %s: '%s'; keeping existing value %d",
+                             env_name, env_value, *int_ptr);
+                    break;
+                }
                 *int_ptr = new_value;
+
                 log_info("Applied env override: %s=%s (int: %d)",
                          env_name, env_value, new_value);
                 break;
@@ -785,9 +766,45 @@ bool config_set_detection_engine_delegate(config_t *config, const char *delegate
     return true;
 }
 
+typedef struct {
+    config_t *config;
+    bool *ini_present;
+} config_ini_context_t;
+
+// Match the INI section/key spelling to the corresponding environment mapping.
+static void mark_ini_option(const char *section, const char *name, bool *ini_present) {
+    const char *prefix = NULL;
+    const char *key = name;
+    if (strcmp(section, "general") == 0) prefix = "";
+    else if (strcmp(section, "storage") == 0) {
+        prefix = strcmp(name, "retention_days") == 0 ? "" : "STORAGE_";
+        if (strcmp(name, "path") != 0 && strcmp(name, "retention_days") != 0) return;
+    } else if (strcmp(section, "database") == 0) prefix = "DB_";
+    else if (strcmp(section, "web") == 0) {
+        prefix = (strcmp(name, "audio_disabled") == 0 || strcmp(name, "demo_mode") == 0) ? "" : "WEB_";
+    } else if (strcmp(section, "go2rtc") == 0) {
+        prefix = (strncmp(name, "turn_", 5) == 0 || strncmp(name, "webrtc_connection_", 18) == 0 ||
+                  strncmp(name, "webrtc_ice_", 11) == 0) ? "" : "GO2RTC_";
+        if (strcmp(name, "webrtc_port") == 0) key = "webrtc_listen_port";
+    } else return;
+
+    char mapped_name[128];
+    int length = snprintf(mapped_name, sizeof(mapped_name), "%s%s", prefix, key);
+    if (length < 0 || (size_t)length >= sizeof(mapped_name)) return;
+    for (char *p = mapped_name; *p; ++p) *p = (char)toupper((unsigned char)*p);
+    for (size_t i = 0; i < ENV_MAPPING_COUNT; ++i) {
+        if (strcmp(mapped_name, env_config_mappings[i].env_name) == 0) {
+            ini_present[i] = true;
+            break;
+        }
+    }
+}
+
 // Handler function for inih
 static int config_ini_handler(void* user, const char* section, const char* name, const char* value) {
-    config_t* config = (config_t*)user;
+    config_ini_context_t *context = (config_ini_context_t *)user;
+    config_t *config = context->config;
+    mark_ini_option(section, name, context->ini_present);
     
     // General settings
     if (strcmp(section, "general") == 0) {
@@ -1321,7 +1338,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
 }
 
 // Load configuration from file using inih
-static int load_config_from_file(const char *filename, config_t *config) {
+static int load_config_from_file(const char *filename, config_t *config, bool *ini_present) {
     // Parsing may resize streams, so the temporary copy needs its own array.
     config_t temp_config = *config;
     temp_config.streams = NULL;
@@ -1336,7 +1353,8 @@ static int load_config_from_file(const char *filename, config_t *config) {
     }
 
     // Use inih to parse the INI file
-    int result = ini_parse(filename, config_ini_handler, &temp_config);
+    config_ini_context_t context = {&temp_config, ini_present};
+    int result = ini_parse(filename, config_ini_handler, &context);
     
     if (result < 0) {
         free(temp_config.streams);
@@ -1613,6 +1631,7 @@ static void set_loaded_config_path(const char *path) {
 // Load configuration
 int load_config(config_t *config) {
     if (!config) return -1;
+    bool ini_present[ENV_MAPPING_COUNT] = {false};
     
     // Load default configuration
     load_default_config(config);
@@ -1630,7 +1649,7 @@ int load_config(config_t *config) {
                 log_error("Failed to resolve config path '%s': %s",
                           g_custom_config_path, strerror(errno));
                 return -1;
-            } else if (load_config_from_file(canon_path, config) == 0) {
+            } else if (load_config_from_file(canon_path, config, ini_present) == 0) {
                 log_info("Loaded configuration from custom path: %s", canon_path);
                 set_loaded_config_path(canon_path);
                 loaded = 1;
@@ -1656,7 +1675,7 @@ int load_config(config_t *config) {
 
         for (int i = 0; config_paths[i] != NULL && !loaded; i++) {
             if (access(config_paths[i], R_OK) == 0) {
-                if (load_config_from_file(config_paths[i], config) == 0) {
+                if (load_config_from_file(config_paths[i], config, ini_present) == 0) {
                     log_info("Loaded configuration from %s", config_paths[i]);
                     set_loaded_config_path(config_paths[i]);
                     loaded = 1;
@@ -1676,7 +1695,7 @@ int load_config(config_t *config) {
     // Apply environment variable overrides
     // This allows LIGHTNVR_ prefixed env vars to set config values
     // that are not already set in the config file (useful for container deployments)
-    apply_env_overrides(config);
+    apply_env_overrides(config, ini_present);
 
     // Set default web root if not specified
     if (strlen(config->web_root) == 0) {
