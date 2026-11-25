@@ -209,7 +209,7 @@ bind_ip = 0.0.0.0
 root = /var/lib/lightnvr/www
 auth_enabled = true
 username = admin
-password = ${generated_web_password}
+password = admin
 ; web_thread_pool_size: UV_THREADPOOL_SIZE. Default is 2x online CPU cores (clamped [2,128]).
 ; Uncomment to override. Requires restart.
 ; web_thread_pool_size = 8
