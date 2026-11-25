@@ -254,29 +254,9 @@ static void apply_env_overrides(config_t *config) {
         // Get pointer to the config field
         void *field_ptr = (char *)config + mapping->offset;
 
-        // Check if the current value is still at default (not set by config file)
-        bool is_default = false;
-
-        switch (mapping->type) {
-            case CONFIG_TYPE_BOOL: {
-                const bool *bool_ptr = (const bool *)field_ptr;
-                is_default = (*bool_ptr == mapping->default_bool_value);
-                break;
-            }
-            case CONFIG_TYPE_INT: {
-                const int *int_ptr = (const int *)field_ptr;
-                is_default = (*int_ptr == mapping->default_int_value);
-                break;
-            }
-            case CONFIG_TYPE_STRING: {
-                const char *str_ptr = (const char *)field_ptr;
-                is_default = is_string_default(str_ptr, mapping->default_str_value);
-                break;
-            }
-        }
-
-        if (!is_default) {
-            log_debug("Config field for %s already set, skipping env override", env_name);
+        // Environment overrides only apply when the key was absent from INI.
+        if (config_ini_key_present(mapping->env_name)) {
+            log_debug("Config key for %s explicitly set in config file, skipping env override", env_name);
             continue;
         }
 
