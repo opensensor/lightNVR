@@ -590,8 +590,11 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onInput={handleOverrideChange}
                   onBlur={handleOverrideBlur}
                   disabled={!canModifySettings}
-                  aria-invalid={overrideValidation && overrideValidation.valid === false && overrideValidation.error ? true : undefined}
-                  aria-describedby={overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'go2rtc-config-override-error' : undefined}
+                  aria-invalid={utf8ByteLength(settings.go2rtcConfigOverride) > GO2RTC_OVERRIDE_MAX_BYTES || !!(overrideValidation && overrideValidation.valid === false && overrideValidation.error)}
+                  aria-describedby={[
+                    utf8ByteLength(settings.go2rtcConfigOverride) > GO2RTC_OVERRIDE_MAX_BYTES ? 'go2rtc-config-override-size-error' : '',
+                    overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'go2rtc-config-override-error' : '',
+                  ].filter(Boolean).join(' ') || undefined}
                   placeholder={"ffmpeg:\n  h264_hw: \"-codec:v h264_v4l2m2m\"\n\nlog:\n  level: trace"}
                 />
 
@@ -605,7 +608,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                         {formatBytes(overrideBytes)} / {formatBytes(GO2RTC_OVERRIDE_MAX_BYTES)}
                         {overrideValidating ? t('settings.go2rtcValidating') : null}
                         {overrideTooLarge ? (
-                          <span class="ml-2 text-red-600 dark:text-red-400">
+                          <span id="go2rtc-config-override-size-error" class="ml-2 text-red-600 dark:text-red-400">
                             {t('settings.go2rtcOverrideTooLarge')}
                           </span>
                         ) : null}
