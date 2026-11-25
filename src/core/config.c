@@ -1164,12 +1164,15 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (new_max < 1)          new_max = 1;
             if (new_max > MAX_STREAMS) new_max = MAX_STREAMS;
             if (new_max != config->max_streams) {
+                int old_max = config->max_streams;
                 stream_config_t *p = realloc(config->streams, new_max * sizeof(stream_config_t));
                 if (p) {
-                    // Zero-initialise newly added slots when expanding
-                    if (new_max > config->max_streams) {
-                        memset(p + config->max_streams, 0,
-                               (new_max - config->max_streams) * sizeof(stream_config_t));
+                    // Initialise newly added slots using established per-stream defaults.
+                    // Copy from an existing default-initialised slot instead of zeroing.
+                    if (new_max > old_max && old_max > 0) {
+                        for (int i = old_max; i < new_max; i++) {
+                            p[i] = p[0];
+                        }
                     }
                     config->streams    = p;
                     config->max_streams = new_max;
