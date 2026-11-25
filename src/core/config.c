@@ -284,7 +284,12 @@ static void apply_env_overrides(config_t *config) {
         switch (mapping->type) {
             case CONFIG_TYPE_BOOL: {
                 bool *bool_ptr = (bool *)field_ptr;
-                bool new_value = parse_env_bool(env_value);
+                bool new_value;
+                if (!parse_bool_strict(env_value, &new_value)) {
+                    log_warn("Invalid boolean for %s: '%s'; keeping existing value %s",
+                             env_name, env_value, *bool_ptr ? "true" : "false");
+                    break;
+                }
                 *bool_ptr = new_value;
                 log_info("Applied env override: %s=%s (bool: %s)",
                          env_name, env_value, new_value ? "true" : "false");
@@ -1596,6 +1601,9 @@ int load_config(config_t *config) {
                     set_loaded_config_path(config_paths[i]);
                     loaded = 1;
                     break;
+                } else {
+                    log_error("Failed to load configuration from %s", config_paths[i]);
+                    return -1;
                 }
             }
         }
@@ -1724,10 +1732,12 @@ int save_config(const config_t *config, const char *path) {
         safe_strcpy(tmp, save_path, MAX_PATH_LENGTH, 0);
 
         const char *fname;
+        char fname_buf[MAX_PATH_LENGTH];
 
         char *sl = strrchr(tmp, '/');
         if (sl) {
-            fname = sl + 1;
+            safe_strcpy(fname_buf, sl + 1, MAX_PATH_LENGTH, 0);
+            fname = fname_buf;
             if (sl == tmp) {
                 /* Root-level path, e.g. "/lightnvr.ini": keep directory as "/" */
                 tmp[0] = '/';
@@ -1740,7 +1750,8 @@ int save_config(const config_t *config, const char *path) {
                 return -1;
             }
         } else {
-            fname = tmp;
+            safe_strcpy(fname_buf, tmp, MAX_PATH_LENGTH, 0);
+            fname = fname_buf;
             /* No directory separator — resolve CWD as the directory. */
             char cwd[PATH_MAX];
             if (getcwd(cwd, sizeof(cwd)) == NULL ||

@@ -320,7 +320,7 @@ void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
     fclose(file);
 
     set_custom_config_path(config_path);
-    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(-1, load_config(&cfg));
     TEST_ASSERT_NOT_NULL(cfg.streams);
     TEST_ASSERT_GREATER_THAN(0, cfg.max_streams);
     cfg.streams[0].name[0] = '\0';
@@ -989,6 +989,26 @@ static void test_save_config_preserves_legacy_file_when_replacement_fails(void) 
     check_group_writable_config_replacement(true);
 }
 
+static void test_save_config_updates_owned_file_in_place(void) {
+    char directory[] = "/tmp/lightnvr_config_owned_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *initial = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(initial);
+    fputs("old content", initial);
+    fclose(initial);
+    struct stat before, after;
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, path));
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
+    TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
+    TEST_ASSERT_EQUAL_UINT(0600, after.st_mode & 0777);
+    unlink(path);
+    rmdir(directory);
+}
+
 int main(void) {
     init_logger();
 
@@ -997,6 +1017,7 @@ int main(void) {
     RUN_TEST(test_save_config_rejects_hardlinks_without_truncation_or_mode_change);
     RUN_TEST(test_save_config_replaces_group_writable_legacy_file_privately);
     RUN_TEST(test_save_config_preserves_legacy_file_when_replacement_fails);
+    RUN_TEST(test_save_config_updates_owned_file_in_place);
 
     RUN_TEST(test_stream_config_t_size_under_16k);
     RUN_TEST(test_max_stream_ceiling_is_valid);
