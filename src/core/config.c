@@ -456,6 +456,9 @@ void load_default_config(config_t *config) {
             num_cores = (int)sc_cores;
         }
 
+        // Bound to useful range before multiplying to avoid signed overflow UB.
+        if (num_cores > 64) num_cores = 64;
+
         config->web_thread_pool_size = (num_cores > 0) ? (num_cores * 2) : 8;
         if (config->web_thread_pool_size < 2)   config->web_thread_pool_size = 2;
         if (config->web_thread_pool_size > 128) config->web_thread_pool_size = 128;
@@ -1906,7 +1909,8 @@ int save_config(const config_t *config, const char *path) {
     if (contains_unsupported_ini_credential_chars(config->turn_username) ||
         contains_unsupported_ini_credential_chars(config->turn_password) ||
         contains_unsupported_ini_credential_chars(config->mqtt_username) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_password)) {
+        contains_unsupported_ini_credential_chars(config->mqtt_password) ||
+        contains_unsupported_ini_credential_chars(config->web_username)) {
         log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
         return -1;
     }
@@ -2412,6 +2416,13 @@ int save_config(const config_t *config, const char *path) {
     
     int write_failed = ferror(file);
     if (fflush(file) != 0 || fsync(fileno(file)) != 0) write_failed = 1;
+    /* Keep a stable handle to the private staging file for the in-place
+     * fallback, but close the stream before publishing so close errors count. */
+    int staged_fd = -1;
+    if (!write_failed) {
+        staged_fd = dup(fileno(file));
+        if (staged_fd < 0) write_failed = 1;
+    }
     if (fclose(file) != 0) write_failed = 1;
     if (!write_failed) {
         /* Do not replace a symlink, hardlink, or changed target introduced
@@ -2425,16 +2436,12 @@ int save_config(const config_t *config, const char *path) {
         if (!unchanged) {
             write_failed = 1;
         } else if (external_staging) {
-            int staged_fd = open(external_staging_path, O_RDONLY | O_CLOEXEC);
-            if (staged_fd < 0 || publish_config_in_place(dir_fd, validated_filename,
+            if (publish_config_in_place(dir_fd, validated_filename,
                     &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
-            if (staged_fd >= 0) close(staged_fd);
         } else if (renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
             if (errno == EBUSY && original_fd >= 0) {
-                int staged_fd = openat(dir_fd, replacement_name, O_RDONLY | O_CLOEXEC);
-                if (staged_fd < 0 || publish_config_in_place(dir_fd, validated_filename,
+                if (publish_config_in_place(dir_fd, validated_filename,
                         &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
-                if (staged_fd >= 0) close(staged_fd);
             } else {
                 write_failed = 1;
             }
@@ -2442,6 +2449,7 @@ int save_config(const config_t *config, const char *path) {
             log_warn("Could not sync config directory after replacement: %s", strerror(errno));
         }
     }
+    if (staged_fd >= 0) close(staged_fd);
     if (external_staging) unlink(external_staging_path);
     else unlinkat(dir_fd, replacement_name, 0);
     if (original_fd >= 0) close(original_fd);
