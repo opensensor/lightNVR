@@ -242,6 +242,16 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const [restartRequired, setRestartRequired] = useState(false);
   const [cpuCores, setCpuCores] = useState(0);
   const [maxStreamsCeiling, setMaxStreamsCeiling] = useState(1024);
+  const [dirtyFields, setDirtyFields] = useState<Record<keyof WizardForm, boolean>>({
+    storagePath: false,
+    maxStorageSize: false,
+    dbPath: false,
+    threadPoolSize: false,
+    maxStreams: false,
+  });
+  const markDirty = useCallback((field: keyof WizardForm) => {
+    setDirtyFields(prev => (prev[field] ? prev : { ...prev, [field]: true }));
+  }, []);
   const BYTES_PER_GB = 1024 ** 3;
 
   const bytesToGbString = (bytes: number): string => {
@@ -264,11 +274,21 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
         if (!data) return;
         setForm(f => ({
           ...f,
-          storagePath:    data.storage_path   || f.storagePath,
-          maxStorageSize: data.max_storage_size != null ? bytesToGbString(data.max_storage_size) : f.maxStorageSize,
-          dbPath:         data.db_path         || f.dbPath,
-          threadPoolSize: data.web_thread_pool_size != null ? String(data.web_thread_pool_size) : f.threadPoolSize,
-          maxStreams:     data.max_streams     != null ? String(data.max_streams)      : f.maxStreams,
+          storagePath: dirtyFields.storagePath
+            ? f.storagePath
+            : (data.storage_path || f.storagePath),
+          maxStorageSize: dirtyFields.maxStorageSize
+            ? f.maxStorageSize
+            : (data.max_storage_size != null ? bytesToGbString(data.max_storage_size) : f.maxStorageSize),
+          dbPath: dirtyFields.dbPath
+            ? f.dbPath
+            : (data.db_path || f.dbPath),
+          threadPoolSize: dirtyFields.threadPoolSize
+            ? f.threadPoolSize
+            : (data.web_thread_pool_size != null ? String(data.web_thread_pool_size) : f.threadPoolSize),
+          maxStreams: dirtyFields.maxStreams
+            ? f.maxStreams
+            : (data.max_streams != null ? String(data.max_streams) : f.maxStreams),
         }));
         if (data.max_streams_ceiling != null) {
           setMaxStreamsCeiling(data.max_streams_ceiling);
@@ -282,7 +302,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
         if (cores > 0) setCpuCores(cores);
       })
       .catch(() => {});
-  }, []);
+  }, [dirtyFields]);
 
   const handleChange = useCallback((key: keyof WizardForm, value: string) => {
     setForm(f => ({ ...f, [key]: value }));
