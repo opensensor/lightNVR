@@ -155,10 +155,10 @@ function targetToEditor(target: StorageTarget): StorageTargetEditorState {
     enabled: target.enabled,
     mount_required: target.mount_required,
     storage_class: target.storage_class,
-    reserve_gb: String(Math.round((Number(target.reserve_bytes) || 0) / (1024 ** 3) * 100) / 100),
+    reserve_gb: String((Number(target.reserve_bytes) || 0) / (1024 ** 3)),
     high_watermark_pct: String(target.high_watermark_pct),
     low_watermark_pct: String(target.low_watermark_pct),
-    migration_mbps: String(Math.round(((Number(target.migration_bandwidth_bps) || 0) * 8 / 1000000) * 100) / 100),
+    migration_mbps: String(((Number(target.migration_bandwidth_bps) || 0) * 8 / 1000000)),
     archival_window_start: minutesToTime(target.archival_window_start_minute),
     archival_window_end: minutesToTime(target.archival_window_end_minute),
   };
