@@ -1596,6 +1596,9 @@ int load_config(config_t *config) {
                     set_loaded_config_path(config_paths[i]);
                     loaded = 1;
                     break;
+                } else {
+                    log_error("Failed to load configuration from %s", config_paths[i]);
+                    return -1;
                 }
             }
         }
