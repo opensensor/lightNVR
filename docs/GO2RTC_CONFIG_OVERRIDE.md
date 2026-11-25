@@ -91,7 +91,7 @@ These are the top-level keys we know about; an unknown key is allowed
 
 Two tiers of checks happen before your override ever reaches go2rtc:
 
-1. **Live, on-blur** — the Settings UI POSTs to `/api/settings/go2rtc/validate` 200ms after you stop typing.  Errors are inlined under the textarea with line/column.
+1. **Live, on-blur** — the Settings UI POSTs to `/api/settings/go2rtc/validate` 200ms after the editor loses focus.  Errors are inlined under the textarea with line/column.
 2. **Pre-save** — `POST /api/settings` runs the same validator and rejects with HTTP 400 if it fails.
 
 The validator catches:
