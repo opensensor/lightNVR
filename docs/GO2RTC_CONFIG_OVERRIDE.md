@@ -220,7 +220,7 @@ streams:
 A few things worth knowing:
 
 - **The `streams:` map merges** with lightNVR's auto-generated entries — Wyze cameras you list here appear alongside any RTSP cameras you added through the Streams page (see [Merge semantics](#merge-semantics)).
-- **Credentials are redacted** in `GET /api/system/go2rtc/effective-config` and the **Show effective config** modal, but they sit in plaintext inside `override.yaml` (mode 0600 on disk). Don't share the override.
+- **Effective-config redaction is conditional.** In `GET /api/system/go2rtc/effective-config` and the **Show effective config** modal, sensitive values are redacted when YAML redaction support is available. If that support is unavailable, preview output may pass through raw values. Redaction coverage includes Wyze secrets such as `wyze.api_key`, `wyze.password`, and the `enr` URL query parameter. Regardless, `override.yaml` stores plaintext values on disk (mode 0600), so don't share the override file.
 - **Wyze's DTLS keys rotate periodically.** go2rtc handles re-keying automatically using your stored credentials. If reconnects start failing days later, regenerate the API key at the Wyze developer console.
 - **Pan/tilt controls** for the Wyze Pan v3 stay in the Wyze app — go2rtc only bridges the video/audio stream.
 
