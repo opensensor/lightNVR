@@ -1391,8 +1391,11 @@ int load_stream_configs(config_t *config) {
         return -1;
     }
 
-    // Clear existing stream configurations
-    memset(config->streams, 0, sizeof(stream_config_t) * max_streams);
+    // Initialize all stream slots to project defaults; loaded DB rows below
+    // will override these defaults for populated entries.
+    for (size_t i = 0; i < max_streams; i++) {
+        init_stream_config_defaults(&config->streams[i]);
+    }
 
     // Get stream count from database
     int count = count_stream_configs();
@@ -1770,6 +1773,10 @@ int save_config(const config_t *config, const char *path) {
     }
     
     log_info("Attempting to save configuration to %s", save_path);
+    if (strnlen(save_path, MAX_PATH_LENGTH) == MAX_PATH_LENGTH) {
+        log_error("Config path exceeds the supported length");
+        return -1;
+    }
     
     // Check if directory exists and is writable
     char dir_path[MAX_PATH_LENGTH];
