@@ -33,13 +33,12 @@ static config_t cfg;
 static bool deny_config_chmod;
 static bool deny_config_rename;
 static bool monitor_secret_write_permissions;
-static bool observed_secret_write;
-static bool observed_secret_write_with_private_mode;
-static const char *expected_secret_marker;
+static bool observed_config_stream;
+static bool observed_config_stream_with_private_mode;
 static char *saved_web_port_env;
 static char *saved_audio_disabled_env;
 int __real_fchmod(int, mode_t);
-size_t __real_fwrite(const void *, size_t, size_t, FILE *);
+FILE *__real_fdopen(int, const char *);
 int __wrap_fchmod(int fd, mode_t mode) {
     if (deny_config_chmod) {
         deny_config_chmod = false;
@@ -48,22 +47,14 @@ int __wrap_fchmod(int fd, mode_t mode) {
     }
     return __real_fchmod(fd, mode);
 }
-size_t __wrap_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    if (monitor_secret_write_permissions && ptr && stream && expected_secret_marker) {
-        size_t total = size * nmemb;
-        const char *buf = (const char *)ptr;
-        size_t marker_len = strlen(expected_secret_marker);
-        if (total >= marker_len && memmem(buf, total, expected_secret_marker, marker_len) != NULL) {
-            observed_secret_write = true;
-            struct stat st;
-            if (fstat(fileno(stream), &st) == 0) {
-                observed_secret_write_with_private_mode = ((st.st_mode & 0777) == 0600);
-            } else {
-                observed_secret_write_with_private_mode = false;
-            }
-        }
+FILE *__wrap_fdopen(int fd, const char *mode) {
+    if (monitor_secret_write_permissions) {
+        observed_config_stream = true;
+        struct stat st;
+        observed_config_stream_with_private_mode =
+            fstat(fd, &st) == 0 && (st.st_mode & 0777) == 0600;
     }
-    return __real_fwrite(ptr, size, nmemb, stream);
+    return __real_fdopen(fd, mode);
 }
 int __real_renameat(int, const char *, int, const char *);
 int __wrap_renameat(int from_fd, const char *from, int to_fd, const char *to) {
@@ -85,6 +76,7 @@ void setUp(void) {
 }
 void tearDown(void) {
     deny_config_chmod = deny_config_rename = false;
+    monitor_secret_write_permissions = false;
     if (saved_web_port_env) setenv("LIGHTNVR_WEB_PORT", saved_web_port_env, 1);
     else unsetenv("LIGHTNVR_WEB_PORT");
     if (saved_audio_disabled_env) setenv("LIGHTNVR_AUDIO_DISABLED", saved_audio_disabled_env, 1);
@@ -967,20 +959,25 @@ void test_save_config_tightens_existing_permissions_before_writing_secrets(void)
     load_default_config(&cfg);
     snprintf(cfg.mqtt_password, sizeof(cfg.mqtt_password), "synthetic-private-password");
     monitor_secret_write_permissions = true;
-    observed_secret_write = false;
-    observed_secret_write_with_private_mode = false;
-    expected_secret_marker = "synthetic-private-password";
+    observed_config_stream = false;
+    observed_config_stream_with_private_mode = false;
     mode_t previous = umask(0);
     int saved = save_config(&cfg, path);
     umask(previous);
     monitor_secret_write_permissions = false;
-    expected_secret_marker = NULL;
     struct stat info;
     TEST_ASSERT_EQUAL_INT(0, saved);
-    TEST_ASSERT_TRUE(observed_secret_write);
-    TEST_ASSERT_TRUE(observed_secret_write_with_private_mode);
+    TEST_ASSERT_TRUE(observed_config_stream);
+    TEST_ASSERT_TRUE(observed_config_stream_with_private_mode);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &info));
     TEST_ASSERT_EQUAL_UINT(0600, info.st_mode & 0777);
+    FILE *saved_file = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved_file);
+    char saved_text[16384];
+    size_t saved_size = fread(saved_text, 1, sizeof(saved_text) - 1, saved_file);
+    saved_text[saved_size] = '\0';
+    fclose(saved_file);
+    TEST_ASSERT_NOT_NULL(strstr(saved_text, "synthetic-private-password"));
     unlink(path); rmdir(directory);
 }
 
