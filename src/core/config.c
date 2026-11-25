@@ -1515,25 +1515,23 @@ int save_stream_configs(config_t *config) {
             }
         }
 
-        if (identical) {
-            /* The database owns stable camera identity and location. Hydrate
-             * both even when names match; continue to normal persistence flow
-             * so non-name configuration changes are not skipped. */
-            for (int i = 0; i < config->max_streams; i++) {
-                if (config->streams[i].name[0] == '\0') {
-                    continue;
-                }
-                for (int j = 0; j < loaded; j++) {
-                    if (strcmp(config->streams[i].name,
-                               db_streams[j].name) == 0) {
-                        safe_strcpy(config->streams[i].camera_uuid,
-                                    db_streams[j].camera_uuid,
-                                    sizeof(config->streams[i].camera_uuid), 0);
-                        safe_strcpy(config->streams[i].location_uuid,
-                                    db_streams[j].location_uuid,
-                                    sizeof(config->streams[i].location_uuid), 0);
-                        break;
-                    }
+        /* The database owns stable camera identity and location. Hydrate
+         * each matching stream independently so unchanged streams preserve
+         * identity even when other streams are added/removed/renamed. */
+        for (int i = 0; i < config->max_streams; i++) {
+            if (config->streams[i].name[0] == '\0') {
+                continue;
+            }
+            for (int j = 0; j < loaded; j++) {
+                if (strcmp(config->streams[i].name,
+                           db_streams[j].name) == 0) {
+                    safe_strcpy(config->streams[i].camera_uuid,
+                                db_streams[j].camera_uuid,
+                                sizeof(config->streams[i].camera_uuid), 0);
+                    safe_strcpy(config->streams[i].location_uuid,
+                                db_streams[j].location_uuid,
+                                sizeof(config->streams[i].location_uuid), 0);
+                    break;
                 }
             }
         }
