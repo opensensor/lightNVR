@@ -805,6 +805,10 @@ void test_custom_config_path_roundtrip(void) {
     const char *path = get_custom_config_path();
     TEST_ASSERT_NOT_NULL(path);
     TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", path);
+    set_custom_config_path("/tmp/..data/settings.ini");
+    TEST_ASSERT_EQUAL_STRING("/tmp/..data/settings.ini", get_custom_config_path());
+    set_custom_config_path("/tmp/../escape.ini");
+    TEST_ASSERT_EQUAL_STRING("/tmp/..data/settings.ini", get_custom_config_path());
 }
 
 /* ================================================================
@@ -1308,6 +1312,9 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     snprintf(cfg.web_username, sizeof(cfg.web_username), "admin#spoofed");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
     memset(cfg.web_username, 'x', sizeof(cfg.web_username));
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    snprintf(cfg.web_username, sizeof(cfg.web_username), "admin");
+    snprintf(cfg.mqtt_client_id, sizeof(cfg.mqtt_client_id), "client#spoofed");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
