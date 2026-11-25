@@ -33,12 +33,12 @@
 // Global configuration variable
 config_t g_config;
 
-static bool contains_unsupported_ini_credential_chars(const char *value) {
-    if (!value) {
-        return false;
-    }
+static bool contains_unsupported_ini_credential_chars(const char *value,
+                                                       size_t capacity) {
+    if (!value || capacity == 0) return true;
 
-    size_t len = strlen(value);
+    size_t len = strnlen(value, capacity);
+    if (len == capacity) return true;
     if (len > 0) {
         if (isspace((unsigned char)value[0]) ||
             isspace((unsigned char)value[len - 1])) {
@@ -46,7 +46,8 @@ static bool contains_unsupported_ini_credential_chars(const char *value) {
         }
     }
 
-    for (const unsigned char *p = (const unsigned char *)value; *p != '\0'; ++p) {
+    for (const unsigned char *p = (const unsigned char *)value;
+         p < (const unsigned char *)value + len; ++p) {
         if (*p == '\n' || *p == '\r' || *p == ';' || *p == '#') {
             return true;
         }
@@ -1906,11 +1907,16 @@ int save_config(const config_t *config, const char *path) {
         log_error("Invalid config parameter for save_config: config=%p", config);
         return -1;
     }
-    if (contains_unsupported_ini_credential_chars(config->turn_username) ||
-        contains_unsupported_ini_credential_chars(config->turn_password) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_username) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_password) ||
-        contains_unsupported_ini_credential_chars(config->web_username)) {
+    if (contains_unsupported_ini_credential_chars(config->turn_username,
+                                                  sizeof(config->turn_username)) ||
+        contains_unsupported_ini_credential_chars(config->turn_password,
+                                                  sizeof(config->turn_password)) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_username,
+                                                  sizeof(config->mqtt_username)) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_password,
+                                                  sizeof(config->mqtt_password)) ||
+        contains_unsupported_ini_credential_chars(config->web_username,
+                                                  sizeof(config->web_username))) {
         log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
         return -1;
     }

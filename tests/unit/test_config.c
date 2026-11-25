@@ -1301,6 +1301,8 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     cfg.mqtt_username[0] = '\0';
     snprintf(cfg.web_username, sizeof(cfg.web_username), "admin#spoofed");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    memset(cfg.web_username, 'x', sizeof(cfg.web_username));
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
     FILE *saved = fopen(path, "r");
