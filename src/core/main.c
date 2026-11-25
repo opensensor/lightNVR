@@ -1941,6 +1941,13 @@ cleanup:
         log_info("Stopping recording sync thread...");
         stop_recording_sync_thread();
 
+        // Ensure service-level workers are stopped before tearing down shared dependencies
+#ifdef USE_GO2RTC
+        go2rtc_integration_cleanup();
+#endif
+        shutdown_onvif_discovery();
+        cleanup_detection_resources();
+
         // Shutdown database
         log_info("Shutting down database...");
         shutdown_database();
