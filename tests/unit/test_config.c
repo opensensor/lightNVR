@@ -277,6 +277,7 @@ void test_streaming_config_snapshots_are_thread_local(void) {
     load_default_config(&g_config);
     config_t *main_snapshot = get_streaming_config();
     TEST_ASSERT_NOT_EQUAL_PTR(&g_config, main_snapshot);
+    TEST_ASSERT_NOT_NULL(main_snapshot->streams);
     TEST_ASSERT_EQUAL_INT(g_config.max_streams, main_snapshot->max_streams);
     uintptr_t main_config_address = (uintptr_t)main_snapshot;
     uintptr_t main_streams_address = (uintptr_t)main_snapshot->streams;
