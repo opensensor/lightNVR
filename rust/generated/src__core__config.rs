@@ -3057,11 +3057,19 @@ unsafe extern "C" fn config_ini_handler(
             b"auth_enabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).web_auth_enabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_0: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_0) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for web.auth_enabled: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).web_auth_enabled = parsed_bool_0;
         } else if strcmp(name, b"username\0".as_ptr() as *const ::core::ffi::c_char)
             == 0 as ::core::ffi::c_int
         {
@@ -3085,51 +3093,91 @@ unsafe extern "C" fn config_ini_handler(
             b"audio_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).audio_disabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_1: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_1) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for web.audio_disabled: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).audio_disabled = parsed_bool_1;
         } else if strcmp(
             name,
             b"auto_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).auto_disabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_2: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_2) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for web.auto_disabled: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).auto_disabled = parsed_bool_2;
         } else if strcmp(
             name,
             b"webrtc_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).webrtc_disabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_3: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_3) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for web.webrtc_disabled: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).webrtc_disabled = parsed_bool_3;
         } else if strcmp(
             name,
             b"hls_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).hls_disabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_4: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_4) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for web.hls_disabled: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).hls_disabled = parsed_bool_4;
         } else if strcmp(
             name,
             b"mse_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).mse_disabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_5: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_5) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for web.mse_disabled: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).mse_disabled = parsed_bool_5;
         } else if strcmp(
             name,
             b"default_playback_transport\0".as_ptr() as *const ::core::ffi::c_char,
@@ -6317,7 +6365,8 @@ pub unsafe extern "C" fn save_config(
     }
     if replacement_name[0usize] as ::core::ffi::c_int != 0
         && fchmod(config_fd, 0o600 as __mode_t) != 0 as ::core::ffi::c_int
-        || ftruncate(config_fd, 0 as __off_t) != 0 as ::core::ffi::c_int
+        || replacement_name[0usize] == 0
+            && ftruncate(config_fd, 0 as __off_t) != 0 as ::core::ffi::c_int
     {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
@@ -6552,17 +6601,17 @@ pub unsafe extern "C" fn save_config(
     );
     fprintf(
         file,
-        b"pressure_warning_pct = %.1f\n\0".as_ptr() as *const ::core::ffi::c_char,
+        b"pressure_warning_pct = %.17g\n\0".as_ptr() as *const ::core::ffi::c_char,
         (*config).storage_pressure_warning_pct,
     );
     fprintf(
         file,
-        b"pressure_critical_pct = %.1f\n\0".as_ptr() as *const ::core::ffi::c_char,
+        b"pressure_critical_pct = %.17g\n\0".as_ptr() as *const ::core::ffi::c_char,
         (*config).storage_pressure_critical_pct,
     );
     fprintf(
         file,
-        b"pressure_emergency_pct = %.1f\n\n\0".as_ptr() as *const ::core::ffi::c_char,
+        b"pressure_emergency_pct = %.17g\n\n\0".as_ptr() as *const ::core::ffi::c_char,
         (*config).storage_pressure_emergency_pct,
     );
     fprintf(
@@ -7630,7 +7679,11 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
             );
             printf(
                 b"      URL: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut (*(*config).streams.offset(i as isize)).url as *mut ::core::ffi::c_char,
+                if (*(*config).streams.offset(i as isize)).url[0usize] as ::core::ffi::c_int != 0 {
+                    b"[redacted]\0".as_ptr() as *const ::core::ffi::c_char
+                } else {
+                    b"(empty)\0".as_ptr() as *const ::core::ffi::c_char
+                },
             );
             printf(
                 b"      Enabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
