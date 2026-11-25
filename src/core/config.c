@@ -1942,6 +1942,8 @@ int save_config(const config_t *config, const char *path) {
                                                   sizeof(config->mqtt_client_id)) ||
         contains_unsupported_ini_credential_chars(config->mqtt_topic_prefix,
                                                   sizeof(config->mqtt_topic_prefix)) ||
+        contains_unsupported_ini_credential_chars(config->db_post_backup_script,
+                                                  sizeof(config->db_post_backup_script)) ||
         contains_unsupported_ini_credential_chars(config->web_username,
                                                   sizeof(config->web_username))) {
         log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
@@ -2323,13 +2325,7 @@ int save_config(const config_t *config, const char *path) {
             config->db_backup_verify == DB_BACKUP_VERIFY_OFF ? "off" :
             config->db_backup_verify == DB_BACKUP_VERIFY_QUICK ? "quick" : "full");
     fprintf(file, "; Optional absolute path to executable hook\n");
-    if (contains_unsupported_ini_credential_chars(config->db_post_backup_script,
-                                                  sizeof(config->db_post_backup_script))) {
-        log_warn("Config value 'db_post_backup_script' contains unsupported INI characters; writing empty value");
-        fprintf(file, "post_backup_script =\n\n");
-    } else {
-        fprintf(file, "post_backup_script = %s\n\n", config->db_post_backup_script);
-    }
+    fprintf(file, "post_backup_script = %s\n\n", config->db_post_backup_script);
     
     // Write web server settings
     fprintf(file, "[web]\n");
