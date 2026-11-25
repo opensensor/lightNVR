@@ -122,15 +122,24 @@ config_t* get_streaming_config(void) {
     // Load stream configurations from database.
     int ms = db_config.max_streams;
     stream_config_t *db_streams = calloc((size_t)ms, sizeof(*db_streams));
-    if (db_streams) {
-        int count = get_all_stream_configs(db_streams, ms);
-        if (count > 0) {
-            for (int i = 0; i < count && i < ms; i++) {
-                memcpy(&db_config.streams[i], &db_streams[i], sizeof(*db_streams));
-            }
-        }
-        free(db_streams);
+    if (!db_streams) {
+        pthread_mutex_unlock(&config_mutex);
+        return snapshot->streams ? snapshot : &g_config;
     }
+
+    int count = get_all_stream_configs(db_streams, ms);
+    if (count < 0) {
+        free(db_streams);
+        pthread_mutex_unlock(&config_mutex);
+        return snapshot->streams ? snapshot : &g_config;
+    }
+
+    if (count > 0) {
+        for (int i = 0; i < count && i < ms; i++) {
+            memcpy(&db_config.streams[i], &db_streams[i], sizeof(*db_streams));
+        }
+    }
+    free(db_streams);
     
     // Log the storage path for debugging
     log_debug("get_streaming_config: Using storage path: %s", db_config.storage_path);
