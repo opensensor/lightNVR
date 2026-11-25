@@ -18,6 +18,16 @@ log_warn() {
     echo "${YELLOW}[WARN]${NC} $1"
 }
 
+# Bootstrap web admin credentials:
+# - Use environment-provided values when available
+# - Otherwise generate a unique password for first start
+LIGHTNVR_ADMIN_USERNAME="${LIGHTNVR_ADMIN_USERNAME:-admin}"
+if [ -z "${LIGHTNVR_ADMIN_PASSWORD:-}" ]; then
+    LIGHTNVR_ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -d '\n')"
+    log_warn "LIGHTNVR_ADMIN_PASSWORD not set. Generated bootstrap password for user '${LIGHTNVR_ADMIN_USERNAME}'."
+    log_warn "Bootstrap credentials: ${LIGHTNVR_ADMIN_USERNAME}:${LIGHTNVR_ADMIN_PASSWORD}"
+fi
+
 log_error() {
     echo "${RED}[ERROR]${NC} $1"
 }
@@ -212,8 +222,8 @@ port = 8080
 bind_ip = 0.0.0.0
 root = /var/lib/lightnvr/www
 auth_enabled = true
-username = admin
-password = admin
+username = ${LIGHTNVR_ADMIN_USERNAME}
+password = ${LIGHTNVR_ADMIN_PASSWORD}
 ; web_thread_pool_size: UV_THREADPOOL_SIZE. Default is 2x online CPU cores (clamped [2,128]).
 ; Uncomment to override. Requires restart.
 ; web_thread_pool_size = 8
