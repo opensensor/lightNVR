@@ -367,7 +367,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
 
   return (
     <div data-testid="setup-wizard" class="app-modal-overlay app-modal-overlay--dialog fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div class="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-lg p-8">
+      <div class="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-lg p-8 max-h-[calc(100vh-2rem)] overflow-y-auto">
         {step === 0 && <WelcomeStep />}
         {step === 1 && <StorageStep     form={form} onChange={handleChange} />}
         {step === 2 && <PerformanceStep form={form} onChange={handleChange} cpuCores={cpuCores} maxStreamsCeiling={maxStreamsCeiling} />}
