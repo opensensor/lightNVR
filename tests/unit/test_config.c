@@ -371,13 +371,36 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
         FILE *file = fopen(path, "r");
         if (!file) break;
         char line[512];
+        int mp4_faststart_entries = 0;
+        bool file_has_valid_faststart = true;
         while (fgets(line, sizeof(line), file)) {
-            if (strncmp(line, "mp4_faststart = true", strlen("mp4_faststart = true")) == 0 ||
-                strncmp(line, "mp4_faststart = false", strlen("mp4_faststart = false")) == 0) {
-                ++valid_saves;
+            if (strncmp(line, "mp4_faststart", strlen("mp4_faststart")) == 0) {
+                const char *prefix = "mp4_faststart = ";
+                size_t prefix_len = strlen(prefix);
+                if (strncmp(line, prefix, prefix_len) != 0) {
+                    file_has_valid_faststart = false;
+                    break;
+                }
+                const char *value = line + prefix_len;
+                if (strncmp(value, "true", 4) == 0 &&
+                    (value[4] == '\n' || value[4] == '\r' || value[4] == '\0')) {
+                    ++mp4_faststart_entries;
+                } else if (strncmp(value, "false", 5) == 0 &&
+                           (value[5] == '\n' || value[5] == '\r' || value[5] == '\0')) {
+                    ++mp4_faststart_entries;
+                } else {
+                    file_has_valid_faststart = false;
+                    break;
+                }
             }
         }
         fclose(file);
+        if (file_has_valid_faststart && mp4_faststart_entries == 1) {
+            ++valid_saves;
+        } else {
+            save_result = -1;
+            break;
+        }
     }
     atomic_store(&faststart_writer_stop, true);
     int join_result = pthread_join(writer, NULL);
