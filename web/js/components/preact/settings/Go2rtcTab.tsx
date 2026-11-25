@@ -604,6 +604,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                     class="px-2 py-1 text-xs border border-input rounded bg-background disabled:opacity-60"
                     value=""
                     disabled={!canModifySettings}
+                    aria-label={t('settings.go2rtcLoadExample')}
                     onChange={handleInsertPreset}
                   >
                     <option value="">{t('settings.go2rtcLoadExample')}</option>
