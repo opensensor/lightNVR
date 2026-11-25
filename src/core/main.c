@@ -383,27 +383,20 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         return 0;
     }
 
-    // Read PID from file
-    char pid_buf[32] = {0};
-    if (!fgets(pid_buf, sizeof(pid_buf), fp)) {
-        fclose(fp);
-        log_warn("Invalid PID file format");
-        unlink(pid_file);  // Remove invalid PID file
-        return 0;
-    }
-    bool truncated_pid_line = strchr(pid_buf, '\n') == NULL && fgetc(fp) != EOF;
+    // Read the entire bounded PID file. fgets() cannot distinguish an
+    // embedded NUL from the end of the text it returned.
+    char pid_buf[32];
+    size_t pid_len = fread(pid_buf, 1, sizeof(pid_buf) - 1, fp);
+    int extra = fgetc(fp);
+    bool invalid_pid_file = ferror(fp) || extra != EOF || pid_len == 0 ||
+                            memchr(pid_buf, '\0', pid_len) != NULL;
     fclose(fp);
-    errno = 0;
-    if (truncated_pid_line) {
-
-    // Validate conversion, trailing characters, positivity, and pid_t representability
-    while (*end_ptr == ' ' || *end_ptr == '\t' || *end_ptr == '\n' || *end_ptr == '\r' || *end_ptr == '\f' || *end_ptr == '\v') {
-        end_ptr++;
-    }
-    if (end_ptr == pid_buf || *end_ptr != '\0' || errno == ERANGE || pid_val <= 0 || (long)(pid_t)pid_val != pid_val) {
+    if (invalid_pid_file) {
+        log_warn("Invalid PID file format");
         unlink(pid_file);
         return 0;
     }
+    pid_buf[pid_len] = '\0';
     char *end_ptr;
     errno = 0;
     long pid_val = strtol(pid_buf, &end_ptr, 10);
@@ -1467,9 +1460,6 @@ int main(int argc, char *argv[]) {
         // Process events, monitor system health, etc.
         // Use shorter sleep intervals to allow faster response to restart/shutdown requests
         // Sleep for 100ms at a time, checking running flag between sleeps
-    // Ensure every path entering shared teardown (including startup-failure
-    // jumps) marks shutdown as started so watchdog/deadline logic is armed.
-    running = false;
         for (int i = 0; i < 10 && running; i++) {
             usleep(100000);  // 100ms
         }
@@ -1511,8 +1501,9 @@ cleanup:
     cleanup_health_check_system();
 
     // Block most signals during cleanup to prevent interruptions
-            // Post-fork child from multithreaded parent: avoid stdio/logger calls here.
-            // Continue best-effort even if setpgid fails.
+    // But keep SIGUSR1, SIGALRM, and SIGKILL unblocked for emergency shutdown
+    sigset_t block_mask, old_mask;
+    sigfillset(&block_mask);
     sigdelset(&block_mask, SIGUSR1);   // Keep USR1 unblocked for watchdog
     sigdelset(&block_mask, SIGALRM);   // Keep ALRM unblocked for timeouts
     sigdelset(&block_mask, SIGKILL);   // SIGKILL can't be blocked anyway
@@ -1524,7 +1515,7 @@ cleanup:
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
 
-        // Unblock all signals in the child
+        // CRITICAL FIX: Create a new process group immediately so we won't be killed
         // by the parent's kill(0, SIGKILL) which kills all processes in the same group
         // Post-fork child from a multithreaded parent: keep this path free of
         // stdio and logger calls. Continue best-effort if setpgid fails.
@@ -1535,18 +1526,23 @@ cleanup:
         memset(&sa_default, 0, sizeof(sa_default));
         sa_default.sa_handler = SIG_DFL;
         sigaction(SIGTERM, &sa_default, NULL);
+        sigaction(SIGINT, &sa_default, NULL);
         sigaction(SIGALRM, &sa_default, NULL);
         sigaction(SIGUSR1, &sa_default, NULL);
 
         // Unblock all signals in the child
+        sigset_t empty_mask;
         sigemptyset(&empty_mask);
         sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 
         // Save the parent PID before it gets killed
         pid_t parent_pid = getppid();
 
-                _exit(EXIT_SUCCESS);
+        // Allow the same final-backup deadline as the thread watchdog.
+        // Large databases can take several minutes to copy and verify.
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
+        kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
+
         // Wait a bit longer for emergency cleanup before giving up entirely
         sleep(15);
         kill(parent_pid, SIGKILL);  // Force kill the parent process
@@ -1568,13 +1564,20 @@ cleanup:
                     if (kill(parent_pid, 0) != 0) {
                         // Parent is gone
                         break;
+                    }
+                    usleep(500000);  // 500ms
                 }
 
+                // Get the executable path
+                char exe_path[MAX_PATH_LENGTH];
+                ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+                if (len > 0) {
+                    exe_path[len] = '\0';
 
                     // Re-exec the program with the same arguments
                     execv(exe_path, saved_argv);
                 }
-        _exit(EXIT_FAILURE);
+            }
         }
 
         _exit(EXIT_FAILURE);
@@ -1998,7 +2001,7 @@ cleanup:
         }
     }
 
-    return exit_code;
+    // Shutdown logging
     shutdown_logger();
 
     return exit_code;
