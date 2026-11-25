@@ -480,7 +480,14 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 # Handle signals properly for graceful shutdown
-trap 'log_info "Received shutdown signal, stopping services..."; kill -TERM $PID 2>/dev/null || true; exit 0' TERM INT
+trap '
+    log_info "Received shutdown signal, stopping services..."
+    if [ -n "${PID:-}" ] && kill -0 "$PID" 2>/dev/null; then
+        kill -TERM "$PID" 2>/dev/null || true
+        wait "$PID" 2>/dev/null || true
+    fi
+    exit 0
+' TERM INT
 
 # Initialize configuration
 init_config
