@@ -2785,6 +2785,7 @@
   "settings.go2rtcRestoreQuarantined": "Restore quarantined version into the editor",
   "settings.go2rtcValidating": " • validating…",
   "settings.go2rtcValidationSkipped": "libyaml unavailable — server-side validation skipped",
+  "settings.go2rtcOverrideTooLarge": "Override exceeds the 65,535-byte limit",
   "settings.go2rtcErrorPosition": "Line {line}, col {column}",
   "settings.go2rtcShowEffectiveConfig": "Show effective config",
   "settings.go2rtcLoadExample": "Load example…",
