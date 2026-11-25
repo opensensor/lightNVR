@@ -32,6 +32,8 @@
 static config_t cfg;
 static bool deny_config_chmod;
 static bool deny_config_rename;
+static char *saved_web_port_env;
+static char *saved_audio_disabled_env;
 int __real_fchmod(int, mode_t);
 int __wrap_fchmod(int fd, mode_t mode) {
     if (deny_config_chmod) {
@@ -50,9 +52,22 @@ int __wrap_renameat(int from_fd, const char *from, int to_fd, const char *to) {
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
+    const char *web_port = getenv("LIGHTNVR_WEB_PORT");
+    const char *audio_disabled = getenv("LIGHTNVR_AUDIO_DISABLED");
+    saved_web_port_env = web_port ? strdup(web_port) : NULL;
+    saved_audio_disabled_env = audio_disabled ? strdup(audio_disabled) : NULL;
+    if (web_port) TEST_ASSERT_NOT_NULL(saved_web_port_env);
+    if (audio_disabled) TEST_ASSERT_NOT_NULL(saved_audio_disabled_env);
 }
 void tearDown(void) {
     deny_config_chmod = deny_config_rename = false;
+    if (saved_web_port_env) setenv("LIGHTNVR_WEB_PORT", saved_web_port_env, 1);
+    else unsetenv("LIGHTNVR_WEB_PORT");
+    if (saved_audio_disabled_env) setenv("LIGHTNVR_AUDIO_DISABLED", saved_audio_disabled_env, 1);
+    else unsetenv("LIGHTNVR_AUDIO_DISABLED");
+    free(saved_web_port_env);
+    free(saved_audio_disabled_env);
+    saved_web_port_env = saved_audio_disabled_env = NULL;
     if (cfg.streams) {
         free(cfg.streams);
         cfg.streams = NULL;
@@ -129,22 +144,31 @@ void test_save_config_round_trips_mp4_faststart(void) {
     snprintf(config_path, sizeof(config_path), "%s/faststart.ini", dir);
 
     load_default_config(&cfg);
+    snprintf(cfg.pid_file, sizeof(cfg.pid_file), "%s/lightnvr.pid", dir);
+    snprintf(cfg.log_file, sizeof(cfg.log_file), "%s/lightnvr.log", dir);
+    snprintf(cfg.storage_path, sizeof(cfg.storage_path), "%s/recordings", dir);
+    snprintf(cfg.mp4_storage_path, sizeof(cfg.mp4_storage_path), "%s/mp4", dir);
+    snprintf(cfg.storage_path_hls, sizeof(cfg.storage_path_hls), "%s/hls", dir);
+    snprintf(cfg.models_path, sizeof(cfg.models_path), "%s/models", dir);
+    snprintf(cfg.db_path, sizeof(cfg.db_path), "%s/lightnvr.db", dir);
+    snprintf(cfg.web_root, sizeof(cfg.web_root), "%s/web", dir);
+    TEST_ASSERT_EQUAL_INT(0, ensure_dir(cfg.web_root));
     config_set_mp4_faststart(&cfg, false);
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
-    FILE *saved = fopen(config_path, "r");
-    TEST_ASSERT_NOT_NULL(saved);
-    char line[512];
-    bool found = false;
-    while (fgets(line, sizeof(line), saved)) {
-        if (strncmp(line, "mp4_faststart = false", 21) == 0) {
-            found = true;
-        }
-    }
-    fclose(saved);
+    config_t reloaded = {0};
+    set_custom_config_path(config_path);
+    TEST_ASSERT_EQUAL_INT(0, load_config(&reloaded));
+    TEST_ASSERT_FALSE(config_get_mp4_faststart(&reloaded));
+    free(reloaded.streams);
+
     unlink(config_path);
+    rmdir(cfg.storage_path);
+    rmdir(cfg.mp4_storage_path);
+    rmdir(cfg.storage_path_hls);
+    rmdir(cfg.models_path);
+    rmdir(cfg.web_root);
     rmdir(dir);
-    TEST_ASSERT_TRUE(found);
 }
 
 static atomic_bool faststart_writer_stop;
@@ -840,17 +864,6 @@ void test_env_integer_whitespace_handling(void) {
 
     TEST_ASSERT_EQUAL_INT(0, ensure_dir(web_root));
 
-    const char *previous_env = getenv("LIGHTNVR_WEB_PORT");
-    char *saved_env = previous_env ? strdup(previous_env) : NULL;
-    if (previous_env) {
-        TEST_ASSERT_NOT_NULL(saved_env);
-    }
-    const char *previous_audio_env = getenv("LIGHTNVR_AUDIO_DISABLED");
-    char *saved_audio_env = previous_audio_env ? strdup(previous_audio_env) : NULL;
-    if (previous_audio_env) {
-        TEST_ASSERT_NOT_NULL(saved_audio_env);
-    }
-
     set_custom_config_path(config_path);
     /* Trailing whitespace should be ignored. */
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "9099   ", 1));
@@ -885,19 +898,6 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "   9099   ", 1));
     TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
     TEST_ASSERT_EQUAL_INT(9099, cfg.web_port);
-
-    if (saved_env) {
-        TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", saved_env, 1));
-        free(saved_env);
-    } else {
-        TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_WEB_PORT"));
-    }
-    if (saved_audio_env) {
-        TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_AUDIO_DISABLED", saved_audio_env, 1));
-        free(saved_audio_env);
-    } else {
-        TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_AUDIO_DISABLED"));
-    }
 
     unlink(config_path);
     unlink(db_path);
@@ -1055,7 +1055,6 @@ int main(void) {
     RUN_TEST(test_default_config_log_level);
     RUN_TEST(test_default_config_retention_days);
     RUN_TEST(test_default_config_mp4_faststart_on);
-    RUN_TEST(test_save_config_round_trips_mp4_faststart);
     RUN_TEST(test_mp4_faststart_concurrent_reads_copies_and_saves);
     RUN_TEST(test_default_config_buffer_size);
     RUN_TEST(test_default_config_storage_path_nonempty);
@@ -1118,6 +1117,8 @@ int main(void) {
     RUN_TEST(test_save_config_writes_api_detection_format);
     RUN_TEST(test_load_config_parses_api_detection_format);
     RUN_TEST(test_malformed_ini_after_stream_resize_keeps_streams_owned);
+    /* Uses the process-wide custom config path; run last to avoid affecting later tests. */
+    RUN_TEST(test_save_config_round_trips_mp4_faststart);
 
     int result = UNITY_END();
     shutdown_logger();
