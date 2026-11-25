@@ -2122,6 +2122,14 @@ static void check_and_ensure_services(void) {
                                  "after previous recording start (%d started so far)",
                                  current_config->streams[i].name, recordings_started);
                         sleep(3);
+
+                        // A shutdown/restart can be requested during the stagger wait.
+                        // Recheck immediately before starting another recording.
+                        if (!atomic_load(&running) || atomic_load(&restart_requested)) {
+                            log_info("Abort requested during stagger wait; skipping recording start for stream: %s",
+                                     current_config->streams[i].name);
+                            continue;
+                        }
                     }
 
                     // Recording is not active, start it
