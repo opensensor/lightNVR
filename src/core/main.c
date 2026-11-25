@@ -1514,6 +1514,7 @@ cleanup:
     // Set up a watchdog timer to force exit if cleanup takes too long
     pid_t cleanup_pid = fork();
 
+    pid_t expected_parent_pid = getpid();
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
 
@@ -1537,8 +1538,8 @@ cleanup:
         sigemptyset(&empty_mask);
         sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 
-        // Save the parent PID before it gets killed
-        pid_t parent_pid = getppid();
+        // Use parent PID captured before fork to avoid child-side getppid() race.
+        pid_t parent_pid = expected_parent_pid;
 
         // Allow the same final-backup deadline as the thread watchdog.
         // Large databases can take several minutes to copy and verify.
