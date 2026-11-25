@@ -1461,6 +1461,9 @@ int main(int argc, char *argv[]) {
         // Process events, monitor system health, etc.
         // Use shorter sleep intervals to allow faster response to restart/shutdown requests
         // Sleep for 100ms at a time, checking running flag between sleeps
+    // Ensure every path entering shared teardown (including startup-failure
+    // jumps) marks shutdown as started so watchdog/deadline logic is armed.
+    running = false;
         for (int i = 0; i < 10 && running; i++) {
             usleep(100000);  // 100ms
         }
