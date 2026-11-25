@@ -288,32 +288,16 @@ int write_pid_file(const char *pid_file) {
 
 // Remove PID file
 int remove_pid_file(int fd, const char *pid_file) {
-    // Remove the path while lock is still held by fd to avoid races.
-    if (unlink(pid_file) != 0) {
-        if (errno == ENOENT) {
-            // File doesn't exist, that's fine
-            log_info("PID file %s already removed", pid_file);
-            if (fd >= 0) {
-                // Release lock/descriptor after unlink attempt
-                close(fd);
-            }
-            return 0;
-        }
-
-        log_error("Failed to remove PID file %s: %s", pid_file, strerror(errno));
-        if (fd >= 0) {
-            // Ensure descriptor is closed even on failure
-            close(fd);
-        }
-        return -1;
-    }
-
+    // Do not unlink the PID file path: removing it can cause split-inode races
+    // with concurrent starters. Keep the inode in place and only release the lock.
     if (fd >= 0) {
-        // Release the lock by closing the file after unlink
-        close(fd);
+        if (close(fd) != 0) {
+            log_error("Failed to close PID file %s: %s", pid_file, strerror(errno));
+            return -1;
+        }
     }
 
-    log_info("Removed PID file %s", pid_file);
+    log_info("Released PID file lock for %s (file left in place)", pid_file);
     return 0;
 }
 
