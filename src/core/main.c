@@ -412,6 +412,20 @@ static int check_and_kill_existing_instance(const char *pid_file) {
     }
     pid_t existing_pid = (pid_t)pid_val;
 
+    // If the PID file points to this process, treat it as stale and continue.
+    // This can happen after container restarts with PID reuse (often PID 1),
+    // and attempting termination would self-signal and break startup.
+    if (existing_pid == getpid()) {
+        log_warn("PID file references current process (PID %d); removing stale PID file",
+                 existing_pid);
+        if (unlink(pid_file) != 0 && errno != ENOENT) {
+            log_error("Failed to remove stale self-referencing PID file: %s",
+                      strerror(errno));
+            return -1;
+        }
+        return 0;
+    }
+
     // Check if process exists
     if (kill(existing_pid, 0) == 0) {
         // Process exists – but verify it is actually a LightNVR instance before
@@ -2167,23 +2181,21 @@ static void check_and_ensure_services(void) {
             is_detection_recording_scheduled(&current_config->streams[i])) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = current_config->streams[i].record;
-            if (current_config->streams[i].detection_model[0] == '\0') {
-                log_warn("Detection model is empty for stream: %s",
-                         current_config->streams[i].name);
-                continue;
-            }
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
             char resolved_detection_model[MAX_PATH_LENGTH];
             const char *detection_model_path = current_config->streams[i].detection_model;
-            if (detection_model_path[0] != '/' &&
+            if (detection_model_path[0] != '\0' &&
+                detection_model_path[0] != '/' &&
                 strcmp(detection_model_path, "motion") != 0 &&
                 strcmp(detection_model_path, "onvif") != 0 &&
                 strcmp(detection_model_path, "api-detection") != 0 &&
                 strncmp(detection_model_path, "http://", 7) != 0 &&
                 strncmp(detection_model_path, "https://", 8) != 0) {
+                const char *base_models_path =
+                    (current_config->models_path[0] != '\0') ? current_config->models_path : "/etc/lightnvr/models";
                 int n = snprintf(resolved_detection_model, sizeof(resolved_detection_model),
-                                 "%s/%s", current_config->models_path, detection_model_path);
+                                 "%s/%s", base_models_path, detection_model_path);
                 if (n < 0 || (size_t)n >= sizeof(resolved_detection_model)) {
                     log_warn("Detection model path too long for stream: %s",
                              current_config->streams[i].name);
