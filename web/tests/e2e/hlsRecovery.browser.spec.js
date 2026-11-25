@@ -42,6 +42,11 @@ beforeAll(async () => {
         if(window.config.deferManifest) return new Promise((resolve,reject)=>{
           options.signal.addEventListener('abort',()=>{window.fetchAborted=true;reject(new DOMException('Aborted','AbortError'));},{once:true});
         });
+        if(window.config.deferManifestBody) return new Response(new ReadableStream({
+          start(controller){options.signal.addEventListener('abort',()=>{
+            window.bodyReadAborted=true;controller.error(new DOMException('Aborted','AbortError'));
+          },{once:true});}
+        }),{status:503});
         return new Response('#EXTM3U',{status:200});
       };
       const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
@@ -117,7 +122,7 @@ async function openPlayer(config={}) {
       window.config.privacyMode ?
       !!document.querySelector('button[aria-label="live.resumeStream"]') :
       window.config.deferSettings ? !!window.resolveSettings :
-      window.config.deferManifest ? window.requests.length>0 :
+      window.config.deferManifest||window.config.deferManifestBody ? window.requests.length>0 :
       window.config.nativePlayer ? window.nativeSources.length>0 : window.players.length>0);
     return {browser,page};
   } catch (error) {
@@ -344,8 +349,41 @@ it('retries the go2rtc master manifest and prevents pending recovery after unmou
     await page.evaluate(()=>{window.recoveries.splice(0).forEach(fn=>fn());
       window.players[0].emit('error',{fatal:true,type:'other'});});
     expect(await page.evaluate(()=>({starts:window.players[0].starts,media:window.players[0].mediaRecoveries,
-      destroyed:window.players[0].destroyed,errors:window.errors})))
-      .toEqual({starts:1,media:1,destroyed:1,errors:[]});
+      destroyed:window.players[0].destroyed,sources:window.players[0].sources,failures:window.failures,
+      errors:window.errors})))
+      .toEqual({starts:1,media:1,destroyed:1,sources:Array(2).fill('/go2rtc/api/stream.m3u8?src=fixture%20camera&mp4=flac'),
+        failures:[],errors:[]});
+  } finally {await browser.close();}
+});
+
+it('keeps a stalled manifest body inside the gate until unmount aborts it',async()=>{
+  const {browser,page}=await openPlayer({enabled:true,deferManifestBody:true});
+  try {
+    await page.waitForFunction(()=>window.requests.length>0);
+    await page.evaluate(()=>window.unmount());
+    await page.waitForFunction(()=>window.cleanups>0&&window.bodyReadAborted);
+    expect(await page.evaluate(()=>({players:window.players.length,failures:window.failures,errors:window.errors})))
+      .toEqual({players:0,failures:[],errors:[]});
+  } finally {await browser.close();}
+});
+
+it('tracks HLS playback pause and resume and ignores a stale play resolution',async()=>{
+  const {browser,page}=await openPlayer({enabled:true});
+  try {
+    await page.evaluate(()=>{
+      window.resolvePlay=null;
+      HTMLMediaElement.prototype.play=()=>new Promise(resolve=>{window.resolvePlay=resolve;});
+      window.players[0].emit('manifest');
+    });
+    await page.waitForFunction(()=>!!window.resolvePlay);
+    await page.locator('video').dispatchEvent('pause');
+    await page.evaluate(()=>window.resolvePlay());
+    await page.locator('.play-overlay').waitFor({state:'visible'});
+    await page.locator('video').dispatchEvent('playing');
+    await page.locator('.play-overlay').waitFor({state:'detached'});
+    await page.locator('video').dispatchEvent('ended');
+    await page.locator('.play-overlay').waitFor({state:'visible'});
+    expect(await page.evaluate(()=>window.errors)).toEqual([]);
   } finally {await browser.close();}
 });
 
