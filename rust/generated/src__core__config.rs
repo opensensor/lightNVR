@@ -3593,17 +3593,97 @@ unsafe extern "C" fn config_ini_handler(
             }
         } else if strcmp(
             name,
-            b"web_thread_pool_size\0".as_ptr() as *const ::core::ffi::c_char,
+            b"web_compression_enabled\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            (*config).web_compression_enabled =
+                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
+                    == 0 as ::core::ffi::c_int
+                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
+                        == 0 as ::core::ffi::c_int;
+        } else if strcmp(
+            name,
+            b"web_use_minified_assets\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            (*config).web_use_minified_assets =
+                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
+                    == 0 as ::core::ffi::c_int
+                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
+                        == 0 as ::core::ffi::c_int;
+        } else if strcmp(
+            name,
+            b"web_cache_max_age_html\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
             let mut v: ::core::ffi::c_int = safe_atoi(value, 0 as ::core::ffi::c_int);
-            if v < 2 as ::core::ffi::c_int {
-                v = 2 as ::core::ffi::c_int;
+            if v < 0 as ::core::ffi::c_int {
+                v = 0 as ::core::ffi::c_int;
             }
-            if v > 128 as ::core::ffi::c_int {
-                v = 128 as ::core::ffi::c_int;
+            (*config).web_cache_max_age_html = v;
+        } else if strcmp(
+            name,
+            b"web_cache_max_age_css\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            let mut v_0: ::core::ffi::c_int = safe_atoi(value, 0 as ::core::ffi::c_int);
+            if v_0 < 0 as ::core::ffi::c_int {
+                v_0 = 0 as ::core::ffi::c_int;
             }
-            (*config).web_thread_pool_size = v;
+            (*config).web_cache_max_age_css = v_0;
+        } else if strcmp(
+            name,
+            b"web_cache_max_age_js\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            let mut v_1: ::core::ffi::c_int = safe_atoi(value, 0 as ::core::ffi::c_int);
+            if v_1 < 0 as ::core::ffi::c_int {
+                v_1 = 0 as ::core::ffi::c_int;
+            }
+            (*config).web_cache_max_age_js = v_1;
+        } else if strcmp(
+            name,
+            b"web_cache_max_age_images\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            let mut v_2: ::core::ffi::c_int = safe_atoi(value, 0 as ::core::ffi::c_int);
+            if v_2 < 0 as ::core::ffi::c_int {
+                v_2 = 0 as ::core::ffi::c_int;
+            }
+            (*config).web_cache_max_age_images = v_2;
+        } else if strcmp(
+            name,
+            b"web_cache_max_age_fonts\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            let mut v_3: ::core::ffi::c_int = safe_atoi(value, 0 as ::core::ffi::c_int);
+            if v_3 < 0 as ::core::ffi::c_int {
+                v_3 = 0 as ::core::ffi::c_int;
+            }
+            (*config).web_cache_max_age_fonts = v_3;
+        } else if strcmp(
+            name,
+            b"web_cache_max_age_default\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            let mut v_4: ::core::ffi::c_int = safe_atoi(value, 0 as ::core::ffi::c_int);
+            if v_4 < 0 as ::core::ffi::c_int {
+                v_4 = 0 as ::core::ffi::c_int;
+            }
+            (*config).web_cache_max_age_default = v_4;
+        } else if strcmp(
+            name,
+            b"web_thread_pool_size\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            let mut v_5: ::core::ffi::c_int = safe_atoi(value, 0 as ::core::ffi::c_int);
+            if v_5 < 2 as ::core::ffi::c_int {
+                v_5 = 2 as ::core::ffi::c_int;
+            }
+            if v_5 > 128 as ::core::ffi::c_int {
+                v_5 = 128 as ::core::ffi::c_int;
+            }
+            (*config).web_thread_pool_size = v_5;
         }
     } else if strcmp(section, b"streams\0".as_ptr() as *const ::core::ffi::c_char)
         == 0 as ::core::ffi::c_int
@@ -4553,7 +4633,11 @@ pub unsafe extern "C" fn load_stream_configs(mut config: *mut config_t) -> ::cor
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::core::ffi::c_int {
-    if config.is_null() {
+    if config.is_null()
+        || (*config).streams.is_null()
+        || (*config).max_streams <= 0 as ::core::ffi::c_int
+        || (*config).max_streams > MAX_STREAMS
+    {
         return -1 as ::core::ffi::c_int;
     }
     let mut saved: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -4575,6 +4659,19 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
             _log_stream_name,
             b"Failed to count stream configurations in database\0".as_ptr()
                 as *const ::core::ffi::c_char,
+        );
+        rollback_transaction();
+        return -1 as ::core::ffi::c_int;
+    }
+    if count > (*config).max_streams {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Cannot replace stream configurations: database has %d streams, exceeds max_streams=%d\0"
+                .as_ptr() as *const ::core::ffi::c_char,
+            count,
+            (*config).max_streams,
         );
         rollback_transaction();
         return -1 as ::core::ffi::c_int;
@@ -7323,6 +7420,54 @@ pub unsafe extern "C" fn save_config(
         b"web_thread_pool_size = %d  ; libuv UV_THREADPOOL_SIZE (default: 2x CPU cores; requires restart)\n\0"
             .as_ptr() as *const ::core::ffi::c_char,
         (*config).web_thread_pool_size,
+    );
+    fprintf(
+        file,
+        b"web_compression_enabled = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
+        if (*config).web_compression_enabled as ::core::ffi::c_int != 0 {
+            b"true\0".as_ptr() as *const ::core::ffi::c_char
+        } else {
+            b"false\0".as_ptr() as *const ::core::ffi::c_char
+        },
+    );
+    fprintf(
+        file,
+        b"web_use_minified_assets = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
+        if (*config).web_use_minified_assets as ::core::ffi::c_int != 0 {
+            b"true\0".as_ptr() as *const ::core::ffi::c_char
+        } else {
+            b"false\0".as_ptr() as *const ::core::ffi::c_char
+        },
+    );
+    fprintf(
+        file,
+        b"web_cache_max_age_html = %d\n\0".as_ptr() as *const ::core::ffi::c_char,
+        (*config).web_cache_max_age_html,
+    );
+    fprintf(
+        file,
+        b"web_cache_max_age_css = %d\n\0".as_ptr() as *const ::core::ffi::c_char,
+        (*config).web_cache_max_age_css,
+    );
+    fprintf(
+        file,
+        b"web_cache_max_age_js = %d\n\0".as_ptr() as *const ::core::ffi::c_char,
+        (*config).web_cache_max_age_js,
+    );
+    fprintf(
+        file,
+        b"web_cache_max_age_images = %d\n\0".as_ptr() as *const ::core::ffi::c_char,
+        (*config).web_cache_max_age_images,
+    );
+    fprintf(
+        file,
+        b"web_cache_max_age_fonts = %d\n\0".as_ptr() as *const ::core::ffi::c_char,
+        (*config).web_cache_max_age_fonts,
+    );
+    fprintf(
+        file,
+        b"web_cache_max_age_default = %d\n\0".as_ptr() as *const ::core::ffi::c_char,
+        (*config).web_cache_max_age_default,
     );
     fprintf(
         file,

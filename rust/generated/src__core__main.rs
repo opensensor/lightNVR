@@ -41,6 +41,13 @@ unsafe extern "C" {
         __n: ::core::ffi::c_int,
         __stream: *mut FILE,
     ) -> *mut ::core::ffi::c_char;
+    unsafe fn fread(
+        __ptr: *mut ::core::ffi::c_void,
+        __size: size_t,
+        __n: size_t,
+        __stream: *mut FILE,
+    ) -> ::core::ffi::c_ulong;
+    unsafe fn ferror(__stream: *mut FILE) -> ::core::ffi::c_int;
     unsafe fn kill(__pid: __pid_t, __sig: ::core::ffi::c_int) -> ::core::ffi::c_int;
     unsafe fn sigemptyset(__set: *mut sigset_t) -> ::core::ffi::c_int;
     unsafe fn sigfillset(__set: *mut sigset_t) -> ::core::ffi::c_int;
@@ -371,6 +378,11 @@ unsafe extern "C" {
         __c: ::core::ffi::c_int,
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
+    unsafe fn memchr(
+        __s: *const ::core::ffi::c_void,
+        __c: ::core::ffi::c_int,
+        __n: size_t,
+    ) -> *mut ::core::ffi::c_void;
     unsafe fn strcmp(
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
@@ -380,10 +392,6 @@ unsafe extern "C" {
         __s2: *const ::core::ffi::c_char,
         __n: size_t,
     ) -> ::core::ffi::c_int;
-    unsafe fn strchr(
-        __s: *const ::core::ffi::c_char,
-        __c: ::core::ffi::c_int,
-    ) -> *mut ::core::ffi::c_char;
     unsafe fn strcspn(
         __s: *const ::core::ffi::c_char,
         __reject: *const ::core::ffi::c_char,
@@ -1645,65 +1653,25 @@ unsafe extern "C" fn check_and_kill_existing_instance(
     if fp.is_null() {
         return 0 as ::core::ffi::c_int;
     }
-    let mut pid_buf: [::core::ffi::c_char; 32] = [
-        0 as ::core::ffi::c_char,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    ];
-    if fgets(
-        &raw mut pid_buf as *mut ::core::ffi::c_char,
-        ::core::mem::size_of::<[::core::ffi::c_char; 32]>() as ::core::ffi::c_int,
+    let mut pid_buf: [::core::ffi::c_char; 32] = [0; 32];
+    let mut pid_len: size_t = fread(
+        &raw mut pid_buf as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void,
+        1 as size_t,
+        ::core::mem::size_of::<[::core::ffi::c_char; 32]>().wrapping_sub(1 as size_t),
         fp,
-    )
-    .is_null()
-    {
-        fclose(fp);
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_WARN,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Invalid PID file format\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        unlink(pid_file);
-        return 0 as ::core::ffi::c_int;
-    }
-    let mut truncated_pid_line: bool = strchr(
-        &raw mut pid_buf as *mut ::core::ffi::c_char,
-        '\n' as ::core::ffi::c_int,
-    )
-    .is_null()
-        && fgetc(fp) != EOF;
+    ) as size_t;
+    let mut extra: ::core::ffi::c_int = fgetc(fp);
+    let mut invalid_pid_file: bool = ferror(fp) != 0
+        || extra != EOF
+        || pid_len == 0 as size_t
+        || !memchr(
+            &raw mut pid_buf as *mut ::core::ffi::c_char as *const ::core::ffi::c_void,
+            '\0' as ::core::ffi::c_int,
+            pid_len,
+        )
+        .is_null();
     fclose(fp);
-    if truncated_pid_line {
+    if invalid_pid_file {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
@@ -1713,6 +1681,7 @@ unsafe extern "C" fn check_and_kill_existing_instance(
         unlink(pid_file);
         return 0 as ::core::ffi::c_int;
     }
+    pid_buf[pid_len] = '\0' as ::core::ffi::c_char;
     let mut end_ptr: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
     *__errno_location() = 0 as ::core::ffi::c_int;
     let mut pid_val: ::core::ffi::c_long = strtol(
@@ -4665,8 +4634,14 @@ unsafe fn main_0(
         );
         let mut parent_pid: pid_t = getppid();
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS as ::core::ffi::c_uint);
+        if getppid() != parent_pid {
+            _exit(EXIT_SUCCESS);
+        }
         kill(parent_pid, SIGUSR1);
         sleep(15 as ::core::ffi::c_uint);
+        if getppid() != parent_pid {
+            _exit(EXIT_SUCCESS);
+        }
         kill(parent_pid, SIGKILL);
         if restart_requested {
             if container_mode {

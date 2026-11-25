@@ -7,8 +7,21 @@ unsafe extern "C" {
     pub type AVIAMFMixPresentation;
     pub type AVIAMFAudioElement;
     pub type AVCodecTag;
+    unsafe fn pthread_once(
+        __once_control: *mut pthread_once_t,
+        __init_routine: Option<unsafe extern "C" fn() -> ()>,
+    ) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_lock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_unlock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
+    unsafe fn pthread_key_create(
+        __key: *mut pthread_key_t,
+        __destr_function: Option<unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()>,
+    ) -> ::core::ffi::c_int;
+    unsafe fn pthread_getspecific(__key: pthread_key_t) -> *mut ::core::ffi::c_void;
+    unsafe fn pthread_setspecific(
+        __key: pthread_key_t,
+        __pointer: *const ::core::ffi::c_void,
+    ) -> ::core::ffi::c_int;
     unsafe fn _log_message_ctx(
         level: log_level_t,
         component: *const ::core::ffi::c_char,
@@ -74,6 +87,8 @@ pub struct __pthread_mutex_s {
     pub __glibc_reserved: ::core::ffi::c_short,
     pub __list: __pthread_list_t,
 }
+pub type pthread_key_t = ::core::ffi::c_uint;
+pub type pthread_once_t = ::core::ffi::c_int;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub union pthread_mutex_t {
@@ -1755,6 +1770,7 @@ impl stream_state_t {
     pub const STREAM_STATE_ERROR: Self = Self(4);
     pub const STREAM_STATE_RECONNECTING: Self = Self(5);
 }
+pub const PTHREAD_ONCE_INIT: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 #[unsafe(no_mangle)]
@@ -1835,6 +1851,22 @@ pub unsafe extern "C" fn get_stream_hls_writer(mut stream: stream_handle_t) -> *
         return ::core::ptr::null_mut::<hls_writer_t>();
     }
     return (*state).hls_ctx as *mut hls_writer_t;
+}
+static mut streaming_snapshot_key: pthread_key_t = 0;
+static mut streaming_snapshot_once: pthread_once_t = PTHREAD_ONCE_INIT;
+static mut streaming_snapshot_key_result: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+unsafe extern "C" fn destroy_streaming_snapshot(mut value: *mut ::core::ffi::c_void) {
+    let mut snapshot: *mut config_t = value as *mut config_t;
+    if !snapshot.is_null() {
+        free((*snapshot).streams as *mut ::core::ffi::c_void);
+        free(snapshot as *mut ::core::ffi::c_void);
+    }
+}
+unsafe extern "C" fn init_streaming_snapshot_key() {
+    streaming_snapshot_key_result = pthread_key_create(
+        &raw mut streaming_snapshot_key,
+        Some(destroy_streaming_snapshot as unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()),
+    );
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
@@ -1988,14 +2020,45 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
             },
         },
     };
+    if pthread_once(
+        &raw mut streaming_snapshot_once,
+        Some(init_streaming_snapshot_key as unsafe extern "C" fn() -> ()),
+    ) != 0 as ::core::ffi::c_int
+        || streaming_snapshot_key_result != 0 as ::core::ffi::c_int
+    {
+        return &raw mut g_config;
+    }
+    let mut snapshot: *mut config_t = pthread_getspecific(streaming_snapshot_key) as *mut config_t;
+    if snapshot.is_null() {
+        snapshot = calloc(1 as size_t, ::core::mem::size_of::<config_t>()) as *mut config_t;
+        if snapshot.is_null() {
+            return &raw mut g_config;
+        }
+        if pthread_setspecific(
+            streaming_snapshot_key,
+            snapshot as *const ::core::ffi::c_void,
+        ) != 0 as ::core::ffi::c_int
+        {
+            free(snapshot as *mut ::core::ffi::c_void);
+            return &raw mut g_config;
+        }
+    }
     pthread_mutex_lock(&raw mut config_mutex);
     if !config_copy(&raw mut db_config, &raw mut g_config) {
         pthread_mutex_unlock(&raw mut config_mutex);
-        return &raw mut g_config;
+        return if !(*snapshot).streams.is_null() {
+            snapshot
+        } else {
+            &raw mut g_config
+        };
     }
     if config_reset_stream_slots(&raw mut db_config) != 0 as ::core::ffi::c_int {
         pthread_mutex_unlock(&raw mut config_mutex);
-        return &raw mut g_config;
+        return if !(*snapshot).streams.is_null() {
+            snapshot
+        } else {
+            &raw mut g_config
+        };
     }
     let mut ms: ::core::ffi::c_int = db_config.max_streams;
     let mut db_streams: *mut stream_config_t =
@@ -2029,8 +2092,16 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
         b"get_streaming_config: Using database path: %s\0".as_ptr() as *const ::core::ffi::c_char,
         &raw mut db_config.db_path as *mut ::core::ffi::c_char,
     );
+    if !config_copy(snapshot, &raw mut db_config) {
+        pthread_mutex_unlock(&raw mut config_mutex);
+        return if !(*snapshot).streams.is_null() {
+            snapshot
+        } else {
+            &raw mut g_config
+        };
+    }
     pthread_mutex_unlock(&raw mut config_mutex);
-    return &raw mut db_config;
+    return snapshot;
 }
 unsafe extern "C" fn should_use_go2rtc() -> bool {
     return g_config.go2rtc_enabled;
