@@ -1019,6 +1019,11 @@ static void test_save_config_updates_owned_file_in_place(void) {
 }
 
 static void test_save_config_updates_file_in_read_only_directory(void) {
+    if (geteuid() == 0) {
+        TEST_IGNORE_MESSAGE("Skipping read-only directory permission test when running as root.");
+        return;
+    }
+
     char directory[] = "/tmp/lightnvr_config_read_only_dir_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
