@@ -2102,6 +2102,7 @@
   "settings.storagePolicies.previewNoMatches": "This selector currently matches no cameras.",
   "settings.storagePolicies.invalidPriority": "Priority must be a whole number between -1,000,000 and 1,000,000.",
   "settings.storagePolicies.invalidLifecycle": "Check retention ordering, copy count and replication pool, and migration age and target.",
+  "settings.storagePolicies.fallbackOutsidePrimaryPool": "Choose a fallback target outside the primary pool.",
   "settings.storagePolicies.created": "Placement policy created",
   "settings.storagePolicies.updated": "Placement policy updated",
   "settings.storagePolicies.deleted": "Placement policy deleted",

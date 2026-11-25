@@ -11,7 +11,7 @@ import { listFleetLocations, listFleetTags } from '../../../api/fleet.ts';
 import { useCallback, useState } from 'preact/hooks';
 import { useQuery } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
-import { archiveTargetWithoutTrigger, referencedTargetUuids, targetIsRouted } from './storageTargetRouting.ts';
+import { archiveTargetWithoutTrigger, availableFallbackTargets, primaryPoolMemberIds, primaryTargetForPool, referencedTargetUuids, targetIsRouted } from './storageTargetRouting.ts';
 import { CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.tsx';
 import { ConfirmDialog } from '../common/ModalDialog.tsx';
 import type {
@@ -80,6 +80,7 @@ interface StoragePolicyEditorProps {
 }
 
 const ALL_SELECTOR = { version: 1, expression: { op: 'all' } };
+
 
 const EMPTY_TARGET = {
   target_type: 'filesystem', endpoint: '', region: '', bucket: '', credential_ref: '', archive_budget_gb: '0',
@@ -582,7 +583,7 @@ function StorageMigrationJobsPanel({ t }: StorageTranslateProps) {
 function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange, onCancel, onPreview, onSave, busy, previewing, saving, locations, tags, t }: StoragePolicyEditorProps) {
   const set = (key: keyof StoragePolicyEditorState, next: string | boolean) => onChange({ ...value, [key]: next });
   const captureTargets = targets.filter((target) => target.target_type !== 's3');
-  const fallbackTargets = captureTargets.filter((target) => target.uuid !== value.primary_target_uuid);
+  const fallbackTargets = availableFallbackTargets(value.primary_target_uuid, value.primary_pool_uuid || '', pools, targets);
   const invalidFallback = value.fallback_mode === 'target' && !value.fallback_target_uuid;
   return (
     <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mt-4 space-y-4">
@@ -590,8 +591,15 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" maxLength={127} value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} /></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.priority')}</span><input type="number" min="-1000000" max="1000000" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.priority} onInput={(event) => set('priority', event.currentTarget.value)} disabled={busy} /></label>
-        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primary')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_target_uuid} onChange={(event) => { const primary = event.currentTarget.value; onChange({ ...value, primary_target_uuid: primary, fallback_target_uuid: value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid, migration_target_uuid: value.migration_target_uuid === primary ? '' : value.migration_target_uuid }); }} disabled={busy}>{captureTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>
-        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primaryPool')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_pool_uuid || ''} onChange={(event) => set('primary_pool_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.exactTarget')}</option>{pools.map((pool) => <option key={pool.uuid} value={pool.uuid}>{pool.name}</option>)}</select></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primary')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_target_uuid} onChange={(event) => { const primary = event.currentTarget.value; onChange({ ...value, primary_target_uuid: primary, fallback_target_uuid: value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid, migration_target_uuid: value.migration_target_uuid === primary ? '' : value.migration_target_uuid }); }} disabled={busy || !!value.primary_pool_uuid}>{captureTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primaryPool')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_pool_uuid || ''} onChange={(event) => {
+          const poolUuid = event.currentTarget.value;
+          const members = primaryPoolMemberIds(poolUuid, pools, targets);
+          const primary = primaryTargetForPool(value.primary_target_uuid, poolUuid, pools, targets);
+          onChange({ ...value, primary_pool_uuid: poolUuid, primary_target_uuid: primary,
+            fallback_target_uuid: members.includes(value.fallback_target_uuid) || value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid,
+            migration_target_uuid: value.migration_target_uuid === primary ? '' : value.migration_target_uuid });
+        }} disabled={busy}><option value="">{t('settings.storagePolicies.exactTarget')}</option>{pools.map((pool) => <option key={pool.uuid} value={pool.uuid}>{pool.name}</option>)}</select></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.fallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_mode} onChange={(event) => { const mode = event.currentTarget.value; onChange({ ...value, fallback_mode: mode, fallback_target_uuid: mode === 'target' ? value.fallback_target_uuid : '' }); }} disabled={busy}><option value="default">{t('settings.storagePolicies.fallbackDefault')}</option><option value="target">{t('settings.storagePolicies.fallbackTarget')}</option><option value="pause">{t('settings.storagePolicies.fallbackPause')}</option><option value="fail">{t('settings.storagePolicies.fallbackFail')}</option></select></label>
         {value.fallback_mode === 'target' && <label class="text-sm font-medium md:col-start-2"><span class="block mb-1">{t('settings.storagePolicies.namedFallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_target_uuid} onChange={(event) => set('fallback_target_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.chooseTarget')}</option>{fallbackTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>}
         <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3"><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.minimumDays')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.minimum_retention_days} onInput={(event) => set('minimum_retention_days', event.currentTarget.value)} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.desiredDays')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.desired_retention_days} onInput={(event) => set('desired_retention_days', event.currentTarget.value)} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.maximumDays')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.maximum_retention_days} onInput={(event) => set('maximum_retention_days', event.currentTarget.value)} disabled={busy} /></label></div>
@@ -666,7 +674,14 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
   const updateEditor = useCallback((next: StoragePolicyEditorState) => setEditor({ ...next, preview: null, preview_key: '', preview_request_key: '' }), []);
 
   const openNew = () => setEditor({ name: '', enabled: true, priority: '100', selector: ALL_SELECTOR, selector_error: '', primary_target_uuid: targets.find((target) => target.is_default)?.uuid || targets[0]?.uuid || '', primary_pool_uuid: '', fallback_mode: 'default', fallback_target_uuid: '', minimum_retention_days: '0', desired_retention_days: '0', maximum_retention_days: '0', required_copy_count: '1', replication_pool_uuid: '', migration_after_days: '0', migration_target_uuid: '', archive_after_seconds: '-1', hot_residency_seconds: '-1', archive_protected: false, archive_on_pressure: false, pressure_priority: '100', preview: null });
-  const openEdit = (policy: StoragePolicy) => setEditor({ ...policy, priority: String(policy.priority), primary_pool_uuid: policy.primary_pool_uuid || '', fallback_target_uuid: policy.fallback_target_uuid || '', minimum_retention_days: String(policy.minimum_retention_days || 0), desired_retention_days: String(policy.desired_retention_days || 0), maximum_retention_days: String(policy.maximum_retention_days || 0), required_copy_count: String(policy.required_copy_count || 1), replication_pool_uuid: policy.replication_pool_uuid || '', migration_after_days: String(policy.migration_after_days || 0), migration_target_uuid: policy.migration_target_uuid || '', pressure_priority: String(policy.pressure_priority ?? 100), selector_error: '', preview: null });
+  const openEdit = (policy: StoragePolicy) => {
+    const poolUuid = policy.primary_pool_uuid || '';
+    const primary = primaryTargetForPool(policy.primary_target_uuid, poolUuid, pools, targets);
+    const members = primaryPoolMemberIds(poolUuid, pools, targets);
+    const fallback = policy.fallback_target_uuid || '';
+    setEditor({ ...policy, priority: String(policy.priority), primary_target_uuid: primary, primary_pool_uuid: poolUuid,
+      fallback_target_uuid: members.includes(fallback) || fallback === primary ? '' : fallback, minimum_retention_days: String(policy.minimum_retention_days || 0), desired_retention_days: String(policy.desired_retention_days || 0), maximum_retention_days: String(policy.maximum_retention_days || 0), required_copy_count: String(policy.required_copy_count || 1), replication_pool_uuid: policy.replication_pool_uuid || '', migration_after_days: String(policy.migration_after_days || 0), migration_target_uuid: policy.migration_target_uuid || '', pressure_priority: String(policy.pressure_priority ?? 100), selector_error: '', preview: null });
+  };
   const policyPayload = (): StoragePolicyPayload | null => {
     const priority = Number(editor!.priority);
     if (!Number.isInteger(priority) || priority < -1000000 || priority > 1000000) {
@@ -690,7 +705,14 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
       showStatusMessage(t('settings.storagePolicies.invalidLifecycle'), 'error');
       return null;
     }
-    const payload: StoragePolicyPayload = { name: editor!.name.trim(), enabled: editor!.enabled, priority, selector: editor!.selector, primary_target_uuid: editor!.primary_target_uuid, primary_pool_uuid: editor!.primary_pool_uuid || null, fallback_mode: editor!.fallback_mode, fallback_target_uuid: editor!.fallback_mode === 'target' ? editor!.fallback_target_uuid : null, minimum_retention_days: minimum, desired_retention_days: desired, maximum_retention_days: maximum, required_copy_count: copies, replication_pool_uuid: copies > 1 ? editor!.replication_pool_uuid : null, migration_after_days: migrationAfter, migration_target_uuid: editor!.migration_target_uuid || null, archive_after_seconds: archiveAfterSeconds, hot_residency_seconds: hotResidencySeconds, archive_protected: !!editor!.archive_protected, archive_on_pressure: !!editor!.archive_on_pressure, pressure_priority: pressurePriority };
+    const primaryTargetUuid = primaryTargetForPool(editor!.primary_target_uuid, editor!.primary_pool_uuid || '', pools, targets);
+    const primaryPoolMembers = primaryPoolMemberIds(editor!.primary_pool_uuid || '', pools, targets);
+    if (editor!.fallback_mode === 'target' &&
+        (editor!.fallback_target_uuid === primaryTargetUuid || primaryPoolMembers.includes(editor!.fallback_target_uuid))) {
+      showStatusMessage(t('settings.storagePolicies.fallbackOutsidePrimaryPool'), 'error');
+      return null;
+    }
+    const payload: StoragePolicyPayload = { name: editor!.name.trim(), enabled: editor!.enabled, priority, selector: editor!.selector, primary_target_uuid: primaryTargetUuid, primary_pool_uuid: editor!.primary_pool_uuid || null, fallback_mode: editor!.fallback_mode, fallback_target_uuid: editor!.fallback_mode === 'target' ? editor!.fallback_target_uuid : null, minimum_retention_days: minimum, desired_retention_days: desired, maximum_retention_days: maximum, required_copy_count: copies, replication_pool_uuid: copies > 1 ? editor!.replication_pool_uuid : null, migration_after_days: migrationAfter, migration_target_uuid: editor!.migration_target_uuid || null, archive_after_seconds: archiveAfterSeconds, hot_residency_seconds: hotResidencySeconds, archive_protected: !!editor!.archive_protected, archive_on_pressure: !!editor!.archive_on_pressure, pressure_priority: pressurePriority };
     if (editor!.uuid) { payload.uuid = editor!.uuid; payload.revision = editor!.revision; }
     return payload;
   };
