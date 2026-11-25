@@ -1,5 +1,30 @@
 # Docker Deployment Guide
 
+For a ZimaOS Custom App import, use the [ZimaOS Compose variant](ZIMAOS.md).
+
+## Data paths in existing installations
+
+The container stores its database at `/var/lib/lightnvr/data/database/lightnvr.db`,
+recordings at `/var/lib/lightnvr/data/recordings`, and models at
+`/var/lib/lightnvr/data/models`. Older or custom `lightnvr.ini` files can still
+point at `/var/lib/lightnvr/lightnvr.db`, `/var/lib/lightnvr/recordings`, or
+`/var/lib/lightnvr/models`. The entrypoint preserves existing config files and
+does not move data automatically.
+
+Before changing paths, stop LightNVR and back up the config and all existing
+data. Copy the database together with its `-wal` and `-shm` files (if present)
+while the application is stopped, and retain the timestamped backup directory.
+Check `docker inspect lightnvr --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'`
+to see which paths are persistent. If old files are only in the container's
+writable layer, use `docker cp` to recover them before removing or recreating
+that container. Move the recovered files into the persistent `data/database`,
+`data/recordings`, and `data/models` mounts, then update `[database] path`,
+`[storage] path`, `mp4_path`, and `[models] path` in the mounted
+`/etc/lightnvr/lightnvr.ini`. Check for `LIGHTNVR_DB_PATH` and
+`LIGHTNVR_STORAGE_PATH` environment overrides too. Verify the destination
+contains the original database and recordings before restarting; a new empty
+database can otherwise appear as a fresh installation.
+
 ## Security migration: non-root runtime and private go2rtc API
 
 Images run as UID:GID `10001:10001`. Port 1984 is internal and bound to loopback.

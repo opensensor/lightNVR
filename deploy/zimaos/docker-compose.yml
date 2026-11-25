@@ -1,0 +1,49 @@
+name: lightnvr
+
+services:
+  lightnvr:
+    image: ghcr.io/opensensor/lightnvr:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "8554:8554"
+      - "8555:8555"
+      - "8555:8555/udp"
+    volumes:
+      - config:/etc/lightnvr
+      - data:/var/lib/lightnvr/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      TZ: UTC
+      GO2RTC_CONFIG_PERSIST: "true"
+      LIGHTNVR_AUTO_INIT: "true"
+
+volumes:
+  config:
+  data:
+
+x-casaos:
+  id: io.opensensor.lightnvr
+  main: lightnvr
+  index: /
+  port_map: "8080"
+  scheme: http
+  icon: https://raw.githubusercontent.com/opensensor/lightNVR/main/web/img/favicon.svg
+  title:
+    en_US: LightNVR
+  tagline:
+    en_US: Lightweight network video recorder
+  description:
+    en_US: Record and view IP camera streams in your browser.
+  author: OpenSensor
+  developer: OpenSensor
+  category: Media
+  architectures:
+    - amd64
+    - arm64
+    - arm/v7
+  repo: https://github.com/opensensor/lightNVR
+  docs: https://github.com/opensensor/lightNVR/blob/main/docs/DOCKER.md

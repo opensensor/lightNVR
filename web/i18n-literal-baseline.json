@@ -30,8 +30,8 @@
     "MSE": 1
   },
   "preact/SetupWizard.jsx": {
-    "/var/lib/lightnvr/recordings": 1,
-    "/var/lib/lightnvr/lightnvr.db": 1
+    "/var/lib/lightnvr/data/recordings": 1,
+    "/var/lib/lightnvr/data/database/lightnvr.db": 1
   },
   "preact/StreamCard.jsx": {
     "ONVIF": 2
@@ -81,7 +81,7 @@
     "X-Real-IP": 1
   },
   "preact/settings/DetectionTab.jsx": {
-    "/var/lib/lightnvr/models": 1,
+    "/var/lib/lightnvr/data/models": 1,
     "default": 1
   },
   "preact/settings/GeneralTab.jsx": {

@@ -106,7 +106,7 @@ function StorageStep({ form, onChange }: { form: WizardForm; onChange: WizardFor
           class="w-full p-2 border border-input rounded bg-background text-foreground"
           value={form.storagePath}
           onInput={e => onChange('storagePath', (e.target as HTMLInputElement).value)}
-          placeholder="/var/lib/lightnvr/recordings"
+          placeholder="/var/lib/lightnvr/data/recordings"
         />
       </Field>
       <Field label={t('setupWizard.maxStorage')} hint={t('setupWizard.maxStorageHint')}>
@@ -124,7 +124,7 @@ function StorageStep({ form, onChange }: { form: WizardForm; onChange: WizardFor
           class="w-full p-2 border border-input rounded bg-background text-foreground"
           value={form.dbPath}
           onInput={e => onChange('dbPath', (e.target as HTMLInputElement).value)}
-          placeholder="/var/lib/lightnvr/lightnvr.db"
+          placeholder="/var/lib/lightnvr/data/database/lightnvr.db"
         />
       </Field>
     </div>
