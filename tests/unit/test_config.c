@@ -1262,6 +1262,37 @@ static void test_save_config_preserves_owned_file_when_publish_fails(void) {
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
 
+static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
+    char directory[] = "/tmp/lightnvr_config_credentials_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *initial = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(initial);
+    fputs("previous configuration", initial);
+    fclose(initial);
+    load_default_config(&cfg);
+
+    snprintf(cfg.turn_username, sizeof(cfg.turn_username), "user;admin");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.turn_username[0] = '\0';
+    snprintf(cfg.turn_password, sizeof(cfg.turn_password), "secret\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.turn_password[0] = '\0';
+    snprintf(cfg.mqtt_password, sizeof(cfg.mqtt_password), "secret#comment");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+
+    char content[64] = {0};
+    FILE *saved = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    TEST_ASSERT_EQUAL_UINT(strlen("previous configuration"),
+                           fread(content, 1, sizeof(content) - 1, saved));
+    fclose(saved);
+    TEST_ASSERT_EQUAL_STRING("previous configuration", content);
+    unlink(path);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+}
+
 static void check_bind_mount_fallback(bool fail_copy) {
     char directory[] = "/tmp/lightnvr_config_bind_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
@@ -1363,6 +1394,7 @@ int main(void) {
     RUN_TEST(test_save_config_preserves_legacy_file_when_replacement_fails);
     RUN_TEST(test_save_config_atomically_replaces_owned_file);
     RUN_TEST(test_save_config_preserves_owned_file_when_publish_fails);
+    RUN_TEST(test_save_config_rejects_unsafe_credentials_before_writing);
     RUN_TEST(test_save_config_bind_mount_fallback);
     RUN_TEST(test_save_config_bind_mount_restores_after_write_failure);
     RUN_TEST(test_save_config_bind_mount_retries_short_write);
