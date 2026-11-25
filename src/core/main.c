@@ -474,16 +474,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
                 sleep(1);
             }
 
-            // If we get here, the PID file still exists and is locked, or some other issue
-            log_warn("Previous instance may have terminated but PID file is still locked or inaccessible");
-            // Try to remove it anyway
-            if (unlink(pid_file) == 0) {
-                log_info("Removed potentially stale PID file");
-                return 0;
-            } else {
-                log_error("Failed to remove PID file: %s", strerror(errno));
-                return -1;
-            }
+            // If we get here, the PID file still exists and we could not acquire its lock.
+            // Do not unlink it: removing a still-locked PID file can bypass the live
+            // instance lock (different inode), allowing concurrent instances.
+            log_error("Previous instance did not release PID file lock within timeout; refusing to remove PID file");
+            return -1;
         } else {
             log_error("Failed to terminate previous instance: %s", strerror(errno));
             return -1;
