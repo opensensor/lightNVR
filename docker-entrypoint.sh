@@ -305,6 +305,10 @@ EOF
     fi
     log_info "Creating default go2rtc configuration..."
     cat > /etc/lightnvr/go2rtc/go2rtc.yaml << 'EOF'
+    if [ "${GO2RTC_CONFIG_PERSIST:-true}" = "true" ] && [ -f /etc/lightnvr/go2rtc/go2rtc.yaml ]; then
+        log_info "Preserving existing go2rtc configuration at /etc/lightnvr/go2rtc/go2rtc.yaml"
+    else
+        cat > /etc/lightnvr/go2rtc/go2rtc.yaml << 'EOF'
 # go2rtc configuration file
 api:
   listen: 127.0.0.1:1984
@@ -327,7 +331,8 @@ log:
 streams:
   # Streams will be added dynamically by LightNVR
 EOF
-    log_info "Default go2rtc configuration created at /etc/lightnvr/go2rtc/go2rtc.yaml"
+        log_info "Default go2rtc configuration created at /etc/lightnvr/go2rtc/go2rtc.yaml"
+    fi
 
     # Set up models if needed
     if [ -d /usr/share/lightnvr/models ] && [ -n "$(ls -A /usr/share/lightnvr/models 2>/dev/null)" ]; then
