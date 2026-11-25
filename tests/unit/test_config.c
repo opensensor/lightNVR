@@ -20,6 +20,7 @@
 #include <sched.h>
 #include <stdatomic.h>
 #include <errno.h>
+#include <math.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -293,6 +294,39 @@ void test_validate_config_rejects_unsafe_health_values(void) {
     snprintf(cfg.health.hardware_provider,
              sizeof(cfg.health.hardware_provider), "%s", "/bin/x");
     TEST_ASSERT_NOT_EQUAL(0, validate_config(&cfg));
+}
+
+void test_validate_config_resets_nonfinite_storage_pressure(void) {
+    const double invalid[] = {NAN, INFINITY, -INFINITY};
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        load_default_config(&cfg);
+        cfg.storage_pressure_warning_pct = invalid[i];
+        TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+        TEST_ASSERT_TRUE(cfg.storage_pressure_emergency_pct == 5.0);
+        TEST_ASSERT_TRUE(cfg.storage_pressure_critical_pct == 10.0);
+        TEST_ASSERT_TRUE(cfg.storage_pressure_warning_pct == 20.0);
+    }
+}
+
+void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
+    char temp_dir[] = "/tmp/lightnvr_bad_ini_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir);
+    char config_path[MAX_PATH_LENGTH];
+    snprintf(config_path, sizeof(config_path), "%s/bad.ini", dir);
+    FILE *file = fopen(config_path, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    fputs("[streams]\nmax_streams = 1024\ninvalid line\n", file);
+    fclose(file);
+
+    set_custom_config_path(config_path);
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_NOT_NULL(cfg.streams);
+    TEST_ASSERT_GREATER_THAN(0, cfg.max_streams);
+    cfg.streams[0].name[0] = '\0';
+
+    unlink(config_path);
+    rmdir(dir);
 }
 
 void test_validate_config_clamps_out_of_range_startup_check(void) {
@@ -980,6 +1014,7 @@ int main(void) {
     RUN_TEST(test_default_config_db_backup_settings);
     RUN_TEST(test_default_config_health_matches_ops03);
     RUN_TEST(test_validate_config_rejects_unsafe_health_values);
+    RUN_TEST(test_validate_config_resets_nonfinite_storage_pressure);
     RUN_TEST(test_default_config_models_path_nonempty);
     RUN_TEST(test_default_config_null_safe);
 
@@ -1033,6 +1068,7 @@ int main(void) {
     RUN_TEST(test_config_set_api_detection_format_normalizes_and_rejects);
     RUN_TEST(test_save_config_writes_api_detection_format);
     RUN_TEST(test_load_config_parses_api_detection_format);
+    RUN_TEST(test_malformed_ini_after_stream_resize_keeps_streams_owned);
 
     int result = UNITY_END();
     shutdown_logger();

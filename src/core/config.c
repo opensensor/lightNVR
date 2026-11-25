@@ -1255,22 +1255,33 @@ static int config_ini_handler(void* user, const char* section, const char* name,
 
 // Load configuration from file using inih
 static int load_config_from_file(const char *filename, config_t *config) {
-    // Parse into a temporary copy first so failed parses do not partially mutate
-    // the live configuration.
+    // Parsing may resize streams, so the temporary copy needs its own array.
     config_t temp_config = *config;
+    temp_config.streams = NULL;
+    if (config->streams && config->max_streams > 0) {
+        size_t bytes = (size_t)config->max_streams * sizeof(stream_config_t);
+        temp_config.streams = malloc(bytes);
+        if (!temp_config.streams) {
+            log_error("Could not copy streams array before parsing %s", filename);
+            return -1;
+        }
+        memcpy(temp_config.streams, config->streams, bytes);
+    }
 
     // Use inih to parse the INI file
     int result = ini_parse(filename, config_ini_handler, &temp_config);
     
     if (result < 0) {
+        free(temp_config.streams);
         log_warn("Could not read config file %s", filename);
         return -1;
     } else if (result > 0) {
+        free(temp_config.streams);
         log_warn("Error in config file %s at line %d", filename, result);
         return -1;
     }
 
-    // Commit only on successful parse.
+    free(config->streams);
     *config = temp_config;
     return 0;
 }
