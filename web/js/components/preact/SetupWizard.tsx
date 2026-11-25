@@ -113,6 +113,7 @@ function StorageStep({ form, onChange }: { form: WizardForm; onChange: WizardFor
         <input
           type="number"
           min="0"
+          step="any"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
           value={form.maxStorageSize}
           onInput={e => onChange('maxStorageSize', (e.target as HTMLInputElement).value)}
@@ -233,7 +234,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const bytesToGbString = (bytes: number): string => {
     if (!Number.isFinite(bytes) || bytes <= 0) return '0';
     const gb = bytes / BYTES_PER_GB;
-    return Number.isInteger(gb) ? String(gb) : gb.toFixed(2).replace(/\.?0+$/, '');
+    return String(gb);
   };
 
   const gbStringToBytes = (value: string): number => {
@@ -285,7 +286,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
     try {
       const payload: SetupSettingsPayload = {
         storage_path:         form.storagePath    || undefined,
-        max_storage_size:     parseInt(form.maxStorageSize, 10) || 0,
+        max_storage_size:     gbStringToBytes(form.maxStorageSize),
         db_path:              form.dbPath         || undefined,
         web_thread_pool_size: form.threadPoolSize ? parseInt(form.threadPoolSize, 10) : undefined,
         max_streams:          parseInt(form.maxStreams, 10) || 32,
