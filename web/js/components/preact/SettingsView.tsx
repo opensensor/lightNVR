@@ -417,12 +417,29 @@ export function SettingsView() {
       ...healthSettingsFromResponse(settingsData),
     };
     setSettings(prev => {
-      const merged = { ...prev, ...mappedData };
-      baselineRef.current = merged;
-      return merged;
+      const serverMerged = { ...prev, ...mappedData };
+      baselineRef.current = serverMerged;
+
+      if (!saveInFlightRef.current || !submittedSnapshotRef.current) {
+        return serverMerged;
+      }
+
+      const submitted = submittedSnapshotRef.current;
+      const preserved = { ...serverMerged };
+      for (const key of Object.keys(preserved) as Array<keyof SettingsFormState>) {
+        if (prev[key] !== submitted[key]) {
+          preserved[key] = prev[key];
+        }
+      }
+      return preserved;
     });
+    saveInFlightRef.current = false;
+    submittedSnapshotRef.current = null;
     setIsDirty(false);
   }, [settingsData]);
+
+  const saveInFlightRef = useRef(false);
+  const submittedSnapshotRef = useRef<SettingsFormState | null>(null);
 
   // Shallow-diff settings vs baseline to drive the sticky-save enabled state.
   useEffect(() => {
@@ -449,6 +466,8 @@ export function SettingsView() {
   // Save.
   // Returns a promise so <AsyncButton> can track pending state and guard
   // against rapid-tap double-submits (#399 / PRD UXD_01 §5.1).
+  // Capture submitted snapshot so refetch hydration can preserve edits made
+  // while save/refetch is pending.
   const saveSettings = () => {
     if (healthValidationErrors.length > 0) {
       showStatusMessage(t(`settings.health.validation.${healthValidationErrors[0]}`), 'error');
