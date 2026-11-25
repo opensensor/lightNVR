@@ -38,9 +38,9 @@
     },
     {
       "c": "src/core/config.c",
-      "c_sha256": "bd8086b35ca2655cbcf44f9909b6590994b19c2c47db4ec8bbcb62cd06f24c5b",
+      "c_sha256": "0dd56d97cdbf15f404772081968816d405840d44d7b68c7dd3a7463cc6e73db3",
       "rust": "generated/src__core__config.rs",
-      "rust_sha256": "41c9812ff3f86272ca7393d47664f0e6ab07a40bc02e3e435e3d8681960c2b3c",
+      "rust_sha256": "c132b30c76b623d5f458f606581d4d499a1c3a5dc7529250698ced25716a844c",
       "adapted": false
     },
     {

@@ -1518,19 +1518,20 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t) {
                         *__errno_location() = 0 as ::core::ffi::c_int;
                         let mut parsed: ::core::ffi::c_long =
                             strtol(env_value, &raw mut endptr, 10 as ::core::ffi::c_int);
-                        while *endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                        let mut parse_end: *mut ::core::ffi::c_char = endptr;
+                        while *parse_end as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
                             && *(*__ctype_b_loc()).offset(
-                                *endptr as ::core::ffi::c_uchar as ::core::ffi::c_int as isize,
+                                *parse_end as ::core::ffi::c_uchar as ::core::ffi::c_int as isize,
                             ) as ::core::ffi::c_int
                                 & C2Rust_Unnamed_0::_ISspace.0 as ::core::ffi::c_int
                                     as ::core::ffi::c_ushort
                                     as ::core::ffi::c_int
                                 != 0
                         {
-                            endptr = endptr.offset(1);
+                            parse_end = parse_end.offset(1);
                         }
                         if endptr == env_value as *mut ::core::ffi::c_char
-                            || *endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                            || *parse_end as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
                             || *__errno_location() == ERANGE
                             || parsed < INT_MIN as ::core::ffi::c_long
                             || parsed > INT_MAX as ::core::ffi::c_long
@@ -5479,6 +5480,7 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
                     &raw mut g_custom_config_path as *mut ::core::ffi::c_char,
                     strerror(*__errno_location()),
                 );
+                return -1 as ::core::ffi::c_int;
             } else if load_config_from_file(canon_path, config) == 0 as ::core::ffi::c_int {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_INFO,
@@ -5499,6 +5501,7 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
                         as *const ::core::ffi::c_char,
                     canon_path,
                 );
+                return -1 as ::core::ffi::c_int;
             }
         } else {
             _log_message_ctx(
@@ -5508,6 +5511,7 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
                 b"Custom config file not accessible: %s\0".as_ptr() as *const ::core::ffi::c_char,
                 &raw mut g_custom_config_path as *mut ::core::ffi::c_char,
             );
+            return -1 as ::core::ffi::c_int;
         }
     }
     if loaded == 0 {
@@ -5796,7 +5800,12 @@ pub unsafe extern "C" fn save_config(
     );
     if !sl.is_null() {
         fname = sl.offset(1 as ::core::ffi::c_int as isize);
-        *sl = '\0' as ::core::ffi::c_char;
+        if sl == &raw mut tmp as *mut ::core::ffi::c_char {
+            tmp[0usize] = '/' as ::core::ffi::c_char;
+            tmp[1usize] = '\0' as ::core::ffi::c_char;
+        } else {
+            *sl = '\0' as ::core::ffi::c_char;
+        }
         if realpath(
             &raw mut tmp as *mut ::core::ffi::c_char,
             &raw mut resolved_dir as *mut ::core::ffi::c_char,
