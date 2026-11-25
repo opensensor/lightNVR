@@ -409,6 +409,10 @@ int find_mp4_recording(const char *stream_name, time_t timestamp, char *mp4_path
 
     // Get global config for storage paths
     const config_t *global_config = get_streaming_config();
+    if (!global_config) {
+        log_error("Cannot find MP4 recording: streaming configuration unavailable");
+        return -1;
+    }
     char base_path[MAX_PATH_LENGTH];
 
     // Format timestamp for pattern matching

@@ -2052,6 +2052,10 @@ static void check_and_ensure_services(void) {
     // by the maintenance loop. get_streaming_config() returns a borrowed pointer
     // to an internal static snapshot, so there is nothing to free here.
     const config_t *current_config = get_streaming_config();
+    if (!current_config || !current_config->streams) {
+        log_warn("Skipping periodic service check: streaming configuration unavailable");
+        return;
+    }
 
     log_info("Running periodic service check (%d max streams)", g_config.max_streams);
 

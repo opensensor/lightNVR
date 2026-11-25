@@ -92,15 +92,18 @@ config_t* get_streaming_config(void) {
     static config_t db_config;
     static pthread_mutex_t config_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+    config_t *snapshot = NULL;
     if (pthread_once(&streaming_snapshot_once, init_streaming_snapshot_key) != 0 ||
-        streaming_snapshot_key_result != 0) return &g_config;
-    config_t *snapshot = pthread_getspecific(streaming_snapshot_key);
+        streaming_snapshot_key_result != 0) {
+        return NULL;
+    }
+    snapshot = pthread_getspecific(streaming_snapshot_key);
     if (!snapshot) {
         snapshot = calloc(1, sizeof(*snapshot));
-        if (!snapshot) return &g_config;
+        if (!snapshot) return NULL;
         if (pthread_setspecific(streaming_snapshot_key, snapshot) != 0) {
             free(snapshot);
-            return &g_config;
+            return NULL;
         }
     }
     
@@ -110,13 +113,13 @@ config_t* get_streaming_config(void) {
     // This ensures we get the latest configuration including the database path
     if (!config_copy(&db_config, &g_config)) {
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : &g_config;
+        return snapshot->streams ? snapshot : NULL;
     }
 
     // Clear stale startup or deleted stream rows while retaining per-slot defaults.
     if (config_reset_stream_slots(&db_config) != 0) {
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : &g_config;
+        return snapshot->streams ? snapshot : NULL;
     }
 
     // Load stream configurations from database.
@@ -125,7 +128,7 @@ config_t* get_streaming_config(void) {
     if (!db_streams) {
         if (!snapshot->streams) (void)config_copy(snapshot, &g_config);
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : &g_config;
+        return snapshot->streams ? snapshot : NULL;
     }
 
     int count = get_all_stream_configs(db_streams, ms);
@@ -133,7 +136,7 @@ config_t* get_streaming_config(void) {
         free(db_streams);
         if (!snapshot->streams) (void)config_copy(snapshot, &g_config);
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : &g_config;
+        return snapshot->streams ? snapshot : NULL;
     }
 
     if (count > 0) {
@@ -149,7 +152,7 @@ config_t* get_streaming_config(void) {
 
     if (!config_copy(snapshot, &db_config)) {
         pthread_mutex_unlock(&config_mutex);
-        return snapshot->streams ? snapshot : &g_config;
+        return snapshot->streams ? snapshot : NULL;
     }
     
     pthread_mutex_unlock(&config_mutex);
