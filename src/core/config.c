@@ -33,6 +33,20 @@
 // Global configuration variable
 config_t g_config;
 
+static bool contains_unsupported_ini_credential_chars(const char *value) {
+    if (!value) {
+        return false;
+    }
+
+    for (const unsigned char *p = (const unsigned char *)value; *p != '\0'; ++p) {
+        if (*p == '\n' || *p == '\r' || *p == ';' || *p == '#') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Also protects whole-config copies from racing with live option updates.
 static pthread_mutex_t mp4_faststart_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1879,6 +1893,12 @@ static int publish_config_in_place(int dir_fd, const char *filename,
 int save_config(const config_t *config, const char *path) {
     if (!config) {
         log_error("Invalid config parameter for save_config: config=%p", config);
+        return -1;
+    }
+    if (contains_unsupported_ini_credential_chars(config->turn_username) ||
+        contains_unsupported_ini_credential_chars(config->turn_password) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_password)) {
+        log_error("Credential contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save");
         return -1;
     }
     

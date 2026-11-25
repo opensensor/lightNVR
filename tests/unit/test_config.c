@@ -36,6 +36,10 @@ static bool deny_config_rename;
 static bool busy_config_rename;
 static bool fail_config_pwrite;
 static ino_t fail_config_pwrite_inode;
+static bool short_config_pwrite;
+static ino_t short_config_pwrite_inode;
+static size_t short_config_pwrite_max_bytes;
+static bool short_config_pwrite_done;
 static bool monitor_secret_write_permissions;
 static bool observed_config_stream;
 static bool observed_config_stream_with_private_mode;
@@ -76,10 +80,19 @@ int __wrap_renameat(int from_fd, const char *from, int to_fd, const char *to) {
 ssize_t __real_pwrite(int, const void *, size_t, off_t);
 ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
     struct stat st;
-    if (fail_config_pwrite && fstat(fd, &st) == 0 && st.st_ino == fail_config_pwrite_inode) {
-        fail_config_pwrite = false;
-        errno = ENOSPC;
-        return -1;
+    if (fstat(fd, &st) == 0) {
+        if (short_config_pwrite &&
+            !short_config_pwrite_done &&
+            st.st_ino == short_config_pwrite_inode &&
+            size > short_config_pwrite_max_bytes) {
+            short_config_pwrite_done = true;
+            return __real_pwrite(fd, buf, short_config_pwrite_max_bytes, offset);
+        }
+        if (fail_config_pwrite && st.st_ino == fail_config_pwrite_inode) {
+            fail_config_pwrite = false;
+            errno = ENOSPC;
+            return -1;
+        }
     }
     return __real_pwrite(fd, buf, size, offset);
 }
@@ -107,6 +120,9 @@ void setUp(void) {
 void tearDown(void) {
     deny_config_chmod = deny_config_rename = busy_config_rename = false;
     fail_config_pwrite = false;
+    short_config_pwrite = false;
+    short_config_pwrite_done = false;
+    short_config_pwrite_max_bytes = 0;
     monitor_secret_write_permissions = false;
     observed_config_stream = false;
     observed_config_stream_with_private_mode = false;
@@ -1248,6 +1264,37 @@ static void test_save_config_preserves_owned_file_when_publish_fails(void) {
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
 
+static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
+    char directory[] = "/tmp/lightnvr_config_credentials_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *initial = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(initial);
+    fputs("previous configuration", initial);
+    fclose(initial);
+    load_default_config(&cfg);
+
+    snprintf(cfg.turn_username, sizeof(cfg.turn_username), "user;admin");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.turn_username[0] = '\0';
+    snprintf(cfg.turn_password, sizeof(cfg.turn_password), "secret\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.turn_password[0] = '\0';
+    snprintf(cfg.mqtt_password, sizeof(cfg.mqtt_password), "secret#comment");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+
+    char content[64] = {0};
+    FILE *saved = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    TEST_ASSERT_EQUAL_UINT(strlen("previous configuration"),
+                           fread(content, 1, sizeof(content) - 1, saved));
+    fclose(saved);
+    TEST_ASSERT_EQUAL_STRING("previous configuration", content);
+    unlink(path);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+}
+
 static void check_bind_mount_fallback(bool fail_copy) {
     char directory[] = "/tmp/lightnvr_config_bind_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
@@ -1286,6 +1333,36 @@ static void test_save_config_bind_mount_restores_after_write_failure(void) {
     check_bind_mount_fallback(true);
 }
 
+static void test_save_config_bind_mount_retries_short_write(void) {
+    char directory[] = "/tmp/lightnvr_config_short_write_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *initial = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(initial);
+    fputs("previous configuration", initial);
+    fclose(initial);
+    struct stat before, after;
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
+    load_default_config(&cfg);
+    busy_config_rename = true;
+    short_config_pwrite = true;
+    short_config_pwrite_inode = before.st_ino;
+    short_config_pwrite_max_bytes = 7;
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, path));
+    TEST_ASSERT_TRUE(short_config_pwrite_done);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
+    TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
+    FILE *saved = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    char content[128] = {0};
+    TEST_ASSERT_TRUE(fread(content, 1, sizeof(content) - 1, saved) > 0);
+    fclose(saved);
+    TEST_ASSERT_NOT_NULL(strstr(content, "LightNVR Configuration File"));
+    unlink(path);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+}
+
 static void test_save_config_updates_file_in_read_only_directory(void) {
     if (geteuid() == 0) {
         TEST_IGNORE_MESSAGE("Skipping read-only directory permission test when running as root.");
@@ -1319,8 +1396,10 @@ int main(void) {
     RUN_TEST(test_save_config_preserves_legacy_file_when_replacement_fails);
     RUN_TEST(test_save_config_atomically_replaces_owned_file);
     RUN_TEST(test_save_config_preserves_owned_file_when_publish_fails);
+    RUN_TEST(test_save_config_rejects_unsafe_credentials_before_writing);
     RUN_TEST(test_save_config_bind_mount_fallback);
     RUN_TEST(test_save_config_bind_mount_restores_after_write_failure);
+    RUN_TEST(test_save_config_bind_mount_retries_short_write);
     RUN_TEST(test_save_config_updates_file_in_read_only_directory);
 
     RUN_TEST(test_stream_config_t_size_under_16k);
