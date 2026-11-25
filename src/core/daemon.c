@@ -27,7 +27,6 @@
 #include "core/daemon.h"
 #include "core/path_utils.h"
 #include "core/shutdown_coordinator.h"
-#include "core/signal_safe.h"
 #include "utils/strings.h"
 
 extern _Atomic bool running; // Reference to the global variable defined in main.c
@@ -192,15 +191,12 @@ int init_daemon(const char *pid_file) {
 
 // Signal handler for daemon
 // IMPORTANT: This handler must be async-signal-safe - no mutex operations!
-// Only use: write(), _exit(), alarm(), volatile sig_atomic_t, and lock-free
+// Only use: volatile sig_atomic_t and lock-free
 // C11 atomics (main.c asserts ATOMIC_BOOL_LOCK_FREE == 2)
 static void daemon_signal_handler(int sig) {
     switch (sig) {
     case SIGTERM:
     case SIGINT:
-        // Use write() instead of log_info() - it's async-signal-safe
-        signal_safe_write("[DAEMON] Received shutdown signal, initiating shutdown...\n");
-
         // Set global flag to stop main loop
         // Safe: running is a lock-free _Atomic bool (asserted in main.c)
         running = false;
@@ -221,15 +217,12 @@ static void daemon_signal_handler(int sig) {
         break;
 
     case SIGHUP:
-        // Just write a message, don't try to reload config in signal handler
-        // Config reload is NOT async-signal-safe
-        signal_safe_write("[DAEMON] Received SIGHUP signal\n");
+        // No reload work is safe in this signal handler.
         break;
 
     case SIGALRM:
         // Compatibility for externally delivered SIGALRM; HLS cleanup no
         // longer arms alarms or changes the process signal dispositions.
-        signal_safe_write("[DAEMON] Stray SIGALRM caught at top level (harmless, ignored)\n");
         break;
 
     default:
@@ -272,7 +265,6 @@ int write_pid_file(const char *pid_file) {
     if (write(fd, pid_str, strlen(pid_str)) != strlen(pid_str)) {
         log_error("Failed to write to PID file %s: %s", pid_file, strerror(errno));
         close(fd);
-        unlink(pid_file);
         return -1;
     }
     
@@ -343,9 +335,10 @@ static int check_running_daemon(const char *pid_file) {
     for (;;) {
         if (lockf(fd, F_TLOCK, 0) == 0) {
             // We got the lock, which means no other process has it
-            // This is a stale PID file
-            log_warn("Found stale PID file %s (not locked), removing it", pid_file);
-            remove_pid_file(fd, pid_file);  // closes fd
+            // Keep the inode in place; write_pid_file will re-open, lock and
+            // overwrite it. Unlinking here creates a second-lock race.
+            log_warn("Found stale PID file %s (not locked)", pid_file);
+            close(fd);
             return 0;
         }
 

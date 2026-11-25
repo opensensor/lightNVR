@@ -34,7 +34,6 @@
 #include "core/logger.h"
 #include "core/daemon.h"
 #include "core/shutdown_coordinator.h"
-#include "core/signal_safe.h"
 #include "core/curl_init.h"
 #include "core/event_bus.h"
 #include "core/event_identity.h"
@@ -144,7 +143,7 @@ http_server_handle_t http_server = NULL;
 
 // Improved signal handler with phased shutdown approach
 // IMPORTANT: This handler must be async-signal-safe - no mutex operations!
-// Only use: write(), _exit(), alarm(), volatile sig_atomic_t, and lock-free
+// Only use: _exit(), volatile sig_atomic_t, and lock-free
 // C11 atomics (ATOMIC_BOOL_LOCK_FREE == 2 is asserted above)
 static void signal_handler(int sig) {
     (void)sig; // Suppress unused parameter warning
@@ -165,12 +164,8 @@ static void signal_handler(int sig) {
     if (atomic_exchange(&shutdown_in_progress, true)) {
         // Second signal during shutdown - force exit immediately
         // Using _exit() is async-signal-safe
-        signal_safe_write("[SIGNAL] Received signal during shutdown, forcing immediate exit\n");
         _exit(1);
     }
-
-    // Write to stderr (async-signal-safe)
-    signal_safe_write("[SIGNAL] Received shutdown signal, initiating shutdown...\n");
 
     // IMPORTANT: Do NOT call initiate_shutdown() here!
     // initiate_shutdown() uses pthread_mutex_lock() and log_info() which are NOT async-signal-safe
@@ -200,7 +195,6 @@ static void signal_handler(int sig) {
 // Shutdown deadlines belong to start_shutdown_watchdog_thread().
 static void alarm_handler(int sig) {
     (void)sig;
-    signal_safe_write("[SIGNAL] Stray SIGALRM caught at top level (harmless, ignored)\n");
 }
 
 // How long a graceful shutdown gets before the watchdog force-kills the
@@ -392,8 +386,7 @@ static int check_and_kill_existing_instance(const char *pid_file) {
                             memchr(pid_buf, '\0', pid_len) != NULL;
     fclose(fp);
     if (invalid_pid_file) {
-        log_warn("Invalid PID file format");
-        unlink(pid_file);
+        log_warn("Invalid PID file format; retaining path until the PID lock is acquired");
         return 0;
     }
     pid_buf[pid_len] = '\0';
@@ -406,8 +399,7 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         end_ptr++;
     }
     if (end_ptr == pid_buf || *end_ptr != '\0' || errno == ERANGE || pid_val <= 0 || (long)(pid_t)pid_val != pid_val) {
-        log_warn("Invalid PID file format");
-        unlink(pid_file);  // Remove invalid PID file
+        log_warn("Invalid PID file format; retaining path until the PID lock is acquired");
         return 0;
     }
     pid_t existing_pid = (pid_t)pid_val;
@@ -416,13 +408,8 @@ static int check_and_kill_existing_instance(const char *pid_file) {
     // This can happen after container restarts with PID reuse (often PID 1),
     // and attempting termination would self-signal and break startup.
     if (existing_pid == getpid()) {
-        log_warn("PID file references current process (PID %d); removing stale PID file",
+        log_warn("PID file references current process (PID %d); checking its lock during initialization",
                  existing_pid);
-        if (unlink(pid_file) != 0 && errno != ENOENT) {
-            log_error("Failed to remove stale self-referencing PID file: %s",
-                      strerror(errno));
-            return -1;
-        }
         return 0;
     }
 
@@ -434,9 +421,8 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         // (e.g. go2rtc, a shell, or a system daemon).  Killing that process would
         // crash the container, creating the restart loop described in issue #438.
         if (!is_lightnvr_process(existing_pid)) {
-            log_warn("PID %d from stale PID file is not a LightNVR process (PID reuse after container restart); removing stale PID file",
+            log_warn("PID %d from stale PID file is not a LightNVR process (PID reuse after container restart); checking PID lock during initialization",
                      existing_pid);
-            unlink(pid_file);
             return 0;
         }
 
@@ -500,9 +486,8 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             return -1;
         }
     } else if (errno == ESRCH) {
-        // Process doesn't exist, remove stale PID file
-        log_warn("Removing stale PID file");
-        unlink(pid_file);
+        // Preserve the path so write_pid_file can lock and overwrite this inode.
+        log_warn("Stale PID file; checking its lock during initialization");
     } else {
         // Process may still exist but cannot be signalled (e.g. EPERM), or another error occurred.
         // Do not remove PID file in this case, to avoid allowing a duplicate instance to start.
@@ -866,7 +851,7 @@ int main(int argc, char *argv[]) {
     // Copy configuration to global config
     if (!config_copy(&g_config, &config)) {
         log_error("Failed to copy database-backed configuration");
-        return EXIT_FAILURE;
+        goto cleanup;
     }
 
     // Register the legacy recording root as a stable storage target and attach
