@@ -2179,8 +2179,10 @@ static void check_and_ensure_services(void) {
             current_config->streams[i].enabled &&
             current_config->streams[i].detection_based_recording &&
             is_detection_recording_scheduled(&current_config->streams[i])) {
-            // If continuous recording is also enabled, run detection in annotation-only mode
-            bool annotation_only = current_config->streams[i].record;
+            // If continuous recording is currently scheduled/active, run detection in annotation-only mode
+            bool annotation_only =
+                current_config->streams[i].record &&
+                is_recording_scheduled(&current_config->streams[i]);
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
             char resolved_detection_model[MAX_PATH_LENGTH];
