@@ -17,6 +17,7 @@ unsafe extern "C" {
         ...
     );
     unsafe fn config_copy(destination: *mut config_t, source: *const config_t) -> bool;
+    unsafe fn config_reset_stream_slots(config: *mut config_t) -> ::core::ffi::c_int;
     static mut g_config: config_t;
     unsafe fn get_stream_config(
         handle: stream_handle_t,
@@ -1756,15 +1757,6 @@ impl stream_state_t {
 }
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
-pub const MAX_STREAMS: ::core::ffi::c_int = LIGHTNVR_MAX_STREAMS;
-#[inline]
-unsafe extern "C" fn configured_stream_slots() -> ::core::ffi::c_int {
-    let mut slots: ::core::ffi::c_int = g_config.max_streams;
-    if slots <= 0 as ::core::ffi::c_int || slots > MAX_STREAMS {
-        return MAX_STREAMS;
-    }
-    return slots;
-}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_stream_hls_writer(mut stream: stream_handle_t) -> *mut hls_writer_t {
     if stream.is_null() {
@@ -2001,7 +1993,11 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
         pthread_mutex_unlock(&raw mut config_mutex);
         return &raw mut g_config;
     }
-    let mut ms: ::core::ffi::c_int = configured_stream_slots();
+    if config_reset_stream_slots(&raw mut db_config) != 0 as ::core::ffi::c_int {
+        pthread_mutex_unlock(&raw mut config_mutex);
+        return &raw mut g_config;
+    }
+    let mut ms: ::core::ffi::c_int = db_config.max_streams;
     let mut db_streams: *mut stream_config_t =
         calloc(ms as size_t, ::core::mem::size_of::<stream_config_t>()) as *mut stream_config_t;
     if !db_streams.is_null() {
@@ -2102,4 +2098,3 @@ pub unsafe extern "C" fn stop_transcode_stream(
     return result;
 }
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
-pub const LIGHTNVR_MAX_STREAMS: ::core::ffi::c_int = 1024 as ::core::ffi::c_int;

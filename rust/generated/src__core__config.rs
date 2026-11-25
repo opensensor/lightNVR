@@ -1777,6 +1777,24 @@ unsafe extern "C" fn init_stream_config_defaults(mut stream: *mut stream_config_
     (*stream).observation_max_bytes = OBSERVATION_DEFAULT_MAX_BYTES as int64_t;
 }
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn config_reset_stream_slots(
+    mut config: *mut config_t,
+) -> ::core::ffi::c_int {
+    if config.is_null()
+        || (*config).streams.is_null()
+        || (*config).max_streams <= 0 as ::core::ffi::c_int
+        || (*config).max_streams > MAX_STREAMS
+    {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < (*config).max_streams {
+        init_stream_config_defaults((*config).streams.offset(i as isize));
+        i += 1;
+    }
+    return 0 as ::core::ffi::c_int;
+}
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     if config.is_null() {
         return;
@@ -6191,8 +6209,8 @@ unsafe extern "C" fn publish_config_in_place(
         return -1 as ::core::ffi::c_int;
     }
     let mut result: ::core::ffi::c_int = copy_config_fd(read_fd, backup_fd);
-    close(read_fd);
     if result != 0 as ::core::ffi::c_int {
+        close(read_fd);
         close(backup_fd);
         unlink(&raw mut backup_path as *mut ::core::ffi::c_char);
         lock.l_type = F_UNLCK as ::core::ffi::c_short;
@@ -6211,6 +6229,7 @@ unsafe extern "C" fn publish_config_in_place(
                     as *const ::core::ffi::c_char,
                 &raw mut backup_path as *mut ::core::ffi::c_char,
             );
+            close(read_fd);
             close(backup_fd);
             lock.l_type = F_UNLCK as ::core::ffi::c_short;
             fcntl(original_fd, F_SETLK, &raw mut lock);
@@ -6218,6 +6237,7 @@ unsafe extern "C" fn publish_config_in_place(
             return -1 as ::core::ffi::c_int;
         }
     }
+    close(read_fd);
     close(backup_fd);
     unlink(&raw mut backup_path as *mut ::core::ffi::c_char);
     lock.l_type = F_UNLCK as ::core::ffi::c_short;
