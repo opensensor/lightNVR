@@ -2171,8 +2171,20 @@ static void check_and_ensure_services(void) {
             }
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
+            char resolved_detection_model[PATH_MAX];
+            const char *detection_model_path = current_config->streams[i].detection_model;
+            if (current_config->streams[i].detection_model[0] != '/') {
+                int n = snprintf(resolved_detection_model, sizeof(resolved_detection_model),
+                                 "%s/%s", config.models_path, current_config->streams[i].detection_model);
+                if (n < 0 || (size_t)n >= sizeof(resolved_detection_model)) {
+                    log_warn("Detection model path too long for stream: %s",
+                             current_config->streams[i].name);
+                    continue;
+                }
+                detection_model_path = resolved_detection_model;
+            }
             if (start_unified_detection_thread(current_config->streams[i].name,
-                                              current_config->streams[i].detection_model,
+                                              detection_model_path,
                                               current_config->streams[i].detection_threshold,
                                               current_config->streams[i].pre_detection_buffer,
                                               current_config->streams[i].post_detection_buffer,
