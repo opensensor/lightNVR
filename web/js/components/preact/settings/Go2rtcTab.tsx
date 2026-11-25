@@ -480,6 +480,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                       <button
                         type="button"
                         class="mt-2 text-xs underline text-yellow-900 dark:text-yellow-100"
+                        disabled={!canModifySettings}
                         onClick={() => {
                           setSettings(prev => ({
                             ...prev,
