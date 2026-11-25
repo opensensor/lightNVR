@@ -590,6 +590,8 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onInput={handleOverrideChange}
                   onBlur={handleOverrideBlur}
                   disabled={!canModifySettings}
+                  aria-invalid={overrideValidation && overrideValidation.valid === false && overrideValidation.error ? true : undefined}
+                  aria-describedby={overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'go2rtc-config-override-error' : undefined}
                   placeholder={"ffmpeg:\n  h264_hw: \"-codec:v h264_v4l2m2m\"\n\nlog:\n  level: trace"}
                 />
 
@@ -617,7 +619,12 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
                 {/* Inline error */}
                 {overrideValidation && overrideValidation.valid === false && overrideValidation.error ? (
-                  <div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-800 dark:text-red-200">
+                  <div
+                    id="go2rtc-config-override-error"
+                    role="alert"
+                    aria-live="assertive"
+                    class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-800 dark:text-red-200"
+                  >
                     {overrideValidation.error.line || overrideValidation.error.column ? (
                       <div class="font-medium">
                         {t('settings.go2rtcErrorPosition', { line: overrideValidation.error.line || '?', column: overrideValidation.error.column || '?' })}
