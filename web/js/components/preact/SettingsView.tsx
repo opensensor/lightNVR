@@ -325,8 +325,12 @@ export function SettingsView() {
       mp4DirectoryFormat: settingsData.mp4_directory_format || 'year_month_day',
       // max_storage_size is stored in bytes; the UI field is in GB. Convert on
       // load (0/unset => empty = unlimited).
+      // Preserve precision to avoid silently changing non-integer GiB limits
+      // (for example, values below 0.5 GiB rounding to 0 = unlimited).
       maxStorage: settingsData.max_storage_size
-        ? String(Math.round(settingsData.max_storage_size / (1024 * 1024 * 1024)))
+        ? (settingsData.max_storage_size / (1024 * 1024 * 1024))
+            .toFixed(3)
+            .replace(/\.?0+$/, '')
         : '',
       retention: settingsData.retention_days?.toString() || '',
       autoDelete: settingsData.auto_delete_oldest || false,
