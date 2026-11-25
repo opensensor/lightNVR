@@ -16,7 +16,7 @@ unsafe extern "C" {
         format: *const ::core::ffi::c_char,
         ...
     );
-    unsafe fn config_copy(destination: *mut config_t, source: *const config_t);
+    unsafe fn config_copy(destination: *mut config_t, source: *const config_t) -> bool;
     static mut g_config: config_t;
     unsafe fn get_stream_config(
         handle: stream_handle_t,
@@ -1997,7 +1997,10 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
         },
     };
     pthread_mutex_lock(&raw mut config_mutex);
-    config_copy(&raw mut db_config, &raw mut g_config);
+    if !config_copy(&raw mut db_config, &raw mut g_config) {
+        pthread_mutex_unlock(&raw mut config_mutex);
+        return &raw mut g_config;
+    }
     let mut ms: ::core::ffi::c_int = configured_stream_slots();
     let mut db_streams: *mut stream_config_t =
         calloc(ms as size_t, ::core::mem::size_of::<stream_config_t>()) as *mut stream_config_t;

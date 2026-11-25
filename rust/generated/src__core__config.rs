@@ -54,6 +54,8 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
     unsafe fn fsync(__fd: ::core::ffi::c_int) -> ::core::ffi::c_int;
     unsafe fn ftruncate(__fd: ::core::ffi::c_int, __length: __off_t) -> ::core::ffi::c_int;
+    unsafe fn fcntl(__fd: ::core::ffi::c_int, __cmd: ::core::ffi::c_int, ...)
+    -> ::core::ffi::c_int;
     unsafe fn open(
         __file: *const ::core::ffi::c_char,
         __oflag: ::core::ffi::c_int,
@@ -499,6 +501,15 @@ impl C2Rust_Unnamed {
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
+pub struct flock {
+    pub l_type: ::core::ffi::c_short,
+    pub l_whence: ::core::ffi::c_short,
+    pub l_start: __off_t,
+    pub l_len: __off_t,
+    pub l_pid: __pid_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
 pub struct stat {
     pub st_dev: __dev_t,
     pub st_ino: __ino_t,
@@ -818,6 +829,8 @@ pub struct config_ini_context_t {
 }
 pub const R_OK: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
 pub const W_OK: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
+pub const F_SETLK64: ::core::ffi::c_int = 6 as ::core::ffi::c_int;
+pub const F_SETLKW64: ::core::ffi::c_int = 7 as ::core::ffi::c_int;
 pub const O_RDONLY: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const O_WRONLY: ::core::ffi::c_int = 0o1 as ::core::ffi::c_int;
 pub const O_RDWR: ::core::ffi::c_int = 0o2 as ::core::ffi::c_int;
@@ -827,9 +840,14 @@ pub const O_APPEND: ::core::ffi::c_int = 0o2000 as ::core::ffi::c_int;
 pub const O_NONBLOCK: ::core::ffi::c_int = 0o4000 as ::core::ffi::c_int;
 pub const __O_DIRECTORY: ::core::ffi::c_int = 0o200000 as ::core::ffi::c_int;
 pub const __O_NOFOLLOW: ::core::ffi::c_int = 0o400000 as ::core::ffi::c_int;
+pub const F_SETLK: ::core::ffi::c_int = F_SETLK64;
+pub const F_SETLKW: ::core::ffi::c_int = F_SETLKW64;
 pub const O_DIRECTORY: ::core::ffi::c_int = __O_DIRECTORY;
 pub const O_NOFOLLOW: ::core::ffi::c_int = __O_NOFOLLOW;
 pub const O_CLOEXEC: ::core::ffi::c_int = __O_CLOEXEC;
+pub const F_WRLCK: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const F_UNLCK: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
+pub const SEEK_SET: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const AT_SYMLINK_NOFOLLOW: ::core::ffi::c_int = 0x100 as ::core::ffi::c_int;
 #[inline]
 unsafe extern "C" fn toupper(mut __c: ::core::ffi::c_int) -> ::core::ffi::c_int {
@@ -1039,9 +1057,15 @@ pub unsafe extern "C" fn config_set_mp4_faststart(mut config: *mut config_t, mut
     pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn config_copy(mut destination: *mut config_t, mut source: *const config_t) {
-    if destination.is_null() || source.is_null() || destination == source as *mut config_t {
-        return;
+pub unsafe extern "C" fn config_copy(
+    mut destination: *mut config_t,
+    mut source: *const config_t,
+) -> bool {
+    if destination.is_null() || source.is_null() {
+        return r#false != 0;
+    }
+    if destination == source as *mut config_t {
+        return r#true != 0;
     }
     pthread_mutex_lock(&raw mut mp4_faststart_mutex);
     let mut copy: *mut stream_config_t = ::core::ptr::null_mut::<stream_config_t>();
@@ -1059,7 +1083,7 @@ pub unsafe extern "C" fn config_copy(mut destination: *mut config_t, mut source:
                 (*source).max_streams,
             );
             pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
-            return;
+            return r#false != 0;
         }
         let mut bytes: size_t = ((*source).max_streams as size_t)
             .wrapping_mul(::core::mem::size_of::<stream_config_t>());
@@ -1080,7 +1104,7 @@ pub unsafe extern "C" fn config_copy(mut destination: *mut config_t, mut source:
                     bytes,
                 );
                 pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
-                return;
+                return r#false != 0;
             }
         }
         memcpy(
@@ -1100,6 +1124,7 @@ pub unsafe extern "C" fn config_copy(mut destination: *mut config_t, mut source:
         free(old_streams as *mut ::core::ffi::c_void);
     }
     pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+    return r#true != 0;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn playback_transport_is_valid(
@@ -6073,6 +6098,21 @@ unsafe extern "C" fn copy_config_fd(
     }
     return fsync(destination_fd);
 }
+static mut config_in_place_mutex: pthread_mutex_t = pthread_mutex_t {
+    __data: __pthread_mutex_s {
+        __lock: 0 as ::core::ffi::c_int,
+        __count: 0 as ::core::ffi::c_uint,
+        __owner: 0 as ::core::ffi::c_int,
+        __nusers: 0 as ::core::ffi::c_uint,
+        __kind: C2Rust_Unnamed_1::PTHREAD_MUTEX_TIMED_NP.0 as ::core::ffi::c_int,
+        __spins: 0 as ::core::ffi::c_short,
+        __glibc_reserved: 0 as ::core::ffi::c_short,
+        __list: __pthread_internal_list {
+            __prev: ::core::ptr::null_mut::<__pthread_internal_list>(),
+            __next: ::core::ptr::null_mut::<__pthread_internal_list>(),
+        },
+    },
+};
 unsafe extern "C" fn publish_config_in_place(
     mut dir_fd: ::core::ffi::c_int,
     mut filename: *const ::core::ffi::c_char,
@@ -6081,6 +6121,18 @@ unsafe extern "C" fn publish_config_in_place(
     mut staged_fd: ::core::ffi::c_int,
 ) -> ::core::ffi::c_int {
     if original_fd < 0 as ::core::ffi::c_int || original_stat.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    pthread_mutex_lock(&raw mut config_in_place_mutex);
+    let mut lock: flock = flock {
+        l_type: F_WRLCK as ::core::ffi::c_short,
+        l_whence: SEEK_SET as ::core::ffi::c_short,
+        l_start: 0 as __off_t,
+        l_len: 0 as __off_t,
+        l_pid: 0,
+    };
+    if fcntl(original_fd, F_SETLKW, &raw mut lock) != 0 as ::core::ffi::c_int {
+        pthread_mutex_unlock(&raw mut config_in_place_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut read_fd: ::core::ffi::c_int =
@@ -6120,6 +6172,9 @@ unsafe extern "C" fn publish_config_in_place(
         if read_fd >= 0 as ::core::ffi::c_int {
             close(read_fd);
         }
+        lock.l_type = F_UNLCK as ::core::ffi::c_short;
+        fcntl(original_fd, F_SETLK, &raw mut lock);
+        pthread_mutex_unlock(&raw mut config_in_place_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut backup_path: [::core::ffi::c_char; 35] = ::core::mem::transmute::<
@@ -6130,6 +6185,9 @@ unsafe extern "C" fn publish_config_in_place(
         mkstemp(&raw mut backup_path as *mut ::core::ffi::c_char);
     if backup_fd < 0 as ::core::ffi::c_int {
         close(read_fd);
+        lock.l_type = F_UNLCK as ::core::ffi::c_short;
+        fcntl(original_fd, F_SETLK, &raw mut lock);
+        pthread_mutex_unlock(&raw mut config_in_place_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut result: ::core::ffi::c_int = copy_config_fd(read_fd, backup_fd);
@@ -6137,6 +6195,9 @@ unsafe extern "C" fn publish_config_in_place(
     if result != 0 as ::core::ffi::c_int {
         close(backup_fd);
         unlink(&raw mut backup_path as *mut ::core::ffi::c_char);
+        lock.l_type = F_UNLCK as ::core::ffi::c_short;
+        fcntl(original_fd, F_SETLK, &raw mut lock);
+        pthread_mutex_unlock(&raw mut config_in_place_mutex);
         return -1 as ::core::ffi::c_int;
     }
     result = copy_config_fd(staged_fd, original_fd);
@@ -6151,11 +6212,17 @@ unsafe extern "C" fn publish_config_in_place(
                 &raw mut backup_path as *mut ::core::ffi::c_char,
             );
             close(backup_fd);
+            lock.l_type = F_UNLCK as ::core::ffi::c_short;
+            fcntl(original_fd, F_SETLK, &raw mut lock);
+            pthread_mutex_unlock(&raw mut config_in_place_mutex);
             return -1 as ::core::ffi::c_int;
         }
     }
     close(backup_fd);
     unlink(&raw mut backup_path as *mut ::core::ffi::c_char);
+    lock.l_type = F_UNLCK as ::core::ffi::c_short;
+    fcntl(original_fd, F_SETLK, &raw mut lock);
+    pthread_mutex_unlock(&raw mut config_in_place_mutex);
     return result;
 }
 #[unsafe(no_mangle)]

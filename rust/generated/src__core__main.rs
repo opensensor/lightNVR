@@ -144,7 +144,7 @@ unsafe extern "C" {
         error: *mut ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
     unsafe fn load_config(config_0: *mut config_t) -> ::core::ffi::c_int;
-    unsafe fn config_copy(destination: *mut config_t, source: *const config_t);
+    unsafe fn config_copy(destination: *mut config_t, source: *const config_t) -> bool;
     unsafe fn load_stream_configs(config_0: *mut config_t) -> ::core::ffi::c_int;
     unsafe fn set_custom_config_path(path: *const ::core::ffi::c_char);
     static mut g_config: config_t;
@@ -2797,7 +2797,15 @@ unsafe fn main_0(
             );
         }
     }
-    config_copy(&raw mut g_config, &raw mut config);
+    if !config_copy(&raw mut g_config, &raw mut config) {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to copy startup configuration\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return EXIT_FAILURE;
+    }
     if generate_go2rtc_config_only {
         if curl_init_global() != 0 as ::core::ffi::c_int {
             _log_message_ctx(
@@ -2826,7 +2834,19 @@ unsafe fn main_0(
                             .as_ptr() as *const ::core::ffi::c_char,
                     );
                 }
-                config_copy(&raw mut g_config, &raw mut config);
+                if !config_copy(&raw mut g_config, &raw mut config) {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Failed to copy stream configuration for go2rtc generation\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                    );
+                    shutdown_database();
+                    lightnvr_sentry_shutdown();
+                    curl_cleanup_global();
+                    return EXIT_FAILURE;
+                }
             } else {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_WARN,
@@ -3012,7 +3032,16 @@ unsafe fn main_0(
                         as *const ::core::ffi::c_char,
                 );
             }
-            config_copy(&raw mut g_config, &raw mut config);
+            if !config_copy(&raw mut g_config, &raw mut config) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Failed to copy database-backed configuration\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                );
+                return EXIT_FAILURE;
+            }
             default_recording_root = if config.record_mp4_directly as ::core::ffi::c_int != 0
                 && config.mp4_storage_path[0usize] as ::core::ffi::c_int
                     != '\0' as ::core::ffi::c_int
