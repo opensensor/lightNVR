@@ -1568,6 +1568,7 @@ int load_config(config_t *config) {
                 loaded = 1;
             } else {
                 log_error("Failed to load configuration from custom path: %s", canon_path);
+                return -1;
             }
         } else {
             log_error("Custom config file not accessible: %s", g_custom_config_path);
