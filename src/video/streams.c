@@ -245,8 +245,12 @@ int stop_transcode_stream(const char *stream_name) {
 #ifdef USE_GO2RTC
     if (should_use_go2rtc()) {
         // Stop MP4 recording via go2rtc integration
-        if (go2rtc_integration_stop_recording(stream_name) != 0) {
+        int recording_stop_result = go2rtc_integration_stop_recording(stream_name);
+        if (recording_stop_result != 0) {
             log_warn("Failed to stop MP4 recording using go2rtc integration: %s", stream_name);
+            if (result == 0) {
+                result = recording_stop_result;
+            }
             // Continue anyway
         }
     } else {
