@@ -35,6 +35,7 @@ unsafe extern "C" {
         __format: *const ::core::ffi::c_char,
         ...
     ) -> ::core::ffi::c_int;
+    unsafe fn fgetc(__stream: *mut FILE) -> ::core::ffi::c_int;
     unsafe fn fgets(
         __s: *mut ::core::ffi::c_char,
         __n: ::core::ffi::c_int,
@@ -45,6 +46,11 @@ unsafe extern "C" {
     unsafe fn sigfillset(__set: *mut sigset_t) -> ::core::ffi::c_int;
     unsafe fn sigaddset(__set: *mut sigset_t, __signo: ::core::ffi::c_int) -> ::core::ffi::c_int;
     unsafe fn sigdelset(__set: *mut sigset_t, __signo: ::core::ffi::c_int) -> ::core::ffi::c_int;
+    unsafe fn sigprocmask(
+        __how: ::core::ffi::c_int,
+        __set: *const sigset_t,
+        __oset: *mut sigset_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn sigaction(
         __sig: ::core::ffi::c_int,
         __act: *const sigaction,
@@ -374,6 +380,10 @@ unsafe extern "C" {
         __s2: *const ::core::ffi::c_char,
         __n: size_t,
     ) -> ::core::ffi::c_int;
+    unsafe fn strchr(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
     unsafe fn strcspn(
         __s: *const ::core::ffi::c_char,
         __reject: *const ::core::ffi::c_char,
@@ -395,7 +405,6 @@ unsafe extern "C" {
         __base: ::core::ffi::c_int,
     ) -> ::core::ffi::c_longlong;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
-    unsafe fn exit(__status: ::core::ffi::c_int) -> !;
     unsafe fn getenv(__name: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
 }
 pub type size_t = usize;
@@ -1169,6 +1178,7 @@ pub struct C2Rust_Unnamed_13 {
 }
 pub type http_server_t = http_server;
 pub type http_server_handle_t = *mut http_server_t;
+pub const EOF: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
 pub const SA_RESTART: ::core::ffi::c_int = 0x10000000 as ::core::ffi::c_int;
 pub const SIG_BLOCK: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const SIG_SETMASK: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
@@ -1686,15 +1696,44 @@ unsafe extern "C" fn check_and_kill_existing_instance(
         unlink(pid_file);
         return 0 as ::core::ffi::c_int;
     }
+    let mut truncated_pid_line: bool = strchr(
+        &raw mut pid_buf as *mut ::core::ffi::c_char,
+        '\n' as ::core::ffi::c_int,
+    )
+    .is_null()
+        && fgetc(fp) != EOF;
     fclose(fp);
+    if truncated_pid_line {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Invalid PID file format\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        unlink(pid_file);
+        return 0 as ::core::ffi::c_int;
+    }
     let mut end_ptr: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    *__errno_location() = 0 as ::core::ffi::c_int;
     let mut pid_val: ::core::ffi::c_long = strtol(
         &raw mut pid_buf as *mut ::core::ffi::c_char,
         &raw mut end_ptr,
         10 as ::core::ffi::c_int,
     );
+    while *end_ptr as ::core::ffi::c_int == ' ' as ::core::ffi::c_int
+        || *end_ptr as ::core::ffi::c_int == '\t' as ::core::ffi::c_int
+        || *end_ptr as ::core::ffi::c_int == '\n' as ::core::ffi::c_int
+        || *end_ptr as ::core::ffi::c_int == '\r' as ::core::ffi::c_int
+        || *end_ptr as ::core::ffi::c_int == '\u{c}' as ::core::ffi::c_int
+        || *end_ptr as ::core::ffi::c_int == '\u{b}' as ::core::ffi::c_int
+    {
+        end_ptr = end_ptr.offset(1);
+    }
     if end_ptr == &raw mut pid_buf as *mut ::core::ffi::c_char
+        || *end_ptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+        || *__errno_location() == ERANGE
         || pid_val <= 0 as ::core::ffi::c_long
+        || pid_val as pid_t as ::core::ffi::c_long != pid_val
     {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_WARN,
@@ -2065,6 +2104,7 @@ unsafe fn main_0(
         pid_file: [0; 512],
     };
     let mut service_check_init_time: time_t = 0;
+    let mut exit_code: ::core::ffi::c_int = EXIT_FAILURE;
     let mut pid_fd: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
     if prctl(
         PR_SET_THP_DISABLE,
@@ -4536,6 +4576,7 @@ unsafe fn main_0(
                                             restart_requested as ::core::ffi::c_int,
                                         );
                                         initiate_shutdown();
+                                        exit_code = EXIT_SUCCESS;
                                     }
                                 }
                             }
@@ -4545,6 +4586,7 @@ unsafe fn main_0(
             }
         }
     }
+    running = r#false != 0;
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
@@ -4581,14 +4623,7 @@ unsafe fn main_0(
     pthread_sigmask(SIG_BLOCK, &raw mut block_mask, &raw mut old_mask);
     let mut cleanup_pid: pid_t = fork();
     if cleanup_pid == 0 as ::core::ffi::c_int {
-        if setpgid(0 as __pid_t, 0 as __pid_t) != 0 as ::core::ffi::c_int {
-            fprintf(
-                stderr,
-                b"Watchdog: Failed to create new process group: %s\n\0".as_ptr()
-                    as *const ::core::ffi::c_char,
-                strerror(*__errno_location()),
-            );
-        }
+        setpgid(0 as __pid_t, 0 as __pid_t);
         let mut sa_default: sigaction = sigaction {
             __sigaction_handler: C2Rust_Unnamed_9 { sa_handler: None },
             sa_mask: __sigset_t { __val: [0; 16] },
@@ -4623,49 +4658,20 @@ unsafe fn main_0(
         );
         let mut empty_mask: sigset_t = __sigset_t { __val: [0; 16] };
         sigemptyset(&raw mut empty_mask);
-        pthread_sigmask(
+        sigprocmask(
             SIG_SETMASK,
             &raw mut empty_mask,
-            ::core::ptr::null_mut::<__sigset_t>(),
+            ::core::ptr::null_mut::<sigset_t>(),
         );
         let mut parent_pid: pid_t = getppid();
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS as ::core::ffi::c_uint);
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Cleanup process phase 1 timed out after %d seconds\0".as_ptr()
-                as *const ::core::ffi::c_char,
-            900 as ::core::ffi::c_int,
-        );
         kill(parent_pid, SIGUSR1);
         sleep(15 as ::core::ffi::c_uint);
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Cleanup process phase 2 timed out after 15 more seconds, forcing exit\0".as_ptr()
-                as *const ::core::ffi::c_char,
-        );
         kill(parent_pid, SIGKILL);
         if restart_requested {
             if container_mode {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_INFO,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Restart requested in container mode after forced cleanup - exiting for orchestrator restart\0"
-                        .as_ptr() as *const ::core::ffi::c_char,
-                );
-                exit(EXIT_SUCCESS);
+                _exit(EXIT_SUCCESS);
             } else if !saved_argv.is_null() {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_INFO,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Restart was requested, re-executing LightNVR after forced cleanup...\0"
-                        .as_ptr() as *const ::core::ffi::c_char,
-                );
                 usleep(2000000 as ::core::ffi::c_int as __useconds_t);
                 let mut i_2: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
                 while i_2 < 10 as ::core::ffi::c_int {
@@ -4683,35 +4689,11 @@ unsafe fn main_0(
                 );
                 if len > 0 as ssize_t {
                     exe_path[len as usize] = '\0' as ::core::ffi::c_char;
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_INFO,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Executing: %s\0".as_ptr() as *const ::core::ffi::c_char,
-                        &raw mut exe_path as *mut ::core::ffi::c_char,
-                    );
                     execv(&raw mut exe_path as *mut ::core::ffi::c_char, saved_argv);
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_ERROR,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Failed to restart after forced cleanup: %s\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                        strerror(*__errno_location()),
-                    );
-                } else {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_ERROR,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Failed to get executable path for restart: %s\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                        strerror(*__errno_location()),
-                    );
                 }
             }
         }
-        exit(EXIT_FAILURE);
+        _exit(EXIT_FAILURE);
     } else if cleanup_pid > 0 as ::core::ffi::c_int {
         let mut sa_usr1: sigaction = sigaction {
             __sigaction_handler: C2Rust_Unnamed_9 { sa_handler: None },
@@ -5272,7 +5254,7 @@ unsafe fn main_0(
         }
     }
     shutdown_logger();
-    return EXIT_SUCCESS;
+    return exit_code;
 }
 unsafe extern "C" fn check_and_ensure_services() {
     if is_shutdown_initiated() as ::core::ffi::c_int != 0
@@ -5510,6 +5492,7 @@ pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
 pub const ENOENT: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const EINTR: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
+pub const ERANGE: ::core::ffi::c_int = 34 as ::core::ffi::c_int;
 pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
 pub const LIGHTNVR_VERSION_STRING: [::core::ffi::c_char; 7] =
     unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.2\0") };

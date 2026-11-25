@@ -1203,6 +1203,34 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (config->login_rate_limit_window_seconds < 10) {
                 config->login_rate_limit_window_seconds = 10; // Minimum 10 seconds
             }
+        } else if (strcmp(name, "web_compression_enabled") == 0) {
+            config->web_compression_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "web_use_minified_assets") == 0) {
+            config->web_use_minified_assets = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "web_cache_max_age_html") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_html = v;
+        } else if (strcmp(name, "web_cache_max_age_css") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_css = v;
+        } else if (strcmp(name, "web_cache_max_age_js") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_js = v;
+        } else if (strcmp(name, "web_cache_max_age_images") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_images = v;
+        } else if (strcmp(name, "web_cache_max_age_fonts") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_fonts = v;
+        } else if (strcmp(name, "web_cache_max_age_default") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_default = v;
         } else if (strcmp(name, "web_thread_pool_size") == 0) {
             int v = safe_atoi(value, 0);
             if (v < 2)   v = 2;
@@ -1490,7 +1518,8 @@ int load_stream_configs(config_t *config) {
 
 // Save stream configurations to database with improved timeout protection
 int save_stream_configs(config_t *config) {
-    if (!config) return -1;
+    if (!config || !config->streams || config->max_streams <= 0 ||
+        config->max_streams > MAX_STREAMS) return -1;
     
     int saved = 0;
 
@@ -1513,7 +1542,14 @@ int save_stream_configs(config_t *config) {
     
     // Always continue so initial in-memory stream configs can be inserted
     // into an empty database. Only skip existing-row loading work when count is zero.
-    stream_config_t *db_streams = calloc(config->max_streams, sizeof(stream_config_t));
+    if (count > config->max_streams) {
+        log_error("Cannot replace stream configurations: database has %d streams, exceeds max_streams=%d",
+                  count, config->max_streams);
+        rollback_transaction();
+        return -1;
+    }
+
+    stream_config_t *db_streams = calloc((size_t)config->max_streams, sizeof(*db_streams));
     if (!db_streams) {
         log_error("save_stream_configs: out of memory");
         rollback_transaction();
@@ -2226,6 +2262,14 @@ int save_config(const config_t *config, const char *path) {
     // Write web server settings
     fprintf(file, "[web]\n");
     fprintf(file, "web_thread_pool_size = %d  ; libuv UV_THREADPOOL_SIZE (default: 2x CPU cores; requires restart)\n", config->web_thread_pool_size);
+    fprintf(file, "web_compression_enabled = %s\n", config->web_compression_enabled ? "true" : "false");
+    fprintf(file, "web_use_minified_assets = %s\n", config->web_use_minified_assets ? "true" : "false");
+    fprintf(file, "web_cache_max_age_html = %d\n", config->web_cache_max_age_html);
+    fprintf(file, "web_cache_max_age_css = %d\n", config->web_cache_max_age_css);
+    fprintf(file, "web_cache_max_age_js = %d\n", config->web_cache_max_age_js);
+    fprintf(file, "web_cache_max_age_images = %d\n", config->web_cache_max_age_images);
+    fprintf(file, "web_cache_max_age_fonts = %d\n", config->web_cache_max_age_fonts);
+    fprintf(file, "web_cache_max_age_default = %d\n", config->web_cache_max_age_default);
     fprintf(file, "port = %d\n", config->web_port);
     fprintf(file, "bind_ip = %s\n", config->web_bind_ip);
     fprintf(file, "root = %s\n", config->web_root);

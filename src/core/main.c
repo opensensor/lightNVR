@@ -383,21 +383,20 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         return 0;
     }
 
-    // Read PID from file
-    char pid_buf[32] = {0};
-    if (!fgets(pid_buf, sizeof(pid_buf), fp)) {
-        fclose(fp);
-        log_warn("Invalid PID file format");
-        unlink(pid_file);  // Remove invalid PID file
-        return 0;
-    }
-    bool truncated_pid_line = strchr(pid_buf, '\n') == NULL && fgetc(fp) != EOF;
+    // Read the entire bounded PID file. fgets() cannot distinguish an
+    // embedded NUL from the end of the text it returned.
+    char pid_buf[32];
+    size_t pid_len = fread(pid_buf, 1, sizeof(pid_buf) - 1, fp);
+    int extra = fgetc(fp);
+    bool invalid_pid_file = ferror(fp) || extra != EOF || pid_len == 0 ||
+                            memchr(pid_buf, '\0', pid_len) != NULL;
     fclose(fp);
-    if (truncated_pid_line) {
+    if (invalid_pid_file) {
         log_warn("Invalid PID file format");
         unlink(pid_file);
         return 0;
     }
+    pid_buf[pid_len] = '\0';
     char *end_ptr;
     errno = 0;
     long pid_val = strtol(pid_buf, &end_ptr, 10);
@@ -1542,10 +1541,14 @@ cleanup:
         // Allow the same final-backup deadline as the thread watchdog.
         // Large databases can take several minutes to copy and verify.
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
+        // A parent that exited naturally must never be signalled after its
+        // PID is reused by another process.
+        if (getppid() != parent_pid) _exit(EXIT_SUCCESS);
         kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
 
         // Wait a bit longer for emergency cleanup before giving up entirely
         sleep(15);
+        if (getppid() != parent_pid) _exit(EXIT_SUCCESS);
         kill(parent_pid, SIGKILL);  // Force kill the parent process
 
         // If restart was requested, handle it here since the parent was killed
