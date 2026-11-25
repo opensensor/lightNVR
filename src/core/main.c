@@ -2002,7 +2002,7 @@ cleanup:
         }
     }
 
-    // Shutdown logging
+    return exit_code;
     shutdown_logger();
 
     return exit_code;
