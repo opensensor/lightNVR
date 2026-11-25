@@ -98,17 +98,6 @@ function utf8ByteLength(s: string) {
 
 export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifySettings, t }: Go2rtcTabProps) {
   // ---------- T9 — go2rtc override validation, preview, presets ----------
-  const invalidateOverrideValidation = () => {
-    validationGenerationRef.current += 1;
-    if (overrideValidateTimerRef.current) {
-      clearTimeout(overrideValidateTimerRef.current);
-      overrideValidateTimerRef.current = null;
-    }
-    if (isMountedRef.current) {
-      setOverrideValidating(false);
-      setOverrideValidation(null);
-    }
-  };
   const [overrideValidation, setOverrideValidation] = useState<Go2rtcOverrideValidation | null>(null); // null | { valid, error?, warnings, libyaml_available, skipped }
   const [overrideValidating, setOverrideValidating] = useState(false);
   const [effectiveConfig, setEffectiveConfig] = useState<Go2rtcEffectiveConfig | null>(null);
@@ -119,6 +108,18 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   const overrideValidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const validationGenerationRef = useRef(0);
   const isMountedRef = useRef(true);
+  const effectiveConfigDialogRef = useRef<HTMLDivElement>(null);
+  const effectiveConfigCloseButtonRef = useRef<HTMLButtonElement>(null);
+
+  const invalidateOverrideValidation = () => {
+    validationGenerationRef.current += 1;
+    if (overrideValidateTimerRef.current) {
+      clearTimeout(overrideValidateTimerRef.current);
+      overrideValidateTimerRef.current = null;
+    }
+    setOverrideValidating(false);
+    setOverrideValidation(null);
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -130,6 +131,38 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!effectiveConfigOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    effectiveConfigCloseButtonRef.current?.focus();
+    const handleTab = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const dialog = effectiveConfigDialogRef.current;
+      if (!dialog) return;
+      const focusable = [...dialog.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        dialog.focus();
+      } else if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleTab);
+    return () => {
+      document.removeEventListener('keydown', handleTab);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [effectiveConfigOpen]);
 
   const validateOverride = async (yaml: string, generation: number) => {
     if (isMountedRef.current && validationGenerationRef.current === generation) setOverrideValidating(true);
@@ -152,7 +185,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     const liveValue = (e && e.target && typeof (e.target as HTMLTextAreaElement).value === 'string')
       ? (e.target as HTMLTextAreaElement).value
       : settings.go2rtcConfigOverride;
-    const generationAtSchedule = validationGenerationRef.current;
+    const generationAtSchedule = ++validationGenerationRef.current;
     overrideValidateTimerRef.current = setTimeout(
       () => validateOverride(liveValue, generationAtSchedule),
       200
@@ -160,7 +193,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   };
 
   const handleOverrideChange = (e: Event) => {
-    setOverrideValidation(null);
+    invalidateOverrideValidation();
     handleInputChange(e);
   };
 
@@ -269,7 +302,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
       const sep = (cur && !cur.endsWith('\n')) ? '\n' : '';
       return { ...prev, go2rtcConfigOverride: cur + sep + preset!.yaml };
     });
-    setOverrideValidation(null);
+    invalidateOverrideValidation();
   };
 
   return (
@@ -499,7 +532,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                             ...prev,
                             go2rtcConfigOverride: prev.go2rtcOverrideQuarantined as string,
                           }));
-                          setOverrideValidation(null);
+                          invalidateOverrideValidation();
                         }}
                       >
                         {t('settings.go2rtcRestoreQuarantined')}
@@ -594,14 +627,16 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
                 {/* Effective-config modal */}
                 {effectiveConfigOpen ? (
-                  <div role="presentation" class="app-modal-overlay fixed inset-0 flex items-center justify-center bg-black/50" onClick={() => setEffectiveConfigOpen(false)}>
+                  <div role="presentation" class="app-modal-overlay fixed inset-0 flex items-center justify-center bg-black/50" onClick={(e) => {
+                    if (e.target === e.currentTarget) setEffectiveConfigOpen(false);
+                  }}>
                     <div
                       ref={effectiveConfigDialogRef}
                       role="dialog"
                       aria-modal="true"
                       aria-labelledby="go2rtc-effective-config-title"
+                      tabIndex={-1}
                       class="bg-card text-card-foreground rounded-lg shadow-lg max-w-4xl w-full max-h-[80vh] overflow-auto p-4"
-                      onClick={(e) => e.stopPropagation()}
                     >
                       <div class="flex items-center justify-between mb-3 pb-2 border-b">
                         <h3 id="go2rtc-effective-config-title" class="font-semibold">{t('settings.go2rtcEffectiveConfig')}</h3>
