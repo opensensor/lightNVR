@@ -464,7 +464,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       const active = document.activeElement as HTMLElement | null;
 
       if (e.shiftKey) {
-        if (active === first || active === dialogRef.current) {
+        if (active === first || active === dialogRef.current || active === stepHeadingRef.current) {
           e.preventDefault();
           last.focus();
         }
