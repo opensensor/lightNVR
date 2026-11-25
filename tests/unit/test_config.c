@@ -26,6 +26,7 @@
 #include "core/config.h"
 #include "core/logger.h"
 #include "core/path_utils.h"
+#include "video/streams.h"
 
 /* File-scope config used by most tests — setUp zeros it, tearDown frees
    the dynamically allocated streams array to keep ASan leak-free. */
@@ -242,6 +243,36 @@ void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
 
 static atomic_bool faststart_writer_stop;
 static atomic_int faststart_writer_updates;
+
+typedef struct {
+    uintptr_t config_address;
+    uintptr_t streams_address;
+} snapshot_addresses_t;
+
+static void *capture_streaming_snapshot_addresses(void *argument) {
+    snapshot_addresses_t *addresses = argument;
+    config_t *snapshot = get_streaming_config();
+    addresses->config_address = (uintptr_t)snapshot;
+    addresses->streams_address = (uintptr_t)snapshot->streams;
+    return NULL;
+}
+
+void test_streaming_config_snapshots_are_thread_local(void) {
+    load_default_config(&g_config);
+    config_t *main_snapshot = get_streaming_config();
+    uintptr_t main_config_address = (uintptr_t)main_snapshot;
+    uintptr_t main_streams_address = (uintptr_t)main_snapshot->streams;
+    snapshot_addresses_t worker_addresses = {0};
+    pthread_t worker;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL,
+                         capture_streaming_snapshot_addresses, &worker_addresses));
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+    TEST_ASSERT_NOT_EQUAL(main_config_address, worker_addresses.config_address);
+    TEST_ASSERT_NOT_EQUAL(main_streams_address, worker_addresses.streams_address);
+    TEST_ASSERT_EQUAL_PTR(main_snapshot, get_streaming_config());
+    free(g_config.streams);
+    memset(&g_config, 0, sizeof(g_config));
+}
 
 static void *toggle_faststart(void *unused) {
     (void)unused;
@@ -1364,6 +1395,7 @@ int main(void) {
     RUN_TEST(test_malformed_ini_after_stream_resize_keeps_streams_owned);
     /* Uses the process-wide custom config path; run last to avoid affecting later tests. */
     RUN_TEST(test_save_config_round_trips_web_cache_and_mp4_faststart);
+    RUN_TEST(test_streaming_config_snapshots_are_thread_local);
 
     int result = UNITY_END();
     shutdown_logger();
