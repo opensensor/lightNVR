@@ -33,12 +33,12 @@
 // Global configuration variable
 config_t g_config;
 
-static bool contains_unsupported_ini_credential_chars(const char *value) {
-    if (!value) {
-        return false;
-    }
+static bool contains_unsupported_ini_credential_chars(const char *value,
+                                                       size_t capacity) {
+    if (!value || capacity == 0) return true;
 
-    size_t len = strlen(value);
+    size_t len = strnlen(value, capacity);
+    if (len == capacity) return true;
     if (len > 0) {
         if (isspace((unsigned char)value[0]) ||
             isspace((unsigned char)value[len - 1])) {
@@ -46,7 +46,8 @@ static bool contains_unsupported_ini_credential_chars(const char *value) {
         }
     }
 
-    for (const unsigned char *p = (const unsigned char *)value; *p != '\0'; ++p) {
+    for (const unsigned char *p = (const unsigned char *)value;
+         p < (const unsigned char *)value + len; ++p) {
         if (*p == '\n' || *p == '\r' || *p == ';' || *p == '#') {
             return true;
         }
@@ -455,9 +456,6 @@ void load_default_config(config_t *config) {
         } else {
             num_cores = (int)sc_cores;
         }
-
-        // Bound to useful range before multiplying to avoid signed overflow UB.
-        if (num_cores > 64) num_cores = 64;
 
         // Bound to useful range before multiplying to avoid signed overflow UB.
         if (num_cores > 64) num_cores = 64;
@@ -1909,11 +1907,16 @@ int save_config(const config_t *config, const char *path) {
         log_error("Invalid config parameter for save_config: config=%p", config);
         return -1;
     }
-    if (contains_unsupported_ini_credential_chars(config->turn_username) ||
-        contains_unsupported_ini_credential_chars(config->turn_password) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_username) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_password) ||
-        contains_unsupported_ini_credential_chars(config->web_username)) {
+    if (contains_unsupported_ini_credential_chars(config->turn_username,
+                                                  sizeof(config->turn_username)) ||
+        contains_unsupported_ini_credential_chars(config->turn_password,
+                                                  sizeof(config->turn_password)) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_username,
+                                                  sizeof(config->mqtt_username)) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_password,
+                                                  sizeof(config->mqtt_password)) ||
+        contains_unsupported_ini_credential_chars(config->web_username,
+                                                  sizeof(config->web_username))) {
         log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
         return -1;
     }
@@ -2310,11 +2313,6 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "bind_ip = %s\n", config->web_bind_ip);
     fprintf(file, "root = %s\n", config->web_root);
     fprintf(file, "ssl_enabled = %s  ; Serve HTTPS directly (needs a build with -DENABLE_SSL=ON)\n",
-    if (contains_unsupported_ini_credential_chars(config->web_username)) {
-        LOG_ERROR("Refusing to save config: web_username contains unsupported INI characters");
-        fclose(file);
-        return false;
-    }
             config->web_ssl_enabled ? "true" : "false");
     fprintf(file, "ssl_cert_path = %s  ; PEM certificate chain, leaf first\n", config->web_ssl_cert_path);
     fprintf(file, "ssl_key_path = %s  ; PEM private key (unencrypted)\n", config->web_ssl_key_path);
@@ -2420,6 +2418,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
 
     // Stream configurations are stored exclusively in the database.
+    // Do NOT write [stream.X] sections here.
     
     int write_failed = ferror(file);
     if (fflush(file) != 0 || fsync(fileno(file)) != 0) write_failed = 1;
@@ -2438,9 +2437,10 @@ int save_config(const config_t *config, const char *path) {
         int stat_result = fstatat(dir_fd, validated_filename, &current, AT_SYMLINK_NOFOLLOW);
         bool unchanged = target_exists
             ? stat_result == 0 && S_ISREG(current.st_mode) && current.st_nlink == 1 &&
-                int staged_fd = fileno(file);
+              current.st_dev == config_stat.st_dev && current.st_ino == config_stat.st_ino
             : stat_result != 0 && errno == ENOENT;
         if (!unchanged) {
+            write_failed = 1;
         } else if (external_staging) {
             if (publish_config_in_place(dir_fd, validated_filename,
                     &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
@@ -2448,7 +2448,6 @@ int save_config(const config_t *config, const char *path) {
             if (errno == EBUSY && original_fd >= 0) {
                 if (publish_config_in_place(dir_fd, validated_filename,
                         &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
-    if (fclose(file) != 0) write_failed = 1;
             } else {
                 write_failed = 1;
             }
