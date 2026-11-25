@@ -662,7 +662,7 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
       return null;
     }
     const minimum = Number(editor!.minimum_retention_days); const desired = Number(editor!.desired_retention_days); const maximum = Number(editor!.maximum_retention_days); const copies = Number(editor!.required_copy_count); const migrationAfter = Number(editor!.migration_after_days); const pressurePriority = Number(editor!.pressure_priority);
-    if (![minimum, desired, maximum, copies, migrationAfter, pressurePriority].every(Number.isInteger) || minimum < 0 || (desired > 0 && desired < minimum) || (maximum > 0 && ((desired > 0 && desired > maximum) || minimum > maximum)) || copies < 1 || copies > 8 || (copies > 1 && !editor!.replication_pool_uuid) || migrationAfter < 0 || (migrationAfter > 0 && !editor!.migration_target_uuid)) {
+    if (![minimum, desired, maximum, copies, migrationAfter, pressurePriority].every(Number.isInteger) || minimum < 0 || desired < 0 || maximum < 0 || (desired > 0 && desired < minimum) || (maximum > 0 && ((desired > 0 && desired > maximum) || minimum > maximum)) || copies < 1 || copies > 8 || (copies > 1 && !editor!.replication_pool_uuid) || migrationAfter < 0 || (migrationAfter > 0 && !editor!.migration_target_uuid)) {
       showStatusMessage(t('settings.storagePolicies.invalidLifecycle'), 'error');
       return null;
     }
