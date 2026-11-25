@@ -18,6 +18,26 @@ type ArchiveTriggerValues = Partial<Pick<StoragePolicyEditorState, 'migration_af
 const DIRECT_TARGET_KEYS = ['primary_target_uuid', 'fallback_target_uuid', 'migration_target_uuid'] as const;
 const POOL_KEYS = ['primary_pool_uuid', 'replication_pool_uuid'] as const;
 
+/** The legacy primary target column must name a pool member when a pool routes primaries. */
+export function primaryPoolMemberIds(poolUuid: string, pools: StoragePool[], targets: StorageTarget[]): string[] {
+  if (!poolUuid) return [];
+  const filesystemTargets = new Set(targets.filter((target) => target.target_type !== 's3').map((target) => target.uuid));
+  return (pools.find((pool) => pool.uuid === poolUuid)?.members || [])
+    .map((member) => member.target_uuid)
+    .filter((uuid) => filesystemTargets.has(uuid));
+}
+
+export function primaryTargetForPool(primaryTargetUuid: string, poolUuid: string, pools: StoragePool[], targets: StorageTarget[]): string {
+  const members = primaryPoolMemberIds(poolUuid, pools, targets);
+  return members.length && !members.includes(primaryTargetUuid) ? members[0]! : primaryTargetUuid;
+}
+
+export function availableFallbackTargets(primaryTargetUuid: string, poolUuid: string, pools: StoragePool[], targets: StorageTarget[]): StorageTarget[] {
+  const members = primaryPoolMemberIds(poolUuid, pools, targets);
+  return targets.filter((target) => target.target_type !== 's3' &&
+    (members.length ? !members.includes(target.uuid) : target.uuid !== primaryTargetUuid));
+}
+
 /** Set of target UUIDs that at least one enabled policy can route to. */
 export function referencedTargetUuids(policies: readonly StoragePolicy[] | null = [], pools: readonly StoragePool[] | null = []): Set<string> {
   const referenced = new Set<string>();
