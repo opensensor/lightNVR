@@ -188,9 +188,8 @@ void test_default_config_mp4_faststart_on(void) {
     TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));
 }
 
-/* save_config must write mp4_faststart, or a settings save from the web UI
- * would silently turn faststart back on at the next start. */
-void test_save_config_round_trips_mp4_faststart(void) {
+/* Settings saved through the web UI must survive a config reload. */
+void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
     char temp_dir[] = "/tmp/lightnvr_faststart_XXXXXX";
     char *dir = mkdtemp(temp_dir);
     TEST_ASSERT_NOT_NULL(dir);
@@ -208,12 +207,28 @@ void test_save_config_round_trips_mp4_faststart(void) {
     snprintf(cfg.web_root, sizeof(cfg.web_root), "%s/web", dir);
     TEST_ASSERT_EQUAL_INT(0, ensure_dir(cfg.web_root));
     config_set_mp4_faststart(&cfg, false);
+    cfg.web_compression_enabled = false;
+    cfg.web_use_minified_assets = false;
+    cfg.web_cache_max_age_html = 11;
+    cfg.web_cache_max_age_css = 22;
+    cfg.web_cache_max_age_js = 33;
+    cfg.web_cache_max_age_images = 44;
+    cfg.web_cache_max_age_fonts = 55;
+    cfg.web_cache_max_age_default = 66;
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
     config_t reloaded = {0};
     set_custom_config_path(config_path);
     TEST_ASSERT_EQUAL_INT(0, load_config(&reloaded));
     TEST_ASSERT_FALSE(config_get_mp4_faststart(&reloaded));
+    TEST_ASSERT_FALSE(reloaded.web_compression_enabled);
+    TEST_ASSERT_FALSE(reloaded.web_use_minified_assets);
+    TEST_ASSERT_EQUAL_INT(11, reloaded.web_cache_max_age_html);
+    TEST_ASSERT_EQUAL_INT(22, reloaded.web_cache_max_age_css);
+    TEST_ASSERT_EQUAL_INT(33, reloaded.web_cache_max_age_js);
+    TEST_ASSERT_EQUAL_INT(44, reloaded.web_cache_max_age_images);
+    TEST_ASSERT_EQUAL_INT(55, reloaded.web_cache_max_age_fonts);
+    TEST_ASSERT_EQUAL_INT(66, reloaded.web_cache_max_age_default);
     free(reloaded.streams);
 
     unlink(config_path);
@@ -1348,7 +1363,7 @@ int main(void) {
     RUN_TEST(test_load_config_parses_api_detection_format);
     RUN_TEST(test_malformed_ini_after_stream_resize_keeps_streams_owned);
     /* Uses the process-wide custom config path; run last to avoid affecting later tests. */
-    RUN_TEST(test_save_config_round_trips_mp4_faststart);
+    RUN_TEST(test_save_config_round_trips_web_cache_and_mp4_faststart);
 
     int result = UNITY_END();
     shutdown_logger();
