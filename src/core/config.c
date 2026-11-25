@@ -2474,7 +2474,11 @@ int save_config(const config_t *config, const char *path) {
     if (staged_fd >= 0) close(staged_fd);
     if (external_staging) unlink(external_staging_path);
     else unlinkat(dir_fd, replacement_name, 0);
-    if (original_fd >= 0) close(original_fd);
+    if (original_fd >= 0) {
+        pthread_mutex_lock(&config_in_place_mutex);
+        close(original_fd);
+        pthread_mutex_unlock(&config_in_place_mutex);
+    }
     close(dir_fd);
     if (write_failed) {
         log_error("Failed to write config file: %s", canonical_save_path);
