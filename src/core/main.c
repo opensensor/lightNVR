@@ -1887,8 +1887,8 @@ cleanup:
         cleanup_hls_streaming_backend();
         cleanup_transcoding_backend();
 
-        // Stop and join detection producers before INT_01 consumer teardown.
-
+        // Stop detection producers before tearing down their event consumers.
+        cleanup_detection_resources();
 
         /* INT_01 shutdown (reverse of startup): relay (L5) first. */
         observation_relay_stop();
@@ -2123,10 +2123,11 @@ static void check_and_ensure_services(void) {
 
                         // A shutdown/restart can be requested during the stagger wait.
                         // Recheck immediately before starting another recording.
-                        if (!atomic_load(&running) || atomic_load(&restart_requested)) {
-                            log_info("Abort requested during stagger wait; skipping recording start for stream: %s",
+                        if (!atomic_load(&running) || atomic_load(&restart_requested) ||
+                            is_background_abort_requested()) {
+                            log_info("Abort requested during stagger wait; ending service check before stream: %s",
                                      current_config->streams[i].name);
-                            continue;
+                            return;
                         }
                     }
 
@@ -2163,17 +2164,15 @@ static void check_and_ensure_services(void) {
             is_detection_recording_scheduled(&current_config->streams[i])) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = current_config->streams[i].record;
-            const char *resolved_detection_model = resolve_detection_model_path(current_config->streams[i].detection_model);
-            if (!resolved_detection_model || resolved_detection_model[0] == '\0') {
-                log_warn("Failed to resolve detection model path for stream: %s (model=%s)",
-                         current_config->streams[i].name,
-                         current_config->streams[i].detection_model);
+            if (current_config->streams[i].detection_model[0] == '\0') {
+                log_warn("Detection model is empty for stream: %s",
+                         current_config->streams[i].name);
                 continue;
             }
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
             if (start_unified_detection_thread(current_config->streams[i].name,
-                                              resolved_detection_model,
+                                              current_config->streams[i].detection_model,
                                               current_config->streams[i].detection_threshold,
                                               current_config->streams[i].pre_detection_buffer,
                                               current_config->streams[i].post_detection_buffer,
