@@ -1502,9 +1502,8 @@ cleanup:
         // CRITICAL FIX: Create a new process group immediately so we won't be killed
         // by the parent's kill(0, SIGKILL) which kills all processes in the same group
         if (setpgid(0, 0) != 0) {
-            // If setpgid fails, log but continue - we'll try our best
-            // Note: can't use log_error here safely, use stderr
-            fprintf(stderr, "Watchdog: Failed to create new process group: %s\n", strerror(errno));
+            // Post-fork child from multithreaded parent: avoid stdio/logger calls here.
+            // Continue best-effort even if setpgid fails.
         }
 
         // Reset signal handlers to default to avoid inheriting any problematic dispositions
@@ -1516,7 +1515,7 @@ cleanup:
         sigaction(SIGALRM, &sa_default, NULL);
         sigaction(SIGUSR1, &sa_default, NULL);
 
-        // Unblock all signals in the child so it can log properly
+        // Unblock all signals in the child
         sigset_t empty_mask;
         sigemptyset(&empty_mask);
         pthread_sigmask(SIG_SETMASK, &empty_mask, NULL);
@@ -1527,23 +1526,18 @@ cleanup:
         // Allow the same final-backup deadline as the thread watchdog.
         // Large databases can take several minutes to copy and verify.
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
-        log_error("Cleanup process phase 1 timed out after %d seconds", SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
         kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
 
         // Wait a bit longer for emergency cleanup before giving up entirely
         sleep(15);
-        log_error("Cleanup process phase 2 timed out after 15 more seconds, forcing exit");
         kill(parent_pid, SIGKILL);  // Force kill the parent process
 
         // If restart was requested, handle it here since the parent was killed
         if (restart_requested) {
             if (container_mode) {
                 // In container mode, just exit cleanly
-                log_info("Restart requested in container mode after forced cleanup - exiting for orchestrator restart");
-                exit(EXIT_SUCCESS);
+                _exit(EXIT_SUCCESS);
             } else if (saved_argv != NULL) {
-                log_info("Restart was requested, re-executing LightNVR after forced cleanup...");
-
                 // Give the system a moment to release resources
                 // The parent is now dead, wait for it to fully exit
                 usleep(2000000);  // 2 seconds
@@ -1565,20 +1559,13 @@ cleanup:
                 if (len > 0) {
                     exe_path[len] = '\0';
 
-                    log_info("Executing: %s", exe_path);
-
                     // Re-exec the program with the same arguments
                     execv(exe_path, saved_argv);
-
-                    // If execv returns, it failed
-                    log_error("Failed to restart after forced cleanup: %s", strerror(errno));
-                } else {
-                    log_error("Failed to get executable path for restart: %s", strerror(errno));
                 }
             }
         }
 
-        exit(EXIT_FAILURE);
+        _exit(EXIT_FAILURE);
     } else if (cleanup_pid > 0) {
         // Parent process - continue with cleanup
 
