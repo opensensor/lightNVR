@@ -102,6 +102,7 @@ ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
+    owned_snapshot_streams = NULL;
     observed_config_stream = false;
     observed_config_stream_with_private_mode = true;
     const char *web_port = getenv("LIGHTNVR_WEB_PORT");
@@ -120,6 +121,8 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    free(owned_snapshot_streams);
+    owned_snapshot_streams = NULL;
     deny_config_chmod = deny_config_rename = busy_config_rename = false;
     fail_config_pwrite = false;
     short_config_pwrite = false;
@@ -383,11 +386,14 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
                     break;
                 }
                 const char *value = line + prefix_len;
-                if (strncmp(value, "true", 4) == 0 &&
-                    (value[4] == '\n' || value[4] == '\r' || value[4] == '\0')) {
-                    ++mp4_faststart_entries;
-                } else if (strncmp(value, "false", 5) == 0 &&
-                           (value[5] == '\n' || value[5] == '\r' || value[5] == '\0')) {
+                const char *suffix = NULL;
+                if (strncmp(value, "true", 4) == 0) suffix = value + 4;
+                else if (strncmp(value, "false", 5) == 0) suffix = value + 5;
+                if (suffix) {
+                    while (*suffix == ' ' || *suffix == '\t') suffix++;
+                }
+                if (suffix && (*suffix == ';' || *suffix == '\n' ||
+                               *suffix == '\r' || *suffix == '\0')) {
                     ++mp4_faststart_entries;
                 } else {
                     file_has_valid_faststart = false;
