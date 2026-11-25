@@ -120,6 +120,9 @@ void setUp(void) {
 void tearDown(void) {
     deny_config_chmod = deny_config_rename = busy_config_rename = false;
     fail_config_pwrite = false;
+    short_config_pwrite = false;
+    short_config_pwrite_done = false;
+    short_config_pwrite_max_bytes = 0;
     monitor_secret_write_permissions = false;
     observed_config_stream = false;
     observed_config_stream_with_private_mode = false;
@@ -1297,6 +1300,36 @@ static void test_save_config_bind_mount_restores_after_write_failure(void) {
     check_bind_mount_fallback(true);
 }
 
+static void test_save_config_bind_mount_retries_short_write(void) {
+    char directory[] = "/tmp/lightnvr_config_short_write_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *initial = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(initial);
+    fputs("previous configuration", initial);
+    fclose(initial);
+    struct stat before, after;
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
+    load_default_config(&cfg);
+    busy_config_rename = true;
+    short_config_pwrite = true;
+    short_config_pwrite_inode = before.st_ino;
+    short_config_pwrite_max_bytes = 7;
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, path));
+    TEST_ASSERT_TRUE(short_config_pwrite_done);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
+    TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
+    FILE *saved = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    char content[128] = {0};
+    TEST_ASSERT_TRUE(fread(content, 1, sizeof(content) - 1, saved) > 0);
+    fclose(saved);
+    TEST_ASSERT_NOT_NULL(strstr(content, "LightNVR Configuration File"));
+    unlink(path);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+}
+
 static void test_save_config_updates_file_in_read_only_directory(void) {
     if (geteuid() == 0) {
         TEST_IGNORE_MESSAGE("Skipping read-only directory permission test when running as root.");
@@ -1332,6 +1365,7 @@ int main(void) {
     RUN_TEST(test_save_config_preserves_owned_file_when_publish_fails);
     RUN_TEST(test_save_config_bind_mount_fallback);
     RUN_TEST(test_save_config_bind_mount_restores_after_write_failure);
+    RUN_TEST(test_save_config_bind_mount_retries_short_write);
     RUN_TEST(test_save_config_updates_file_in_read_only_directory);
 
     RUN_TEST(test_stream_config_t_size_under_16k);
