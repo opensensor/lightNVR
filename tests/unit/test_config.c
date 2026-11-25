@@ -1050,7 +1050,7 @@ static void check_group_writable_config_replacement(bool fail_publish) {
     deny_config_chmod = true;
     deny_config_rename = fail_publish;
     observed_config_stream = false;
-    observed_config_stream_with_private_mode = false;
+    observed_config_stream_with_private_mode = true;
     monitor_secret_write_permissions = !fail_publish;
     mode_t prior_umask = umask(fail_publish ? 0777 : 0);
     int result = save_config(&cfg, path);
