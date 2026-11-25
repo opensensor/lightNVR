@@ -1929,6 +1929,8 @@ int save_config(const config_t *config, const char *path) {
                                                   sizeof(config->mqtt_username)) ||
         contains_unsupported_ini_credential_chars(config->mqtt_password,
                                                   sizeof(config->mqtt_password)) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_client_id,
+                                                  sizeof(config->mqtt_client_id)) ||
         contains_unsupported_ini_credential_chars(config->web_username,
                                                   sizeof(config->web_username))) {
         log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
@@ -2413,12 +2415,6 @@ int save_config(const config_t *config, const char *path) {
     }
     if (config->mqtt_password[0] != '\0') {
         fprintf(file, "password = %s\n", config->mqtt_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
-    }
-    if (contains_unsupported_ini_credential_chars(config->mqtt_client_id,
-                                                  sizeof(config->mqtt_client_id))) {
-        LOG_ERROR("Invalid mqtt_client_id for INI serialization");
-        fclose(file);
-        return false;
     }
     fprintf(file, "client_id = %s\n", config->mqtt_client_id);
     fprintf(file, "topic_prefix = %s\n", config->mqtt_topic_prefix);
