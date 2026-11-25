@@ -875,11 +875,41 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "min_free_pct") == 0) {
             config->storage_min_free_pct = safe_atoi(value, 10);
         } else if (strcmp(name, "pressure_warning_pct") == 0) {
-            config->storage_pressure_warning_pct = strtod(value, NULL);
+            char *endptr = NULL;
+            errno = 0;
+            double parsed = strtod(value, &endptr);
+            while (endptr && isspace((unsigned char)*endptr)) {
+                endptr++;
+            }
+            if (endptr == value || (endptr && *endptr != '\0') || errno == ERANGE) {
+                log_warn("Ignoring invalid pressure_warning_pct '%s'", value);
+            } else {
+                config->storage_pressure_warning_pct = parsed;
+            }
         } else if (strcmp(name, "pressure_critical_pct") == 0) {
-            config->storage_pressure_critical_pct = strtod(value, NULL);
+            char *endptr = NULL;
+            errno = 0;
+            double parsed = strtod(value, &endptr);
+            while (endptr && isspace((unsigned char)*endptr)) {
+                endptr++;
+            }
+            if (endptr == value || (endptr && *endptr != '\0') || errno == ERANGE) {
+                log_warn("Ignoring invalid pressure_critical_pct '%s'", value);
+            } else {
+                config->storage_pressure_critical_pct = parsed;
+            }
         } else if (strcmp(name, "pressure_emergency_pct") == 0) {
-            config->storage_pressure_emergency_pct = strtod(value, NULL);
+            char *endptr = NULL;
+            errno = 0;
+            double parsed = strtod(value, &endptr);
+            while (endptr && isspace((unsigned char)*endptr)) {
+                endptr++;
+            }
+            if (endptr == value || (endptr && *endptr != '\0') || errno == ERANGE) {
+                log_warn("Ignoring invalid pressure_emergency_pct '%s'", value);
+            } else {
+                config->storage_pressure_emergency_pct = parsed;
+            }
         } else if (strcmp(name, "record_mp4_directly") == 0) {
             config->record_mp4_directly = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "mp4_path") == 0) {
