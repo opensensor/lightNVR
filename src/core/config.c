@@ -297,6 +297,20 @@ static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAP
                              env_name, env_value, *int_ptr);
                     break;
                 }
+                if (strcmp(mapping->env_name, "WEBRTC_CONNECTION_TIMEOUT_MS") == 0 &&
+                    new_value < 1000) {
+                    log_warn("Invalid WebRTC connection timeout for %s: '%s'; "
+                             "minimum is 1000 ms; keeping existing value %d",
+                             env_name, env_value, *int_ptr);
+                    break;
+                }
+                if (strcmp(mapping->env_name, "WEBRTC_ICE_RECOVERY_TIMEOUT_MS") == 0 &&
+                    new_value < 1000) {
+                    log_warn("Invalid WebRTC ICE recovery timeout for %s: '%s'; "
+                             "minimum is 1000 ms; keeping existing value %d",
+                             env_name, env_value, *int_ptr);
+                    break;
+                }
                 *int_ptr = new_value;
 
                 log_info("Applied env override: %s=%s (int: %d)",
