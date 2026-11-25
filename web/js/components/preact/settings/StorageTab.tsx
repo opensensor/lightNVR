@@ -155,10 +155,10 @@ function targetToEditor(target: StorageTarget): StorageTargetEditorState {
     enabled: target.enabled,
     mount_required: target.mount_required,
     storage_class: target.storage_class,
-    reserve_gb: String(Math.round((Number(target.reserve_bytes) || 0) / (1024 ** 3) * 100) / 100),
+    reserve_gb: String((Number(target.reserve_bytes) || 0) / (1024 ** 3)),
     high_watermark_pct: String(target.high_watermark_pct),
     low_watermark_pct: String(target.low_watermark_pct),
-    migration_mbps: String(Math.round(((Number(target.migration_bandwidth_bps) || 0) * 8 / 1000000) * 100) / 100),
+    migration_mbps: String(((Number(target.migration_bandwidth_bps) || 0) * 8 / 1000000)),
     archival_window_start: minutesToTime(target.archival_window_start_minute),
     archival_window_end: minutesToTime(target.archival_window_end_minute),
   };
@@ -215,7 +215,7 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }: Sto
         </label>
         <label class="text-sm font-medium">
           <span class="block mb-1">{t('settings.storageTargets.reserveGb')}</span>
-          <input type="number" min="0" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.reserve_gb} onInput={(event) => set('reserve_gb', event.currentTarget.value)} disabled={busy} />
+          <input type="number" min="0" step="any" class="w-full p-2 border border-input rounded bg-background" value={value.reserve_gb} onInput={(event) => set('reserve_gb', event.currentTarget.value)} disabled={busy} />
         </label>
         <div class="grid grid-cols-2 gap-3">
           <label class="text-sm font-medium">
@@ -229,7 +229,7 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }: Sto
         </div>
         <label class="text-sm font-medium">
           <span class="block mb-1">{t('settings.storageTargets.migrationBandwidth')}</span>
-          <input type="number" min="0" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.migration_mbps} onInput={(event) => set('migration_mbps', event.currentTarget.value)} disabled={busy} />
+          <input type="number" min="0" step="any" class="w-full p-2 border border-input rounded bg-background" value={value.migration_mbps} onInput={(event) => set('migration_mbps', event.currentTarget.value)} disabled={busy} />
           <span class="block mt-1 text-xs font-normal text-muted-foreground">{t('settings.storageTargets.migrationBandwidthHelp')}</span>
         </label>
         <div class="grid grid-cols-2 gap-3">
@@ -672,7 +672,13 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
       showStatusMessage(t('settings.storagePolicies.archiveNoTrigger'), 'error', 9000);
       return null;
     }
-    const payload: StoragePolicyPayload = { name: editor!.name.trim(), enabled: editor!.enabled, priority, selector: editor!.selector, primary_target_uuid: editor!.primary_target_uuid, primary_pool_uuid: editor!.primary_pool_uuid || null, fallback_mode: editor!.fallback_mode, fallback_target_uuid: editor!.fallback_mode === 'target' ? editor!.fallback_target_uuid : null, minimum_retention_days: minimum, desired_retention_days: desired, maximum_retention_days: maximum, required_copy_count: copies, replication_pool_uuid: copies > 1 ? editor!.replication_pool_uuid : null, migration_after_days: migrationAfter, migration_target_uuid: editor!.migration_target_uuid || null, archive_after_seconds: Number(editor!.archive_after_seconds ?? -1), hot_residency_seconds: Number(editor!.hot_residency_seconds ?? -1), archive_protected: !!editor!.archive_protected, archive_on_pressure: !!editor!.archive_on_pressure, pressure_priority: pressurePriority };
+    const archiveAfterSeconds = editor!.archive_after_seconds === '' ? -1 : Number(editor!.archive_after_seconds ?? -1);
+    const hotResidencySeconds = editor!.hot_residency_seconds === '' ? -1 : Number(editor!.hot_residency_seconds ?? -1);
+    if (![archiveAfterSeconds, hotResidencySeconds].every((value) => Number.isInteger(value) && value >= -1 && value <= 2147483647)) {
+      showStatusMessage(t('settings.storagePolicies.invalidLifecycle'), 'error');
+      return null;
+    }
+    const payload: StoragePolicyPayload = { name: editor!.name.trim(), enabled: editor!.enabled, priority, selector: editor!.selector, primary_target_uuid: editor!.primary_target_uuid, primary_pool_uuid: editor!.primary_pool_uuid || null, fallback_mode: editor!.fallback_mode, fallback_target_uuid: editor!.fallback_mode === 'target' ? editor!.fallback_target_uuid : null, minimum_retention_days: minimum, desired_retention_days: desired, maximum_retention_days: maximum, required_copy_count: copies, replication_pool_uuid: copies > 1 ? editor!.replication_pool_uuid : null, migration_after_days: migrationAfter, migration_target_uuid: editor!.migration_target_uuid || null, archive_after_seconds: archiveAfterSeconds, hot_residency_seconds: hotResidencySeconds, archive_protected: !!editor!.archive_protected, archive_on_pressure: !!editor!.archive_on_pressure, pressure_priority: pressurePriority };
     if (editor!.uuid) { payload.uuid = editor!.uuid; payload.revision = editor!.revision; }
     return payload;
   };
