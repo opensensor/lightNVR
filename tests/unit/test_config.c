@@ -32,11 +32,19 @@
 static config_t cfg;
 static bool deny_config_chmod;
 static bool deny_config_rename;
+static bool busy_config_rename;
+static bool fail_config_pwrite;
+static ino_t fail_config_pwrite_inode;
 static bool monitor_secret_write_permissions;
 static bool observed_config_stream;
 static bool observed_config_stream_with_private_mode;
 static char *saved_web_port_env;
 static char *saved_audio_disabled_env;
+static const char *const timeout_env_names[] = {
+    "LIGHTNVR_WEBRTC_CONNECTION_TIMEOUT_MS",
+    "LIGHTNVR_WEBRTC_ICE_RECOVERY_TIMEOUT_MS"
+};
+static char *saved_timeout_env[2];
 int __real_fchmod(int, mode_t);
 FILE *__real_fdopen(int, const char *);
 int __wrap_fchmod(int fd, mode_t mode) {
@@ -61,7 +69,18 @@ FILE *__wrap_fdopen(int fd, const char *mode) {
 int __real_renameat(int, const char *, int, const char *);
 int __wrap_renameat(int from_fd, const char *from, int to_fd, const char *to) {
     if (deny_config_rename) { errno = EACCES; return -1; }
+    if (busy_config_rename) { busy_config_rename = false; errno = EBUSY; return -1; }
     return __real_renameat(from_fd, from, to_fd, to);
+}
+ssize_t __real_pwrite(int, const void *, size_t, off_t);
+ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
+    struct stat st;
+    if (fail_config_pwrite && fstat(fd, &st) == 0 && st.st_ino == fail_config_pwrite_inode) {
+        fail_config_pwrite = false;
+        errno = ENOSPC;
+        return -1;
+    }
+    return __real_pwrite(fd, buf, size, offset);
 }
 
 /* ---- Unity boilerplate ---- */
@@ -77,9 +96,16 @@ void setUp(void) {
     if (audio_disabled) TEST_ASSERT_NOT_NULL(saved_audio_disabled_env);
     unsetenv("LIGHTNVR_WEB_PORT");
     unsetenv("LIGHTNVR_AUDIO_DISABLED");
+    for (size_t i = 0; i < 2; i++) {
+        const char *value = getenv(timeout_env_names[i]);
+        saved_timeout_env[i] = value ? strdup(value) : NULL;
+        if (value) TEST_ASSERT_NOT_NULL(saved_timeout_env[i]);
+        unsetenv(timeout_env_names[i]);
+    }
 }
 void tearDown(void) {
-    deny_config_chmod = deny_config_rename = false;
+    deny_config_chmod = deny_config_rename = busy_config_rename = false;
+    fail_config_pwrite = false;
     monitor_secret_write_permissions = false;
     observed_config_stream = false;
     observed_config_stream_with_private_mode = false;
@@ -90,6 +116,12 @@ void tearDown(void) {
     free(saved_web_port_env);
     free(saved_audio_disabled_env);
     saved_web_port_env = saved_audio_disabled_env = NULL;
+    for (size_t i = 0; i < 2; i++) {
+        if (saved_timeout_env[i]) setenv(timeout_env_names[i], saved_timeout_env[i], 1);
+        else unsetenv(timeout_env_names[i]);
+        free(saved_timeout_env[i]);
+        saved_timeout_env[i] = NULL;
+    }
     if (cfg.streams) {
         free(cfg.streams);
         cfg.streams = NULL;
@@ -209,6 +241,18 @@ static void *toggle_faststart(void *unused) {
 
 /* Exercise every shared read, including the whole-config snapshot that used
  * to bypass the option accessors. This also provides a ThreadSanitizer gate. */
+void test_config_copy_owns_streams_after_source_reload(void) {
+    load_default_config(&cfg);
+    snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "original-camera");
+    config_t snapshot = {0};
+    config_copy(&snapshot, &cfg);
+    TEST_ASSERT_NOT_EQUAL_PTR(cfg.streams, snapshot.streams);
+    TEST_ASSERT_EQUAL_STRING("original-camera", snapshot.streams[0].name);
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_STRING("original-camera", snapshot.streams[0].name);
+    free(snapshot.streams);
+}
+
 void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
     char *dir = mkdtemp(temp_dir);
@@ -228,9 +272,11 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     }
     for (int i = 0; i < 50; ++i) {
         (void)config_get_mp4_faststart(&cfg);
-        config_t snapshot;
+        config_t snapshot = {0};
         config_copy(&snapshot, &cfg);
         (void)config_get_mp4_faststart(&snapshot);
+        TEST_ASSERT_NOT_EQUAL_PTR(cfg.streams, snapshot.streams);
+        free(snapshot.streams);
         save_result = save_config(&cfg, path);
         if (save_result != 0) break;
         FILE *file = fopen(path, "r");
@@ -253,12 +299,16 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     TEST_ASSERT_EQUAL_INT(50, valid_saves);
 
     config_set_mp4_faststart(&cfg, false);
-    config_t snapshot;
+    config_t snapshot = {0};
     config_copy(&snapshot, &cfg);
     config_set_mp4_faststart(&cfg, true);
     TEST_ASSERT_FALSE(config_get_mp4_faststart(&snapshot));
     TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));
-    TEST_ASSERT_EQUAL_PTR(cfg.streams, snapshot.streams);
+    TEST_ASSERT_NOT_EQUAL_PTR(cfg.streams, snapshot.streams);
+    TEST_ASSERT_EQUAL_INT(cfg.max_streams, snapshot.max_streams);
+    TEST_ASSERT_EQUAL_MEMORY(cfg.streams, snapshot.streams,
+                             (size_t)cfg.max_streams * sizeof(*cfg.streams));
+    free(snapshot.streams);
 }
 
 void test_default_config_buffer_size(void) {
@@ -963,6 +1013,15 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
     TEST_ASSERT_EQUAL_INT(8080, cfg.web_port);
 
+    TEST_ASSERT_EQUAL_INT(0, setenv(timeout_env_names[0], "-1", 1));
+    TEST_ASSERT_EQUAL_INT(0, setenv(timeout_env_names[1], "-1", 1));
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(30000, cfg.webrtc_connection_timeout_ms);
+    TEST_ASSERT_EQUAL_INT(5000, cfg.webrtc_ice_recovery_timeout_ms);
+    TEST_ASSERT_EQUAL_INT(0, setenv(timeout_env_names[1], "0", 1));
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(0, cfg.webrtc_ice_recovery_timeout_ms);
+
     unlink(config_path);
     unlink(db_path);
     unlink(log_path);
@@ -1075,7 +1134,7 @@ static void test_save_config_preserves_legacy_file_when_replacement_fails(void) 
     check_group_writable_config_replacement(true);
 }
 
-static void test_save_config_updates_owned_file_in_place(void) {
+static void test_save_config_atomically_replaces_owned_file(void) {
     char directory[] = "/tmp/lightnvr_config_owned_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
@@ -1089,10 +1148,72 @@ static void test_save_config_updates_owned_file_in_place(void) {
     load_default_config(&cfg);
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, path));
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
-    TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
+    TEST_ASSERT_NOT_EQUAL(before.st_ino, after.st_ino);
     TEST_ASSERT_EQUAL_UINT(0600, after.st_mode & 0777);
     unlink(path);
     rmdir(directory);
+}
+
+static void test_save_config_preserves_owned_file_when_publish_fails(void) {
+    char directory[] = "/tmp/lightnvr_config_atomic_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *initial = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(initial);
+    fputs("previous configuration", initial);
+    fclose(initial);
+    load_default_config(&cfg);
+    deny_config_rename = true;
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    deny_config_rename = false;
+    char content[64] = {0};
+    FILE *saved = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    TEST_ASSERT_EQUAL_UINT(strlen("previous configuration"),
+                           fread(content, 1, sizeof(content) - 1, saved));
+    fclose(saved);
+    TEST_ASSERT_EQUAL_STRING("previous configuration", content);
+    unlink(path);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+}
+
+static void check_bind_mount_fallback(bool fail_copy) {
+    char directory[] = "/tmp/lightnvr_config_bind_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *initial = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(initial);
+    fputs("previous configuration", initial);
+    fclose(initial);
+    struct stat before, after;
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
+    load_default_config(&cfg);
+    busy_config_rename = true;
+    fail_config_pwrite = fail_copy;
+    fail_config_pwrite_inode = before.st_ino;
+    int result = save_config(&cfg, path);
+    TEST_ASSERT_EQUAL_INT(fail_copy ? -1 : 0, result);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
+    TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
+    char content[128] = {0};
+    FILE *saved = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    size_t count = fread(content, 1, sizeof(content) - 1, saved);
+    fclose(saved);
+    if (fail_copy) TEST_ASSERT_EQUAL_STRING("previous configuration", content);
+    else TEST_ASSERT_TRUE(count > 0 && strstr(content, "LightNVR Configuration File") != NULL);
+    unlink(path);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+}
+
+static void test_save_config_bind_mount_fallback(void) {
+    check_bind_mount_fallback(false);
+}
+
+static void test_save_config_bind_mount_restores_after_write_failure(void) {
+    check_bind_mount_fallback(true);
 }
 
 static void test_save_config_updates_file_in_read_only_directory(void) {
@@ -1126,7 +1247,10 @@ int main(void) {
     RUN_TEST(test_save_config_rejects_hardlinks_without_truncation_or_mode_change);
     RUN_TEST(test_save_config_replaces_group_writable_legacy_file_privately);
     RUN_TEST(test_save_config_preserves_legacy_file_when_replacement_fails);
-    RUN_TEST(test_save_config_updates_owned_file_in_place);
+    RUN_TEST(test_save_config_atomically_replaces_owned_file);
+    RUN_TEST(test_save_config_preserves_owned_file_when_publish_fails);
+    RUN_TEST(test_save_config_bind_mount_fallback);
+    RUN_TEST(test_save_config_bind_mount_restores_after_write_failure);
     RUN_TEST(test_save_config_updates_file_in_read_only_directory);
 
     RUN_TEST(test_stream_config_t_size_under_16k);
@@ -1137,6 +1261,7 @@ int main(void) {
     RUN_TEST(test_default_config_log_level);
     RUN_TEST(test_default_config_retention_days);
     RUN_TEST(test_default_config_mp4_faststart_on);
+    RUN_TEST(test_config_copy_owns_streams_after_source_reload);
     RUN_TEST(test_mp4_faststart_concurrent_reads_copies_and_saves);
     RUN_TEST(test_default_config_buffer_size);
     RUN_TEST(test_default_config_storage_path_nonempty);
