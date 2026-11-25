@@ -1898,7 +1898,7 @@ int save_config(const config_t *config, const char *path) {
         }
     }
     if ((replacement_name[0] && fchmod(config_fd, 0600) != 0) ||
-        ftruncate(config_fd, 0) != 0) {
+        (!replacement_name[0] && ftruncate(config_fd, 0) != 0)) {
         log_error("Could not prepare private config file: %s", strerror(errno));
         close(config_fd);
         if (replacement_name[0]) unlinkat(dir_fd, replacement_name, 0);
