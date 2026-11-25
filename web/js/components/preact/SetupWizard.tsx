@@ -356,6 +356,14 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
         return false;
       }
 
+      if (!settingsLoaded || settingsLoadFailed) {
+        showStatusMessage(
+          t('setupWizard.saveFailed', { error: 'Settings are still loading or failed to load. Please wait and try again.' }),
+          'error'
+        );
+        return false;
+      }
+
       const payload: SetupSettingsPayload = {
         storage_path:         submittedFormSnapshot.storagePath || undefined,
         max_storage_size:     validatedMaxStorageBytes,
