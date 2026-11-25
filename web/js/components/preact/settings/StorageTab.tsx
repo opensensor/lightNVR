@@ -277,9 +277,11 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
     const low = Number(editor!.low_watermark_pct);
     const high = Number(editor!.high_watermark_pct);
     const migrationMbps = Number(editor!.migration_mbps);
+    const archiveBudgetGb = Number(editor!.archive_budget_gb || 0);
+    const archiveBudgetBytes = Math.round(archiveBudgetGb * 1024 ** 3);
     const windowStart = timeToMinutes(editor!.archival_window_start);
     const windowEnd = timeToMinutes(editor!.archival_window_end);
-    if (!Number.isFinite(reserveGb) || reserveGb < 0 || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high >= 100 || low >= high || !Number.isFinite(migrationMbps) || migrationMbps < 0 || (migrationMbps > 0 && migrationMbps * 1000000 / 8 < 65536) || windowStart === null || windowEnd === null) {
+    if (!Number.isFinite(reserveGb) || reserveGb < 0 || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high >= 100 || low >= high || !Number.isFinite(migrationMbps) || migrationMbps < 0 || (migrationMbps > 0 && migrationMbps * 1000000 / 8 < 65536) || !Number.isFinite(archiveBudgetGb) || archiveBudgetGb < 0 || !Number.isFinite(archiveBudgetBytes) || archiveBudgetBytes < 0 || windowStart === null || windowEnd === null) {
       showStatusMessage(t('settings.storageTargets.invalidThresholds'), 'error');
       return;
     }
@@ -289,7 +291,7 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
         target_type: editor!.target_type || 'filesystem',
         endpoint: (editor!.endpoint || '').trim(), region: (editor!.region || '').trim(),
         bucket: (editor!.bucket || '').trim(), credential_ref: (editor!.credential_ref || '').trim(),
-        archive_budget_bytes: Math.round(Number(editor!.archive_budget_gb || 0) * 1024 ** 3),
+        archive_budget_bytes: archiveBudgetBytes,
         name: editor!.name.trim(),
         root_path: editor!.root_path.trim(),
         enabled: editor!.enabled,
