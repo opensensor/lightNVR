@@ -459,6 +459,9 @@ void load_default_config(config_t *config) {
         // Bound to useful range before multiplying to avoid signed overflow UB.
         if (num_cores > 64) num_cores = 64;
 
+        // Bound to useful range before multiplying to avoid signed overflow UB.
+        if (num_cores > 64) num_cores = 64;
+
         config->web_thread_pool_size = (num_cores > 0) ? (num_cores * 2) : 8;
         if (config->web_thread_pool_size < 2)   config->web_thread_pool_size = 2;
         if (config->web_thread_pool_size > 128) config->web_thread_pool_size = 128;
