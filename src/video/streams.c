@@ -83,16 +83,21 @@ config_t* get_streaming_config(void) {
         pthread_mutex_unlock(&config_mutex);
         return &g_config;
     }
-    
-    // Load stream configurations from database
-    int ms = configured_stream_slots();
-    stream_config_t *db_streams = calloc(ms, sizeof(stream_config_t));
+
+    // Clear stale startup or deleted stream rows while retaining per-slot defaults.
+    if (config_reset_stream_slots(&db_config) != 0) {
+        pthread_mutex_unlock(&config_mutex);
+        return &g_config;
+    }
+
+    // Load stream configurations from database.
+    int ms = db_config.max_streams;
+    stream_config_t *db_streams = calloc((size_t)ms, sizeof(*db_streams));
     if (db_streams) {
         int count = get_all_stream_configs(db_streams, ms);
         if (count > 0) {
-            // Copy stream configurations to the config structure
             for (int i = 0; i < count && i < ms; i++) {
-                memcpy(&db_config.streams[i], &db_streams[i], sizeof(stream_config_t));
+                memcpy(&db_config.streams[i], &db_streams[i], sizeof(*db_streams));
             }
         }
         free(db_streams);

@@ -437,6 +437,9 @@ void config_set_mp4_faststart(config_t *config, bool enabled);
  *  be accessed concurrently. */
 bool config_copy(config_t *destination, const config_t *source);
 
+/* Reset all allocated stream slots to the same defaults used at startup. */
+int config_reset_stream_slots(config_t *config);
+
 /**
  * Set the detection grace period, clamped to its valid range (0..60 s).
  * Shared by the config-file loader and the settings API so the range lives
