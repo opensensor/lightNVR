@@ -10,8 +10,9 @@ import {getSystemSettings,getSystemInformation,updateSystemSettings,updateSetupS
  *   3 – Complete / summary
  */
 
-import type { ComponentChildren } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { cloneElement } from 'preact';
+import type { ComponentChildren, VNode } from 'preact';
+import { useState, useEffect, useCallback, useId } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { useI18n } from '../../i18n.ts';
 
@@ -57,11 +58,23 @@ function StepDots({ current, total }: { current: number; total: number }) {
 }
 
 function Field({ label, hint, children }: { label: ComponentChildren; hint?: ComponentChildren; children?: ComponentChildren }) {
+  const inputId = useId();
+  const hintId = `${inputId}-hint`;
+
+  const childNode = children as VNode | undefined;
+  const enhancedChild =
+    childNode && typeof childNode === 'object' && 'type' in childNode
+      ? cloneElement(childNode, {
+          id: inputId,
+          'aria-describedby': hint ? hintId : undefined,
+        })
+      : children;
+
   return (
     <div class="mb-5">
-      <label class="block text-sm font-medium mb-1">{label}</label>
-      {children}
-      {hint && <p class="text-xs text-muted-foreground mt-1">{hint}</p>}
+      <label for={inputId} class="block text-sm font-medium mb-1">{label}</label>
+      {enhancedChild}
+      {hint && <p id={hintId} class="text-xs text-muted-foreground mt-1">{hint}</p>}
     </div>
   );
 }
@@ -237,12 +250,6 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
     return String(gb);
   };
 
-  const gbStringToBytes = (value: string): number => {
-    const gb = Number.parseFloat(value);
-    if (!Number.isFinite(gb) || gb <= 0) return 0;
-    return Math.round(gb * BYTES_PER_GB);
-  };
-
   const [form, setForm] = useState<WizardForm>({
     storagePath: '',
     maxStorageSize: '0',
@@ -284,12 +291,47 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const saveSettings = async () => {
     setSaving(true);
     try {
+      const parsedMaxStorageGb = Number(form.maxStorageSize);
+      if (!Number.isFinite(parsedMaxStorageGb) || parsedMaxStorageGb < 0) {
+        showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size must be a finite number greater than or equal to 0.' }), 'error');
+        return false;
+      }
+      const validatedMaxStorageBytes = Math.round(parsedMaxStorageGb * BYTES_PER_GB);
+      if (!Number.isSafeInteger(validatedMaxStorageBytes)) {
+        showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size is too large.' }), 'error');
+        return false;
+      }
+
+      let validatedThreadPoolSize: number | undefined = undefined;
+      if (form.threadPoolSize.trim() !== '') {
+        const parsedThreadPoolSize = Number(form.threadPoolSize);
+        if (!Number.isFinite(parsedThreadPoolSize) || !Number.isInteger(parsedThreadPoolSize)) {
+          showStatusMessage(t('setupWizard.saveFailed', { error: 'Thread pool size must be an integer.' }), 'error');
+          return false;
+        }
+        if (parsedThreadPoolSize < 2 || parsedThreadPoolSize > 128) {
+          showStatusMessage(t('setupWizard.saveFailed', { error: 'Thread pool size must be between 2 and 128.' }), 'error');
+          return false;
+        }
+        validatedThreadPoolSize = parsedThreadPoolSize;
+      }
+
+      const parsedMaxStreams = Number(form.maxStreams);
+      if (!Number.isFinite(parsedMaxStreams) || !Number.isInteger(parsedMaxStreams)) {
+        showStatusMessage(t('setupWizard.saveFailed', { error: 'Max streams must be an integer.' }), 'error');
+        return false;
+      }
+      if (parsedMaxStreams < 1 || parsedMaxStreams > maxStreamsCeiling) {
+        showStatusMessage(t('setupWizard.saveFailed', { error: `Max streams must be between 1 and ${maxStreamsCeiling}.` }), 'error');
+        return false;
+      }
+
       const payload: SetupSettingsPayload = {
         storage_path:         form.storagePath    || undefined,
-        max_storage_size:     gbStringToBytes(form.maxStorageSize),
+        max_storage_size:     validatedMaxStorageBytes,
         db_path:              form.dbPath         || undefined,
-        web_thread_pool_size: form.threadPoolSize ? parseInt(form.threadPoolSize, 10) : undefined,
-        max_streams:          parseInt(form.maxStreams, 10) || 32,
+        web_thread_pool_size: validatedThreadPoolSize,
+        max_streams:          parsedMaxStreams,
       };
       (Object.keys(payload) as (keyof SetupSettingsPayload)[]).forEach(k => payload[k] === undefined && delete payload[k]);
 
