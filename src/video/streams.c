@@ -59,21 +59,50 @@ hls_writer_t *get_stream_hls_writer(stream_handle_t stream) {
     return (hls_writer_t *)state->hls_ctx;
 }
 
+static pthread_key_t streaming_snapshot_key;
+static pthread_once_t streaming_snapshot_once = PTHREAD_ONCE_INIT;
+static int streaming_snapshot_key_result = -1;
+
+static void destroy_streaming_snapshot(void *value) {
+    config_t *snapshot = value;
+    if (snapshot) {
+        free(snapshot->streams);
+        free(snapshot);
+    }
+}
+
+static void init_streaming_snapshot_key(void) {
+    streaming_snapshot_key_result =
+        pthread_key_create(&streaming_snapshot_key, destroy_streaming_snapshot);
+}
+
 /**
  * Get current streaming configuration from database
  * 
  * This function queries the database for all stream configurations
- * and returns a borrowed pointer to an internal static config_t
- * structure containing the latest stream configurations.
+ * and returns a borrowed pointer to a per-thread config_t snapshot.
  *
- * The caller must not free the returned pointer.
+ * The caller must not free the returned pointer. It remains valid until the
+ * next call on that thread or until the thread exits.
  * 
- * @return Borrowed pointer to an internal static config_t structure with
+ * @return Borrowed pointer to a per-thread config_t structure with
  *         the latest stream configurations
  */
 config_t* get_streaming_config(void) {
     static config_t db_config;
     static pthread_mutex_t config_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    if (pthread_once(&streaming_snapshot_once, init_streaming_snapshot_key) != 0 ||
+        streaming_snapshot_key_result != 0) return &g_config;
+    config_t *snapshot = pthread_getspecific(streaming_snapshot_key);
+    if (!snapshot) {
+        snapshot = calloc(1, sizeof(*snapshot));
+        if (!snapshot) return &g_config;
+        if (pthread_setspecific(streaming_snapshot_key, snapshot) != 0) {
+            free(snapshot);
+            return &g_config;
+        }
+    }
     
     pthread_mutex_lock(&config_mutex);
     
@@ -81,13 +110,13 @@ config_t* get_streaming_config(void) {
     // This ensures we get the latest configuration including the database path
     if (!config_copy(&db_config, &g_config)) {
         pthread_mutex_unlock(&config_mutex);
-        return &g_config;
+        return snapshot->streams ? snapshot : &g_config;
     }
 
     // Clear stale startup or deleted stream rows while retaining per-slot defaults.
     if (config_reset_stream_slots(&db_config) != 0) {
         pthread_mutex_unlock(&config_mutex);
-        return &g_config;
+        return snapshot->streams ? snapshot : &g_config;
     }
 
     // Load stream configurations from database.
@@ -107,12 +136,9 @@ config_t* get_streaming_config(void) {
     log_debug("get_streaming_config: Using storage path: %s", db_config.storage_path);
     log_debug("get_streaming_config: Using database path: %s", db_config.db_path);
 
-    // Return a caller-owned snapshot to avoid exposing shared mutable static state.
-    config_t *snapshot = calloc(1, sizeof(*snapshot));
-    if (!snapshot || !config_copy(snapshot, &db_config)) {
-        free(snapshot);
+    if (!config_copy(snapshot, &db_config)) {
         pthread_mutex_unlock(&config_mutex);
-        return &g_config;
+        return snapshot->streams ? snapshot : &g_config;
     }
     
     pthread_mutex_unlock(&config_mutex);

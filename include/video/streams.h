@@ -49,8 +49,9 @@ typedef struct {
 
 
 // Core streaming functions
-// Returns a borrowed pointer to an internal static config snapshot.
-// The caller must not free or retain this pointer beyond immediate use.
+// Returns a borrowed per-thread snapshot, valid until the next call on that
+// thread or thread exit. The caller must not free it. On allocation failure,
+// the global configuration is returned as a fallback.
 config_t* get_streaming_config(void);
 void init_streaming_backend(void);
 void cleanup_streaming_backend(void);
