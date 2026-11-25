@@ -309,7 +309,16 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const parsedMaxStorageGb = Number(form.maxStorageSize);
+      const submittedFormSnapshot = {
+        storagePath: form.storagePath,
+        maxStorageSize: form.maxStorageSize,
+        dbPath: form.dbPath,
+        threadPoolSize: form.threadPoolSize,
+        maxStreams: form.maxStreams,
+      };
+      const submittedSnapshotKey = JSON.stringify(submittedFormSnapshot);
+
+      const parsedMaxStorageGb = Number(submittedFormSnapshot.maxStorageSize);
       if (!Number.isFinite(parsedMaxStorageGb) || parsedMaxStorageGb < 0) {
         showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size must be a finite number greater than or equal to 0.' }), 'error');
         return false;
@@ -321,8 +330,8 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       }
 
       let validatedThreadPoolSize: number | undefined = undefined;
-      if (form.threadPoolSize.trim() !== '') {
-        const parsedThreadPoolSize = Number(form.threadPoolSize);
+      if (submittedFormSnapshot.threadPoolSize.trim() !== '') {
+        const parsedThreadPoolSize = Number(submittedFormSnapshot.threadPoolSize);
         if (!Number.isFinite(parsedThreadPoolSize) || !Number.isInteger(parsedThreadPoolSize)) {
           showStatusMessage(t('setupWizard.saveFailed', { error: 'Thread pool size must be an integer.' }), 'error');
           return false;
@@ -334,7 +343,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
         validatedThreadPoolSize = parsedThreadPoolSize;
       }
 
-      const parsedMaxStreams = Number(form.maxStreams);
+      const parsedMaxStreams = Number(submittedFormSnapshot.maxStreams);
       if (!Number.isFinite(parsedMaxStreams) || !Number.isInteger(parsedMaxStreams)) {
         showStatusMessage(t('setupWizard.saveFailed', { error: 'Max streams must be an integer.' }), 'error');
         return false;
@@ -345,15 +354,30 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       }
 
       const payload: SetupSettingsPayload = {
-        storage_path:         form.storagePath    || undefined,
+        storage_path:         submittedFormSnapshot.storagePath || undefined,
         max_storage_size:     validatedMaxStorageBytes,
-        db_path:              form.dbPath         || undefined,
+        db_path:              submittedFormSnapshot.dbPath || undefined,
         web_thread_pool_size: validatedThreadPoolSize,
         max_streams:          parsedMaxStreams,
       };
       (Object.keys(payload) as (keyof SetupSettingsPayload)[]).forEach(k => payload[k] === undefined && delete payload[k]);
 
       const result = await updateSystemSettings(payload);
+
+      const currentSnapshotKey = JSON.stringify({
+        storagePath: form.storagePath,
+        maxStorageSize: form.maxStorageSize,
+        dbPath: form.dbPath,
+        threadPoolSize: form.threadPoolSize,
+        maxStreams: form.maxStreams,
+      });
+      if (currentSnapshotKey !== submittedSnapshotKey) {
+        showStatusMessage(
+          t('setupWizard.saveFailed', { error: 'Settings changed while saving. Please save again to apply the latest values.' }),
+          'error'
+        );
+        return false;
+      }
 
       setRestartRequired(result.restart_required);
       setSaved(true);
