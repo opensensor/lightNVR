@@ -2307,6 +2307,11 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "bind_ip = %s\n", config->web_bind_ip);
     fprintf(file, "root = %s\n", config->web_root);
     fprintf(file, "ssl_enabled = %s  ; Serve HTTPS directly (needs a build with -DENABLE_SSL=ON)\n",
+    if (contains_unsupported_ini_credential_chars(config->web_username)) {
+        LOG_ERROR("Refusing to save config: web_username contains unsupported INI characters");
+        fclose(file);
+        return false;
+    }
             config->web_ssl_enabled ? "true" : "false");
     fprintf(file, "ssl_cert_path = %s  ; PEM certificate chain, leaf first\n", config->web_ssl_cert_path);
     fprintf(file, "ssl_key_path = %s  ; PEM private key (unencrypted)\n", config->web_ssl_key_path);
