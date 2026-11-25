@@ -290,8 +290,8 @@ void test_streaming_config_snapshots_are_thread_local(void) {
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL,
                          capture_streaming_snapshot_addresses, &worker_addresses));
     TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
-    TEST_ASSERT_NOT_EQUAL(main_config_address, worker_addresses.config_address);
-    TEST_ASSERT_NOT_EQUAL(main_streams_address, worker_addresses.streams_address);
+    TEST_ASSERT_TRUE(main_config_address != worker_addresses.config_address);
+    TEST_ASSERT_TRUE(main_streams_address != worker_addresses.streams_address);
     TEST_ASSERT_EQUAL_PTR(main_snapshot, get_streaming_config());
     free(g_config.streams);
     memset(&g_config, 0, sizeof(g_config));
