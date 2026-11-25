@@ -1347,7 +1347,8 @@ int main(int argc, char *argv[]) {
 
             // Now directly start the unified detection thread
             // Use ACTIVE continuous-recording state (not config intent) for annotation-only mode
-            bool annotation_only = is_continuous_recording_active(config.streams[i].name);
+            bool annotation_only = config.streams[i].record &&
+                get_recording_state(config.streams[i].name) == 1;
             log_info("Directly starting unified detection thread for stream %s with model %s (annotation_only=%s)",
                     config.streams[i].name, model_path, annotation_only ? "true" : "false");
 
@@ -1544,48 +1545,17 @@ cleanup:
         // Allow the same final-backup deadline as the thread watchdog.
         // Large databases can take several minutes to copy and verify.
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
-        // A parent that exited naturally must never be signalled after its
-        // PID is reused by another process. If restart was requested, still
-        // attempt restart recovery without signalling the old parent PID.
-        if (getppid() != parent_pid) {
-            if (restart_requested) {
-                if (container_mode) {
-                    _exit(EXIT_SUCCESS);
-                } else if (saved_argv != NULL) {
-                    char exe_path[MAX_PATH_LENGTH];
-                    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-                    if (len > 0) {
-                        exe_path[len] = '\0';
-                        execv(exe_path, saved_argv);
-                    }
-                    _exit(EXIT_FAILURE);
-                }
+        // Never signal a PID after this child has been reparented: the old
+        // parent's PID may already belong to an unrelated process.
+        if (getppid() == parent_pid) {
+            kill(parent_pid, SIGUSR1);  // Request emergency cleanup.
+            sleep(15);
+            if (getppid() == parent_pid) {
+                kill(parent_pid, SIGKILL);
             }
-            _exit(EXIT_SUCCESS);
         }
-        kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
 
-        // Wait a bit longer for emergency cleanup before giving up entirely
-        sleep(15);
-        if (getppid() != parent_pid) {
-            if (restart_requested) {
-                if (container_mode) {
-                    _exit(EXIT_SUCCESS);
-                } else if (saved_argv != NULL) {
-                    char exe_path[MAX_PATH_LENGTH];
-                    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-                    if (len > 0) {
-                        exe_path[len] = '\0';
-                        execv(exe_path, saved_argv);
-                    }
-                    _exit(EXIT_FAILURE);
-                }
-            }
-            _exit(EXIT_SUCCESS);
-        }
-        kill(parent_pid, SIGKILL);  // Force kill the parent process
-
-        // If restart was requested, handle it here since the parent was killed
+        // Recover a requested restart if the parent died during cleanup.
         if (restart_requested) {
             if (container_mode) {
                 // In container mode, just exit cleanly
@@ -1595,11 +1565,10 @@ cleanup:
                 // The parent is now dead, wait for it to fully exit
                 usleep(2000000);  // 2 seconds
 
-                // Wait for the parent process to fully terminate
-                // The parent PID may have been reused, so check if it's still the same process
-                // by waiting a bit more to ensure resources are released
+                // Wait for the parent to terminate before re-exec. Do not
+                // probe a numeric PID after this child has been reparented.
                 for (int i = 0; i < 10; i++) {
-                    if (kill(parent_pid, 0) != 0) {
+                    if (getppid() != parent_pid) {
                         // Parent is gone
                         break;
                     }
