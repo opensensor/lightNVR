@@ -221,6 +221,8 @@ void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
     snprintf(cfg.storage_path_hls, sizeof(cfg.storage_path_hls), "%s/hls", dir);
     snprintf(cfg.models_path, sizeof(cfg.models_path), "%s/models", dir);
     snprintf(cfg.db_path, sizeof(cfg.db_path), "%s/lightnvr.db", dir);
+    snprintf(cfg.db_post_backup_script, sizeof(cfg.db_post_backup_script),
+             "%s/post-backup.sh", dir);
     snprintf(cfg.web_root, sizeof(cfg.web_root), "%s/web", dir);
     TEST_ASSERT_EQUAL_INT(0, ensure_dir(cfg.web_root));
     config_set_mp4_faststart(&cfg, false);
@@ -246,6 +248,8 @@ void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
     TEST_ASSERT_EQUAL_INT(44, reloaded.web_cache_max_age_images);
     TEST_ASSERT_EQUAL_INT(55, reloaded.web_cache_max_age_fonts);
     TEST_ASSERT_EQUAL_INT(66, reloaded.web_cache_max_age_default);
+    TEST_ASSERT_EQUAL_STRING(cfg.db_post_backup_script,
+                             reloaded.db_post_backup_script);
     free(reloaded.streams);
 
     unlink(config_path);

@@ -2285,8 +2285,8 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "backup_verify = %s  ; Post-copy backup verification: full (default), quick, or off\n",
             config->db_backup_verify == DB_BACKUP_VERIFY_OFF ? "off" :
             config->db_backup_verify == DB_BACKUP_VERIFY_QUICK ? "quick" : "full");
-    fprintf(file, "post_backup_script = %s  ; Optional absolute path to executable hook\n\n",
-            config->db_post_backup_script);
+    fprintf(file, "; Optional absolute path to executable hook\n");
+    fprintf(file, "post_backup_script = %s\n\n", config->db_post_backup_script);
     
     // Write web server settings
     fprintf(file, "[web]\n");
