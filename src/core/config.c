@@ -233,6 +233,10 @@ static bool is_string_default(const char *current, const char *default_val) {
  *
  * @param config Pointer to config structure to modify
  */
+// Must be implemented by the INI parsing path: true iff option at mapping_index
+// was explicitly set in configuration file (regardless of value).
+static bool config_option_was_set_in_ini(size_t mapping_index);
+
 static void apply_env_overrides(config_t *config) {
     if (!config) return;
 
@@ -254,26 +258,8 @@ static void apply_env_overrides(config_t *config) {
         // Get pointer to the config field
         void *field_ptr = (char *)config + mapping->offset;
 
-        // Check if the current value is still at default (not set by config file)
-        bool is_default = false;
-
-        switch (mapping->type) {
-            case CONFIG_TYPE_BOOL: {
-                const bool *bool_ptr = (const bool *)field_ptr;
-                is_default = (*bool_ptr == mapping->default_bool_value);
-                break;
-            }
-            case CONFIG_TYPE_INT: {
-                const int *int_ptr = (const int *)field_ptr;
-                is_default = (*int_ptr == mapping->default_int_value);
-                break;
-            }
-            case CONFIG_TYPE_STRING: {
-                const char *str_ptr = (const char *)field_ptr;
-                is_default = is_string_default(str_ptr, mapping->default_str_value);
-                break;
-            }
-        }
+        // Apply env override only if option was absent from INI.
+        bool is_default = !config_option_was_set_in_ini((size_t)i);
 
         if (!is_default) {
             log_debug("Config field for %s already set, skipping env override", env_name);
