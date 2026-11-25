@@ -98,6 +98,17 @@ function utf8ByteLength(s: string) {
 
 export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifySettings, t }: Go2rtcTabProps) {
   // ---------- T9 — go2rtc override validation, preview, presets ----------
+  const invalidateOverrideValidation = () => {
+    validationGenerationRef.current += 1;
+    if (overrideValidateTimerRef.current) {
+      clearTimeout(overrideValidateTimerRef.current);
+      overrideValidateTimerRef.current = null;
+    }
+    if (isMountedRef.current) {
+      setOverrideValidating(false);
+      setOverrideValidation(null);
+    }
+  };
   const [overrideValidation, setOverrideValidation] = useState<Go2rtcOverrideValidation | null>(null); // null | { valid, error?, warnings, libyaml_available, skipped }
   const [overrideValidating, setOverrideValidating] = useState(false);
   const [effectiveConfig, setEffectiveConfig] = useState<Go2rtcEffectiveConfig | null>(null);
@@ -106,6 +117,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   const [effectiveConfigLoading, setEffectiveConfigLoading] = useState(false);
   const [overrideStatus, setOverrideStatus] = useState<Go2rtcOverrideStatus | null>(null);
   const overrideValidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const validationGenerationRef = useRef(0);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -119,17 +131,17 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     };
   }, []);
 
-  const validateOverride = async (yaml: string) => {
-    if (isMountedRef.current) setOverrideValidating(true);
+  const validateOverride = async (yaml: string, generation: number) => {
+    if (isMountedRef.current && validationGenerationRef.current === generation) setOverrideValidating(true);
     try {
       const result = await validateGo2rtcConfiguration({override:yaml || ''});
-      if (isMountedRef.current) setOverrideValidation(result);
+      if (isMountedRef.current && validationGenerationRef.current === generation) setOverrideValidation(result);
     } catch (_err) {
       // Network/HTTP failure — don't block the user, just clear stale state.
       // The save-side validator will catch any real problem on POST /api/settings.
-      if (isMountedRef.current) setOverrideValidation(null);
+      if (isMountedRef.current && validationGenerationRef.current === generation) setOverrideValidation(null);
     } finally {
-      if (isMountedRef.current) setOverrideValidating(false);
+      if (isMountedRef.current && validationGenerationRef.current === generation) setOverrideValidating(false);
     }
   };
 
@@ -140,8 +152,9 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     const liveValue = (e && e.target && typeof (e.target as HTMLTextAreaElement).value === 'string')
       ? (e.target as HTMLTextAreaElement).value
       : settings.go2rtcConfigOverride;
+    const generationAtSchedule = validationGenerationRef.current;
     overrideValidateTimerRef.current = setTimeout(
-      () => validateOverride(liveValue),
+      () => validateOverride(liveValue, generationAtSchedule),
       200
     );
   };
