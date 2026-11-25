@@ -1461,6 +1461,9 @@ int main(int argc, char *argv[]) {
 
     // Cleanup
 cleanup:
+    // Ensure every path entering shared teardown (including startup-failure
+    // jumps) marks shutdown as started so watchdog/deadline logic is armed.
+    running = false;
     log_info("Starting cleanup process...");
 
     // Every path into this label is a restart/shutdown. signal_handler() and
