@@ -1824,6 +1824,12 @@ int save_config(const config_t *config, const char *path) {
     char resolved_dir[PATH_MAX];
     char validated_filename[MAX_PATH_LENGTH];
     {
+        size_t save_path_len = strlen(save_path);
+        if (save_path_len >= MAX_PATH_LENGTH) {
+            log_error("Config path too long: '%s'", save_path);
+            return -1;
+        }
+
         char tmp[MAX_PATH_LENGTH];
         safe_strcpy(tmp, save_path, MAX_PATH_LENGTH, 0);
 
