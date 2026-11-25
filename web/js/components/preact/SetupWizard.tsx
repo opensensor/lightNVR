@@ -250,12 +250,6 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
     return String(gb);
   };
 
-  const gbStringToBytes = (value: string): number => {
-    const gb = Number.parseFloat(value);
-    if (!Number.isFinite(gb) || gb <= 0) return 0;
-    return Math.round(gb * BYTES_PER_GB);
-  };
-
   const [form, setForm] = useState<WizardForm>({
     storagePath: '',
     maxStorageSize: '0',
@@ -297,12 +291,16 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const parsedMaxStorageGb = Number.parseFloat(form.maxStorageSize);
+      const parsedMaxStorageGb = Number(form.maxStorageSize);
       if (!Number.isFinite(parsedMaxStorageGb) || parsedMaxStorageGb < 0) {
         showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size must be a finite number greater than or equal to 0.' }), 'error');
         return false;
       }
       const validatedMaxStorageBytes = Math.round(parsedMaxStorageGb * BYTES_PER_GB);
+      if (!Number.isSafeInteger(validatedMaxStorageBytes)) {
+        showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size is too large.' }), 'error');
+        return false;
+      }
 
       let validatedThreadPoolSize: number | undefined = undefined;
       if (form.threadPoolSize.trim() !== '') {
@@ -311,12 +309,8 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
           showStatusMessage(t('setupWizard.saveFailed', { error: 'Thread pool size must be an integer.' }), 'error');
           return false;
         }
-        if (parsedThreadPoolSize < 1) {
-          showStatusMessage(t('setupWizard.saveFailed', { error: 'Thread pool size must be at least 1.' }), 'error');
-          return false;
-        }
-        if (cpuCores > 0 && parsedThreadPoolSize > cpuCores) {
-          showStatusMessage(t('setupWizard.saveFailed', { error: `Thread pool size must be less than or equal to ${cpuCores}.` }), 'error');
+        if (parsedThreadPoolSize < 2 || parsedThreadPoolSize > 128) {
+          showStatusMessage(t('setupWizard.saveFailed', { error: 'Thread pool size must be between 2 and 128.' }), 'error');
           return false;
         }
         validatedThreadPoolSize = parsedThreadPoolSize;
