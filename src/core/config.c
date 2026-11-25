@@ -1981,9 +1981,9 @@ int save_config(const config_t *config, const char *path) {
             config_get_mp4_faststart(config) ? "true" : "false");
     fprintf(file, "min_free_pct = %d  ; keep at least this %% of the volume free (0 disables capacity cap)\n",
             config->storage_min_free_pct);
-    fprintf(file, "pressure_warning_pct = %.1f\n", config->storage_pressure_warning_pct);
-    fprintf(file, "pressure_critical_pct = %.1f\n", config->storage_pressure_critical_pct);
-    fprintf(file, "pressure_emergency_pct = %.1f\n\n", config->storage_pressure_emergency_pct);
+    fprintf(file, "pressure_warning_pct = %.17g\n", config->storage_pressure_warning_pct);
+    fprintf(file, "pressure_critical_pct = %.17g\n", config->storage_pressure_critical_pct);
+    fprintf(file, "pressure_emergency_pct = %.17g\n\n", config->storage_pressure_emergency_pct);
 
     // Write MP4 recording settings
     fprintf(file, "; New recording format options\n");
