@@ -321,6 +321,32 @@ static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAP
     }
 }
 
+static void init_stream_config_defaults(stream_config_t *stream) {
+    memset(stream, 0, sizeof(*stream));
+    stream->detection_based_recording = false;
+    stream->detection_model[0] = '\0';
+    stream->detection_interval = 10; // Check every 10 seconds
+    stream->detection_threshold = 0.5f; // 50% confidence threshold
+    stream->pre_detection_buffer = 5; // 5 seconds before detection
+    stream->post_detection_buffer = 10; // 10 seconds after detection
+    stream->detection_api_url[0] = '\0'; // Empty = use global config
+    safe_strcpy(stream->detection_object_filter, "none", sizeof(stream->detection_object_filter), 0);
+    stream->streaming_enabled = true; // Enable streaming by default
+    stream->record_audio = false; // Disable audio recording by default
+
+    // Tiered retention defaults
+    stream->tier_critical_multiplier = 3.0;
+    stream->tier_important_multiplier = 2.0;
+    stream->tier_ephemeral_multiplier = 0.25;
+    stream->storage_priority = 5;
+
+    // INT_01 observation evidence is off by default (contract section 13)
+    stream->observation_evidence_enabled = false;
+    stream->observation_labels[0] = '\0';
+    stream->observation_max_age_days = OBSERVATION_DEFAULT_MAX_AGE_DAYS;
+    stream->observation_max_bytes = OBSERVATION_DEFAULT_MAX_BYTES;
+}
+
 // Default configuration values
 void load_default_config(config_t *config) {
     if (!config) return;
@@ -528,30 +554,8 @@ void load_default_config(config_t *config) {
     config->onvif_discovery_interval = 300;   // 5 minutes between scans
     safe_strcpy(config->onvif_discovery_network, "auto", sizeof(config->onvif_discovery_network), 0);
 
-    // Initialize default values for detection-based recording in streams
     for (int i = 0; i < config->max_streams; i++) {
-        config->streams[i].detection_based_recording = false;
-        config->streams[i].detection_model[0] = '\0';
-        config->streams[i].detection_interval = 10; // Check every 10 seconds
-        config->streams[i].detection_threshold = 0.5f; // 50% confidence threshold
-        config->streams[i].pre_detection_buffer = 5; // 5 seconds before detection
-        config->streams[i].post_detection_buffer = 10; // 10 seconds after detection
-        config->streams[i].detection_api_url[0] = '\0'; // Empty = use global config
-        safe_strcpy(config->streams[i].detection_object_filter, "none", sizeof(config->streams[i].detection_object_filter), 0);
-        config->streams[i].streaming_enabled = true; // Enable streaming by default
-        config->streams[i].record_audio = false; // Disable audio recording by default
-
-        // Tiered retention defaults
-        config->streams[i].tier_critical_multiplier = 3.0;
-        config->streams[i].tier_important_multiplier = 2.0;
-        config->streams[i].tier_ephemeral_multiplier = 0.25;
-        config->streams[i].storage_priority = 5;
-
-        // INT_01 observation evidence is off by default (contract section 13)
-        config->streams[i].observation_evidence_enabled = false;
-        config->streams[i].observation_labels[0] = '\0';
-        config->streams[i].observation_max_age_days = OBSERVATION_DEFAULT_MAX_AGE_DAYS;
-        config->streams[i].observation_max_bytes = OBSERVATION_DEFAULT_MAX_BYTES;
+        init_stream_config_defaults(&config->streams[i]);
     }
 
     // MQTT settings for detection event streaming
@@ -1164,12 +1168,13 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (new_max < 1)          new_max = 1;
             if (new_max > MAX_STREAMS) new_max = MAX_STREAMS;
             if (new_max != config->max_streams) {
+                int old_max = config->max_streams;
                 stream_config_t *p = realloc(config->streams, new_max * sizeof(stream_config_t));
                 if (p) {
-                    // Zero-initialise newly added slots when expanding
-                    if (new_max > config->max_streams) {
-                        memset(p + config->max_streams, 0,
-                               (new_max - config->max_streams) * sizeof(stream_config_t));
+                    // Give each new slot its own complete defaults. Never copy a
+                    // potentially configured stream into an unrelated slot.
+                    for (int i = old_max; i < new_max; i++) {
+                        init_stream_config_defaults(&p[i]);
                     }
                     config->streams    = p;
                     config->max_streams = new_max;
