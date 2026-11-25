@@ -2412,7 +2412,6 @@ int save_config(const config_t *config, const char *path) {
     
     int write_failed = ferror(file);
     if (fflush(file) != 0 || fsync(fileno(file)) != 0) write_failed = 1;
-    if (fclose(file) != 0) write_failed = 1;
     if (!write_failed) {
         /* Do not replace a symlink, hardlink, or changed target introduced
          * while the replacement was being written. */
@@ -2431,10 +2430,9 @@ int save_config(const config_t *config, const char *path) {
             if (staged_fd >= 0) close(staged_fd);
         } else if (renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
             if (errno == EBUSY && original_fd >= 0) {
-                int staged_fd = openat(dir_fd, replacement_name, O_RDONLY | O_CLOEXEC);
+                int staged_fd = fileno(file);
                 if (staged_fd < 0 || publish_config_in_place(dir_fd, validated_filename,
                         &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
-                if (staged_fd >= 0) close(staged_fd);
             } else {
                 write_failed = 1;
             }
@@ -2442,6 +2440,7 @@ int save_config(const config_t *config, const char *path) {
             log_warn("Could not sync config directory after replacement: %s", strerror(errno));
         }
     }
+    if (fclose(file) != 0) write_failed = 1;
     if (external_staging) unlink(external_staging_path);
     else unlinkat(dir_fd, replacement_name, 0);
     if (original_fd >= 0) close(original_fd);
