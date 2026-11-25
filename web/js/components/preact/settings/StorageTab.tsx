@@ -392,7 +392,7 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
                   {target.mount_required && <p class="text-xs mt-1 text-muted-foreground">{t('settings.storageTargets.mountGuard')}: <span class="font-mono">{target.mount_guard_path || t('settings.storageTargets.mountPending')}</span></p>}
                   <dl class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 text-sm">
                     <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.capacity')}</dt><dd>{objectStorage ? t('common.unknown') : formatBytes(health.capacity_bytes)}</dd></div>
-                    <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.available')}</dt><dd>{objectStorage ? t('common.unknown') : `${formatBytes(health.available_bytes)} (${Math.max(0, 100 - (Number(health.used_pct) || 0)).toFixed(1)}%)`}</dd></div>
+                    <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.available')}</dt><dd>{objectStorage ? t('common.unknown') : `${formatBytes(health.available_bytes)} (${health.used_pct != null && Number.isFinite(Number(health.used_pct)) ? Math.max(0, 100 - Number(health.used_pct)).toFixed(1) + '%' : t('common.unknown')})`}</dd></div>
                     <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.recordings')}</dt><dd>{Number(target.recording_count || 0).toLocaleString()} · {formatBytes(target.recording_bytes)}</dd><dd class="text-xs text-muted-foreground">{t('settings.storageTargets.replicas', { count: Number(target.replica_count || 0).toLocaleString(), bytes: formatBytes(target.replica_bytes) })}</dd></div>
                     <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t(objectStorage ? 'settings.archive.budget' : 'settings.storageTargets.reserve')}</dt><dd>{objectStorage ? (target.archive_budget_bytes ? formatBytes(target.archive_budget_bytes) : '—') : formatBytes(target.reserve_bytes)}</dd></div>
                   </dl>
@@ -612,7 +612,9 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
           <p class="text-xs text-muted-foreground md:col-span-2">{t('settings.archive.policyHelp')}</p>
         </div>
       </fieldset>
-      <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
+      <fieldset disabled={busy}>
+        <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
+      </fieldset>
       {value.selector_error && <p class="text-sm text-[hsl(var(--danger))]">{value.selector_error}</p>}
       {value.preview && <div class={`rounded-md border px-3 py-3 text-sm ${value.preview.conflict_policy_count > 0 ? 'border-amber-400/70 bg-amber-50/70 dark:bg-amber-950/20' : 'border-emerald-400/60 bg-emerald-50/70 dark:bg-emerald-950/20'}`}>
         <p class="font-semibold">{t('settings.storagePolicies.previewSummary', { matched: value.preview.matched_camera_count, effective: value.preview.effective_camera_count })}</p>
