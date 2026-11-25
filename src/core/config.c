@@ -2417,6 +2417,12 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "password = %s\n", config->mqtt_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
     fprintf(file, "client_id = %s\n", config->mqtt_client_id);
+    if (contains_unsupported_ini_credential_chars(config->mqtt_topic_prefix,
+                                                 sizeof(config->mqtt_topic_prefix))) {
+        LOG_ERROR("Invalid mqtt_topic_prefix: contains unsupported INI characters");
+        fclose(file);
+        return -1;
+    }
     fprintf(file, "topic_prefix = %s\n", config->mqtt_topic_prefix);
     fprintf(file, "tls_enabled = %s\n", config->mqtt_tls_enabled ? "true" : "false");
     fprintf(file, "keepalive = %d\n", config->mqtt_keepalive);
