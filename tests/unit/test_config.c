@@ -990,7 +990,7 @@ void test_save_config_tightens_existing_permissions_before_writing_secrets(void)
     snprintf(cfg.mqtt_password, sizeof(cfg.mqtt_password), "synthetic-private-password");
     monitor_secret_write_permissions = true;
     observed_config_stream = false;
-    observed_config_stream_with_private_mode = false;
+    observed_config_stream_with_private_mode = true;
     mode_t previous = umask(0);
     int saved = save_config(&cfg, path);
     umask(previous);
