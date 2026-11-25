@@ -93,14 +93,17 @@ config_t* get_streaming_config(void) {
     static pthread_mutex_t config_mutex = PTHREAD_MUTEX_INITIALIZER;
 
     config_t *snapshot = NULL;
-    if (pthread_once(&streaming_snapshot_once, init_streaming_snapshot_key) != 0 ||
+    config_t *snapshot = NULL;
         streaming_snapshot_key_result != 0) {
         return NULL;
     }
     snapshot = pthread_getspecific(streaming_snapshot_key);
+        return NULL;
+    }
+        if (!snapshot) return NULL;
     if (!snapshot) {
         snapshot = calloc(1, sizeof(*snapshot));
-        if (!snapshot) return NULL;
+            return NULL;
         if (pthread_setspecific(streaming_snapshot_key, snapshot) != 0) {
             free(snapshot);
             return NULL;
@@ -110,7 +113,7 @@ config_t* get_streaming_config(void) {
     pthread_mutex_lock(&config_mutex);
     
     // Use the global configuration instead of loading defaults
-    // This ensures we get the latest configuration including the database path
+        return snapshot->streams ? snapshot : NULL;
     if (!config_copy(&db_config, &g_config)) {
         pthread_mutex_unlock(&config_mutex);
         return snapshot->streams ? snapshot : NULL;
