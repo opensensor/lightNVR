@@ -32,6 +32,7 @@
 /* File-scope config used by most tests — setUp zeros it, tearDown frees
    the dynamically allocated streams array to keep ASan leak-free. */
 static config_t cfg;
+static stream_config_t *owned_snapshot_streams;
 static bool deny_config_chmod;
 static bool deny_config_rename;
 static bool busy_config_rename;
@@ -322,11 +323,11 @@ void test_config_copy_owns_streams_after_source_reload(void) {
     snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "original-camera");
     config_t snapshot = {0};
     TEST_ASSERT_TRUE(config_copy(&snapshot, &cfg));
+    owned_snapshot_streams = snapshot.streams;
     TEST_ASSERT_NOT_EQUAL_PTR(cfg.streams, snapshot.streams);
     TEST_ASSERT_EQUAL_STRING("original-camera", snapshot.streams[0].name);
     load_default_config(&cfg);
     TEST_ASSERT_EQUAL_STRING("original-camera", snapshot.streams[0].name);
-    free(snapshot.streams);
 }
 
 void test_config_reset_stream_slots_clears_stale_rows(void) {
