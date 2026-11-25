@@ -198,6 +198,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   };
 
   const loadEffectiveConfig = async () => {
+    const generation = ++effectiveConfigGenerationRef.current;
     setEffectiveConfigOpen(true);
     setEffectiveConfigLoading(true);
     setOverrideStatus(null);
@@ -210,14 +211,18 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
         getGo2rtcEffectiveConfiguration(),
         getGo2rtcOverrideDiagnostics().catch(() => null),
       ]);
-      if (isMountedRef.current) {
+      if (isMountedRef.current && effectiveConfigGenerationRef.current === generation) {
         setEffectiveConfig(cfg);
         setOverrideStatus(status);
       }
     } catch (err) {
-      if (isMountedRef.current) setEffectiveConfig({ error: String(err) });
+      if (isMountedRef.current && effectiveConfigGenerationRef.current === generation) {
+        setEffectiveConfig({ error: String(err) });
+      }
     } finally {
-      if (isMountedRef.current) setEffectiveConfigLoading(false);
+      if (isMountedRef.current && effectiveConfigGenerationRef.current === generation) {
+        setEffectiveConfigLoading(false);
+      }
     }
   };
 
