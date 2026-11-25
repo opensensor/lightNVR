@@ -15,7 +15,6 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/file.h>
 #include <libgen.h>
 #include <ctype.h>
 #include <limits.h>
@@ -1848,6 +1847,15 @@ static int copy_config_fd(int source_fd, int destination_fd) {
  * private, synced backup until the in-place copy has completed or recovered. */
 static pthread_mutex_t config_in_place_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* Closing any descriptor for the same file can release process-scoped fcntl
+ * locks. Serialize every close of the original with in-place publication. */
+static void close_original_config_fd(int fd) {
+    if (fd < 0) return;
+    pthread_mutex_lock(&config_in_place_mutex);
+    close(fd);
+    pthread_mutex_unlock(&config_in_place_mutex);
+}
+
 static int publish_config_in_place(int dir_fd, const char *filename,
                                    const struct stat *original_stat,
                                    int original_fd, int staged_fd) {
@@ -1932,6 +1940,8 @@ int save_config(const config_t *config, const char *path) {
                                                   sizeof(config->mqtt_password)) ||
         contains_unsupported_ini_credential_chars(config->mqtt_client_id,
                                                   sizeof(config->mqtt_client_id)) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_topic_prefix,
+                                                  sizeof(config->mqtt_topic_prefix)) ||
         contains_unsupported_ini_credential_chars(config->web_username,
                                                   sizeof(config->web_username))) {
         log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
@@ -2117,19 +2127,19 @@ int save_config(const config_t *config, const char *path) {
         if (fstat(original_fd, &config_stat) != 0 ||
             !S_ISREG(config_stat.st_mode) || config_stat.st_nlink != 1) {
             log_error("Config save target must be a regular file with one link: %s", canonical_save_path);
-            close(original_fd);
+            close_original_config_fd(original_fd);
             close(dir_fd);
             return -1;
         }
         if (fchmod(original_fd, 0600) != 0) {
             if (errno != EPERM) {
                 log_error("Could not restrict config file: %s", strerror(errno));
-                close(original_fd);
+                close_original_config_fd(original_fd);
                 close(dir_fd);
                 return -1;
             }
             /* A legacy root-owned file can only be replaced, not rewritten. */
-            close(original_fd);
+            close_original_config_fd(original_fd);
             original_fd = -1;
         }
     }
@@ -2155,7 +2165,7 @@ int save_config(const config_t *config, const char *path) {
     }
     if (config_fd < 0) {
         log_error("Could not prepare private config staging file: %s", strerror(errno));
-        if (original_fd >= 0) close(original_fd);
+        close_original_config_fd(original_fd);
         close(dir_fd);
         return -1;
     }
@@ -2164,7 +2174,7 @@ int save_config(const config_t *config, const char *path) {
         close(config_fd);
         if (external_staging) unlink(external_staging_path);
         else unlinkat(dir_fd, replacement_name, 0);
-        if (original_fd >= 0) close(original_fd);
+        close_original_config_fd(original_fd);
         close(dir_fd);
         return -1;
     }
@@ -2175,7 +2185,7 @@ int save_config(const config_t *config, const char *path) {
         close(config_fd);
         if (external_staging) unlink(external_staging_path);
         else unlinkat(dir_fd, replacement_name, 0);
-        if (original_fd >= 0) close(original_fd);
+        close_original_config_fd(original_fd);
         close(dir_fd);
         return -1;
     }
@@ -2418,12 +2428,6 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "password = %s\n", config->mqtt_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
     fprintf(file, "client_id = %s\n", config->mqtt_client_id);
-    if (contains_unsupported_ini_credential_chars(config->mqtt_topic_prefix,
-                                                 sizeof(config->mqtt_topic_prefix))) {
-        LOG_ERROR("Invalid mqtt_topic_prefix: contains unsupported INI characters");
-        fclose(file);
-        return -1;
-    }
     fprintf(file, "topic_prefix = %s\n", config->mqtt_topic_prefix);
     fprintf(file, "tls_enabled = %s\n", config->mqtt_tls_enabled ? "true" : "false");
     fprintf(file, "keepalive = %d\n", config->mqtt_keepalive);
@@ -2481,11 +2485,7 @@ int save_config(const config_t *config, const char *path) {
     if (staged_fd >= 0) close(staged_fd);
     if (external_staging) unlink(external_staging_path);
     else unlinkat(dir_fd, replacement_name, 0);
-    if (original_fd >= 0) {
-        pthread_mutex_lock(&config_in_place_mutex);
-        close(original_fd);
-        pthread_mutex_unlock(&config_in_place_mutex);
-    }
+    close_original_config_fd(original_fd);
     close(dir_fd);
     if (write_failed) {
         log_error("Failed to write config file: %s", canonical_save_path);
