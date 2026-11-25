@@ -4238,16 +4238,6 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
                 }
                 i_1 += 1;
             }
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_INFO,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"Stream configurations unchanged, skipping update\0".as_ptr()
-                    as *const ::core::ffi::c_char,
-            );
-            free(db_streams as *mut ::core::ffi::c_void);
-            commit_transaction();
-            return loaded;
         }
     }
     if loaded > (*config).max_streams {
