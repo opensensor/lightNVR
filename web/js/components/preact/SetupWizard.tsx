@@ -264,6 +264,8 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
     threadPoolSize: '',
     maxStreams: '32',
   });
+  const formRef = useRef(form);
+  formRef.current = form;
 
   useEffect(() => {
     getSystemSettings()
@@ -303,13 +305,23 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
 
   const handleChange = useCallback((key: keyof WizardForm, value: string) => {
     dirtyFieldsRef.current[key] = true;
+    formRef.current = { ...formRef.current, [key]: value };
     setForm(f => ({ ...f, [key]: value }));
   }, []);
 
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const parsedMaxStorageGb = Number(form.maxStorageSize);
+      const submittedFormSnapshot = {
+        storagePath: form.storagePath,
+        maxStorageSize: form.maxStorageSize,
+        dbPath: form.dbPath,
+        threadPoolSize: form.threadPoolSize,
+        maxStreams: form.maxStreams,
+      };
+      const submittedSnapshotKey = JSON.stringify(submittedFormSnapshot);
+
+      const parsedMaxStorageGb = Number(submittedFormSnapshot.maxStorageSize);
       if (!Number.isFinite(parsedMaxStorageGb) || parsedMaxStorageGb < 0) {
         showStatusMessage(t('setupWizard.saveFailed', { error: 'Max storage size must be a finite number greater than or equal to 0.' }), 'error');
         return false;
@@ -321,8 +333,8 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       }
 
       let validatedThreadPoolSize: number | undefined = undefined;
-      if (form.threadPoolSize.trim() !== '') {
-        const parsedThreadPoolSize = Number(form.threadPoolSize);
+      if (submittedFormSnapshot.threadPoolSize.trim() !== '') {
+        const parsedThreadPoolSize = Number(submittedFormSnapshot.threadPoolSize);
         if (!Number.isFinite(parsedThreadPoolSize) || !Number.isInteger(parsedThreadPoolSize)) {
           showStatusMessage(t('setupWizard.saveFailed', { error: 'Thread pool size must be an integer.' }), 'error');
           return false;
@@ -334,7 +346,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
         validatedThreadPoolSize = parsedThreadPoolSize;
       }
 
-      const parsedMaxStreams = Number(form.maxStreams);
+      const parsedMaxStreams = Number(submittedFormSnapshot.maxStreams);
       if (!Number.isFinite(parsedMaxStreams) || !Number.isInteger(parsedMaxStreams)) {
         showStatusMessage(t('setupWizard.saveFailed', { error: 'Max streams must be an integer.' }), 'error');
         return false;
@@ -345,15 +357,24 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       }
 
       const payload: SetupSettingsPayload = {
-        storage_path:         form.storagePath    || undefined,
+        storage_path:         submittedFormSnapshot.storagePath || undefined,
         max_storage_size:     validatedMaxStorageBytes,
-        db_path:              form.dbPath         || undefined,
+        db_path:              submittedFormSnapshot.dbPath || undefined,
         web_thread_pool_size: validatedThreadPoolSize,
         max_streams:          parsedMaxStreams,
       };
       (Object.keys(payload) as (keyof SetupSettingsPayload)[]).forEach(k => payload[k] === undefined && delete payload[k]);
 
       const result = await updateSystemSettings(payload);
+
+      const currentSnapshotKey = JSON.stringify(formRef.current);
+      if (currentSnapshotKey !== submittedSnapshotKey) {
+        showStatusMessage(
+          t('setupWizard.saveFailed', { error: 'Settings changed while saving. Please save again to apply the latest values.' }),
+          'error'
+        );
+        return false;
+      }
 
       setRestartRequired(result.restart_required);
       setSaved(true);
@@ -382,10 +403,66 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
 
   const isLastDataStep = step === TOTAL_STEPS - 2;
   const isConfirmStep  = step === TOTAL_STEPS - 1;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const handleCompleteRef = useRef(handleComplete);
+  handleCompleteRef.current = handleComplete;
+  const dialogTitleId = useId();
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        void handleCompleteRef.current();
+        return;
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [contenteditable], [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) {
+        e.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+
+      if (e.shiftKey) {
+        if (active === first || active === dialogRef.current) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus();
+    };
+  }, []);
 
   return (
     <div data-testid="setup-wizard" class="app-modal-overlay app-modal-overlay--dialog fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div class="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-lg p-8 max-h-[calc(100vh-2rem)] overflow-y-auto">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={dialogTitleId}
+        tabIndex={-1}
+        class="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-lg p-8 max-h-[calc(100vh-2rem)] overflow-y-auto"
+      >
+        <h2 id={dialogTitleId} class="sr-only">{t('setupWizard.welcomeTitle')}</h2>
         {step === 0 && <WelcomeStep />}
         {step === 1 && <StorageStep     form={form} onChange={handleChange} />}
         {step === 2 && <PerformanceStep form={form} onChange={handleChange} cpuCores={cpuCores} maxStreamsCeiling={maxStreamsCeiling} />}
