@@ -1108,11 +1108,19 @@ static void check_group_writable_config_replacement(bool fail_publish) {
      * without requiring the unit suite to run with root privileges. */
     deny_config_chmod = true;
     deny_config_rename = fail_publish;
-    mode_t prior_umask = umask(0777);
+    observed_config_stream = false;
+    observed_config_stream_with_private_mode = true;
+    monitor_secret_write_permissions = !fail_publish;
+    mode_t prior_umask = umask(fail_publish ? 0777 : 0);
     int result = save_config(&cfg, path);
     umask(prior_umask);
+    monitor_secret_write_permissions = false;
     deny_config_rename = false;
     TEST_ASSERT_EQUAL_INT(fail_publish ? -1 : 0, result);
+    if (!fail_publish) {
+        TEST_ASSERT_TRUE(observed_config_stream);
+        TEST_ASSERT_TRUE(observed_config_stream_with_private_mode);
+    }
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
     TEST_ASSERT_EQUAL_UINT(fail_publish ? 0660 : 0600, after.st_mode & 0777);
     if (fail_publish) TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
