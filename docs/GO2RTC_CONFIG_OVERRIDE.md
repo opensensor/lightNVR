@@ -11,6 +11,10 @@ LightNVR writes **two** YAML files into `${go2rtc_config_dir}` (default `/etc/li
 | `go2rtc.yaml` | LightNVR | Auto-generated `api`, `rtsp`, `webrtc`, `ffmpeg`, and `streams` sections derived from your Streams and Settings. Regenerated on every start. |
 | `override.yaml` | You (Settings → "go2rtc Config Override") | Whatever you save in the textarea. Mode 0600. Removed when the field is empty. |
 
+The saved Settings value is the source of truth for `override.yaml`. LightNVR
+rewrites the file from that value on startup and after a settings save, so edit
+the override in Settings rather than changing the generated file on disk.
+
 go2rtc is started with both files followed by a LightNVR-owned listener policy
 (ports below show the defaults):
 

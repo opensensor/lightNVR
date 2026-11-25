@@ -466,7 +466,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <label for="setting-go2rtc-config-override" class="font-medium pt-2">
                 {t('settings.go2rtcConfigOverride')}
               </label>
-              <div class="col-span-2 space-y-2">
+              <div class="col-span-2 min-w-0 space-y-2">
                 {/* T14/T4b — quarantine banner */}
                 {settings.go2rtcOverrideDisabledReason ? (
                   <div class="p-3 border border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 rounded text-sm">
@@ -498,8 +498,13 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 <textarea
                   id="setting-go2rtc-config-override"
                   name="go2rtcConfigOverride"
-                  class={`p-2 border rounded bg-background text-foreground w-full max-w-md font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed ${overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'border-red-500' : 'border-input'}`}
+                  class={`p-2 border rounded bg-background text-foreground w-full font-mono text-sm overflow-x-auto whitespace-pre disabled:opacity-60 disabled:cursor-not-allowed ${overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'border-red-500' : 'border-input'}`}
                   rows={8}
+                  spellcheck={false}
+                  autocomplete="off"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  wrap="off"
                   value={settings.go2rtcConfigOverride}
                   onChange={handleOverrideChange}
                   onBlur={handleOverrideBlur}
@@ -509,7 +514,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 />
 
                 {/* Size indicator */}
-                <div class="flex items-center justify-between text-xs text-muted-foreground max-w-md">
+                <div class="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
                     {formatBytes(utf8ByteLength(settings.go2rtcConfigOverride))} / {formatBytes(GO2RTC_OVERRIDE_MAX_BYTES)}
                     {overrideValidating ? t('settings.go2rtcValidating') : null}
@@ -521,7 +526,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
                 {/* Inline error */}
                 {overrideValidation && overrideValidation.valid === false && overrideValidation.error ? (
-                  <div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-800 dark:text-red-200 max-w-md">
+                  <div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-800 dark:text-red-200">
                     <div class="font-medium">
                       {t('settings.go2rtcErrorPosition', { line: overrideValidation.error.line || '?', column: overrideValidation.error.column || '?' })}
                     </div>
@@ -531,7 +536,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
                 {/* Inline warnings */}
                 {overrideValidation && Array.isArray(overrideValidation.warnings) && overrideValidation.warnings.length > 0 ? (
-                  <ul class="text-xs text-yellow-800 dark:text-yellow-200 list-disc ms-5 max-w-md">
+                  <ul class="text-xs text-yellow-800 dark:text-yellow-200 list-disc ms-5">
                     {overrideValidation.warnings.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
@@ -539,7 +544,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 ) : null}
 
                 {/* Action row */}
-                <div class="flex flex-wrap items-center gap-2 max-w-md">
+                <div class="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     class="px-2 py-1 text-xs border border-input rounded hover:bg-muted disabled:opacity-60"
@@ -562,7 +567,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 </div>
 
                 {/* Supported-sections collapsible */}
-                <details class="text-xs text-muted-foreground max-w-md">
+                <details class="text-xs text-muted-foreground">
                   <summary class="cursor-pointer hover:text-foreground">{t('settings.go2rtcSupportedSections')}</summary>
                   <ul class="mt-2 space-y-1">
                     {KNOWN_GO2RTC_SECTIONS.map(([k, desc]) => (
