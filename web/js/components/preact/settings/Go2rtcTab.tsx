@@ -734,11 +734,23 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                               <div class="text-xs font-medium mb-1">{t('settings.go2rtcBaseConfig')}</div>
-                              <pre class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap">{effectiveConfig.base || t('settings.go2rtcEmpty')}</pre>
+                              <pre
+                                tabIndex={0}
+                                aria-label={t('settings.go2rtcBaseConfig')}
+                                class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap"
+                              >
+                                {effectiveConfig.base || t('settings.go2rtcEmpty')}
+                              </pre>
                             </div>
                             <div>
                               <div class="text-xs font-medium mb-1">override.yaml</div>
-                              <pre class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap">{effectiveConfig.override || t('settings.go2rtcNone')}</pre>
+                              <pre
+                                tabIndex={0}
+                                aria-label="override.yaml"
+                                class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap"
+                              >
+                                {effectiveConfig.override || t('settings.go2rtcNone')}
+                              </pre>
                             </div>
                           </div>
                         </div>
