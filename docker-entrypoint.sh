@@ -69,14 +69,18 @@ check_volume_permissions() {
     # bounded by camera count, not by recording file count (see #368).
     for parent in "$recordings" "$recordings/mp4"; do
         [ -d "$parent" ] || continue
-        unwritable=$(find "$parent" -mindepth 1 -maxdepth 1 -type d \
-            ! -path "$recordings/mp4" \( ! -writable -o ! -executable \) 2>/dev/null)
-        if [ -n "$unwritable" ]; then
-            count=$(printf '%s\n' "$unwritable" | wc -l)
-            report_unwritable "$(printf '%s\n' "$unwritable" | head -n 1)"
-            if [ "$count" -gt 1 ]; then
-                log_error "...and $((count - 1)) more camera directories under $parent"
+        if unwritable=$(find "$parent" -mindepth 1 -maxdepth 1 -type d \
+            ! -path "$recordings/mp4" \( ! -writable -o ! -executable \) 2>/dev/null); then
+            if [ -n "$unwritable" ]; then
+                count=$(printf '%s\n' "$unwritable" | wc -l)
+                report_unwritable "$(printf '%s\n' "$unwritable" | head -n 1)"
+                if [ "$count" -gt 1 ]; then
+                    log_error "...and $((count - 1)) more camera directories under $parent"
+                fi
             fi
+        else
+            log_error "Could not scan camera directories under $parent"
+            permission_errors=$((permission_errors + 1))
         fi
     done
 
