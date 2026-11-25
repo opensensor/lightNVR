@@ -560,7 +560,12 @@ function StorageMigrationJobsPanel({ t }: StorageTranslateProps) {
               </div>
               <div class="w-full lg:w-56">
                 <div class="mb-1 flex justify-between text-xs text-muted-foreground"><span>{formatBytes(job.bytes_copied)} / {formatBytes(job.bytes_total)}</span><span>{progress}%</span></div>
-                <div class="h-2 overflow-hidden rounded-full bg-muted"><div class="h-full bg-[hsl(var(--primary))] transition-[width]" style={{ width: `${progress}%` }} /></div>
+                <progress
+                  class="h-2 w-full overflow-hidden rounded-full bg-muted"
+                  value={progress}
+                  max={100}
+                  aria-label={t('settings.storageMigrations.recording', { id: job.recording_id })}
+                />
                 <div class="flex justify-end gap-2 mt-2">
                   {['queued', 'copying', 'verifying', 'committing', 'retry_wait'].includes(job.state) && <button type="button" class="btn-secondary" disabled={!!busyKey || job.cancel_requested} onClick={() => actOnJob(job, 'cancel')}>{job.cancel_requested ? t('settings.storageMigrations.cancelling') : t('common.cancel')}</button>}
                   {['failed', 'cancelled'].includes(job.state) && <button type="button" class="btn-secondary" disabled={!!busyKey} onClick={() => actOnJob(job, 'retry')}>{t('common.retry')}</button>}
@@ -640,6 +645,7 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
   const [applyPreview, setApplyPreview] = useState<StoragePolicyApplyPreview | null>(null);
   const applyExisting = async (policy: StoragePolicy, preview: boolean) => {
     setBusyKey(policy.uuid);
+    if (preview) setApplyPreview(null);
     try {
       const result = await storageJSON<StoragePolicyApplyResult>(`/api/storage-policies/${policy.uuid}/apply`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: policy.revision, preview }), retries: 0,
