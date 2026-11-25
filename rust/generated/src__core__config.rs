@@ -40,6 +40,7 @@ unsafe extern "C" {
         __flag: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
     unsafe fn fsync(__fd: ::core::ffi::c_int) -> ::core::ffi::c_int;
+    unsafe fn ftruncate(__fd: ::core::ffi::c_int, __length: __off_t) -> ::core::ffi::c_int;
     unsafe fn open(
         __file: *const ::core::ffi::c_char,
         __oflag: ::core::ffi::c_int,
@@ -6132,47 +6133,54 @@ pub unsafe extern "C" fn save_config(
         0,
         0,
     ];
-    close(config_fd);
-    config_fd = -1 as ::core::ffi::c_int;
-    static mut replacement_sequence: atomic_uint = 0 as ::core::ffi::c_uint;
-    let mut attempt: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while attempt < 100 as ::core::ffi::c_int {
-        snprintf(
-            &raw mut replacement_name as *mut ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 96]>(),
-            b".lightnvr-config-%ld-%u.tmp\0".as_ptr() as *const ::core::ffi::c_char,
-            getpid() as ::core::ffi::c_long,
-            ::core::intrinsics::atomic_xadd::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
-                &raw mut replacement_sequence,
-                1 as ::core::ffi::c_uint,
-            ),
-        );
-        config_fd = openat(
-            dir_fd,
-            &raw mut replacement_name as *mut ::core::ffi::c_char,
-            O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
-            0o600 as ::core::ffi::c_int,
-        );
-        if config_fd >= 0 as ::core::ffi::c_int || *__errno_location() != EEXIST {
-            break;
-        }
-        attempt += 1;
-    }
-    if config_fd < 0 as ::core::ffi::c_int
-        || replacement_name[0usize] as ::core::ffi::c_int == '\0' as ::core::ffi::c_int
-    {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Could not prepare private config replacement: %s\0".as_ptr()
-                as *const ::core::ffi::c_char,
-            strerror(*__errno_location()),
-        );
-        close(dir_fd);
-        return -1 as ::core::ffi::c_int;
-    }
     if fchmod(config_fd, 0o600 as __mode_t) != 0 as ::core::ffi::c_int {
+        let mut mode_error: ::core::ffi::c_int = *__errno_location();
+        close(config_fd);
+        config_fd = -1 as ::core::ffi::c_int;
+        if mode_error == EPERM {
+            static mut replacement_sequence: atomic_uint = 0 as ::core::ffi::c_uint;
+            let mut attempt: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+            while attempt < 100 as ::core::ffi::c_int {
+                snprintf(
+                    &raw mut replacement_name as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 96]>(),
+                    b".lightnvr-config-%ld-%u.tmp\0".as_ptr() as *const ::core::ffi::c_char,
+                    getpid() as ::core::ffi::c_long,
+                    ::core::intrinsics::atomic_xadd::<
+                        _,
+                        _,
+                        { ::core::intrinsics::AtomicOrdering::SeqCst },
+                    >(&raw mut replacement_sequence, 1 as ::core::ffi::c_uint),
+                );
+                config_fd = openat(
+                    dir_fd,
+                    &raw mut replacement_name as *mut ::core::ffi::c_char,
+                    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+                    0o600 as ::core::ffi::c_int,
+                );
+                if config_fd >= 0 as ::core::ffi::c_int || *__errno_location() != EEXIST {
+                    break;
+                }
+                attempt += 1;
+            }
+        }
+        if config_fd < 0 as ::core::ffi::c_int {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Could not prepare private config replacement: %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                strerror(*__errno_location()),
+            );
+            close(dir_fd);
+            return -1 as ::core::ffi::c_int;
+        }
+    }
+    if replacement_name[0usize] as ::core::ffi::c_int != 0
+        && fchmod(config_fd, 0o600 as __mode_t) != 0 as ::core::ffi::c_int
+        || ftruncate(config_fd, 0 as __off_t) != 0 as ::core::ffi::c_int
+    {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
@@ -6181,11 +6189,13 @@ pub unsafe extern "C" fn save_config(
             strerror(*__errno_location()),
         );
         close(config_fd);
-        unlinkat(
-            dir_fd,
-            &raw mut replacement_name as *mut ::core::ffi::c_char,
-            0 as ::core::ffi::c_int,
-        );
+        if replacement_name[0usize] != 0 {
+            unlinkat(
+                dir_fd,
+                &raw mut replacement_name as *mut ::core::ffi::c_char,
+                0 as ::core::ffi::c_int,
+            );
+        }
         close(dir_fd);
         return -1 as ::core::ffi::c_int;
     }
@@ -7676,6 +7686,7 @@ pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const __O_CLOEXEC: ::core::ffi::c_int = 0o2000000 as ::core::ffi::c_int;
 pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
+pub const EPERM: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const EEXIST: ::core::ffi::c_int = 17 as ::core::ffi::c_int;
 pub const ERANGE: ::core::ffi::c_int = 34 as ::core::ffi::c_int;
 pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
