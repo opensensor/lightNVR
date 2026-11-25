@@ -801,7 +801,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         </div>
         <div data-setting-label={t('settings.hlsStoragePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-storage-path-hls" class="font-medium">{t('settings.hlsStoragePath')}</label>
-          <div class="col-span-2">
+          <div class="md:col-span-2">
             <input
               type="text"
               id="setting-storage-path-hls"
@@ -816,7 +816,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         </div>
         <div data-setting-label={t('settings.recordingDirectoryFormat')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mp4-directory-format" class="font-medium">{t('settings.recordingDirectoryFormat')}</label>
-          <div class="col-span-2">
+          <div class="md:col-span-2">
             <select
               id="setting-mp4-directory-format"
               name="mp4DirectoryFormat"
