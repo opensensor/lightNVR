@@ -599,7 +599,7 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
           {(['archive_after_seconds', 'hot_residency_seconds'] as const).map((field) => <label key={field} class="text-sm font-medium">
             <span class="block mb-1">{t(`settings.archive.${field}`)}</span>
             <input type="number" min="-1" max="2147483647" step="1" class="w-full p-2 border border-input rounded bg-background"
-              value={value[field] ?? -1} onInput={(event) => set(field, event.currentTarget.value)} disabled={busy} />
+              value={value[field] ?? -1} onInput={(event) => set(field, event.currentTarget.value === '' ? '-1' : event.currentTarget.value)} disabled={busy} />
           </label>)}
           {(['archive_protected', 'archive_on_pressure'] as const).map((field) => <label key={field} class="touch-target flex items-center gap-2 text-sm">
             <input type="checkbox" checked={!!value[field]} onChange={(event) => set(field, event.currentTarget.checked)} disabled={busy} />
