@@ -355,7 +355,7 @@ export function SettingsView() {
       mseDisabled:    settingsData.mse_disabled    || false,
       authTimeoutHours: settingsData.auth_timeout_hours?.toString() || '24',
       authAbsoluteTimeoutHours: settingsData.auth_absolute_timeout_hours?.toString() || '168',
-      trustedDeviceDays: settingsData.trusted_device_days?.toString() || '30',
+      trustedDeviceDays: (settingsData.trusted_device_days ?? 30).toString(),
       trustedProxyCidrs: settingsData.trusted_proxy_cidrs || '',
       forceMfaOnLogin: settingsData.force_mfa_on_login || false,
       loginRateLimitEnabled: settingsData.login_rate_limit_enabled !== undefined ? settingsData.login_rate_limit_enabled : true,
