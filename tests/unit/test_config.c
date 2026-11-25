@@ -253,6 +253,16 @@ void test_config_copy_owns_streams_after_source_reload(void) {
     free(snapshot.streams);
 }
 
+void test_config_reset_stream_slots_clears_stale_rows(void) {
+    load_default_config(&cfg);
+    snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "deleted-camera");
+    cfg.streams[0].streaming_enabled = false;
+    TEST_ASSERT_EQUAL_INT(0, config_reset_stream_slots(&cfg));
+    TEST_ASSERT_EQUAL_STRING("", cfg.streams[0].name);
+    TEST_ASSERT_TRUE(cfg.streams[0].streaming_enabled);
+    TEST_ASSERT_EQUAL_INT(10, cfg.streams[0].detection_interval);
+}
+
 void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
     char *dir = mkdtemp(temp_dir);
@@ -1274,6 +1284,7 @@ int main(void) {
     RUN_TEST(test_default_config_retention_days);
     RUN_TEST(test_default_config_mp4_faststart_on);
     RUN_TEST(test_config_copy_owns_streams_after_source_reload);
+    RUN_TEST(test_config_reset_stream_slots_clears_stale_rows);
     RUN_TEST(test_mp4_faststart_concurrent_reads_copies_and_saves);
     RUN_TEST(test_default_config_buffer_size);
     RUN_TEST(test_default_config_storage_path_nonempty);

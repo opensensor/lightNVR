@@ -387,6 +387,15 @@ static void init_stream_config_defaults(stream_config_t *stream) {
     stream->observation_max_bytes = OBSERVATION_DEFAULT_MAX_BYTES;
 }
 
+int config_reset_stream_slots(config_t *config) {
+    if (!config || !config->streams ||
+        config->max_streams <= 0 || config->max_streams > MAX_STREAMS) return -1;
+    for (int i = 0; i < config->max_streams; i++) {
+        init_stream_config_defaults(&config->streams[i]);
+    }
+    return 0;
+}
+
 // Default configuration values
 void load_default_config(config_t *config) {
     if (!config) return;
