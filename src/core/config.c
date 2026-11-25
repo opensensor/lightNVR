@@ -51,8 +51,34 @@ void config_set_mp4_faststart(config_t *config, bool enabled) {
 
 void config_copy(config_t *destination, const config_t *source) {
     pthread_mutex_lock(&mp4_faststart_mutex);
-    if (destination != source) {
+    if (destination != source && destination && source) {
+        /* Preserve ownership information needed for safe replacement. */
+        void *old_streams = destination->streams;
+        size_t old_stream_count = destination->stream_count;
+
+        const void *src_streams = source->streams;
+        size_t src_stream_count = source->stream_count;
+
+        /* Copy scalar/config fields first, then explicitly manage streams ownership. */
         memcpy(destination, source, sizeof(*destination));
+        destination->streams = NULL;
+        destination->stream_count = 0;
+
+        if (src_streams && src_stream_count > 0) {
+            size_t bytes = src_stream_count * sizeof(*source->streams);
+            destination->streams = malloc(bytes);
+            if (destination->streams) {
+                memcpy(destination->streams, src_streams, bytes);
+                destination->stream_count = src_stream_count;
+            } else {
+                /* Allocation failure: keep destination in a safe, non-aliasing state. */
+                destination->stream_count = 0;
+            }
+        }
+
+        if (old_streams && old_stream_count > 0) {
+            free(old_streams);
+        }
     }
     pthread_mutex_unlock(&mp4_faststart_mutex);
 }
