@@ -477,10 +477,12 @@ static int check_and_kill_existing_instance(const char *pid_file) {
                 } else {
                     // Try to lock the file
                     if (lockf(test_fd, F_TLOCK, 0) == 0) {
-                        // We got the lock, which means the previous process released it
+                        // We got the lock, which means the previous process released it.
+                        // Do not unlink here: closing test_fd releases the advisory lock,
+                        // and unlinking after that can race with another starter that has
+                        // already re-locked/recreated the PID file.
                         close(test_fd);
                         log_info("Previous instance terminated and PID file lock released");
-                        unlink(pid_file);  // Remove the old PID file
                         return 0;
                     }
                     close(test_fd);
