@@ -553,7 +553,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   autocorrect="off"
                   wrap="off"
                   value={settings.go2rtcConfigOverride}
-                  onChange={handleOverrideChange}
+                  onInput={handleOverrideChange}
                   onBlur={handleOverrideBlur}
                   disabled={!canModifySettings}
                   maxLength={GO2RTC_OVERRIDE_MAX_BYTES}
