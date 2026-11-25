@@ -1722,9 +1722,9 @@ cleanup:
         // Shutdown detection resources with timeout protection
         log_info("Cleaning up detection resources...");
 
-        // Note: We no longer set a short alarm here because it would cancel the
-        // 20-second safety alarm from the signal handler. If cleanup_detection_resources()
-        // hangs, the safety alarm will still fire.
+        // Do not use SIGALRM here: signal_handler() no longer arms a safety alarm,
+        // and alarm_handler() ignores SIGALRM. Hang protection for shutdown now
+        // comes from the shutdown watchdog thread and its configured deadline.
         cleanup_detection_resources();
 
         /* INT_01 shutdown (reverse of startup): relay (L5) stops before the
