@@ -246,9 +246,9 @@ static void *shutdown_watchdog_thread_func(void *arg) {
                 shutdown_started_at = now;
                 shutdown_started = true;
             } else if (now.tv_sec - shutdown_started_at.tv_sec >= SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS) {
-                static const char msg[] =
-                    "Shutdown watchdog timeout: force-killing LightNVR process\n";
-                (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
+                // Do not perform blocking I/O on the deadline-enforcement path.
+                // stderr may be a full pipe or stalled device, which could block
+                // indefinitely and prevent the watchdog from delivering SIGKILL.
                 kill(getpid(), SIGKILL);
                 _exit(EXIT_FAILURE);
             }
@@ -474,16 +474,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
                 sleep(1);
             }
 
-            // If we get here, the PID file still exists and is locked, or some other issue
-            log_warn("Previous instance may have terminated but PID file is still locked or inaccessible");
-            // Try to remove it anyway
-            if (unlink(pid_file) == 0) {
-                log_info("Removed potentially stale PID file");
-                return 0;
-            } else {
-                log_error("Failed to remove PID file: %s", strerror(errno));
-                return -1;
-            }
+            // If we get here, the PID file still exists and we could not acquire its lock.
+            // Do not unlink it: removing a still-locked PID file can bypass the live
+            // instance lock (different inode), allowing concurrent instances.
+            log_error("Previous instance did not release PID file lock within timeout; refusing to remove PID file");
+            return -1;
         } else {
             log_error("Failed to terminate previous instance: %s", strerror(errno));
             return -1;
@@ -1892,6 +1887,9 @@ cleanup:
         cleanup_hls_streaming_backend();
         cleanup_transcoding_backend();
 
+        // Stop detection producers before tearing down their event consumers.
+        cleanup_detection_resources();
+
         /* INT_01 shutdown (reverse of startup): relay (L5) first. */
         observation_relay_stop();
         observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);  /* then L3 */
@@ -2122,6 +2120,15 @@ static void check_and_ensure_services(void) {
                                  "after previous recording start (%d started so far)",
                                  current_config->streams[i].name, recordings_started);
                         sleep(3);
+
+                        // A shutdown/restart can be requested during the stagger wait.
+                        // Recheck immediately before starting another recording.
+                        if (!atomic_load(&running) || atomic_load(&restart_requested) ||
+                            is_background_abort_requested()) {
+                            log_info("Abort requested during stagger wait; ending service check before stream: %s",
+                                     current_config->streams[i].name);
+                            return;
+                        }
                     }
 
                     // Recording is not active, start it
@@ -2157,6 +2164,11 @@ static void check_and_ensure_services(void) {
             is_detection_recording_scheduled(&current_config->streams[i])) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = current_config->streams[i].record;
+            if (current_config->streams[i].detection_model[0] == '\0') {
+                log_warn("Detection model is empty for stream: %s",
+                         current_config->streams[i].name);
+                continue;
+            }
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
             if (start_unified_detection_thread(current_config->streams[i].name,
