@@ -1511,6 +1511,9 @@ cleanup:
     sigdelset(&block_mask, SIGKILL);   // SIGKILL can't be blocked anyway
     pthread_sigmask(SIG_BLOCK, &block_mask, &old_mask);
 
+    // Capture the original PID before fork so the child never mistakes itself
+    // for its parent if the parent exits before the child is scheduled.
+    pid_t expected_parent_pid = getpid();
     // Set up a watchdog timer to force exit if cleanup takes too long
     pid_t cleanup_pid = fork();
 
@@ -1537,8 +1540,8 @@ cleanup:
         sigemptyset(&empty_mask);
         sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 
-        // Save the parent PID before it gets killed
-        pid_t parent_pid = getppid();
+        // Use parent PID captured before fork to avoid child-side getppid() race.
+        pid_t parent_pid = expected_parent_pid;
 
         // Allow the same final-backup deadline as the thread watchdog.
         // Large databases can take several minutes to copy and verify.
@@ -1722,9 +1725,9 @@ cleanup:
         // Shutdown detection resources with timeout protection
         log_info("Cleaning up detection resources...");
 
-        // Note: We no longer set a short alarm here because it would cancel the
-        // 20-second safety alarm from the signal handler. If cleanup_detection_resources()
-        // hangs, the safety alarm will still fire.
+        // Do not use SIGALRM here: signal_handler() no longer arms a safety alarm,
+        // and alarm_handler() ignores SIGALRM. Hang protection for shutdown now
+        // comes from the shutdown watchdog thread and its configured deadline.
         cleanup_detection_resources();
 
         /* INT_01 shutdown (reverse of startup): relay (L5) stops before the
@@ -2171,8 +2174,25 @@ static void check_and_ensure_services(void) {
             }
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
+            char resolved_detection_model[MAX_PATH_LENGTH];
+            const char *detection_model_path = current_config->streams[i].detection_model;
+            if (detection_model_path[0] != '/' &&
+                strcmp(detection_model_path, "motion") != 0 &&
+                strcmp(detection_model_path, "onvif") != 0 &&
+                strcmp(detection_model_path, "api-detection") != 0 &&
+                strncmp(detection_model_path, "http://", 7) != 0 &&
+                strncmp(detection_model_path, "https://", 8) != 0) {
+                int n = snprintf(resolved_detection_model, sizeof(resolved_detection_model),
+                                 "%s/%s", current_config->models_path, detection_model_path);
+                if (n < 0 || (size_t)n >= sizeof(resolved_detection_model)) {
+                    log_warn("Detection model path too long for stream: %s",
+                             current_config->streams[i].name);
+                    continue;
+                }
+                detection_model_path = resolved_detection_model;
+            }
             if (start_unified_detection_thread(current_config->streams[i].name,
-                                              current_config->streams[i].detection_model,
+                                              detection_model_path,
                                               current_config->streams[i].detection_threshold,
                                               current_config->streams[i].pre_detection_buffer,
                                               current_config->streams[i].post_detection_buffer,
