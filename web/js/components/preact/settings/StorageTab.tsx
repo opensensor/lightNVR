@@ -365,7 +365,7 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
       <div class="rounded-md border border-blue-300/60 bg-blue-50/70 dark:bg-blue-950/20 px-3 py-2 text-sm mt-4">
         {t('settings.storageTargets.foundationNotice')}
       </div>
-      {editor && <div class="mt-4"><StorageTargetEditor value={editor} onChange={setEditor} onCancel={() => setEditor(null)} onSave={saveTarget} busy={busyKey === (editor.uuid || 'new')} t={t} /></div>}
+      {editor && <div class="mt-4"><StorageTargetEditor value={editor} onChange={setEditor} onCancel={() => setEditor(null)} onSave={saveTarget} busy={Boolean(busyKey)} t={t} /></div>}
       {isLoading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
       {isError && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error?.message || t('settings.storageTargets.loadError')}</p><button type="button" class="btn-secondary mt-3" onClick={refetch as () => unknown}>{t('common.retry')}</button></div>}
       {!isLoading && !isError && <div class="divide-y divide-border mt-4">
