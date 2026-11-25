@@ -85,16 +85,20 @@ static config_t *usable_streaming_snapshot(config_t *snapshot) {
 }
 
 /**
- * Get current streaming configuration from database
+ * Get current streaming configuration snapshot.
  * 
- * This function queries the database for all stream configurations
+ * This function attempts to refresh stream configurations from the database
  * and returns a borrowed pointer to a per-thread config_t snapshot.
  *
  * The caller must not free the returned pointer. It remains valid until the
  * next call on that thread or until the thread exits.
  * 
- * @return Borrowed pointer to a per-thread config_t structure with
- *         the latest stream configurations
+ * On refresh or initialization failures, the function may return:
+ *   - a previously cached per-thread snapshot (which may be older), or
+ *   - NULL when no usable snapshot can be provided.
+ * 
+ * @return Borrowed pointer to a per-thread config_t snapshot when available;
+ *         otherwise NULL.
  */
 config_t* get_streaming_config(void) {
     static config_t db_config;
