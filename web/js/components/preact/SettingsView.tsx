@@ -190,6 +190,9 @@ export function SettingsView() {
   // The save button is disabled until `settings` differs from this reference.
   const baselineRef = useRef<SettingsFormState | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const saveInFlightRef = useRef(false);
+  const saveAcceptedRef = useRef(false);
+  const submittedSnapshotRef = useRef<SettingsFormState | null>(null);
 
   // Active tab (synced to window.location.hash) and search query.
   const [activeTab, setActiveTab] = useState(readTabFromHash);
@@ -245,13 +248,18 @@ export function SettingsView() {
       } else {
         showStatusMessage(t('settings.saved'));
       }
-      // Re-baseline: the server accepted our payload, so the current in-memory
-      // `settings` is the new ground truth until the user edits again.
-      baselineRef.current = settings;
-      setIsDirty(false);
-      refetch();
+      saveAcceptedRef.current = true;
+      baselineRef.current = submittedSnapshotRef.current;
+      void refetch().finally(() => {
+        saveInFlightRef.current = false;
+        saveAcceptedRef.current = false;
+        submittedSnapshotRef.current = null;
+      });
     },
     onError: (error) => {
+      saveInFlightRef.current = false;
+      saveAcceptedRef.current = false;
+      submittedSnapshotRef.current = null;
       console.error('Error saving settings:', error);
       showStatusMessage(t('settings.saveError', { message: error.message }));
     }
@@ -325,12 +333,9 @@ export function SettingsView() {
       mp4DirectoryFormat: settingsData.mp4_directory_format || 'year_month_day',
       // max_storage_size is stored in bytes; the UI field is in GB. Convert on
       // load (0/unset => empty = unlimited).
-      // Preserve precision to avoid silently changing non-integer GiB limits
-      // (for example, values below 0.5 GiB rounding to 0 = unlimited).
+      // Preserve fractional GiB values, including limits below 1 GiB.
       maxStorage: settingsData.max_storage_size
-        ? (settingsData.max_storage_size / (1024 * 1024 * 1024))
-            .toFixed(3)
-            .replace(/\.?0+$/, '')
+        ? String(settingsData.max_storage_size / (1024 * 1024 * 1024))
         : '',
       retention: settingsData.retention_days?.toString() || '',
       autoDelete: settingsData.auto_delete_oldest || false,
@@ -432,18 +437,17 @@ export function SettingsView() {
       const preserved = { ...serverMerged };
       for (const key of Object.keys(preserved) as Array<keyof SettingsFormState>) {
         if (prev[key] !== submitted[key]) {
-          preserved[key] = prev[key];
+          Object.assign(preserved, { [key]: prev[key] });
         }
       }
       return preserved;
     });
-    saveInFlightRef.current = false;
-    submittedSnapshotRef.current = null;
-    setIsDirty(false);
+    if (saveAcceptedRef.current) {
+      saveInFlightRef.current = false;
+      saveAcceptedRef.current = false;
+      submittedSnapshotRef.current = null;
+    }
   }, [settingsData]);
-
-  const saveInFlightRef = useRef(false);
-  const submittedSnapshotRef = useRef<SettingsFormState | null>(null);
 
   // Shallow-diff settings vs baseline to drive the sticky-save enabled state.
   useEffect(() => {
@@ -490,7 +494,7 @@ export function SettingsView() {
       storage_path_hls: settings.storagePathHls,
       mp4_directory_format: settings.mp4DirectoryFormat,
       // UI field is GB; API expects bytes. Empty/0 => unlimited.
-      max_storage_size: (parseInt(settings.maxStorage, 10) || 0) * 1024 * 1024 * 1024,
+      max_storage_size: Math.round((Number.parseFloat(settings.maxStorage) || 0) * 1024 * 1024 * 1024),
       retention_days: parseInt(settings.retention, 10),
       auto_delete_oldest: settings.autoDelete,
       storage_min_free_pct: Number.isNaN(parseInt(settings.minFreePct as string, 10)) ? 10 : parseInt(settings.minFreePct as string, 10),
@@ -575,6 +579,9 @@ export function SettingsView() {
       onvif_discovery_network: settings.onvifDiscoveryNetwork,
       ...healthSettingsToPayload(settings),
     };
+    submittedSnapshotRef.current = settings;
+    saveInFlightRef.current = true;
+    saveAcceptedRef.current = false;
     return saveSettingsMutation.mutateAsync(mappedSettings);
   };
 
