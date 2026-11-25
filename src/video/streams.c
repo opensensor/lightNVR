@@ -123,6 +123,7 @@ config_t* get_streaming_config(void) {
     int ms = db_config.max_streams;
     stream_config_t *db_streams = calloc((size_t)ms, sizeof(*db_streams));
     if (!db_streams) {
+        if (!snapshot->streams) (void)config_copy(snapshot, &g_config);
         pthread_mutex_unlock(&config_mutex);
         return snapshot->streams ? snapshot : &g_config;
     }
@@ -130,6 +131,7 @@ config_t* get_streaming_config(void) {
     int count = get_all_stream_configs(db_streams, ms);
     if (count < 0) {
         free(db_streams);
+        if (!snapshot->streams) (void)config_copy(snapshot, &g_config);
         pthread_mutex_unlock(&config_mutex);
         return snapshot->streams ? snapshot : &g_config;
     }
