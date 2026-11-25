@@ -582,7 +582,8 @@ function StorageMigrationJobsPanel({ t }: StorageTranslateProps) {
 function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange, onCancel, onPreview, onSave, busy, previewing, saving, locations, tags, t }: StoragePolicyEditorProps) {
   const set = (key: keyof StoragePolicyEditorState, next: string | boolean) => onChange({ ...value, [key]: next });
   const captureTargets = targets.filter((target) => target.target_type !== 's3');
-  const fallbackTargets = captureTargets.filter((target) => target.uuid !== value.primary_target_uuid);
+  const usesPrimaryPool = !!value.primary_pool_uuid;
+  const fallbackTargets = captureTargets.filter((target) => usesPrimaryPool || target.uuid !== value.primary_target_uuid);
   const invalidFallback = value.fallback_mode === 'target' && !value.fallback_target_uuid;
   return (
     <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mt-4 space-y-4">
