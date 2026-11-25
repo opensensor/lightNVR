@@ -1009,6 +1009,24 @@ static void test_save_config_updates_owned_file_in_place(void) {
     rmdir(directory);
 }
 
+static void test_save_config_updates_file_in_read_only_directory(void) {
+    char directory[] = "/tmp/lightnvr_config_read_only_dir_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *initial = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(initial);
+    fputs("old content", initial);
+    fclose(initial);
+    TEST_ASSERT_EQUAL_INT(0, chmod(directory, 0500));
+    load_default_config(&cfg);
+    int result = save_config(&cfg, path);
+    TEST_ASSERT_EQUAL_INT(0, chmod(directory, 0700));
+    TEST_ASSERT_EQUAL_INT(0, result);
+    unlink(path);
+    rmdir(directory);
+}
+
 int main(void) {
     init_logger();
 
@@ -1018,6 +1036,7 @@ int main(void) {
     RUN_TEST(test_save_config_replaces_group_writable_legacy_file_privately);
     RUN_TEST(test_save_config_preserves_legacy_file_when_replacement_fails);
     RUN_TEST(test_save_config_updates_owned_file_in_place);
+    RUN_TEST(test_save_config_updates_file_in_read_only_directory);
 
     RUN_TEST(test_stream_config_t_size_under_16k);
     RUN_TEST(test_max_stream_ceiling_is_valid);
