@@ -30,10 +30,10 @@
 
 /**
  * Get the HLS writer for a stream
- * 
+ *
  * This function returns the HLS writer for a stream, which can be used
  * to check if the stream is recording or to write packets to the HLS stream.
- * 
+ *
  * @param stream The stream handle
  * @return Pointer to the HLS writer, or NULL if not available
  */
@@ -86,17 +86,17 @@ static config_t *usable_streaming_snapshot(config_t *snapshot) {
 
 /**
  * Get current streaming configuration snapshot.
- * 
+ *
  * This function attempts to refresh stream configurations from the database
  * and returns a borrowed pointer to a per-thread config_t snapshot.
  *
  * The caller must not free the returned pointer. It remains valid until the
  * next call on that thread or until the thread exits.
- * 
+ *
  * On refresh or initialization failures, the function may return:
  *   - a previously cached per-thread snapshot (which may be older), or
  *   - NULL when no usable snapshot can be provided.
- * 
+ *
  * @return Borrowed pointer to a per-thread config_t snapshot when available;
  *         otherwise NULL.
  */
