@@ -1349,8 +1349,8 @@ int main(int argc, char *argv[]) {
             }
 
             // Now directly start the unified detection thread
-            // If continuous recording is also enabled, run detection in annotation-only mode
-            bool annotation_only = config.streams[i].record;
+            // Use ACTIVE continuous-recording state (not config intent) for annotation-only mode
+            bool annotation_only = is_continuous_recording_active(config.streams[i].name);
             log_info("Directly starting unified detection thread for stream %s with model %s (annotation_only=%s)",
                     config.streams[i].name, model_path, annotation_only ? "true" : "false");
 
