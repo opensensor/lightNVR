@@ -382,10 +382,64 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
 
   const isLastDataStep = step === TOTAL_STEPS - 2;
   const isConfirmStep  = step === TOTAL_STEPS - 1;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const dialogTitleId = useId();
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleComplete();
+        return;
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [contenteditable], [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) {
+        e.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+
+      if (e.shiftKey) {
+        if (active === first || active === dialogRef.current) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus();
+    };
+  }, [handleComplete]);
 
   return (
     <div data-testid="setup-wizard" class="app-modal-overlay app-modal-overlay--dialog fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div class="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-lg p-8 max-h-[calc(100vh-2rem)] overflow-y-auto">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={dialogTitleId}
+        tabIndex={-1}
+        class="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-lg p-8 max-h-[calc(100vh-2rem)] overflow-y-auto"
+      >
+        <h2 id={dialogTitleId} class="sr-only">{t('setupWizard.title')}</h2>
         {step === 0 && <WelcomeStep />}
         {step === 1 && <StorageStep     form={form} onChange={handleChange} />}
         {step === 2 && <PerformanceStep form={form} onChange={handleChange} cpuCores={cpuCores} maxStreamsCeiling={maxStreamsCeiling} />}
