@@ -190,7 +190,7 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }: Sto
             spellCheck={false} />
         </label>)}
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.archive.budget')}</span>
-          <input type="number" min="0" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.archive_budget_gb}
+          <input type="number" min="0" step="any" class="w-full p-2 border border-input rounded bg-background" value={value.archive_budget_gb}
             onInput={(event) => set('archive_budget_gb', event.currentTarget.value)} disabled={busy} />
         </label>
         <p class="text-sm text-muted-foreground md:col-span-2">{t('settings.archive.connectionHelp')}</p>
@@ -277,11 +277,13 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
     const low = Number(editor!.low_watermark_pct);
     const high = Number(editor!.high_watermark_pct);
     const migrationMbps = Number(editor!.migration_mbps);
+    const reserveBytes = Math.round(reserveGb * 1024 ** 3);
+    const migrationBandwidthBps = Math.round(migrationMbps * 1000000 / 8);
     const archiveBudgetGb = Number(editor!.archive_budget_gb || 0);
     const archiveBudgetBytes = Math.round(archiveBudgetGb * 1024 ** 3);
     const windowStart = timeToMinutes(editor!.archival_window_start);
     const windowEnd = timeToMinutes(editor!.archival_window_end);
-    if (!Number.isFinite(reserveGb) || reserveGb < 0 || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high >= 100 || low >= high || !Number.isFinite(migrationMbps) || migrationMbps < 0 || (migrationMbps > 0 && migrationMbps * 1000000 / 8 < 65536) || !Number.isFinite(archiveBudgetGb) || archiveBudgetGb < 0 || !Number.isFinite(archiveBudgetBytes) || archiveBudgetBytes < 0 || windowStart === null || windowEnd === null) {
+    if (!Number.isFinite(reserveGb) || reserveGb < 0 || !Number.isSafeInteger(reserveBytes) || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high >= 100 || low >= high || !Number.isFinite(migrationMbps) || migrationMbps < 0 || !Number.isSafeInteger(migrationBandwidthBps) || (migrationMbps > 0 && migrationBandwidthBps < 65536) || !Number.isFinite(archiveBudgetGb) || archiveBudgetGb < 0 || !Number.isSafeInteger(archiveBudgetBytes) || windowStart === null || windowEnd === null) {
       showStatusMessage(t('settings.storageTargets.invalidThresholds'), 'error');
       return;
     }
@@ -297,10 +299,10 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
         enabled: editor!.enabled,
         mount_required: editor!.mount_required,
         storage_class: editor!.storage_class,
-        reserve_bytes: Math.round(reserveGb * (1024 ** 3)),
+        reserve_bytes: reserveBytes,
         low_watermark_pct: low,
         high_watermark_pct: high,
-        migration_bandwidth_bps: Math.round(migrationMbps * 1000000 / 8),
+        migration_bandwidth_bps: migrationBandwidthBps,
         archival_window_start_minute: windowStart,
         archival_window_end_minute: windowEnd,
       };
