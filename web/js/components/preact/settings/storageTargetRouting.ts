@@ -15,7 +15,7 @@ type ArchiveTriggerValues = Partial<Pick<StoragePolicyEditorState, 'migration_af
   migration_target_uuid?: string | null;
 };
 
-const DIRECT_TARGET_KEYS = ['primary_target_uuid', 'fallback_target_uuid', 'migration_target_uuid'] as const;
+const ALWAYS_ROUTED_DIRECT_TARGET_KEYS = ['primary_target_uuid', 'fallback_target_uuid'] as const;
 const POOL_KEYS = ['primary_pool_uuid', 'replication_pool_uuid'] as const;
 
 /** The legacy primary target column must name a pool member when a pool routes primaries. */
@@ -49,8 +49,11 @@ export function referencedTargetUuids(policies: readonly StoragePolicy[] | null 
   );
   for (const policy of policies || []) {
     if (!policy || policy.enabled === false) continue;
-    for (const key of DIRECT_TARGET_KEYS) {
+    for (const key of ALWAYS_ROUTED_DIRECT_TARGET_KEYS) {
       if (policy[key]) referenced.add(policy[key]);
+    }
+    if (policy.migration_target_uuid && policyHasArchiveTrigger(policy)) {
+      referenced.add(policy.migration_target_uuid);
     }
     for (const key of POOL_KEYS) {
       const members = policy[key] ? poolMembers.get(policy[key]) : null;
