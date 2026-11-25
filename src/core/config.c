@@ -284,7 +284,12 @@ static void apply_env_overrides(config_t *config) {
         switch (mapping->type) {
             case CONFIG_TYPE_BOOL: {
                 bool *bool_ptr = (bool *)field_ptr;
-                bool new_value = parse_env_bool(env_value);
+                bool new_value;
+                if (!parse_bool_strict(env_value, &new_value)) {
+                    log_warn("Invalid boolean for %s: '%s'; keeping existing value %s",
+                             env_name, env_value, *bool_ptr ? "true" : "false");
+                    break;
+                }
                 *bool_ptr = new_value;
                 log_info("Applied env override: %s=%s (bool: %s)",
                          env_name, env_value, new_value ? "true" : "false");
