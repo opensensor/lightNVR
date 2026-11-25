@@ -32,6 +32,7 @@
 /* File-scope config used by most tests — setUp zeros it, tearDown frees
    the dynamically allocated streams array to keep ASan leak-free. */
 static config_t cfg;
+static stream_config_t *owned_snapshot_streams;
 static bool deny_config_chmod;
 static bool deny_config_rename;
 static bool busy_config_rename;
@@ -101,6 +102,7 @@ ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
+    owned_snapshot_streams = NULL;
     observed_config_stream = false;
     observed_config_stream_with_private_mode = true;
     const char *web_port = getenv("LIGHTNVR_WEB_PORT");
@@ -119,6 +121,8 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    free(owned_snapshot_streams);
+    owned_snapshot_streams = NULL;
     deny_config_chmod = deny_config_rename = busy_config_rename = false;
     fail_config_pwrite = false;
     short_config_pwrite = false;
@@ -322,11 +326,11 @@ void test_config_copy_owns_streams_after_source_reload(void) {
     snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "original-camera");
     config_t snapshot = {0};
     TEST_ASSERT_TRUE(config_copy(&snapshot, &cfg));
+    owned_snapshot_streams = snapshot.streams;
     TEST_ASSERT_NOT_EQUAL_PTR(cfg.streams, snapshot.streams);
     TEST_ASSERT_EQUAL_STRING("original-camera", snapshot.streams[0].name);
     load_default_config(&cfg);
     TEST_ASSERT_EQUAL_STRING("original-camera", snapshot.streams[0].name);
-    free(snapshot.streams);
 }
 
 void test_config_reset_stream_slots_clears_stale_rows(void) {
@@ -371,13 +375,39 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
         FILE *file = fopen(path, "r");
         if (!file) break;
         char line[512];
+        int mp4_faststart_entries = 0;
+        bool file_has_valid_faststart = true;
         while (fgets(line, sizeof(line), file)) {
-            if (strncmp(line, "mp4_faststart = true", strlen("mp4_faststart = true")) == 0 ||
-                strncmp(line, "mp4_faststart = false", strlen("mp4_faststart = false")) == 0) {
-                ++valid_saves;
+            if (strncmp(line, "mp4_faststart", strlen("mp4_faststart")) == 0) {
+                const char *prefix = "mp4_faststart = ";
+                size_t prefix_len = strlen(prefix);
+                if (strncmp(line, prefix, prefix_len) != 0) {
+                    file_has_valid_faststart = false;
+                    break;
+                }
+                const char *value = line + prefix_len;
+                const char *suffix = NULL;
+                if (strncmp(value, "true", 4) == 0) suffix = value + 4;
+                else if (strncmp(value, "false", 5) == 0) suffix = value + 5;
+                if (suffix) {
+                    while (*suffix == ' ' || *suffix == '\t') suffix++;
+                }
+                if (suffix && (*suffix == ';' || *suffix == '\n' ||
+                               *suffix == '\r' || *suffix == '\0')) {
+                    ++mp4_faststart_entries;
+                } else {
+                    file_has_valid_faststart = false;
+                    break;
+                }
             }
         }
         fclose(file);
+        if (file_has_valid_faststart && mp4_faststart_entries == 1) {
+            ++valid_saves;
+        } else {
+            save_result = -1;
+            break;
+        }
     }
     atomic_store(&faststart_writer_stop, true);
     int join_result = pthread_join(writer, NULL);
@@ -486,6 +516,8 @@ void test_validate_config_resets_nonfinite_storage_pressure(void) {
     const double invalid[] = {NAN, INFINITY, -INFINITY};
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
         load_default_config(&cfg);
+        cfg.storage_pressure_critical_pct = 12.0;
+        cfg.storage_pressure_warning_pct = 24.0;
         cfg.storage_pressure_emergency_pct = invalid[i];
         TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
         TEST_ASSERT_TRUE(cfg.storage_pressure_emergency_pct == 5.0);
@@ -495,6 +527,8 @@ void test_validate_config_resets_nonfinite_storage_pressure(void) {
 
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
         load_default_config(&cfg);
+        cfg.storage_pressure_emergency_pct = 6.0;
+        cfg.storage_pressure_warning_pct = 24.0;
         cfg.storage_pressure_critical_pct = invalid[i];
         TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
         TEST_ASSERT_TRUE(cfg.storage_pressure_emergency_pct == 5.0);
@@ -504,6 +538,8 @@ void test_validate_config_resets_nonfinite_storage_pressure(void) {
 
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
         load_default_config(&cfg);
+        cfg.storage_pressure_emergency_pct = 6.0;
+        cfg.storage_pressure_critical_pct = 12.0;
         cfg.storage_pressure_warning_pct = invalid[i];
         TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
         TEST_ASSERT_TRUE(cfg.storage_pressure_emergency_pct == 5.0);
@@ -1334,6 +1370,9 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
     snprintf(cfg.mqtt_topic_prefix, sizeof(cfg.mqtt_topic_prefix), "lightnvr");
     snprintf(cfg.db_post_backup_script, sizeof(cfg.db_post_backup_script), "/bin/true\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.db_post_backup_script[0] = '\0';
+    snprintf(cfg.mqtt_ha_discovery_prefix, sizeof(cfg.mqtt_ha_discovery_prefix), "homeassistant#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
