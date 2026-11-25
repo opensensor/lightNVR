@@ -1316,6 +1316,9 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     snprintf(cfg.web_username, sizeof(cfg.web_username), "admin");
     snprintf(cfg.mqtt_client_id, sizeof(cfg.mqtt_client_id), "client#spoofed");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    snprintf(cfg.mqtt_client_id, sizeof(cfg.mqtt_client_id), "lightnvr");
+    snprintf(cfg.mqtt_topic_prefix, sizeof(cfg.mqtt_topic_prefix), "topic#spoofed");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
     FILE *saved = fopen(path, "r");
