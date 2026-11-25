@@ -399,8 +399,13 @@ it('resets the fatal recovery budget only after playback advances',async()=>{
       video.dispatchEvent(new Event('timeupdate'));
       window.emitFatal('network');
     });
-    expect(await page.evaluate(()=>({failures:window.failures,errors:window.errors})))
-      .toEqual({failures:[],errors:[]});
+    await page.waitForFunction(()=>window.errors.length===0);
+    expect(await page.evaluate(()=>({
+      failures:window.failures,
+      errors:window.errors,
+      players:window.players.length,
+      recoveryScheduled:window.recoveryTimer!=null||window.retryTimer!=null
+    }))).toEqual({failures:[],errors:[],players:1,recoveryScheduled:true});
   } finally {await browser.close();}
 });
 
