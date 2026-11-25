@@ -2376,6 +2376,11 @@ int save_config(const config_t *config, const char *path) {
     }
     fprintf(file, "broker_port = %d\n", config->mqtt_broker_port);
     if (config->mqtt_username[0] != '\0') {
+        if (contains_unsupported_ini_credential_chars(config->mqtt_username)) {
+            log_error("Failed to save config: mqtt_username contains unsupported characters for INI serialization.");
+            fclose(file);
+            return false;
+        }
         fprintf(file, "username = %s\n", config->mqtt_username);
     }
     if (config->mqtt_password[0] != '\0') {
