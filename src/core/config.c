@@ -2412,7 +2412,6 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
 
     // Stream configurations are stored exclusively in the database.
-    // Do NOT write [stream.X] sections here.
     
     int write_failed = ferror(file);
     if (fflush(file) != 0 || fsync(fileno(file)) != 0) write_failed = 1;
@@ -2431,10 +2430,9 @@ int save_config(const config_t *config, const char *path) {
         int stat_result = fstatat(dir_fd, validated_filename, &current, AT_SYMLINK_NOFOLLOW);
         bool unchanged = target_exists
             ? stat_result == 0 && S_ISREG(current.st_mode) && current.st_nlink == 1 &&
-              current.st_dev == config_stat.st_dev && current.st_ino == config_stat.st_ino
+                int staged_fd = fileno(file);
             : stat_result != 0 && errno == ENOENT;
         if (!unchanged) {
-            write_failed = 1;
         } else if (external_staging) {
             if (publish_config_in_place(dir_fd, validated_filename,
                     &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
@@ -2442,6 +2440,7 @@ int save_config(const config_t *config, const char *path) {
             if (errno == EBUSY && original_fd >= 0) {
                 if (publish_config_in_place(dir_fd, validated_filename,
                         &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
+    if (fclose(file) != 0) write_failed = 1;
             } else {
                 write_failed = 1;
             }
