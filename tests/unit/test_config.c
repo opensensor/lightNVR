@@ -1468,19 +1468,51 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
     TEST_ASSERT_EQUAL_INT(0, chmod(directory, 0700));
     TEST_ASSERT_EQUAL_INT(0, result);
 
-    FILE *saved = fopen(path, "r");
+    char baseline_directory[] = "/tmp/lightnvr_config_baseline_dir_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(baseline_directory));
+    char baseline_path[MAX_PATH_LENGTH];
+    snprintf(baseline_path, sizeof(baseline_path), "%s/settings.ini", baseline_directory);
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
+
+    FILE *saved = fopen(path, "rb");
     TEST_ASSERT_NOT_NULL(saved);
-    char saved_content[4096];
-    size_t n = fread(saved_content, 1, sizeof(saved_content) - 1, saved);
-    saved_content[n] = '\0';
+    FILE *baseline = fopen(baseline_path, "rb");
+    TEST_ASSERT_NOT_NULL(baseline);
+
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved, 0, SEEK_END));
+    long saved_size = ftell(saved);
+    TEST_ASSERT_TRUE(saved_size >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved, 0, SEEK_SET));
+
+    TEST_ASSERT_EQUAL_INT(0, fseek(baseline, 0, SEEK_END));
+    long baseline_size = ftell(baseline);
+    TEST_ASSERT_TRUE(baseline_size >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fseek(baseline, 0, SEEK_SET));
+
+    TEST_ASSERT_EQUAL_INT64((long long)baseline_size, (long long)saved_size);
+
+    char *saved_content = (char *)malloc((size_t)saved_size);
+    char *baseline_content = (char *)malloc((size_t)baseline_size);
+    TEST_ASSERT_NOT_NULL(saved_content);
+    TEST_ASSERT_NOT_NULL(baseline_content);
+
+    size_t saved_read = fread(saved_content, 1, (size_t)saved_size, saved);
+    size_t baseline_read = fread(baseline_content, 1, (size_t)baseline_size, baseline);
+    TEST_ASSERT_EQUAL_UINT64((unsigned long long)saved_size, (unsigned long long)saved_read);
+    TEST_ASSERT_EQUAL_UINT64((unsigned long long)baseline_size, (unsigned long long)baseline_read);
     TEST_ASSERT_FALSE(ferror(saved));
+    TEST_ASSERT_FALSE(ferror(baseline));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(saved_content, baseline_content, (size_t)saved_size));
+
+    free(saved_content);
+    free(baseline_content);
     fclose(saved);
-    TEST_ASSERT_NOT_NULL(strstr(saved_content, "LightNVR Configuration File"));
-    TEST_ASSERT_NOT_NULL(strstr(saved_content, "[general]"));
-    TEST_ASSERT_NOT_EQUAL(0, strcmp(saved_content, "old content"));
+    fclose(baseline);
 
     unlink(path);
     rmdir(directory);
+    unlink(baseline_path);
+    rmdir(baseline_directory);
 }
 
 int main(void) {
