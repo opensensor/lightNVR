@@ -1723,7 +1723,13 @@ int save_config(const config_t *config, const char *path) {
         char *sl = strrchr(tmp, '/');
         if (sl) {
             fname = sl + 1;
-            *sl = '\0'; /* tmp is now the directory portion */
+            if (sl == tmp) {
+                /* Root-level path, e.g. "/lightnvr.ini": keep directory as "/" */
+                tmp[0] = '/';
+                tmp[1] = '\0';
+            } else {
+                *sl = '\0'; /* tmp is now the directory portion */
+            }
             if (realpath(tmp, resolved_dir) == NULL) {
                 log_error("Cannot resolve config directory '%s': %s", tmp, strerror(errno));
                 return -1;
