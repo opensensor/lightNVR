@@ -459,7 +459,7 @@ if [ "$(id -u)" = "0" ]; then
     runtime_gid="${PGID:-10001}"
     for id_value in "$runtime_uid" "$runtime_gid"; do
         case "$id_value" in
-            ''|*[!0-9]*|0)
+            ''|*[!0-9]*|0*)
                 log_error "PUID and PGID must be non-zero numeric IDs; LightNVR does not run as root"
                 exit 1
                 ;;
