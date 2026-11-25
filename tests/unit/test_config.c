@@ -1297,6 +1297,9 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     cfg.turn_password[0] = '\0';
     snprintf(cfg.mqtt_username, sizeof(cfg.mqtt_username), "trailing-space ");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.mqtt_username[0] = '\0';
+    snprintf(cfg.web_username, sizeof(cfg.web_username), "admin#spoofed");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
     FILE *saved = fopen(path, "r");
