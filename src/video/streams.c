@@ -218,7 +218,10 @@ int stream_stop_hls(const char *stream_name) {
 int stream_restart_hls(const char *stream_name) {
 #ifdef USE_GO2RTC
     if (should_use_go2rtc()) {
-        go2rtc_integration_stop_hls(stream_name);
+        int stop_result = go2rtc_integration_stop_hls(stream_name);
+        if (stop_result != 0) {
+            return stop_result;
+        }
         return go2rtc_integration_start_hls(stream_name);
     }
 #endif
