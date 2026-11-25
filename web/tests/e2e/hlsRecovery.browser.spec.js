@@ -397,6 +397,7 @@ it('resets the fatal recovery budget only after playback advances',async()=>{
       Object.defineProperty(video,'paused',{configurable:true,get:()=>false});
       video.currentTime=1;
       video.dispatchEvent(new Event('timeupdate'));
+      window.recoveriesBefore=window.recoveries.length;
       window.emitFatal('network');
     });
     await page.waitForFunction(()=>window.errors.length===0);
@@ -404,7 +405,7 @@ it('resets the fatal recovery budget only after playback advances',async()=>{
       failures:window.failures,
       errors:window.errors,
       players:window.players.length,
-      recoveryScheduled:window.recoveryTimer!=null||window.retryTimer!=null
+      recoveryScheduled:window.recoveries.length>window.recoveriesBefore
     }))).toEqual({failures:[],errors:[],players:1,recoveryScheduled:true});
   } finally {await browser.close();}
 });
