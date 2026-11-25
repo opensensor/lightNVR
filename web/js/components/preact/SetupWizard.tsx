@@ -238,6 +238,8 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const TOTAL_STEPS = 4;
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsLoadFailed, setSettingsLoadFailed] = useState(false);
   const [saved, setSaved] = useState(false);
   const [restartRequired, setRestartRequired] = useState(false);
   const [cpuCores, setCpuCores] = useState(0);
@@ -270,7 +272,10 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     getSystemSettings()
       .then((data) => {
-        if (!data) return;
+        if (!data) {
+          setSettingsLoadFailed(true);
+          return;
+        }
         setForm(f => ({
           ...f,
           storagePath: dirtyFieldsRef.current.storagePath
@@ -292,8 +297,9 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
         if (data.max_streams_ceiling != null) {
           setMaxStreamsCeiling(data.max_streams_ceiling);
         }
+        setSettingsLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => setSettingsLoadFailed(true));
 
     getSystemInformation()
       .then((data) => {
@@ -310,8 +316,16 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   }, []);
 
   const saveSettings = async () => {
+    savingRef.current = true;
     setSaving(true);
     try {
+      if (!settingsLoaded || settingsLoadFailed) {
+        showStatusMessage(
+          t('setupWizard.saveFailed', { error: 'Settings are still loading or failed to load. Please wait and try again.' }),
+          'error'
+        );
+        return false;
+      }
       const submittedFormSnapshot = {
         storagePath: form.storagePath,
         maxStorageSize: form.maxStorageSize,
@@ -383,6 +397,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
       showStatusMessage(t('setupWizard.saveFailed', { error: (err as Error).message }), 'error');
       return false;
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -393,6 +408,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   };
 
   const handleComplete = async () => {
+    if (savingRef.current) return;
     try {
       await updateSetupStatus({complete:true});
       onClose();
@@ -406,6 +422,8 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const handleCompleteRef = useRef(handleComplete);
+  const savingRef = useRef(saving);
+  savingRef.current = saving;
   handleCompleteRef.current = handleComplete;
   const dialogTitleId = useId();
 
@@ -416,6 +434,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (savingRef.current) return;
         void handleCompleteRef.current();
         return;
       }
