@@ -83,6 +83,9 @@ config_t* get_streaming_config(void) {
         pthread_mutex_unlock(&config_mutex);
         return &g_config;
     }
+
+    // Reset stream slots so deleted/absent DB rows do not leave stale startup entries.
+    memset(db_config.streams, 0, sizeof(db_config.streams));
     
     // Load stream configurations from database
     int ms = configured_stream_slots();
