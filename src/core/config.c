@@ -1564,6 +1564,7 @@ int load_config(config_t *config) {
             if (!canon_path) {
                 log_error("Failed to resolve config path '%s': %s",
                           g_custom_config_path, strerror(errno));
+                return -1;
             } else if (load_config_from_file(canon_path, config) == 0) {
                 log_info("Loaded configuration from custom path: %s", canon_path);
                 set_loaded_config_path(canon_path);
@@ -1574,6 +1575,7 @@ int load_config(config_t *config) {
             }
         } else {
             log_error("Custom config file not accessible: %s", g_custom_config_path);
+            return -1;
         }
     }
     
