@@ -253,13 +253,14 @@ void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
                              reloaded.db_post_backup_script);
     free(reloaded.streams);
 
-    unlink(config_path);
-    rmdir(cfg.storage_path);
-    rmdir(cfg.mp4_storage_path);
-    rmdir(cfg.storage_path_hls);
-    rmdir(cfg.models_path);
-    rmdir(cfg.web_root);
-    rmdir(dir);
+    TEST_ASSERT_EQUAL_INT(0, unlink(config_path));
+    TEST_ASSERT_EQUAL_INT(0, unlink(cfg.log_file));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(cfg.storage_path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(cfg.mp4_storage_path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(cfg.storage_path_hls));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(cfg.models_path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(cfg.web_root));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(dir));
 }
 
 static atomic_bool faststart_writer_stop;
