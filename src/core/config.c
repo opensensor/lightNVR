@@ -2400,6 +2400,12 @@ int save_config(const config_t *config, const char *path) {
     if (config->mqtt_password[0] != '\0') {
         fprintf(file, "password = %s\n", config->mqtt_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
+    if (contains_unsupported_ini_credential_chars(config->mqtt_client_id,
+                                                  sizeof(config->mqtt_client_id))) {
+        LOG_ERROR("Invalid mqtt_client_id for INI serialization");
+        fclose(file);
+        return false;
+    }
     fprintf(file, "client_id = %s\n", config->mqtt_client_id);
     fprintf(file, "topic_prefix = %s\n", config->mqtt_topic_prefix);
     fprintf(file, "tls_enabled = %s\n", config->mqtt_tls_enabled ? "true" : "false");
