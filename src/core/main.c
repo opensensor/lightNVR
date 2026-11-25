@@ -434,8 +434,8 @@ static int check_and_kill_existing_instance(const char *pid_file) {
 
         // Send SIGTERM to let it clean up
         if (kill(existing_pid, SIGTERM) == 0) {
-            // Wait longer for it to terminate properly (increased from 15 to 30 seconds)
-            int timeout = 120;  // 120 seconds
+            // Wait for graceful shutdown to complete before escalating to SIGKILL
+            int timeout = 900;  // 900 seconds
             while (timeout-- > 0 && kill(existing_pid, 0) == 0) {
                 sleep(1);
             }
