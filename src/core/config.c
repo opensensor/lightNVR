@@ -38,6 +38,14 @@ static bool contains_unsupported_ini_credential_chars(const char *value) {
         return false;
     }
 
+    size_t len = strlen(value);
+    if (len > 0) {
+        if (isspace((unsigned char)value[0]) ||
+            isspace((unsigned char)value[len - 1])) {
+            return true;
+        }
+    }
+
     for (const unsigned char *p = (const unsigned char *)value; *p != '\0'; ++p) {
         if (*p == '\n' || *p == '\r' || *p == ';' || *p == '#') {
             return true;
