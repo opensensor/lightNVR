@@ -365,7 +365,7 @@ function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
       <div class="rounded-md border border-blue-300/60 bg-blue-50/70 dark:bg-blue-950/20 px-3 py-2 text-sm mt-4">
         {t('settings.storageTargets.foundationNotice')}
       </div>
-      {editor && <div class="mt-4"><StorageTargetEditor value={editor} onChange={setEditor} onCancel={() => setEditor(null)} onSave={saveTarget} busy={busyKey === (editor.uuid || 'new')} t={t} /></div>}
+      {editor && <div class="mt-4"><StorageTargetEditor value={editor} onChange={setEditor} onCancel={() => setEditor(null)} onSave={saveTarget} busy={Boolean(busyKey)} t={t} /></div>}
       {isLoading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
       {isError && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error?.message || t('settings.storageTargets.loadError')}</p><button type="button" class="btn-secondary mt-3" onClick={refetch as () => unknown}>{t('common.retry')}</button></div>}
       {!isLoading && !isError && <div class="divide-y divide-border mt-4">
@@ -432,12 +432,12 @@ function StoragePoolsPanel({ canModifySettings, t }: StoragePanelProps) {
   const targets = targetsQuery.data?.targets || [];
   const targetNames = new Map(targets.map((target) => [target.uuid, target.name]));
   const openNew = () => setEditor({ name: '', strategy: 'most_free', enabled: true, members: [] });
-  const openEdit = (pool: StoragePool) => setEditor({ ...pool, members: (pool.members || []).map((member) => member.target_uuid) });
-  const toggleMember = (uuid: string) => setEditor((current) => ({ ...current!, members: current!.members.includes(uuid) ? current!.members.filter((item) => item !== uuid) : [...current!.members, uuid] }));
+  const openEdit = (pool: StoragePool) => setEditor({ ...pool, members: (pool.members || []).map((member, position) => ({ target_uuid: member.target_uuid, position, weight: member.weight ?? 1 })) });
+  const toggleMember = (uuid: string) => setEditor((current) => ({ ...current!, members: current!.members.some((member) => member.target_uuid === uuid) ? current!.members.filter((member) => member.target_uuid !== uuid) : [...current!.members, { target_uuid: uuid, position: current!.members.length, weight: 1 }] }));
   const save = async () => {
     setBusy(true);
     try {
-      const payload: StoragePoolPayload = { name: editor!.name.trim(), strategy: editor!.strategy, enabled: editor!.enabled, members: editor!.members.map((target_uuid, position) => ({ target_uuid, position, weight: 1 })) };
+      const payload: StoragePoolPayload = { name: editor!.name.trim(), strategy: editor!.strategy, enabled: editor!.enabled, members: editor!.members.map((member, position) => ({ target_uuid: member.target_uuid, position, weight: member.weight ?? 1 })) };
       if (editor!.uuid) payload.revision = editor!.revision;
       await storageJSON(editor!.uuid ? `/api/storage-pools/${encodeURIComponent(editor!.uuid)}` : '/api/storage-pools', { method: editor!.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
       await poolsQuery.refetch();
@@ -459,7 +459,7 @@ function StoragePoolsPanel({ canModifySettings, t }: StoragePanelProps) {
     <div class="flex items-start justify-between gap-3 pb-3 border-b border-border"><div><h3 class="text-lg font-semibold">{t('settings.storagePools.title')}</h3><p class="text-sm text-muted-foreground mt-1">{t('settings.storagePools.description')}</p></div>{canModifySettings && <button type="button" class="btn-primary" onClick={openNew} disabled={!!editor || targets.length === 0}>{t('settings.storagePools.add')}</button>}</div>
     {editor && <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mt-4 space-y-4">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" value={editor.name} onInput={(event) => setEditor({ ...editor, name: event.currentTarget.value })} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePools.strategy')}</span><select class="w-full p-2 border border-input rounded bg-background" value={editor.strategy} onChange={(event) => setEditor({ ...editor, strategy: event.currentTarget.value })} disabled={busy}><option value="most_free">{t('settings.storagePools.mostFree')}</option><option value="round_robin">{t('settings.storagePools.roundRobin')}</option><option value="priority">{t('settings.storagePools.priority')}</option></select></label></div>
-      <fieldset><legend class="text-sm font-semibold mb-2">{t('settings.storagePools.members')}</legend><div class="grid grid-cols-1 md:grid-cols-2 gap-2">{targets.map((target) => <label key={target.uuid} class="touch-target flex items-center gap-2 text-sm"><input type="checkbox" checked={editor.members.includes(target.uuid)} onChange={() => toggleMember(target.uuid)} disabled={busy} />{target.name}</label>)}</div></fieldset>
+      <fieldset><legend class="text-sm font-semibold mb-2">{t('settings.storagePools.members')}</legend><div class="grid grid-cols-1 md:grid-cols-2 gap-2">{targets.map((target) => <label key={target.uuid} class="touch-target flex items-center gap-2 text-sm"><input type="checkbox" checked={editor.members.some((member) => member.target_uuid === target.uuid)} onChange={() => toggleMember(target.uuid)} disabled={busy} />{target.name}</label>)}</div></fieldset>
       <label class="touch-target flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={editor.enabled} onChange={(event) => setEditor({ ...editor, enabled: event.currentTarget.checked })} disabled={busy} />{t('settings.storagePools.enabled')}</label>
       <div class="flex justify-end gap-2"><button type="button" class="btn-secondary" onClick={() => setEditor(null)} disabled={busy}>{t('common.cancel')}</button><button type="button" class="btn-primary" onClick={save} disabled={busy || !editor.name.trim() || editor.members.length === 0}>{busy ? t('common.saving') : t('common.saveChanges')}</button></div>
     </div>}
@@ -662,7 +662,7 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
       return null;
     }
     const minimum = Number(editor!.minimum_retention_days); const desired = Number(editor!.desired_retention_days); const maximum = Number(editor!.maximum_retention_days); const copies = Number(editor!.required_copy_count); const migrationAfter = Number(editor!.migration_after_days); const pressurePriority = Number(editor!.pressure_priority);
-    if (![minimum, desired, maximum, copies, migrationAfter, pressurePriority].every(Number.isInteger) || minimum < 0 || (desired > 0 && desired < minimum) || (maximum > 0 && ((desired > 0 && desired > maximum) || minimum > maximum)) || copies < 1 || copies > 8 || (copies > 1 && !editor!.replication_pool_uuid) || migrationAfter < 0 || (migrationAfter > 0 && !editor!.migration_target_uuid)) {
+    if (![minimum, desired, maximum, copies, migrationAfter, pressurePriority].every(Number.isInteger) || minimum < 0 || desired < 0 || maximum < 0 || (desired > 0 && desired < minimum) || (maximum > 0 && ((desired > 0 && desired > maximum) || minimum > maximum)) || copies < 1 || copies > 8 || (copies > 1 && !editor!.replication_pool_uuid) || migrationAfter < 0 || (migrationAfter > 0 && !editor!.migration_target_uuid)) {
       showStatusMessage(t('settings.storagePolicies.invalidLifecycle'), 'error');
       return null;
     }
