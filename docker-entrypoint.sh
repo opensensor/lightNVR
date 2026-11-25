@@ -355,6 +355,11 @@ setup_go2rtc_config() {
 }
 
 generate_go2rtc_config_from_settings() {
+    if [ "${GO2RTC_CONFIG_PERSIST:-true}" = "true" ] && [ -f /etc/lightnvr/go2rtc/go2rtc.yaml ]; then
+        log_info "GO2RTC_CONFIG_PERSIST=true and existing go2rtc config found; skipping regeneration to preserve user configuration"
+        return 0
+    fi
+
     if [ ! -x /bin/lightnvr ]; then
         log_warn "Cannot regenerate go2rtc configuration from saved settings: /bin/lightnvr not found"
         return 0
