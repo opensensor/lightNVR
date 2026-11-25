@@ -206,7 +206,7 @@ static void alarm_handler(int sig) {
 }
 
 // How long a graceful shutdown gets before the watchdog force-kills the
-// process group. Must outlast the deliberate, non-abortable final backup
+// LightNVR process. Must outlast the deliberate, non-abortable final backup
 // shutdown_database() takes before exiting -- on a multi-gigabyte database
 // this has been observed to take up to ~9-10 minutes in production. A
 // systemd unit wrapping this service in production MUST set TimeoutStopSec
@@ -220,7 +220,7 @@ static void alarm_handler(int sig) {
 
 // Runs for the lifetime of the process, polling `running` once a second.
 // Once it goes false, starts counting down SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS
-// and force-kills the process group if the process hasn't exited on its own
+// and force-kills the LightNVR process if it hasn't exited on its own
 // by the time that elapses (this thread simply vanishes along with every
 // other thread on a normal exit, so it never fires in the common case).
 //
@@ -436,13 +436,14 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         // Send SIGTERM to let it clean up
         if (kill(existing_pid, SIGTERM) == 0) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
-            int timeout = 900;  // 900 seconds
+            int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
             while (timeout-- > 0 && kill(existing_pid, 0) == 0) {
                 sleep(1);
             }
 
             // If still running, force kill
-            if (timeout <= 0 && kill(existing_pid, 0) == 0) {
+            if (timeout <= 0 && kill(existing_pid, 0) == 0 &&
+                is_lightnvr_process(existing_pid)) {
                 log_warn("Process didn't terminate gracefully within timeout, using SIGKILL");
                 kill(existing_pid, SIGKILL);
                 sleep(1);  // Give it a moment
@@ -676,15 +677,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Set log level from configuration, with CLI override precedence.
-    if (verbose_mode) {
-        config.log_level = LOG_LEVEL_DEBUG;
-    }
-    set_log_level(config.log_level);
+    // CLI verbosity affects this process without changing the saved config.
+    log_level_t effective_log_level = verbose_mode ? LOG_LEVEL_DEBUG : config.log_level;
+    set_log_level(effective_log_level);
 
     // Log configured/effective log level as informational startup context
     // (severity should match message semantics)
-    log_info("Log level set to %d (%s)", config.log_level, get_log_level_string(config.log_level));
+    log_info("Log level set to %d (%s)", effective_log_level,
+             get_log_level_string(effective_log_level));
 
     // Enable syslog if configured
     if (config.syslog_enabled) {
