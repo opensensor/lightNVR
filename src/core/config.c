@@ -297,11 +297,13 @@ static void apply_env_overrides(config_t *config) {
                 errno = 0;
                 long parsed = strtol(env_value, &endptr, 10);
 
-                while (*endptr != '\0' && isspace((unsigned char)*endptr)) { // NOLINT(clang-analyzer-security.ArrayBound)
-                    endptr++;
+                // Preserve endptr from strtol to reliably detect "no conversion"
+                char *parse_end = endptr;
+                while (*parse_end != '\0' && isspace((unsigned char)*parse_end)) { // NOLINT(clang-analyzer-security.ArrayBound)
+                    parse_end++;
                 }
 
-                if (endptr == env_value || *endptr != '\0' ||
+                if (endptr == env_value || *parse_end != '\0' ||
                     errno == ERANGE || parsed < INT_MIN || parsed > INT_MAX) {
                     // Invalid or out-of-range integer: keep existing/default value
                     log_warn("Invalid integer for %s: '%s'; keeping existing value %d",
