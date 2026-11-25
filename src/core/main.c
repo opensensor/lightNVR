@@ -489,10 +489,15 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             log_error("Failed to terminate previous instance: %s", strerror(errno));
             return -1;
         }
-    } else {
+    } else if (errno == ESRCH) {
         // Process doesn't exist, remove stale PID file
         log_warn("Removing stale PID file");
         unlink(pid_file);
+    } else {
+        // Process may still exist but cannot be signalled (e.g. EPERM), or another error occurred.
+        // Do not remove PID file in this case, to avoid allowing a duplicate instance to start.
+        log_error("Unable to verify existing instance for PID %ld: %s", (long)existing_pid, strerror(errno));
+        return -1;
     }
 
     return 0;
