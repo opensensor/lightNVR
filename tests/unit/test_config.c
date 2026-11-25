@@ -858,6 +858,8 @@ void test_env_integer_whitespace_handling(void) {
     snprintf(web_root, sizeof(web_root), "%s/web", dir);
     snprintf(log_path, sizeof(log_path), "%s/lightnvr.log", dir);
     snprintf(pid_path, sizeof(pid_path), "%s/lightnvr.pid", dir);
+    const int expanded_max = DEFAULT_MAX_STREAMS < MAX_STREAMS
+        ? DEFAULT_MAX_STREAMS + 1 : DEFAULT_MAX_STREAMS;
 
     FILE *config_file = fopen(config_path, "w");
     TEST_ASSERT_NOT_NULL(config_file);
@@ -891,9 +893,11 @@ void test_env_integer_whitespace_handling(void) {
             "[web]\n"
             "root = %s\n"
             "audio_disabled = false\n"
-            "auto_disabled = true\n",
+            "auto_disabled = true\n\n"
+            "[streams]\n"
+            "max_streams = %d\n",
             pid_path, log_path, storage_path, storage_hls_path,
-            models_path, db_path, web_root);
+            models_path, db_path, web_root, expanded_max);
     fclose(config_file);
 
     TEST_ASSERT_EQUAL_INT(0, ensure_dir(web_root));
@@ -904,6 +908,11 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_AUDIO_DISABLED", "true", 1));
     TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
     TEST_ASSERT_EQUAL_INT(9099, cfg.web_port);
+    TEST_ASSERT_EQUAL_INT(expanded_max, cfg.max_streams);
+    TEST_ASSERT_TRUE(cfg.streams[expanded_max - 1].streaming_enabled);
+    TEST_ASSERT_EQUAL_INT(10, cfg.streams[expanded_max - 1].detection_interval);
+    TEST_ASSERT_EQUAL_STRING("none", cfg.streams[expanded_max - 1].detection_object_filter);
+    TEST_ASSERT_TRUE(cfg.streams[expanded_max - 1].tier_critical_multiplier == 3.0);
     TEST_ASSERT_EQUAL_INT(45, cfg.db_backup_interval_minutes);
     TEST_ASSERT_EQUAL_INT(12, cfg.db_backup_retention_count);
     TEST_ASSERT_EQUAL_STRING("/usr/local/bin/backup-hook", cfg.db_post_backup_script);
