@@ -50,7 +50,8 @@ void config_set_mp4_faststart(config_t *config, bool enabled) {
 }
 
 bool config_copy(config_t *destination, const config_t *source) {
-    if (!destination || !source || destination == source) return false;
+    if (!destination || !source) return false;
+    if (destination == source) return true;
     pthread_mutex_lock(&mp4_faststart_mutex);
     stream_config_t *copy = NULL;
     if (source->streams) {
@@ -1759,10 +1760,13 @@ static int copy_config_fd(int source_fd, int destination_fd) {
 
 /* Bind mounts and read-only parent directories cannot accept rename. Keep a
  * private, synced backup until the in-place copy has completed or recovered. */
+static pthread_mutex_t config_in_place_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static int publish_config_in_place(int dir_fd, const char *filename,
                                    const struct stat *original_stat,
                                    int original_fd, int staged_fd) {
     if (original_fd < 0 || !original_stat) return -1;
+    pthread_mutex_lock(&config_in_place_mutex);
 
     struct flock lock = {
         .l_type = F_WRLCK,
@@ -1770,7 +1774,10 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         .l_start = 0,
         .l_len = 0
     };
-    if (fcntl(original_fd, F_SETLKW, &lock) != 0) return -1;
+    if (fcntl(original_fd, F_SETLKW, &lock) != 0) {
+        pthread_mutex_unlock(&config_in_place_mutex);
+        return -1;
+    }
 
     int read_fd = openat(dir_fd, filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     struct stat current;
@@ -1780,6 +1787,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         if (read_fd >= 0) close(read_fd);
         lock.l_type = F_UNLCK;
         (void)fcntl(original_fd, F_SETLK, &lock);
+        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
     char backup_path[] = "/tmp/lightnvr-config-backup-XXXXXX";
@@ -1788,6 +1796,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         close(read_fd);
         lock.l_type = F_UNLCK;
         (void)fcntl(original_fd, F_SETLK, &lock);
+        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
     int result = copy_config_fd(read_fd, backup_fd);
@@ -1797,6 +1806,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         unlink(backup_path);
         lock.l_type = F_UNLCK;
         (void)fcntl(original_fd, F_SETLK, &lock);
+        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
     result = copy_config_fd(staged_fd, original_fd);
@@ -1806,6 +1816,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
             close(backup_fd);
             lock.l_type = F_UNLCK;
             (void)fcntl(original_fd, F_SETLK, &lock);
+            pthread_mutex_unlock(&config_in_place_mutex);
             return -1;
         }
     }
@@ -1813,6 +1824,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
     unlink(backup_path);
     lock.l_type = F_UNLCK;
     (void)fcntl(original_fd, F_SETLK, &lock);
+    pthread_mutex_unlock(&config_in_place_mutex);
     return result;
 }
 

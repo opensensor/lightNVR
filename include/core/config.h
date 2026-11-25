@@ -435,7 +435,7 @@ void config_set_mp4_faststart(config_t *config, bool enabled);
 /* Deep-copy an initialized (or zero-initialized) destination. The destination
  * owns its streams array and must free it when no longer needed. On allocation
  * failure the destination is left unchanged. */
-void config_copy(config_t *destination, const config_t *source);
+bool config_copy(config_t *destination, const config_t *source);
 
 /**
  * Set the detection grace period, clamped to its valid range (0..60 s).

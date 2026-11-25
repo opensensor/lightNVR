@@ -79,7 +79,10 @@ config_t* get_streaming_config(void) {
     
     // Use the global configuration instead of loading defaults
     // This ensures we get the latest configuration including the database path
-    config_copy(&db_config, &g_config);
+    if (!config_copy(&db_config, &g_config)) {
+        pthread_mutex_unlock(&config_mutex);
+        return &g_config;
+    }
     
     // Load stream configurations from database
     int ms = configured_stream_slots();
