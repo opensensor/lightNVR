@@ -477,10 +477,12 @@ static int check_and_kill_existing_instance(const char *pid_file) {
                 } else {
                     // Try to lock the file
                     if (lockf(test_fd, F_TLOCK, 0) == 0) {
-                        // We got the lock, which means the previous process released it
+                        // We got the lock, which means the previous process released it.
+                        // Do not unlink here: closing test_fd releases the advisory lock,
+                        // and unlinking after that can race with another starter that has
+                        // already re-locked/recreated the PID file.
                         close(test_fd);
                         log_info("Previous instance terminated and PID file lock released");
-                        unlink(pid_file);  // Remove the old PID file
                         return 0;
                     }
                     close(test_fd);
@@ -2179,8 +2181,10 @@ static void check_and_ensure_services(void) {
             current_config->streams[i].enabled &&
             current_config->streams[i].detection_based_recording &&
             is_detection_recording_scheduled(&current_config->streams[i])) {
-            // If continuous recording is also enabled, run detection in annotation-only mode
-            bool annotation_only = current_config->streams[i].record;
+            // Suppress detection recording only while continuous recording is active.
+            bool annotation_only =
+                current_config->streams[i].record &&
+                get_recording_state(current_config->streams[i].name) == 1;
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
                      current_config->streams[i].name, annotation_only ? "true" : "false");
             char resolved_detection_model[MAX_PATH_LENGTH];
