@@ -145,7 +145,18 @@ init_config() {
     # Create default config if it doesn't exist
     if [ ! -f /etc/lightnvr/lightnvr.ini ]; then
         log_info "Creating default configuration file..."
-        cat > /etc/lightnvr/lightnvr.ini << 'EOF'
+        resolved_max_streams=${MAX_STREAMS:-32}
+        case "$resolved_max_streams" in
+            *[!0-9]*|'') resolved_max_streams=32 ;;
+            *)
+                if [ "${#resolved_max_streams}" -gt 4 ] ||
+                   [ "$resolved_max_streams" -lt 1 ] ||
+                   [ "$resolved_max_streams" -gt 1024 ]; then
+                    resolved_max_streams=32
+                fi
+                ;;
+        esac
+        cat > /etc/lightnvr/lightnvr.ini << EOF
 ; LightNVR Configuration File (INI format)
 
 [general]
@@ -205,7 +216,7 @@ password = admin
 
 [streams]
 ; max_streams: runtime stream slot limit (default 32, ceiling 1024). Requires restart.
-max_streams = ${MAX_STREAMS:-32}
+max_streams = ${resolved_max_streams}
 
 [models]
 path = /var/lib/lightnvr/data/models
