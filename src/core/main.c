@@ -1541,10 +1541,14 @@ cleanup:
         // Allow the same final-backup deadline as the thread watchdog.
         // Large databases can take several minutes to copy and verify.
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
+        // A parent that exited naturally must never be signalled after its
+        // PID is reused by another process.
+        if (getppid() != parent_pid) _exit(EXIT_SUCCESS);
         kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
 
         // Wait a bit longer for emergency cleanup before giving up entirely
         sleep(15);
+        if (getppid() != parent_pid) _exit(EXIT_SUCCESS);
         kill(parent_pid, SIGKILL);  // Force kill the parent process
 
         // If restart was requested, handle it here since the parent was killed
