@@ -58,6 +58,8 @@ void setUp(void) {
     saved_audio_disabled_env = audio_disabled ? strdup(audio_disabled) : NULL;
     if (web_port) TEST_ASSERT_NOT_NULL(saved_web_port_env);
     if (audio_disabled) TEST_ASSERT_NOT_NULL(saved_audio_disabled_env);
+    unsetenv("LIGHTNVR_WEB_PORT");
+    unsetenv("LIGHTNVR_AUDIO_DISABLED");
 }
 void tearDown(void) {
     deny_config_chmod = deny_config_rename = false;
