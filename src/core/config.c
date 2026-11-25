@@ -1203,6 +1203,30 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (config->login_rate_limit_window_seconds < 10) {
                 config->login_rate_limit_window_seconds = 10; // Minimum 10 seconds
             }
+        } else if (strcmp(name, "web_compression_enabled") == 0) {
+            config->web_compression_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "web_use_minified_assets") == 0) {
+            config->web_use_minified_assets = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "web_cache_max_age_css") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_css = v;
+        } else if (strcmp(name, "web_cache_max_age_js") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_js = v;
+        } else if (strcmp(name, "web_cache_max_age_images") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_images = v;
+        } else if (strcmp(name, "web_cache_max_age_fonts") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_fonts = v;
+        } else if (strcmp(name, "web_cache_max_age_other") == 0) {
+            int v = safe_atoi(value, 0);
+            if (v < 0) v = 0;
+            config->web_cache_max_age_other = v;
         } else if (strcmp(name, "web_thread_pool_size") == 0) {
             int v = safe_atoi(value, 0);
             if (v < 2)   v = 2;
