@@ -822,6 +822,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
               id="setting-max-storage"
               name="maxStorage"
               min="0"
+              step="any"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.maxStorage}
               onChange={handleInputChange}
