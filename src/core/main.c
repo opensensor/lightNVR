@@ -510,9 +510,6 @@ static int daemonize(const char *pid_file) {
     // We're now in the child process, set daemon_mode flag
     daemon_mode = true;
 
-    // Make sure the running flag is set to true
-    running = true;
-
     // Return locked PID fd
     return fd;
 }
