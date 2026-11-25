@@ -1663,7 +1663,12 @@ int save_config(const config_t *config, const char *path) {
     // Get directory part
     char *last_slash = strrchr(dir_path, '/');
     if (last_slash) {
-        *last_slash = '\0'; // Truncate at last slash to get directory
+        if (last_slash == dir_path) {
+            // Root-level destination like "/lightnvr.ini" -> directory is "/"
+            dir_path[1] = '\0';
+        } else {
+            *last_slash = '\0'; // Truncate at last slash to get directory
+        }
         
         // Check if directory exists
         struct stat st;
