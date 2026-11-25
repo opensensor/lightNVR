@@ -412,6 +412,16 @@ static int check_and_kill_existing_instance(const char *pid_file) {
     }
     pid_t existing_pid = (pid_t)pid_val;
 
+    // If the PID file points to this process, treat it as stale and continue.
+    // This can happen after container restarts with PID reuse (often PID 1),
+    // and attempting termination would self-signal and break startup.
+    if (existing_pid == getpid()) {
+        log_warn("PID file references current process (PID %d); removing stale PID file",
+                 existing_pid);
+        unlink(pid_file);
+        return 0;
+    }
+
     // Check if process exists
     if (kill(existing_pid, 0) == 0) {
         // Process exists – but verify it is actually a LightNVR instance before
