@@ -297,11 +297,13 @@ static void apply_env_overrides(config_t *config) {
                 errno = 0;
                 long parsed = strtol(env_value, &endptr, 10);
 
-                while (*endptr != '\0' && isspace((unsigned char)*endptr)) { // NOLINT(clang-analyzer-security.ArrayBound)
-                    endptr++;
+                // Preserve endptr from strtol to reliably detect "no conversion"
+                char *parse_end = endptr;
+                while (*parse_end != '\0' && isspace((unsigned char)*parse_end)) { // NOLINT(clang-analyzer-security.ArrayBound)
+                    parse_end++;
                 }
 
-                if (endptr == env_value || *endptr != '\0' ||
+                if (endptr == env_value || *parse_end != '\0' ||
                     errno == ERANGE || parsed < INT_MIN || parsed > INT_MAX) {
                     // Invalid or out-of-range integer: keep existing/default value
                     log_warn("Invalid integer for %s: '%s'; keeping existing value %d",
@@ -1562,15 +1564,18 @@ int load_config(config_t *config) {
             if (!canon_path) {
                 log_error("Failed to resolve config path '%s': %s",
                           g_custom_config_path, strerror(errno));
+                return -1;
             } else if (load_config_from_file(canon_path, config) == 0) {
                 log_info("Loaded configuration from custom path: %s", canon_path);
                 set_loaded_config_path(canon_path);
                 loaded = 1;
             } else {
                 log_error("Failed to load configuration from custom path: %s", canon_path);
+                return -1;
             }
         } else {
             log_error("Custom config file not accessible: %s", g_custom_config_path);
+            return -1;
         }
     }
     
@@ -1723,7 +1728,13 @@ int save_config(const config_t *config, const char *path) {
         char *sl = strrchr(tmp, '/');
         if (sl) {
             fname = sl + 1;
-            *sl = '\0'; /* tmp is now the directory portion */
+            if (sl == tmp) {
+                /* Root-level path, e.g. "/lightnvr.ini": keep directory as "/" */
+                tmp[0] = '/';
+                tmp[1] = '\0';
+            } else {
+                *sl = '\0'; /* tmp is now the directory portion */
+            }
             if (realpath(tmp, resolved_dir) == NULL) {
                 log_error("Cannot resolve config directory '%s': %s", tmp, strerror(errno));
                 return -1;
