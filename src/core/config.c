@@ -21,6 +21,7 @@
 #include <syslog.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <math.h>
 
 #include "ini.h"
 #include "core/config.h"
@@ -711,7 +712,10 @@ int validate_config(config_t *config) {
                  config->storage_min_free_pct);
         config->storage_min_free_pct = config->storage_min_free_pct < 0 ? 0 : 90;
     }
-    if (config->storage_pressure_emergency_pct < 0.0 ||
+    if (!isfinite(config->storage_pressure_emergency_pct) ||
+        !isfinite(config->storage_pressure_critical_pct) ||
+        !isfinite(config->storage_pressure_warning_pct) ||
+        config->storage_pressure_emergency_pct < 0.0 ||
         config->storage_pressure_emergency_pct >= config->storage_pressure_critical_pct ||
         config->storage_pressure_critical_pct >= config->storage_pressure_warning_pct ||
         config->storage_pressure_warning_pct > 100.0) {
