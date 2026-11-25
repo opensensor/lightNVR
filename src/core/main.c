@@ -675,11 +675,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Set log level from configuration
-    fprintf(stderr, "Setting log level from config: %d\n", config.log_level);
+    // Set log level from configuration, with CLI override precedence.
+    if (verbose_mode) {
+        config.log_level = LOG_LEVEL_DEBUG;
+    }
     set_log_level(config.log_level);
 
-    // Log configured log level as informational startup context
+    // Log configured/effective log level as informational startup context
     // (severity should match message semantics)
     log_info("Log level set to %d (%s)", config.log_level, get_log_level_string(config.log_level));
 
