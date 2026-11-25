@@ -379,9 +379,9 @@ void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
 
     set_custom_config_path(config_path);
     TEST_ASSERT_EQUAL_INT(-1, load_config(&cfg));
-    int expected_max_streams = (1024 < MAX_STREAMS) ? 1024 : MAX_STREAMS;
-    TEST_ASSERT_EQUAL_INT(expected_max_streams, cfg.max_streams);
+    TEST_ASSERT_EQUAL_INT(DEFAULT_MAX_STREAMS, cfg.max_streams);
     TEST_ASSERT_NOT_NULL(cfg.streams);
+    TEST_ASSERT_TRUE(cfg.streams[DEFAULT_MAX_STREAMS - 1].streaming_enabled);
     cfg.streams[0].name[0] = '\0';
 
     unlink(config_path);
