@@ -1313,16 +1313,31 @@ static void check_bind_mount_fallback(bool fail_copy) {
     char directory[] = "/tmp/lightnvr_config_bind_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
+    char baseline_path[MAX_PATH_LENGTH];
     const char *original = "previous configuration";
     size_t original_len = strlen(original);
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(baseline_path, sizeof(baseline_path), "%s/settings.baseline.ini", directory);
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
     fputs(original, initial);
     fclose(initial);
     struct stat before, after;
+    struct stat baseline_stat;
+    char *baseline_content = NULL;
     TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
     load_default_config(&cfg);
+
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
+    TEST_ASSERT_EQUAL_INT(0, stat(baseline_path, &baseline_stat));
+    baseline_content = (char *)malloc((size_t)baseline_stat.st_size);
+    TEST_ASSERT_NOT_NULL(baseline_content);
+    FILE *baseline_file = fopen(baseline_path, "r");
+    TEST_ASSERT_NOT_NULL(baseline_file);
+    size_t baseline_count = fread(baseline_content, 1, (size_t)baseline_stat.st_size, baseline_file);
+    fclose(baseline_file);
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_stat.st_size, (uint64_t)baseline_count);
+
     busy_config_rename = true;
     if (fail_copy) {
         short_config_pwrite = true;
@@ -1338,17 +1353,24 @@ static void check_bind_mount_fallback(bool fail_copy) {
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
     TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
     if (fail_copy) TEST_ASSERT_EQUAL_UINT64(before.st_size, after.st_size);
-    char content[128] = {0};
+    size_t read_size = fail_copy ? (size_t)(sizeof(char) * 127) : (size_t)after.st_size;
+    char *content = (char *)calloc(read_size + 1, 1);
+    TEST_ASSERT_NOT_NULL(content);
     FILE *saved = fopen(path, "r");
     TEST_ASSERT_NOT_NULL(saved);
-    size_t count = fread(content, 1, sizeof(content) - 1, saved);
+    size_t count = fread(content, 1, read_size, saved);
     fclose(saved);
     if (fail_copy) {
         TEST_ASSERT_EQUAL_UINT(original_len, count);
         TEST_ASSERT_EQUAL_MEMORY(original, content, original_len);
     } else {
-        TEST_ASSERT_TRUE(count > 0 && strstr(content, "LightNVR Configuration File") != NULL);
+        TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_stat.st_size, (uint64_t)after.st_size);
+        TEST_ASSERT_EQUAL_UINT64((uint64_t)after.st_size, (uint64_t)count);
+        TEST_ASSERT_EQUAL_MEMORY(baseline_content, content, (size_t)after.st_size);
     }
+    free(content);
+    free(baseline_content);
+    unlink(baseline_path);
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
