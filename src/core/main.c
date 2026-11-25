@@ -158,18 +158,16 @@ static void signal_handler(int sig) {
     }
 
     // Check if we're already shutting down
-    // Use volatile sig_atomic_t to ensure visibility across signal invocations
-    static volatile sig_atomic_t shutdown_in_progress = 0;
+    // Use a lock-free atomic flag and atomic_exchange so only one handler
+    // invocation can observe "first signal" across all threads.
+    static _Atomic bool shutdown_in_progress = false;
 
-    if (shutdown_in_progress) {
+    if (atomic_exchange(&shutdown_in_progress, true)) {
         // Second signal during shutdown - force exit immediately
         // Using _exit() is async-signal-safe
         signal_safe_write("[SIGNAL] Received signal during shutdown, forcing immediate exit\n");
         _exit(1);
     }
-
-    // Mark that we're in the process of shutting down
-    shutdown_in_progress = 1;
 
     // Write to stderr (async-signal-safe)
     signal_safe_write("[SIGNAL] Received shutdown signal, initiating shutdown...\n");
@@ -248,8 +246,9 @@ static void *shutdown_watchdog_thread_func(void *arg) {
                 shutdown_started_at = now;
                 shutdown_started = true;
             } else if (now.tv_sec - shutdown_started_at.tv_sec >= SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS) {
-                log_error("Shutdown watchdog: graceful shutdown did not complete within %d seconds, "
-                          "force-killing LightNVR process", SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
+                static const char msg[] =
+                    "Shutdown watchdog timeout: force-killing LightNVR process\n";
+                (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
                 kill(getpid(), SIGKILL);
                 _exit(EXIT_FAILURE);
             }
@@ -489,10 +488,15 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             log_error("Failed to terminate previous instance: %s", strerror(errno));
             return -1;
         }
-    } else {
+    } else if (errno == ESRCH) {
         // Process doesn't exist, remove stale PID file
         log_warn("Removing stale PID file");
         unlink(pid_file);
+    } else {
+        // Process may still exist but cannot be signalled (e.g. EPERM), or another error occurred.
+        // Do not remove PID file in this case, to avoid allowing a duplicate instance to start.
+        log_error("Unable to verify existing instance for PID %ld: %s", (long)existing_pid, strerror(errno));
+        return -1;
     }
 
     return 0;
@@ -1940,6 +1944,13 @@ cleanup:
         // Stop recording sync worker before DB teardown to avoid concurrent DB access
         log_info("Stopping recording sync thread...");
         stop_recording_sync_thread();
+
+        // Ensure service-level workers are stopped before tearing down shared dependencies
+#ifdef USE_GO2RTC
+        go2rtc_integration_cleanup();
+#endif
+        shutdown_onvif_discovery();
+        cleanup_detection_resources();
 
         // Shutdown database
         log_info("Shutting down database...");
