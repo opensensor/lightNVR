@@ -1317,7 +1317,11 @@ static void check_bind_mount_fallback(bool fail_copy) {
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
     char baseline_path[MAX_PATH_LENGTH];
-    const char *original = "previous configuration";
+    const char *short_original = "previous configuration";
+    const char *long_original =
+        "previous configuration with extra trailing content that must be truncated "
+        "when the new serialized config is shorter than the existing file data";
+    const char *original = fail_copy ? short_original : long_original;
     size_t original_len = strlen(original);
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
     snprintf(baseline_path, sizeof(baseline_path), "%s/settings.baseline.ini", directory);
