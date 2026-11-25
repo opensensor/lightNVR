@@ -145,7 +145,18 @@ init_config() {
     # Create default config if it doesn't exist
     if [ ! -f /etc/lightnvr/lightnvr.ini ]; then
         log_info "Creating default configuration file..."
-        cat > /etc/lightnvr/lightnvr.ini << 'EOF'
+        resolved_max_streams=${MAX_STREAMS:-32}
+        case "$resolved_max_streams" in
+            *[!0-9]*|'') resolved_max_streams=32 ;;
+            *)
+                if [ "${#resolved_max_streams}" -gt 4 ] ||
+                   [ "$resolved_max_streams" -lt 1 ] ||
+                   [ "$resolved_max_streams" -gt 1024 ]; then
+                    resolved_max_streams=32
+                fi
+                ;;
+        esac
+        cat > /etc/lightnvr/lightnvr.ini << EOF
 ; LightNVR Configuration File (INI format)
 
 [general]
@@ -419,15 +430,6 @@ chown_volumes() {
     data=/var/lib/lightnvr/data
     mismatch="( ! -user $1 -o ! -group $2 )"
 
-    chown_recording_dirs_only() {
-        dir="$1"
-        find "$dir" -maxdepth 0 $mismatch -exec chown -h "$2:$3" {} +
-        for subdir in "$dir"/*/; do
-            [ -d "$subdir" ] || continue
-            chown_recording_dirs_only "$subdir" "$2" "$3"
-        done
-    }
-
     mkdir -p /etc/lightnvr/go2rtc "$data/recordings/mp4" "$data/database" \
         "$data/models" /var/log/lightnvr /var/run/lightnvr &&
     # Config, logs, database, models and other small state: recursively.
@@ -438,7 +440,7 @@ chown_volumes() {
     # Recordings: directories only, so startup does not walk every segment
     # (#368). Old root-owned segments stay readable and, in a writable
     # directory, deletable by retention.
-    chown_recording_dirs_only "$data/recordings" "$1" "$2"
+    find "$data/recordings" -type d $mismatch -exec chown -h "$1:$2" {} +
 }
 
 migrate_volume_ownership() {
