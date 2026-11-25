@@ -1514,6 +1514,13 @@ int save_stream_configs(config_t *config) {
     // Always continue so initial in-memory stream configs can be inserted
     // into an empty database. Only skip existing-row loading work when count is zero.
     stream_config_t *db_streams = calloc(config->max_streams, sizeof(stream_config_t));
+    if (count > config->max_streams) {
+        log_error("Cannot replace stream configurations: database has %d streams, exceeds max_streams=%d",
+                  count, config->max_streams);
+        rollback_transaction();
+        return -1;
+    }
+
     if (!db_streams) {
         log_error("save_stream_configs: out of memory");
         rollback_transaction();
