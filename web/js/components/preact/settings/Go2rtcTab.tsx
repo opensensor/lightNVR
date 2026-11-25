@@ -299,7 +299,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
       if (!line || line.trimStart().startsWith('#')) continue;
       if (/^\s/.test(rawLine)) continue;
       const m = line.match(/^([A-Za-z0-9_-]+)\s*:/);
-      if (m) keys.add(m[1]);
+      if (m?.[1]) keys.add(m[1]);
     }
     return keys;
   };
@@ -315,12 +315,13 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     const presetKeys = getTopLevelYamlKeys(preset!.yaml);
     const conflicts = Array.from(presetKeys).filter(k => existingKeys.has(k));
     if (conflicts.length > 0) {
+      invalidateOverrideValidation();
       setOverrideValidation({
-        ok: false,
-        errors: [
-          `Preset insertion would duplicate top-level section(s): ${conflicts.join(', ')}. Merge into the existing section instead of inserting the full preset.`,
-        ],
-      } as Go2rtcOverrideValidation);
+        valid: false,
+        error: {
+          message: `Preset insertion would duplicate top-level section(s): ${conflicts.join(', ')}. Merge into the existing section instead of inserting the full preset.`,
+        },
+      });
       return;
     }
 
@@ -601,9 +602,11 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 {/* Inline error */}
                 {overrideValidation && overrideValidation.valid === false && overrideValidation.error ? (
                   <div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-800 dark:text-red-200">
-                    <div class="font-medium">
-                      {t('settings.go2rtcErrorPosition', { line: overrideValidation.error.line || '?', column: overrideValidation.error.column || '?' })}
-                    </div>
+                    {overrideValidation.error.line || overrideValidation.error.column ? (
+                      <div class="font-medium">
+                        {t('settings.go2rtcErrorPosition', { line: overrideValidation.error.line || '?', column: overrideValidation.error.column || '?' })}
+                      </div>
+                    ) : null}
                     <div class="text-xs mt-1 whitespace-pre-wrap">{overrideValidation.error.message}</div>
                   </div>
                 ) : null}
