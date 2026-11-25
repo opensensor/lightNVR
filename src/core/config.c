@@ -1040,21 +1040,51 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "ssl_key_path") == 0) {
             safe_strcpy(config->web_ssl_key_path, value, sizeof(config->web_ssl_key_path), 0);
         } else if (strcmp(name, "auth_enabled") == 0) {
-            config->web_auth_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.auth_enabled: '%s'", value);
+                return 0;
+            }
+            config->web_auth_enabled = parsed_bool;
         } else if (strcmp(name, "username") == 0) {
             safe_strcpy(config->web_username, value, sizeof(config->web_username), 0);
         } else if (strcmp(name, "password") == 0) {
             safe_strcpy(config->web_password, value, sizeof(config->web_password), 0);
         } else if (strcmp(name, "audio_disabled") == 0) {
-            config->audio_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.audio_disabled: '%s'", value);
+                return 0;
+            }
+            config->audio_disabled = parsed_bool;
         } else if (strcmp(name, "auto_disabled") == 0) {
-            config->auto_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.auto_disabled: '%s'", value);
+                return 0;
+            }
+            config->auto_disabled = parsed_bool;
         } else if (strcmp(name, "webrtc_disabled") == 0) {
-            config->webrtc_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.webrtc_disabled: '%s'", value);
+                return 0;
+            }
+            config->webrtc_disabled = parsed_bool;
         } else if (strcmp(name, "hls_disabled") == 0) {
-            config->hls_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.hls_disabled: '%s'", value);
+                return 0;
+            }
+            config->hls_disabled = parsed_bool;
         } else if (strcmp(name, "mse_disabled") == 0) {
-            config->mse_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.mse_disabled: '%s'", value);
+                return 0;
+            }
+            config->mse_disabled = parsed_bool;
         } else if (strcmp(name, "default_playback_transport") == 0) {
             if (playback_transport_is_valid(value)) {
                 safe_strcpy(config->default_playback_transport, value,
