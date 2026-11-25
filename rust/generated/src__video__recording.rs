@@ -2883,6 +2883,16 @@ pub unsafe extern "C" fn find_mp4_recording(
         return -1 as ::core::ffi::c_int;
     }
     let mut global_config: *const config_t = get_streaming_config();
+    if global_config.is_null() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Cannot find MP4 recording: streaming configuration unavailable\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
     let mut base_path: [::core::ffi::c_char; 512] = [0; 512];
     let mut timestamp_str: [::core::ffi::c_char; 32] = [0; 32];
     let mut tm_buf: tm = tm {

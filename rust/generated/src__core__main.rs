@@ -1428,11 +1428,11 @@ unsafe extern "C" fn shutdown_watchdog_thread_func(
                     log_level_t::LOG_LEVEL_ERROR,
                     LOG_COMPONENT,
                     _log_stream_name,
-                    b"Shutdown watchdog: graceful shutdown did not complete within %d seconds, force-killing process group\0"
+                    b"Shutdown watchdog: graceful shutdown did not complete within %d seconds, force-killing LightNVR process\0"
                         .as_ptr() as *const ::core::ffi::c_char,
                     900 as ::core::ffi::c_int,
                 );
-                kill(0 as __pid_t, SIGKILL);
+                kill(getpid(), SIGKILL);
                 _exit(EXIT_FAILURE);
             }
         }
@@ -1446,7 +1446,7 @@ unsafe extern "C" fn start_shutdown_watchdog_thread() {
         &raw mut attr,
         C2Rust_Unnamed_11::PTHREAD_CREATE_DETACHED.0 as ::core::ffi::c_int,
     );
-    if pthread_create(
+    let mut rc: ::core::ffi::c_int = pthread_create(
         &raw mut thread,
         &raw mut attr,
         Some(
@@ -1454,15 +1454,15 @@ unsafe extern "C" fn start_shutdown_watchdog_thread() {
                 as unsafe extern "C" fn(*mut ::core::ffi::c_void) -> *mut ::core::ffi::c_void,
         ),
         NULL,
-    ) != 0 as ::core::ffi::c_int
-    {
+    );
+    if rc != 0 as ::core::ffi::c_int {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
             _log_stream_name,
             b"Failed to start shutdown watchdog thread: %s\0".as_ptr()
                 as *const ::core::ffi::c_char,
-            strerror(*__errno_location()),
+            strerror(rc),
         );
     }
     pthread_attr_destroy(&raw mut attr);
@@ -1744,7 +1744,8 @@ unsafe extern "C" fn check_and_kill_existing_instance(
             existing_pid,
         );
         if kill(existing_pid, SIGTERM) == 0 as ::core::ffi::c_int {
-            let mut timeout: ::core::ffi::c_int = 120 as ::core::ffi::c_int;
+            let mut timeout: ::core::ffi::c_int =
+                SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30 as ::core::ffi::c_int;
             loop {
                 let c2rust_fresh0 = timeout;
                 timeout -= 1;
@@ -1757,6 +1758,7 @@ unsafe extern "C" fn check_and_kill_existing_instance(
             }
             if timeout <= 0 as ::core::ffi::c_int
                 && kill(existing_pid, 0 as ::core::ffi::c_int) == 0 as ::core::ffi::c_int
+                && is_lightnvr_process(existing_pid) as ::core::ffi::c_int != 0
             {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_WARN,
@@ -2768,19 +2770,21 @@ unsafe fn main_0(
             );
         }
     }
-    fprintf(
-        stderr,
-        b"Setting log level from config: %d\n\0".as_ptr() as *const ::core::ffi::c_char,
-        config.log_level,
+    let mut effective_log_level: log_level_t = log_level_t(
+        (if verbose_mode as ::core::ffi::c_int != 0 {
+            log_level_t::LOG_LEVEL_DEBUG.0 as ::core::ffi::c_int
+        } else {
+            config.log_level
+        }) as ::core::ffi::c_uint,
     );
-    set_log_level(log_level_t(config.log_level as ::core::ffi::c_uint));
+    set_log_level(effective_log_level);
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
         _log_stream_name,
         b"Log level set to %d (%s)\0".as_ptr() as *const ::core::ffi::c_char,
-        config.log_level,
-        get_log_level_string(log_level_t(config.log_level as ::core::ffi::c_uint)),
+        effective_log_level.0,
+        get_log_level_string(effective_log_level),
     );
     if config.syslog_enabled {
         if enable_syslog(
@@ -5148,6 +5152,13 @@ unsafe fn main_0(
             log_level_t::LOG_LEVEL_INFO,
             LOG_COMPONENT,
             _log_stream_name,
+            b"Stopping recording sync thread...\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        stop_recording_sync_thread();
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_INFO,
+            LOG_COMPONENT,
+            _log_stream_name,
             b"Shutting down database...\0".as_ptr() as *const ::core::ffi::c_char,
         );
         shutdown_database();
@@ -5244,6 +5255,16 @@ unsafe extern "C" fn check_and_ensure_services() {
         return;
     }
     let mut current_config: *const config_t = get_streaming_config();
+    if current_config.is_null() || (*current_config).streams.is_null() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Skipping periodic service check: streaming configuration unavailable\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return;
+    }
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,

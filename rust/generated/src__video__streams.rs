@@ -2020,19 +2020,20 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
             },
         },
     };
+    let mut snapshot: *mut config_t = ::core::ptr::null_mut::<config_t>();
     if pthread_once(
         &raw mut streaming_snapshot_once,
         Some(init_streaming_snapshot_key as unsafe extern "C" fn() -> ()),
     ) != 0 as ::core::ffi::c_int
         || streaming_snapshot_key_result != 0 as ::core::ffi::c_int
     {
-        return &raw mut g_config;
+        return ::core::ptr::null_mut::<config_t>();
     }
-    let mut snapshot: *mut config_t = pthread_getspecific(streaming_snapshot_key) as *mut config_t;
+    snapshot = pthread_getspecific(streaming_snapshot_key) as *mut config_t;
     if snapshot.is_null() {
         snapshot = calloc(1 as size_t, ::core::mem::size_of::<config_t>()) as *mut config_t;
         if snapshot.is_null() {
-            return &raw mut g_config;
+            return ::core::ptr::null_mut::<config_t>();
         }
         if pthread_setspecific(
             streaming_snapshot_key,
@@ -2040,7 +2041,7 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
         ) != 0 as ::core::ffi::c_int
         {
             free(snapshot as *mut ::core::ffi::c_void);
-            return &raw mut g_config;
+            return ::core::ptr::null_mut::<config_t>();
         }
     }
     pthread_mutex_lock(&raw mut config_mutex);
@@ -2049,7 +2050,7 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
         return if !(*snapshot).streams.is_null() {
             snapshot
         } else {
-            &raw mut g_config
+            ::core::ptr::null_mut::<config_t>()
         };
     }
     if config_reset_stream_slots(&raw mut db_config) != 0 as ::core::ffi::c_int {
@@ -2057,7 +2058,7 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
         return if !(*snapshot).streams.is_null() {
             snapshot
         } else {
-            &raw mut g_config
+            ::core::ptr::null_mut::<config_t>()
         };
     }
     let mut ms: ::core::ffi::c_int = db_config.max_streams;
@@ -2071,7 +2072,7 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
         return if !(*snapshot).streams.is_null() {
             snapshot
         } else {
-            &raw mut g_config
+            ::core::ptr::null_mut::<config_t>()
         };
     }
     let mut count: ::core::ffi::c_int = get_all_stream_configs(db_streams, ms);
@@ -2084,7 +2085,7 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
         return if !(*snapshot).streams.is_null() {
             snapshot
         } else {
-            &raw mut g_config
+            ::core::ptr::null_mut::<config_t>()
         };
     }
     if count > 0 as ::core::ffi::c_int {
@@ -2118,7 +2119,7 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
         return if !(*snapshot).streams.is_null() {
             snapshot
         } else {
-            &raw mut g_config
+            ::core::ptr::null_mut::<config_t>()
         };
     }
     pthread_mutex_unlock(&raw mut config_mutex);

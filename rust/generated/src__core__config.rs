@@ -1034,6 +1034,25 @@ unsafe extern "C" fn contains_unsupported_ini_credential_chars(
     if value.is_null() {
         return r#false != 0;
     }
+    let mut len: size_t = strlen(value);
+    if len > 0 as size_t {
+        if *(*__ctype_b_loc())
+            .offset(*value.offset(0isize) as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+            as ::core::ffi::c_int
+            & C2Rust_Unnamed_0::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                as ::core::ffi::c_int
+            != 0
+            || *(*__ctype_b_loc())
+                .offset(*value.offset(len.wrapping_sub(1 as size_t) as isize)
+                    as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                as ::core::ffi::c_int
+                & C2Rust_Unnamed_0::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                    as ::core::ffi::c_int
+                != 0
+        {
+            return r#true != 0;
+        }
+    }
     let mut p: *const ::core::ffi::c_uchar = value as *const ::core::ffi::c_uchar;
     while *p as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
         if *p as ::core::ffi::c_int == '\n' as ::core::ffi::c_int
@@ -6386,6 +6405,10 @@ pub unsafe extern "C" fn save_config(
         ) as ::core::ffi::c_int
             != 0
         || contains_unsupported_ini_credential_chars(
+            &raw const (*config).mqtt_username as *const ::core::ffi::c_char,
+        ) as ::core::ffi::c_int
+            != 0
+        || contains_unsupported_ini_credential_chars(
             &raw const (*config).mqtt_password as *const ::core::ffi::c_char,
         ) as ::core::ffi::c_int
             != 0
@@ -6394,7 +6417,7 @@ pub unsafe extern "C" fn save_config(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Credential contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save\0"
+            b"Credential contains unsupported INI characters or boundary whitespace; refusing to save\0"
                 .as_ptr() as *const ::core::ffi::c_char,
         );
         return -1 as ::core::ffi::c_int;
