@@ -432,6 +432,9 @@ void config_set_mp4_faststart(config_t *config, bool enabled);
 /** Shallow configuration copy synchronized with MP4 faststart updates.
  *  Other fields still require caller-provided synchronization if mutated
  *  concurrently. The destination shares the source's streams allocation. */
+/* Deep-copy an initialized (or zero-initialized) destination. The destination
+ * owns its streams array and must free it when no longer needed. On allocation
+ * failure the destination is left unchanged. */
 void config_copy(config_t *destination, const config_t *source);
 
 /**

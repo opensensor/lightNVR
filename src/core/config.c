@@ -50,10 +50,34 @@ void config_set_mp4_faststart(config_t *config, bool enabled) {
 }
 
 void config_copy(config_t *destination, const config_t *source) {
+    if (!destination || !source || destination == source) return;
     pthread_mutex_lock(&mp4_faststart_mutex);
-    if (destination != source) {
-        memcpy(destination, source, sizeof(*destination));
+    stream_config_t *copy = NULL;
+    if (source->streams) {
+        if (source->max_streams <= 0 || source->max_streams > MAX_STREAMS ||
+            (size_t)source->max_streams > SIZE_MAX / sizeof(*copy)) {
+            log_error("config_copy: invalid stream capacity %d", source->max_streams);
+            pthread_mutex_unlock(&mp4_faststart_mutex);
+            return;
+        }
+        size_t bytes = (size_t)source->max_streams * sizeof(*copy);
+        if (destination->streams && destination->streams != source->streams &&
+            destination->max_streams == source->max_streams) {
+            copy = destination->streams;
+        } else {
+            copy = malloc(bytes);
+            if (!copy) {
+                log_error("config_copy: could not allocate %zu stream bytes", bytes);
+                pthread_mutex_unlock(&mp4_faststart_mutex);
+                return;
+            }
+        }
+        memcpy(copy, source->streams, bytes);
     }
+    stream_config_t *old_streams = destination->streams;
+    memcpy(destination, source, sizeof(*destination));
+    destination->streams = copy;
+    if (old_streams != copy && old_streams != source->streams) free(old_streams);
     pthread_mutex_unlock(&mp4_faststart_mutex);
 }
 
@@ -294,6 +318,20 @@ static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAP
                 if (strcmp(mapping->env_name, "WEB_PORT") == 0 &&
                     (new_value <= 0 || new_value > 65535)) {
                     log_warn("Invalid web port for %s: '%s'; keeping existing value %d",
+                             env_name, env_value, *int_ptr);
+                    break;
+                }
+                if (strcmp(mapping->env_name, "WEBRTC_CONNECTION_TIMEOUT_MS") == 0 &&
+                    new_value < 1000) {
+                    log_warn("Invalid WebRTC connection timeout for %s: '%s'; "
+                             "minimum is 1000 ms; keeping existing value %d",
+                             env_name, env_value, *int_ptr);
+                    break;
+                }
+                if (strcmp(mapping->env_name, "WEBRTC_ICE_RECOVERY_TIMEOUT_MS") == 0 &&
+                    new_value < 0) {
+                    log_warn("Invalid WebRTC ICE recovery timeout for %s: '%s'; "
+                             "minimum is 0 ms; keeping existing value %d",
                              env_name, env_value, *int_ptr);
                     break;
                 }
@@ -1482,59 +1520,19 @@ int save_stream_configs(config_t *config) {
         }
     }
 
-    // Check if configurations are identical to avoid unnecessary updates
-    if (loaded == count) {
-        int identical = 1;
-        int config_named_streams = 0;
-
-        for (int i = 0; i < config->max_streams; i++) {
-            if (config->streams[i].name[0] != '\0') {
-                config_named_streams++;
-            }
-        }
-
-        if (config_named_streams != loaded) {
-            identical = 0;
-        }
-
-        for (int i = 0; i < config->max_streams && identical; i++) {
-            if (config->streams[i].name[0] == '\0') {
-                continue;
-            }
-
-            int found = 0;
-            for (int j = 0; j < loaded; j++) {
-                if (strcmp(config->streams[i].name, db_streams[j].name) == 0) {
-                    found = 1;
-                    break;
-                }
-            }
-
-            if (!found) {
-                identical = 0;
-            }
-        }
-
-        if (identical) {
-            /* The database owns stable camera identity and location. Hydrate
-             * both even when names match; continue to normal persistence flow
-             * so non-name configuration changes are not skipped. */
-            for (int i = 0; i < config->max_streams; i++) {
-                if (config->streams[i].name[0] == '\0') {
-                    continue;
-                }
-                for (int j = 0; j < loaded; j++) {
-                    if (strcmp(config->streams[i].name,
-                               db_streams[j].name) == 0) {
-                        safe_strcpy(config->streams[i].camera_uuid,
-                                    db_streams[j].camera_uuid,
-                                    sizeof(config->streams[i].camera_uuid), 0);
-                        safe_strcpy(config->streams[i].location_uuid,
-                                    db_streams[j].location_uuid,
-                                    sizeof(config->streams[i].location_uuid), 0);
-                        break;
-                    }
-                }
+    /* Database-owned identity belongs to each matching stream, regardless of
+     * whether other streams were added, removed, or renamed. */
+    for (int i = 0; i < config->max_streams; i++) {
+        if (config->streams[i].name[0] == '\0') continue;
+        for (int j = 0; j < loaded; j++) {
+            if (strcmp(config->streams[i].name, db_streams[j].name) == 0) {
+                safe_strcpy(config->streams[i].camera_uuid,
+                            db_streams[j].camera_uuid,
+                            sizeof(config->streams[i].camera_uuid), 0);
+                safe_strcpy(config->streams[i].location_uuid,
+                            db_streams[j].location_uuid,
+                            sizeof(config->streams[i].location_uuid), 0);
+                break;
             }
         }
     }
@@ -1736,6 +1734,68 @@ int load_config(config_t *config) {
     return 0;
 }
 
+static int copy_config_fd(int source_fd, int destination_fd) {
+    if (ftruncate(destination_fd, 0) != 0) return -1;
+    char buffer[16384];
+    off_t offset = 0;
+    for (;;) {
+        ssize_t count = pread(source_fd, buffer, sizeof(buffer), offset);
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0) return -1;
+        if (count == 0) break;
+        ssize_t written = 0;
+        while (written < count) {
+            ssize_t n = pwrite(destination_fd, buffer + written,
+                               (size_t)(count - written), offset + written);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) return -1;
+            written += n;
+        }
+        offset += count;
+    }
+    return fsync(destination_fd);
+}
+
+/* Bind mounts and read-only parent directories cannot accept rename. Keep a
+ * private, synced backup until the in-place copy has completed or recovered. */
+static int publish_config_in_place(int dir_fd, const char *filename,
+                                   const struct stat *original_stat,
+                                   int original_fd, int staged_fd) {
+    if (original_fd < 0 || !original_stat) return -1;
+    int read_fd = openat(dir_fd, filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat current;
+    if (read_fd < 0 || fstat(read_fd, &current) != 0 ||
+        current.st_dev != original_stat->st_dev ||
+        current.st_ino != original_stat->st_ino || current.st_nlink != 1) {
+        if (read_fd >= 0) close(read_fd);
+        return -1;
+    }
+    char backup_path[] = "/tmp/lightnvr-config-backup-XXXXXX";
+    int backup_fd = mkstemp(backup_path);
+    if (backup_fd < 0) {
+        close(read_fd);
+        return -1;
+    }
+    int result = copy_config_fd(read_fd, backup_fd);
+    close(read_fd);
+    if (result != 0) {
+        close(backup_fd);
+        unlink(backup_path);
+        return -1;
+    }
+    result = copy_config_fd(staged_fd, original_fd);
+    if (result != 0) {
+        if (copy_config_fd(backup_fd, original_fd) != 0) {
+            log_error("Could not restore config; private backup retained at %s", backup_path);
+            close(backup_fd);
+            return -1;
+        }
+    }
+    close(backup_fd);
+    unlink(backup_path);
+    return result;
+}
+
 // Save configuration to file in INI format
 int save_config(const config_t *config, const char *path) {
     if (!config) {
@@ -1909,60 +1969,67 @@ int save_config(const config_t *config, const char *path) {
         return -1;
     }
 
-    int config_fd = openat(dir_fd, validated_filename,
-                           O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
-                           0600);
-    if (config_fd < 0) {
-        log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
+    int original_fd = openat(dir_fd, validated_filename,
+                             O_WRONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+    bool target_exists = original_fd >= 0;
+    if (!target_exists && errno != ENOENT) {
+        log_error("Could not open config file for writing: %s", strerror(errno));
         close(dir_fd);
         return -1;
     }
-
-    struct stat config_stat;
-    if (fstat(config_fd, &config_stat) != 0) {
-        log_error("Could not stat config file after opening: %s (error: %s)", canonical_save_path, strerror(errno));
-        close(config_fd);
-        close(dir_fd);
-        return -1;
-    }
-    if (!S_ISREG(config_stat.st_mode) || config_stat.st_nlink != 1) {
-        log_error("Config save target must be a regular file with one link: %s", canonical_save_path);
-        close(config_fd);
-        close(dir_fd);
-        return -1;
-    }
-
-    /* A legacy root-owned, group-writable config can be written by a non-root
-     * service but cannot be chmod'd by it. Publish a private replacement in the
-     * writable directory in that case; never write secrets to the broad-mode
-     * original. Keep in-place saves for owned files (including bind mounts). */
-    char replacement_name[96] = {0};
-    if (fchmod(config_fd, 0600) != 0) {
-        int mode_error = errno;
-        close(config_fd);
-        config_fd = -1;
-        if (mode_error == EPERM) {
-            static atomic_uint replacement_sequence = 0;
-            for (int attempt = 0; attempt < 100; attempt++) {
-                snprintf(replacement_name, sizeof(replacement_name),
-                         ".lightnvr-config-%ld-%u.tmp", (long)getpid(),
-                         atomic_fetch_add(&replacement_sequence, 1));
-                config_fd = openat(dir_fd, replacement_name,
-                    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
-                if (config_fd >= 0 || errno != EEXIST) break;
-            }
-        }
-        if (config_fd < 0) {
-            log_error("Could not prepare private config replacement: %s", strerror(errno));
+    struct stat config_stat = {0};
+    if (target_exists) {
+        if (fstat(original_fd, &config_stat) != 0 ||
+            !S_ISREG(config_stat.st_mode) || config_stat.st_nlink != 1) {
+            log_error("Config save target must be a regular file with one link: %s", canonical_save_path);
+            close(original_fd);
             close(dir_fd);
             return -1;
         }
+        if (fchmod(original_fd, 0600) != 0) {
+            if (errno != EPERM) {
+                log_error("Could not restrict config file: %s", strerror(errno));
+                close(original_fd);
+                close(dir_fd);
+                return -1;
+            }
+            /* A legacy root-owned file can only be replaced, not rewritten. */
+            close(original_fd);
+            original_fd = -1;
+        }
     }
-    if ((replacement_name[0] && fchmod(config_fd, 0600) != 0) ||
-        (!replacement_name[0] && ftruncate(config_fd, 0) != 0)) {
+
+    char replacement_name[96] = {0};
+    char external_staging_path[] = "/tmp/lightnvr-config-stage-XXXXXX";
+    bool external_staging = false;
+    static atomic_uint replacement_sequence = 0;
+    int config_fd = -1;
+    for (int attempt = 0; attempt < 100; attempt++) {
+        snprintf(replacement_name, sizeof(replacement_name),
+                 ".lightnvr-config-%ld-%u.tmp", (long)getpid(),
+                 atomic_fetch_add(&replacement_sequence, 1));
+        config_fd = openat(dir_fd, replacement_name,
+            O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (config_fd >= 0 || errno != EEXIST) break;
+    }
+    if (config_fd < 0 && original_fd >= 0 &&
+        (errno == EACCES || errno == EROFS)) {
+        /* A writable existing file may live in an unwritable directory. */
+        config_fd = mkstemp(external_staging_path);
+        if (config_fd >= 0) external_staging = true;
+    }
+    if (config_fd < 0) {
+        log_error("Could not prepare private config staging file: %s", strerror(errno));
+        if (original_fd >= 0) close(original_fd);
+        close(dir_fd);
+        return -1;
+    }
+    if (fchmod(config_fd, 0600) != 0) {
         log_error("Could not prepare private config file: %s", strerror(errno));
         close(config_fd);
-        if (replacement_name[0]) unlinkat(dir_fd, replacement_name, 0);
+        if (external_staging) unlink(external_staging_path);
+        else unlinkat(dir_fd, replacement_name, 0);
+        if (original_fd >= 0) close(original_fd);
         close(dir_fd);
         return -1;
     }
@@ -1971,7 +2038,9 @@ int save_config(const config_t *config, const char *path) {
     if (!file) {
         log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
         close(config_fd);
-        if (replacement_name[0]) unlinkat(dir_fd, replacement_name, 0);
+        if (external_staging) unlink(external_staging_path);
+        else unlinkat(dir_fd, replacement_name, 0);
+        if (original_fd >= 0) close(original_fd);
         close(dir_fd);
         return -1;
     }
@@ -2226,20 +2295,40 @@ int save_config(const config_t *config, const char *path) {
     // Do NOT write [stream.X] sections here.
     
     int write_failed = ferror(file);
-    if (replacement_name[0] && (fflush(file) != 0 || fsync(fileno(file)) != 0)) write_failed = 1;
+    if (fflush(file) != 0 || fsync(fileno(file)) != 0) write_failed = 1;
     if (fclose(file) != 0) write_failed = 1;
-    if (!write_failed && replacement_name[0]) {
+    if (!write_failed) {
         /* Do not replace a symlink, hardlink, or changed target introduced
          * while the replacement was being written. */
         struct stat current;
-        if (fstatat(dir_fd, validated_filename, &current, AT_SYMLINK_NOFOLLOW) != 0 ||
-            !S_ISREG(current.st_mode) || current.st_nlink != 1 ||
-            current.st_dev != config_stat.st_dev || current.st_ino != config_stat.st_ino ||
-            renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
+        int stat_result = fstatat(dir_fd, validated_filename, &current, AT_SYMLINK_NOFOLLOW);
+        bool unchanged = target_exists
+            ? stat_result == 0 && S_ISREG(current.st_mode) && current.st_nlink == 1 &&
+              current.st_dev == config_stat.st_dev && current.st_ino == config_stat.st_ino
+            : stat_result != 0 && errno == ENOENT;
+        if (!unchanged) {
             write_failed = 1;
+        } else if (external_staging) {
+            int staged_fd = open(external_staging_path, O_RDONLY | O_CLOEXEC);
+            if (staged_fd < 0 || publish_config_in_place(dir_fd, validated_filename,
+                    &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
+            if (staged_fd >= 0) close(staged_fd);
+        } else if (renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
+            if (errno == EBUSY && original_fd >= 0) {
+                int staged_fd = openat(dir_fd, replacement_name, O_RDONLY | O_CLOEXEC);
+                if (staged_fd < 0 || publish_config_in_place(dir_fd, validated_filename,
+                        &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
+                if (staged_fd >= 0) close(staged_fd);
+            } else {
+                write_failed = 1;
+            }
+        } else if (fsync(dir_fd) != 0) {
+            log_warn("Could not sync config directory after replacement: %s", strerror(errno));
         }
     }
-    if (replacement_name[0]) unlinkat(dir_fd, replacement_name, 0);
+    if (external_staging) unlink(external_staging_path);
+    else unlinkat(dir_fd, replacement_name, 0);
+    if (original_fd >= 0) close(original_fd);
     close(dir_fd);
     if (write_failed) {
         log_error("Failed to write config file: %s", canonical_save_path);
