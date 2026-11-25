@@ -393,8 +393,14 @@ static int check_and_kill_existing_instance(const char *pid_file) {
     }
     bool truncated_pid_line = strchr(pid_buf, '\n') == NULL && fgetc(fp) != EOF;
     fclose(fp);
+    errno = 0;
     if (truncated_pid_line) {
-        log_warn("Invalid PID file format");
+
+    // Validate conversion, trailing characters, positivity, and pid_t representability
+    while (*end_ptr == ' ' || *end_ptr == '\t' || *end_ptr == '\n' || *end_ptr == '\r' || *end_ptr == '\f' || *end_ptr == '\v') {
+        end_ptr++;
+    }
+    if (end_ptr == pid_buf || *end_ptr != '\0' || errno == ERANGE || pid_val <= 0 || (long)(pid_t)pid_val != pid_val) {
         unlink(pid_file);
         return 0;
     }
