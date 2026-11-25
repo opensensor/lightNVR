@@ -36,6 +36,10 @@ static bool deny_config_rename;
 static bool busy_config_rename;
 static bool fail_config_pwrite;
 static ino_t fail_config_pwrite_inode;
+static bool short_config_pwrite;
+static ino_t short_config_pwrite_inode;
+static size_t short_config_pwrite_max_bytes;
+static bool short_config_pwrite_done;
 static bool monitor_secret_write_permissions;
 static bool observed_config_stream;
 static bool observed_config_stream_with_private_mode;
@@ -76,10 +80,19 @@ int __wrap_renameat(int from_fd, const char *from, int to_fd, const char *to) {
 ssize_t __real_pwrite(int, const void *, size_t, off_t);
 ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
     struct stat st;
-    if (fail_config_pwrite && fstat(fd, &st) == 0 && st.st_ino == fail_config_pwrite_inode) {
-        fail_config_pwrite = false;
-        errno = ENOSPC;
-        return -1;
+    if (fstat(fd, &st) == 0) {
+        if (short_config_pwrite &&
+            !short_config_pwrite_done &&
+            st.st_ino == short_config_pwrite_inode &&
+            size > short_config_pwrite_max_bytes) {
+            short_config_pwrite_done = true;
+            return __real_pwrite(fd, buf, short_config_pwrite_max_bytes, offset);
+        }
+        if (fail_config_pwrite && st.st_ino == fail_config_pwrite_inode) {
+            fail_config_pwrite = false;
+            errno = ENOSPC;
+            return -1;
+        }
     }
     return __real_pwrite(fd, buf, size, offset);
 }
