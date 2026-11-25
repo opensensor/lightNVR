@@ -1942,6 +1942,8 @@ int save_config(const config_t *config, const char *path) {
                                                   sizeof(config->mqtt_client_id)) ||
         contains_unsupported_ini_credential_chars(config->mqtt_topic_prefix,
                                                   sizeof(config->mqtt_topic_prefix)) ||
+        contains_unsupported_ini_credential_chars(config->mqtt_ha_discovery_prefix,
+                                                  sizeof(config->mqtt_ha_discovery_prefix)) ||
         contains_unsupported_ini_credential_chars(config->db_post_backup_script,
                                                   sizeof(config->db_post_backup_script)) ||
         contains_unsupported_ini_credential_chars(config->web_username,
@@ -2437,13 +2439,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "retain = %s\n", config->mqtt_retain ? "true" : "false");
     fprintf(file, "; Home Assistant MQTT auto-discovery\n");
     fprintf(file, "ha_discovery = %s\n", config->mqtt_ha_discovery ? "true" : "false");
-    if (!contains_unsupported_ini_credential_chars(
-            config->mqtt_ha_discovery_prefix,
-            sizeof(config->mqtt_ha_discovery_prefix))) {
-        fprintf(file, "ha_discovery_prefix = %s\n", config->mqtt_ha_discovery_prefix);
-    } else {
-        LOG_WARN("Skipping invalid mqtt ha_discovery_prefix while writing config");
-    }
+    fprintf(file, "ha_discovery_prefix = %s\n", config->mqtt_ha_discovery_prefix);
     fprintf(file, "ha_snapshot_interval = %d\n", config->mqtt_ha_snapshot_interval);
 
     // Write ONVIF settings
