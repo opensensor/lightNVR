@@ -38,9 +38,9 @@
     },
     {
       "c": "src/core/config.c",
-      "c_sha256": "d875ebc757ec9196ac229eed121471037ef3d66f30d48e08865633621da820b9",
+      "c_sha256": "9a981ed973e9b53c092af5b993a3322c3d74e02c5dbae13c4986463ac808110d",
       "rust": "generated/src__core__config.rs",
-      "rust_sha256": "d58c6777a518ef49ed56865bd45cfae1b75878d7a2768c088a806e1c1736e545",
+      "rust_sha256": "2cfe328af8136449549979016227a9548461ddf7a255a440d113444934f28830",
       "adapted": false
     },
     {
@@ -1319,9 +1319,9 @@
     },
     {
       "c": "src/video/streams.c",
-      "c_sha256": "1e016b85788caf3e9f275adf2f1ed354f5a0071ab6da7b9725043cb4b6896834",
+      "c_sha256": "3b5ff765d954969fe9c61b8dd52dc8a10d3d0c49a8d0491757a21fd5064155ad",
       "rust": "generated/src__video__streams.rs",
-      "rust_sha256": "17f6e306ca447e48f8bfe540f5cd94672b7ce39bf8e7e4a5bfd370f46edea868",
+      "rust_sha256": "0e04a7c93cbf093256e14ff5662c23346de4e31b9a0c1ab8881308b77d25adde",
       "adapted": false
     },
     {

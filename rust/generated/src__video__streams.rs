@@ -2063,21 +2063,42 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
     let mut ms: ::core::ffi::c_int = db_config.max_streams;
     let mut db_streams: *mut stream_config_t =
         calloc(ms as size_t, ::core::mem::size_of::<stream_config_t>()) as *mut stream_config_t;
-    if !db_streams.is_null() {
-        let mut count: ::core::ffi::c_int = get_all_stream_configs(db_streams, ms);
-        if count > 0 as ::core::ffi::c_int {
-            let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-            while i < count && i < ms {
-                memcpy(
-                    db_config.streams.offset(i as isize) as *mut ::core::ffi::c_void,
-                    db_streams.offset(i as isize) as *const ::core::ffi::c_void,
-                    ::core::mem::size_of::<stream_config_t>(),
-                );
-                i += 1;
-            }
+    if db_streams.is_null() {
+        if (*snapshot).streams.is_null() {
+            config_copy(snapshot, &raw mut g_config);
         }
-        free(db_streams as *mut ::core::ffi::c_void);
+        pthread_mutex_unlock(&raw mut config_mutex);
+        return if !(*snapshot).streams.is_null() {
+            snapshot
+        } else {
+            &raw mut g_config
+        };
     }
+    let mut count: ::core::ffi::c_int = get_all_stream_configs(db_streams, ms);
+    if count < 0 as ::core::ffi::c_int {
+        free(db_streams as *mut ::core::ffi::c_void);
+        if (*snapshot).streams.is_null() {
+            config_copy(snapshot, &raw mut g_config);
+        }
+        pthread_mutex_unlock(&raw mut config_mutex);
+        return if !(*snapshot).streams.is_null() {
+            snapshot
+        } else {
+            &raw mut g_config
+        };
+    }
+    if count > 0 as ::core::ffi::c_int {
+        let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while i < count && i < ms {
+            memcpy(
+                db_config.streams.offset(i as isize) as *mut ::core::ffi::c_void,
+                db_streams.offset(i as isize) as *const ::core::ffi::c_void,
+                ::core::mem::size_of::<stream_config_t>(),
+            );
+            i += 1;
+        }
+    }
+    free(db_streams as *mut ::core::ffi::c_void);
     _log_message_ctx(
         log_level_t::LOG_LEVEL_DEBUG,
         LOG_COMPONENT,

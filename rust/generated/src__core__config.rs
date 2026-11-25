@@ -1028,6 +1028,25 @@ pub static mut g_config: config_t = config_t {
         delegate: [0; 16],
     },
 };
+unsafe extern "C" fn contains_unsupported_ini_credential_chars(
+    mut value: *const ::core::ffi::c_char,
+) -> bool {
+    if value.is_null() {
+        return r#false != 0;
+    }
+    let mut p: *const ::core::ffi::c_uchar = value as *const ::core::ffi::c_uchar;
+    while *p as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+        if *p as ::core::ffi::c_int == '\n' as ::core::ffi::c_int
+            || *p as ::core::ffi::c_int == '\r' as ::core::ffi::c_int
+            || *p as ::core::ffi::c_int == ';' as ::core::ffi::c_int
+            || *p as ::core::ffi::c_int == '#' as ::core::ffi::c_int
+        {
+            return r#true != 0;
+        }
+        p = p.offset(1);
+    }
+    return r#false != 0;
+}
 static mut mp4_faststart_mutex: pthread_mutex_t = pthread_mutex_t {
     __data: __pthread_mutex_s {
         __lock: 0 as ::core::ffi::c_int,
@@ -6355,6 +6374,28 @@ pub unsafe extern "C" fn save_config(
             b"Invalid config parameter for save_config: config=%p\0".as_ptr()
                 as *const ::core::ffi::c_char,
             config,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if contains_unsupported_ini_credential_chars(
+        &raw const (*config).turn_username as *const ::core::ffi::c_char,
+    ) as ::core::ffi::c_int
+        != 0
+        || contains_unsupported_ini_credential_chars(
+            &raw const (*config).turn_password as *const ::core::ffi::c_char,
+        ) as ::core::ffi::c_int
+            != 0
+        || contains_unsupported_ini_credential_chars(
+            &raw const (*config).mqtt_password as *const ::core::ffi::c_char,
+        ) as ::core::ffi::c_int
+            != 0
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Credential contains unsupported INI characters (newline, carriage return, ';', '#'); refusing to save\0"
+                .as_ptr() as *const ::core::ffi::c_char,
         );
         return -1 as ::core::ffi::c_int;
     }
