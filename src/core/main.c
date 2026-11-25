@@ -1934,6 +1934,10 @@ cleanup:
             }
         }
 
+        // Stop recording sync worker before DB teardown to avoid concurrent DB access
+        log_info("Stopping recording sync thread...");
+        stop_recording_sync_thread();
+
         // Shutdown database
         log_info("Shutting down database...");
         shutdown_database();
