@@ -149,7 +149,7 @@ A `go2rtc_override_validated_version` marker prevents re-checking on subsequent 
 | Override saves but doesn't take effect | Check the banner — your override may be quarantined. Click "Show effective config" to confirm `override.yaml` is listed under `merged_source_order`. |
 | `"port already in use"` | Check LightNVR's configured go2rtc API/RTSP ports and any WebRTC listener override for conflicts. API/RTSP listener overrides are superseded by the managed policy. |
 | ICE/STUN settings ignored | Sequences are replaced, not merged. Your `webrtc.ice_servers` overwrites lightNVR's defaults — list every server you want. |
-| Block-scalar password not redacted in preview | Make sure libyaml is installed in your runtime container; the response field `redaction_available` tells you. The Docker images ship with `libyaml` and `libyaml-dev`. |
+| Block-scalar password not redacted in preview | Redaction support is compile-time: use a LightNVR build compiled with libyaml support (runtime `libyaml` alone is not sufficient). The response field `redaction_available` tells you whether redaction is available. |
 
 ## Examples
 
@@ -220,7 +220,7 @@ streams:
 A few things worth knowing:
 
 - **The `streams:` map merges** with lightNVR's auto-generated entries — Wyze cameras you list here appear alongside any RTSP cameras you added through the Streams page (see [Merge semantics](#merge-semantics)).
-- **Credentials are redacted** in `GET /api/system/go2rtc/effective-config` and the **Show effective config** modal, but they sit in plaintext inside `override.yaml` (mode 0600 on disk). Don't share the override.
+- **Effective-config redaction is conditional.** In `GET /api/system/go2rtc/effective-config` and the **Show effective config** modal, sensitive values are redacted when YAML redaction support is available. If that support is unavailable, preview output may pass through raw values. Redaction coverage includes Wyze secrets such as `wyze.api_key`, `wyze.password`, and the `enr` URL query parameter. Regardless, `override.yaml` stores plaintext values on disk (mode 0600), so don't share the override file.
 - **Wyze's DTLS keys rotate periodically.** go2rtc handles re-keying automatically using your stored credentials. If reconnects start failing days later, regenerate the API key at the Wyze developer console.
 - **Pan/tilt controls** for the Wyze Pan v3 stay in the Wyze app — go2rtc only bridges the video/audio stream.
 
