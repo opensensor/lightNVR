@@ -367,6 +367,12 @@ void test_validate_config_resets_nonfinite_storage_pressure(void) {
 }
 
 void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
+    if (DEFAULT_MAX_STREAMS >= MAX_STREAMS) {
+        TEST_IGNORE_MESSAGE("Resize-specific test skipped: DEFAULT_MAX_STREAMS is already at MAX_STREAMS.");
+        return;
+    }
+
+    const int resize_target = DEFAULT_MAX_STREAMS + 1;
     char temp_dir[] = "/tmp/lightnvr_bad_ini_XXXXXX";
     char *dir = mkdtemp(temp_dir);
     TEST_ASSERT_NOT_NULL(dir);
@@ -374,7 +380,10 @@ void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
     snprintf(config_path, sizeof(config_path), "%s/bad.ini", dir);
     FILE *file = fopen(config_path, "w");
     TEST_ASSERT_NOT_NULL(file);
-    fputs("[streams]\nmax_streams = 1024\ninvalid line\n", file);
+    char ini_contents[128];
+    snprintf(ini_contents, sizeof(ini_contents),
+             "[streams]\nmax_streams = %d\ninvalid line\n", resize_target);
+    fputs(ini_contents, file);
     fclose(file);
 
     set_custom_config_path(config_path);
