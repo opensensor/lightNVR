@@ -8,14 +8,18 @@
  * target" imply footage will land there (#621).
  */
 
-import type { StoragePolicyEditorState, StoragePolicy, StoragePool, StorageTarget } from '../../../types/settings.ts';
+import type { StoragePolicy, StoragePool, StorageTarget } from '../../../types/settings.ts';
 
 /** Read from a saved policy or from the policy editor's form values. */
-type ArchiveTriggerValues = Partial<Pick<StoragePolicyEditorState, 'migration_after_days' | 'archive_after_seconds' | 'archive_protected' | 'archive_on_pressure'>> & {
+type ArchiveTriggerValues = {
+  migration_after_days?: string | number | null;
+  archive_after_seconds?: string | number | null;
+  archive_protected?: boolean | null;
+  archive_on_pressure?: boolean | null;
   migration_target_uuid?: string | null;
 };
 
-const DIRECT_TARGET_KEYS = ['primary_target_uuid', 'fallback_target_uuid', 'migration_target_uuid'] as const;
+const ALWAYS_ROUTED_DIRECT_TARGET_KEYS = ['primary_target_uuid', 'fallback_target_uuid'] as const;
 const POOL_KEYS = ['primary_pool_uuid', 'replication_pool_uuid'] as const;
 
 /** The legacy primary target column must name a pool member when a pool routes primaries. */
@@ -49,8 +53,11 @@ export function referencedTargetUuids(policies: readonly StoragePolicy[] | null 
   );
   for (const policy of policies || []) {
     if (!policy || policy.enabled === false) continue;
-    for (const key of DIRECT_TARGET_KEYS) {
+    for (const key of ALWAYS_ROUTED_DIRECT_TARGET_KEYS) {
       if (policy[key]) referenced.add(policy[key]);
+    }
+    if (policy.migration_target_uuid && policyHasArchiveTrigger(policy)) {
+      referenced.add(policy.migration_target_uuid);
     }
     for (const key of POOL_KEYS) {
       const members = policy[key] ? poolMembers.get(policy[key]) : null;
@@ -70,7 +77,8 @@ export function targetIsRouted(target: StorageTarget | null | undefined, referen
 /** Mirrors the lifecycle scheduler: a move needs one of these triggers. */
 export function policyHasArchiveTrigger(values: ArchiveTriggerValues | null | undefined): boolean {
   const after = Number(values?.migration_after_days);
-  const archiveAfter = Number(values?.archive_after_seconds ?? -1);
+  const rawArchiveAfter = values?.archive_after_seconds;
+  const archiveAfter = Number(rawArchiveAfter === '' || rawArchiveAfter == null ? -1 : rawArchiveAfter);
   return (Number.isFinite(after) && after > 0)
     || (Number.isFinite(archiveAfter) && archiveAfter >= 0)
     || !!values?.archive_protected
