@@ -1348,27 +1348,24 @@ int save_stream_configs(config_t *config) {
         return -1;
     }
     
-    // Skip stream configuration updates if there are no changes
-    // This is a performance optimization and reduces the chance of locking issues
-    if (count == 0) {
-        log_info("No stream configurations to save");
-        commit_transaction();
-        return 0;
-    }
-    
-    // Get existing stream names (heap-allocated to avoid large stack frames)
+    // Always continue so initial in-memory stream configs can be inserted
+    // into an empty database. Only skip existing-row loading work when count is zero.
     stream_config_t *db_streams = calloc(config->max_streams, sizeof(stream_config_t));
     if (!db_streams) {
         log_error("save_stream_configs: out of memory");
         rollback_transaction();
         return -1;
     }
-    int loaded = get_all_stream_configs(db_streams, config->max_streams);
-    if (loaded < 0) {
-        log_error("Failed to load stream configurations from database");
-        free(db_streams);
-        rollback_transaction();
-        return -1;
+
+    int loaded = 0;
+    if (count > 0) {
+        loaded = get_all_stream_configs(db_streams, config->max_streams);
+        if (loaded < 0) {
+            log_error("Failed to load stream configurations from database");
+            free(db_streams);
+            rollback_transaction();
+            return -1;
+        }
     }
 
     // Check if configurations are identical to avoid unnecessary updates
