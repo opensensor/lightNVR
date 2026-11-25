@@ -158,18 +158,16 @@ static void signal_handler(int sig) {
     }
 
     // Check if we're already shutting down
-    // Use volatile sig_atomic_t to ensure visibility across signal invocations
-    static volatile sig_atomic_t shutdown_in_progress = 0;
+    // Use a lock-free atomic flag and atomic_exchange so only one handler
+    // invocation can observe "first signal" across all threads.
+    static _Atomic bool shutdown_in_progress = false;
 
-    if (shutdown_in_progress) {
+    if (atomic_exchange(&shutdown_in_progress, true)) {
         // Second signal during shutdown - force exit immediately
         // Using _exit() is async-signal-safe
         signal_safe_write("[SIGNAL] Received signal during shutdown, forcing immediate exit\n");
         _exit(1);
     }
-
-    // Mark that we're in the process of shutting down
-    shutdown_in_progress = 1;
 
     // Write to stderr (async-signal-safe)
     signal_safe_write("[SIGNAL] Received shutdown signal, initiating shutdown...\n");
