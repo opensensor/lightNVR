@@ -1676,11 +1676,25 @@ void set_custom_config_path(const char *path) {
         return;
     }
 
-    // Reject path traversal sequences
-    if (strstr(path, "/../") != NULL ||
-        strstr(path, "/..") != NULL  ||
-        strncmp(path, "../", 3) == 0 ||
-        strcmp(path, "..") == 0) {
+    // Reject path traversal components ("..") exactly, not prefixes like "..data"
+    bool has_parent_component = false;
+    const char *component_start = path;
+    const char *p = path;
+    while (1) {
+        if (*p == '/' || *p == '\0') {
+            size_t comp_len = (size_t)(p - component_start);
+            if (comp_len == 2 && component_start[0] == '.' && component_start[1] == '.') {
+                has_parent_component = true;
+                break;
+            }
+
+            if (*p == '\0') break;
+            component_start = p + 1;
+        }
+        ++p;
+    }
+
+    if (has_parent_component) {
         log_warn("Custom config path contains path traversal sequence, ignoring: %s", path);
         return;
     }
