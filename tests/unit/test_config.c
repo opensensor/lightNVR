@@ -1299,28 +1299,41 @@ static void check_bind_mount_fallback(bool fail_copy) {
     char directory[] = "/tmp/lightnvr_config_bind_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
+    const char *original = "previous configuration";
+    size_t original_len = strlen(original);
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
-    fputs("previous configuration", initial);
+    fputs(original, initial);
     fclose(initial);
     struct stat before, after;
     TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
     load_default_config(&cfg);
     busy_config_rename = true;
+    if (fail_copy) {
+        short_config_pwrite = true;
+        short_config_pwrite_inode = before.st_ino;
+        short_config_pwrite_max_bytes = 8;
+        short_config_pwrite_done = false;
+    }
     fail_config_pwrite = fail_copy;
     fail_config_pwrite_inode = before.st_ino;
     int result = save_config(&cfg, path);
     TEST_ASSERT_EQUAL_INT(fail_copy ? -1 : 0, result);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
     TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
+    if (fail_copy) TEST_ASSERT_EQUAL_UINT64(before.st_size, after.st_size);
     char content[128] = {0};
     FILE *saved = fopen(path, "r");
     TEST_ASSERT_NOT_NULL(saved);
     size_t count = fread(content, 1, sizeof(content) - 1, saved);
     fclose(saved);
-    if (fail_copy) TEST_ASSERT_EQUAL_STRING("previous configuration", content);
-    else TEST_ASSERT_TRUE(count > 0 && strstr(content, "LightNVR Configuration File") != NULL);
+    if (fail_copy) {
+        TEST_ASSERT_EQUAL_UINT(original_len, count);
+        TEST_ASSERT_EQUAL_MEMORY(original, content, original_len);
+    } else {
+        TEST_ASSERT_TRUE(count > 0 && strstr(content, "LightNVR Configuration File") != NULL);
+    }
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
