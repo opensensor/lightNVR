@@ -248,8 +248,9 @@ static void *shutdown_watchdog_thread_func(void *arg) {
                 shutdown_started_at = now;
                 shutdown_started = true;
             } else if (now.tv_sec - shutdown_started_at.tv_sec >= SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS) {
-                log_error("Shutdown watchdog: graceful shutdown did not complete within %d seconds, "
-                          "force-killing LightNVR process", SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
+                const char *msg =
+                    "Shutdown watchdog timeout: force-killing LightNVR process\n";
+                (void)write(STDERR_FILENO, msg, strlen(msg));
                 kill(getpid(), SIGKILL);
                 _exit(EXIT_FAILURE);
             }
