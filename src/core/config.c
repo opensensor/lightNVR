@@ -49,8 +49,8 @@ void config_set_mp4_faststart(config_t *config, bool enabled) {
     pthread_mutex_unlock(&mp4_faststart_mutex);
 }
 
-void config_copy(config_t *destination, const config_t *source) {
-    if (!destination || !source || destination == source) return;
+bool config_copy(config_t *destination, const config_t *source) {
+    if (!destination || !source || destination == source) return false;
     pthread_mutex_lock(&mp4_faststart_mutex);
     stream_config_t *copy = NULL;
     if (source->streams) {
@@ -58,7 +58,7 @@ void config_copy(config_t *destination, const config_t *source) {
             (size_t)source->max_streams > SIZE_MAX / sizeof(*copy)) {
             log_error("config_copy: invalid stream capacity %d", source->max_streams);
             pthread_mutex_unlock(&mp4_faststart_mutex);
-            return;
+            return false;
         }
         size_t bytes = (size_t)source->max_streams * sizeof(*copy);
         if (destination->streams && destination->streams != source->streams &&
@@ -69,7 +69,7 @@ void config_copy(config_t *destination, const config_t *source) {
             if (!copy) {
                 log_error("config_copy: could not allocate %zu stream bytes", bytes);
                 pthread_mutex_unlock(&mp4_faststart_mutex);
-                return;
+                return false;
             }
         }
         memcpy(copy, source->streams, bytes);
@@ -79,6 +79,7 @@ void config_copy(config_t *destination, const config_t *source) {
     destination->streams = copy;
     if (old_streams != copy && old_streams != source->streams) free(old_streams);
     pthread_mutex_unlock(&mp4_faststart_mutex);
+    return true;
 }
 
 bool playback_transport_is_valid(const char *value) {
