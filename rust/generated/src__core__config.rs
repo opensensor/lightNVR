@@ -158,6 +158,7 @@ unsafe extern "C" {
         __endptr: *mut *mut ::core::ffi::c_char,
         __base: ::core::ffi::c_int,
     ) -> ::core::ffi::c_ulonglong;
+    unsafe fn malloc(__size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn calloc(__nmemb: size_t, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn realloc(__ptr: *mut ::core::ffi::c_void, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
@@ -839,18 +840,6 @@ pub const DB_BACKUP_VERIFY_FULL: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const OBSERVATION_DEFAULT_MAX_AGE_DAYS: ::core::ffi::c_int = 7 as ::core::ffi::c_int;
 pub const OBSERVATION_DEFAULT_MAX_BYTES: ::core::ffi::c_longlong =
     2147483648 as ::core::ffi::c_longlong;
-pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
-pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
-pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
-pub const __O_CLOEXEC: ::core::ffi::c_int = 0o2000000 as ::core::ffi::c_int;
-pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
-pub const EPERM: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-pub const EEXIST: ::core::ffi::c_int = 17 as ::core::ffi::c_int;
-pub const ERANGE: ::core::ffi::c_int = 34 as ::core::ffi::c_int;
-pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
-pub const INT_MIN: ::core::ffi::c_int = -__INT_MAX__ - 1 as ::core::ffi::c_int;
-pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 #[unsafe(no_mangle)]
 pub static mut g_config: config_t = config_t {
     pid_file: [0; 512],
@@ -2193,7 +2182,10 @@ pub unsafe extern "C" fn validate_config(mut config: *mut config_t) -> ::core::f
             90 as ::core::ffi::c_int
         };
     }
-    if (*config).storage_pressure_emergency_pct < 0.0f64
+    if (*config).storage_pressure_emergency_pct.is_finite() as ::core::ffi::c_int == 0
+        || (*config).storage_pressure_critical_pct.is_finite() as ::core::ffi::c_int == 0
+        || (*config).storage_pressure_warning_pct.is_finite() as ::core::ffi::c_int == 0
+        || (*config).storage_pressure_emergency_pct < 0.0f64
         || (*config).storage_pressure_emergency_pct >= (*config).storage_pressure_critical_pct
         || (*config).storage_pressure_critical_pct >= (*config).storage_pressure_warning_pct
         || (*config).storage_pressure_warning_pct > 100.0f64
@@ -3945,6 +3937,29 @@ unsafe extern "C" fn load_config_from_file(
     mut filename: *const ::core::ffi::c_char,
     mut config: *mut config_t,
 ) -> ::core::ffi::c_int {
+    let mut temp_config: config_t = *config;
+    temp_config.streams = ::core::ptr::null_mut::<stream_config_t>();
+    if !(*config).streams.is_null() && (*config).max_streams > 0 as ::core::ffi::c_int {
+        let mut bytes: size_t = ((*config).max_streams as size_t)
+            .wrapping_mul(::core::mem::size_of::<stream_config_t>());
+        temp_config.streams = malloc(bytes) as *mut stream_config_t;
+        if temp_config.streams.is_null() {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Could not copy streams array before parsing %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                filename,
+            );
+            return -1 as ::core::ffi::c_int;
+        }
+        memcpy(
+            temp_config.streams as *mut ::core::ffi::c_void,
+            (*config).streams as *const ::core::ffi::c_void,
+            bytes,
+        );
+    }
     let mut result: ::core::ffi::c_int = ini_parse(
         filename,
         Some(
@@ -3956,9 +3971,10 @@ unsafe extern "C" fn load_config_from_file(
                     *const ::core::ffi::c_char,
                 ) -> ::core::ffi::c_int,
         ),
-        config as *mut ::core::ffi::c_void,
+        &raw mut temp_config as *mut ::core::ffi::c_void,
     );
     if result < 0 as ::core::ffi::c_int {
+        free(temp_config.streams as *mut ::core::ffi::c_void);
         _log_message_ctx(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
@@ -3968,6 +3984,7 @@ unsafe extern "C" fn load_config_from_file(
         );
         return -1 as ::core::ffi::c_int;
     } else if result > 0 as ::core::ffi::c_int {
+        free(temp_config.streams as *mut ::core::ffi::c_void);
         _log_message_ctx(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
@@ -3978,6 +3995,8 @@ unsafe extern "C" fn load_config_from_file(
         );
         return -1 as ::core::ffi::c_int;
     }
+    free((*config).streams as *mut ::core::ffi::c_void);
+    *config = temp_config;
     return 0 as ::core::ffi::c_int;
 }
 #[unsafe(no_mangle)]
@@ -4121,16 +4140,6 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
         rollback_transaction();
         return -1 as ::core::ffi::c_int;
     }
-    if count == 0 as ::core::ffi::c_int {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"No stream configurations to save\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        commit_transaction();
-        return 0 as ::core::ffi::c_int;
-    }
     let mut db_streams: *mut stream_config_t = calloc(
         (*config).max_streams as size_t,
         ::core::mem::size_of::<stream_config_t>(),
@@ -4145,18 +4154,21 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
         rollback_transaction();
         return -1 as ::core::ffi::c_int;
     }
-    let mut loaded: ::core::ffi::c_int = get_all_stream_configs(db_streams, (*config).max_streams);
-    if loaded < 0 as ::core::ffi::c_int {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Failed to load stream configurations from database\0".as_ptr()
-                as *const ::core::ffi::c_char,
-        );
-        free(db_streams as *mut ::core::ffi::c_void);
-        rollback_transaction();
-        return -1 as ::core::ffi::c_int;
+    let mut loaded: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    if count > 0 as ::core::ffi::c_int {
+        loaded = get_all_stream_configs(db_streams, (*config).max_streams);
+        if loaded < 0 as ::core::ffi::c_int {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Failed to load stream configurations from database\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+            );
+            free(db_streams as *mut ::core::ffi::c_void);
+            rollback_transaction();
+            return -1 as ::core::ffi::c_int;
+        }
     }
     if loaded == count {
         let mut identical: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
@@ -5690,7 +5702,11 @@ pub unsafe extern "C" fn save_config(
         '/' as ::core::ffi::c_int,
     );
     if !last_slash.is_null() {
-        *last_slash = '\0' as ::core::ffi::c_char;
+        if last_slash == &raw mut dir_path as *mut ::core::ffi::c_char {
+            dir_path[1usize] = '\0' as ::core::ffi::c_char;
+        } else {
+            *last_slash = '\0' as ::core::ffi::c_char;
+        }
         let mut st: stat = stat {
             st_dev: 0,
             st_ino: 0,
@@ -7627,6 +7643,18 @@ pub unsafe extern "C" fn config_set_api_detection_format(
     );
     return r#true != 0;
 }
+pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
+pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
+pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
+pub const __O_CLOEXEC: ::core::ffi::c_int = 0o2000000 as ::core::ffi::c_int;
+pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
+pub const EPERM: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const EEXIST: ::core::ffi::c_int = 17 as ::core::ffi::c_int;
+pub const ERANGE: ::core::ffi::c_int = 34 as ::core::ffi::c_int;
+pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
+pub const INT_MIN: ::core::ffi::c_int = -__INT_MAX__ - 1 as ::core::ffi::c_int;
+pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const GO2RTC_BINARY_PATH_RAW: [::core::ffi::c_char; 22] = unsafe {
     ::core::mem::transmute::<[u8; 22], [::core::ffi::c_char; 22]>(*b"/usr/local/bin/go2rtc\0")
 };
