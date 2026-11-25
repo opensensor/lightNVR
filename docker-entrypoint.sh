@@ -70,7 +70,7 @@ check_volume_permissions() {
     for parent in "$recordings" "$recordings/mp4"; do
         [ -d "$parent" ] || continue
         unwritable=$(find "$parent" -mindepth 1 -maxdepth 1 -type d \
-            ! -path "$recordings/mp4" ! -writable 2>/dev/null)
+            ! -path "$recordings/mp4" \( ! -writable -o ! -executable \) 2>/dev/null)
         if [ -n "$unwritable" ]; then
             count=$(printf '%s\n' "$unwritable" | wc -l)
             report_unwritable "$(printf '%s\n' "$unwritable" | head -n 1)"
