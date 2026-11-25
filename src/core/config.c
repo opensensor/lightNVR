@@ -1800,8 +1800,8 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         return -1;
     }
     int result = copy_config_fd(read_fd, backup_fd);
-    close(read_fd);
     if (result != 0) {
+        close(read_fd);
         close(backup_fd);
         unlink(backup_path);
         lock.l_type = F_UNLCK;
@@ -1813,6 +1813,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
     if (result != 0) {
         if (copy_config_fd(backup_fd, original_fd) != 0) {
             log_error("Could not restore config; private backup retained at %s", backup_path);
+            close(read_fd);
             close(backup_fd);
             lock.l_type = F_UNLCK;
             (void)fcntl(original_fd, F_SETLK, &lock);
@@ -1820,6 +1821,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
             return -1;
         }
     }
+    close(read_fd);
     close(backup_fd);
     unlink(backup_path);
     lock.l_type = F_UNLCK;
