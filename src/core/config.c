@@ -1834,26 +1834,32 @@ int save_config(const config_t *config, const char *path) {
      * writable directory in that case; never write secrets to the broad-mode
      * original. Keep in-place saves for owned files (including bind mounts). */
     char replacement_name[96] = {0};
-    close(config_fd);
-    config_fd = -1;
-    static atomic_uint replacement_sequence = 0;
-    for (int attempt = 0; attempt < 100; attempt++) {
-        snprintf(replacement_name, sizeof(replacement_name),
-                 ".lightnvr-config-%ld-%u.tmp", (long)getpid(),
-                 atomic_fetch_add(&replacement_sequence, 1));
-        config_fd = openat(dir_fd, replacement_name,
-            O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
-        if (config_fd >= 0 || errno != EEXIST) break;
-    }
-    if (config_fd < 0 || replacement_name[0] == '\0') {
-        log_error("Could not prepare private config replacement: %s", strerror(errno));
-        close(dir_fd);
-        return -1;
-    }
     if (fchmod(config_fd, 0600) != 0) {
+        int mode_error = errno;
+        close(config_fd);
+        config_fd = -1;
+        if (mode_error == EPERM) {
+            static atomic_uint replacement_sequence = 0;
+            for (int attempt = 0; attempt < 100; attempt++) {
+                snprintf(replacement_name, sizeof(replacement_name),
+                         ".lightnvr-config-%ld-%u.tmp", (long)getpid(),
+                         atomic_fetch_add(&replacement_sequence, 1));
+                config_fd = openat(dir_fd, replacement_name,
+                    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+                if (config_fd >= 0 || errno != EEXIST) break;
+            }
+        }
+        if (config_fd < 0) {
+            log_error("Could not prepare private config replacement: %s", strerror(errno));
+            close(dir_fd);
+            return -1;
+        }
+    }
+    if ((replacement_name[0] && fchmod(config_fd, 0600) != 0) ||
+        ftruncate(config_fd, 0) != 0) {
         log_error("Could not prepare private config file: %s", strerror(errno));
         close(config_fd);
-        unlinkat(dir_fd, replacement_name, 0);
+        if (replacement_name[0]) unlinkat(dir_fd, replacement_name, 0);
         close(dir_fd);
         return -1;
     }
