@@ -2323,7 +2323,13 @@ int save_config(const config_t *config, const char *path) {
             config->db_backup_verify == DB_BACKUP_VERIFY_OFF ? "off" :
             config->db_backup_verify == DB_BACKUP_VERIFY_QUICK ? "quick" : "full");
     fprintf(file, "; Optional absolute path to executable hook\n");
-    fprintf(file, "post_backup_script = %s\n\n", config->db_post_backup_script);
+    if (contains_unsupported_ini_credential_chars(config->db_post_backup_script,
+                                                  sizeof(config->db_post_backup_script))) {
+        log_warn("Config value 'db_post_backup_script' contains unsupported INI characters; writing empty value");
+        fprintf(file, "post_backup_script =\n\n");
+    } else {
+        fprintf(file, "post_backup_script = %s\n\n", config->db_post_backup_script);
+    }
     
     // Write web server settings
     fprintf(file, "[web]\n");
