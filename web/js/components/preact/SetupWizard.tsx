@@ -228,6 +228,19 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
   const [restartRequired, setRestartRequired] = useState(false);
   const [cpuCores, setCpuCores] = useState(0);
   const [maxStreamsCeiling, setMaxStreamsCeiling] = useState(1024);
+  const BYTES_PER_GB = 1024 ** 3;
+
+  const bytesToGbString = (bytes: number): string => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0';
+    const gb = bytes / BYTES_PER_GB;
+    return Number.isInteger(gb) ? String(gb) : gb.toFixed(2).replace(/\.?0+$/, '');
+  };
+
+  const gbStringToBytes = (value: string): number => {
+    const gb = Number.parseFloat(value);
+    if (!Number.isFinite(gb) || gb <= 0) return 0;
+    return Math.round(gb * BYTES_PER_GB);
+  };
 
   const [form, setForm] = useState<WizardForm>({
     storagePath: '',
@@ -244,7 +257,7 @@ export function SetupWizard({ onClose }: { onClose: () => void }) {
         setForm(f => ({
           ...f,
           storagePath:    data.storage_path   || f.storagePath,
-          maxStorageSize: data.max_storage_size != null ? String(data.max_storage_size) : f.maxStorageSize,
+          maxStorageSize: data.max_storage_size != null ? bytesToGbString(data.max_storage_size) : f.maxStorageSize,
           dbPath:         data.db_path         || f.dbPath,
           threadPoolSize: data.web_thread_pool_size != null ? String(data.web_thread_pool_size) : f.threadPoolSize,
           maxStreams:     data.max_streams     != null ? String(data.max_streams)      : f.maxStreams,
