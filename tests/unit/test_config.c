@@ -895,7 +895,8 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_STRING("/usr/local/bin/backup-hook", cfg.db_post_backup_script);
     TEST_ASSERT_EQUAL_STRING("year_month", cfg.mp4_directory_format);
     TEST_ASSERT_FALSE(config_get_mp4_faststart(&cfg));
-    TEST_ASSERT_TRUE(cfg.audio_disabled);
+    /* An explicit INI false wins even though it equals the default. */
+    TEST_ASSERT_FALSE(cfg.audio_disabled);
     TEST_ASSERT_TRUE(cfg.auto_disabled);
     TEST_ASSERT_EQUAL_STRING("conservative", cfg.health.profile);
     TEST_ASSERT_EQUAL_UINT32(15U, cfg.health.fast_interval_seconds);
@@ -918,6 +919,10 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "   9099   ", 1));
     TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
     TEST_ASSERT_EQUAL_INT(9099, cfg.web_port);
+
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "70000", 1));
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(8080, cfg.web_port);
 
     unlink(config_path);
     unlink(db_path);
