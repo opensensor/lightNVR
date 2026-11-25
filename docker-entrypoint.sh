@@ -205,7 +205,7 @@ password = admin
 
 [streams]
 ; max_streams: runtime stream slot limit (default 32, ceiling 1024). Requires restart.
-max_streams = ${MAX_STREAMS:-32}
+max_streams = ${resolved_max_streams}
 
 [models]
 path = /var/lib/lightnvr/data/models
