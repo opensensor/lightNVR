@@ -107,6 +107,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   const [overrideStatus, setOverrideStatus] = useState<Go2rtcOverrideStatus | null>(null);
   const overrideValidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const validationGenerationRef = useRef(0);
+  const effectiveConfigGenerationRef = useRef(0);
   const isMountedRef = useRef(true);
   const effectiveConfigDialogRef = useRef<HTMLDivElement>(null);
   const effectiveConfigCloseButtonRef = useRef<HTMLButtonElement>(null);
