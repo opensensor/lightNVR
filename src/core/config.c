@@ -21,6 +21,7 @@
 #include <syslog.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <math.h>
 
 #include "ini.h"
 #include "core/config.h"
@@ -711,7 +712,10 @@ int validate_config(config_t *config) {
                  config->storage_min_free_pct);
         config->storage_min_free_pct = config->storage_min_free_pct < 0 ? 0 : 90;
     }
-    if (config->storage_pressure_emergency_pct < 0.0 ||
+    if (!isfinite(config->storage_pressure_emergency_pct) ||
+        !isfinite(config->storage_pressure_critical_pct) ||
+        !isfinite(config->storage_pressure_warning_pct) ||
+        config->storage_pressure_emergency_pct < 0.0 ||
         config->storage_pressure_emergency_pct >= config->storage_pressure_critical_pct ||
         config->storage_pressure_critical_pct >= config->storage_pressure_warning_pct ||
         config->storage_pressure_warning_pct > 100.0) {
@@ -1251,17 +1255,34 @@ static int config_ini_handler(void* user, const char* section, const char* name,
 
 // Load configuration from file using inih
 static int load_config_from_file(const char *filename, config_t *config) {
+    // Parsing may resize streams, so the temporary copy needs its own array.
+    config_t temp_config = *config;
+    temp_config.streams = NULL;
+    if (config->streams && config->max_streams > 0) {
+        size_t bytes = (size_t)config->max_streams * sizeof(stream_config_t);
+        temp_config.streams = malloc(bytes);
+        if (!temp_config.streams) {
+            log_error("Could not copy streams array before parsing %s", filename);
+            return -1;
+        }
+        memcpy(temp_config.streams, config->streams, bytes);
+    }
+
     // Use inih to parse the INI file
-    int result = ini_parse(filename, config_ini_handler, config);
+    int result = ini_parse(filename, config_ini_handler, &temp_config);
     
     if (result < 0) {
+        free(temp_config.streams);
         log_warn("Could not read config file %s", filename);
         return -1;
     } else if (result > 0) {
+        free(temp_config.streams);
         log_warn("Error in config file %s at line %d", filename, result);
         return -1;
     }
-    
+
+    free(config->streams);
+    *config = temp_config;
     return 0;
 }
 
@@ -1348,27 +1369,24 @@ int save_stream_configs(config_t *config) {
         return -1;
     }
     
-    // Skip stream configuration updates if there are no changes
-    // This is a performance optimization and reduces the chance of locking issues
-    if (count == 0) {
-        log_info("No stream configurations to save");
-        commit_transaction();
-        return 0;
-    }
-    
-    // Get existing stream names (heap-allocated to avoid large stack frames)
+    // Always continue so initial in-memory stream configs can be inserted
+    // into an empty database. Only skip existing-row loading work when count is zero.
     stream_config_t *db_streams = calloc(config->max_streams, sizeof(stream_config_t));
     if (!db_streams) {
         log_error("save_stream_configs: out of memory");
         rollback_transaction();
         return -1;
     }
-    int loaded = get_all_stream_configs(db_streams, config->max_streams);
-    if (loaded < 0) {
-        log_error("Failed to load stream configurations from database");
-        free(db_streams);
-        rollback_transaction();
-        return -1;
+
+    int loaded = 0;
+    if (count > 0) {
+        loaded = get_all_stream_configs(db_streams, config->max_streams);
+        if (loaded < 0) {
+            log_error("Failed to load stream configurations from database");
+            free(db_streams);
+            rollback_transaction();
+            return -1;
+        }
     }
 
     // Check if configurations are identical to avoid unnecessary updates
@@ -1663,7 +1681,12 @@ int save_config(const config_t *config, const char *path) {
     // Get directory part
     char *last_slash = strrchr(dir_path, '/');
     if (last_slash) {
-        *last_slash = '\0'; // Truncate at last slash to get directory
+        if (last_slash == dir_path) {
+            // Root-level destination like "/lightnvr.ini" -> directory is "/"
+            dir_path[1] = '\0';
+        } else {
+            *last_slash = '\0'; // Truncate at last slash to get directory
+        }
         
         // Check if directory exists
         struct stat st;
