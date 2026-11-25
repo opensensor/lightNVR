@@ -1406,7 +1406,8 @@ int save_stream_configs(config_t *config) {
 
         if (identical) {
             /* The database owns stable camera identity and location. Hydrate
-             * both even when no stream configuration write is necessary. */
+             * both even when names match; continue to normal persistence flow
+             * so non-name configuration changes are not skipped. */
             for (int i = 0; i < config->max_streams; i++) {
                 if (config->streams[i].name[0] == '\0') {
                     continue;
@@ -1424,10 +1425,6 @@ int save_stream_configs(config_t *config) {
                     }
                 }
             }
-            log_info("Stream configurations unchanged, skipping update");
-            free(db_streams);
-            commit_transaction();
-            return loaded;
         }
     }
 
