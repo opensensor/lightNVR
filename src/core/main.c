@@ -1548,13 +1548,44 @@ cleanup:
         // Large databases can take several minutes to copy and verify.
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
         // A parent that exited naturally must never be signalled after its
-        // PID is reused by another process.
-        if (getppid() != parent_pid) _exit(EXIT_SUCCESS);
+        // PID is reused by another process. If restart was requested, still
+        // attempt restart recovery without signalling the old parent PID.
+        if (getppid() != parent_pid) {
+            if (restart_requested) {
+                if (container_mode) {
+                    _exit(EXIT_SUCCESS);
+                } else if (saved_argv != NULL) {
+                    char exe_path[MAX_PATH_LENGTH];
+                    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+                    if (len > 0) {
+                        exe_path[len] = '\0';
+                        execv(exe_path, saved_argv);
+                    }
+                    _exit(EXIT_FAILURE);
+                }
+            }
+            _exit(EXIT_SUCCESS);
+        }
         kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
 
         // Wait a bit longer for emergency cleanup before giving up entirely
         sleep(15);
-        if (getppid() != parent_pid) _exit(EXIT_SUCCESS);
+        if (getppid() != parent_pid) {
+            if (restart_requested) {
+                if (container_mode) {
+                    _exit(EXIT_SUCCESS);
+                } else if (saved_argv != NULL) {
+                    char exe_path[MAX_PATH_LENGTH];
+                    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+                    if (len > 0) {
+                        exe_path[len] = '\0';
+                        execv(exe_path, saved_argv);
+                    }
+                    _exit(EXIT_FAILURE);
+                }
+            }
+            _exit(EXIT_SUCCESS);
+        }
         kill(parent_pid, SIGKILL);  // Force kill the parent process
 
         // If restart was requested, handle it here since the parent was killed
