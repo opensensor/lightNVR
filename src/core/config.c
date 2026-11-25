@@ -1391,8 +1391,11 @@ int load_stream_configs(config_t *config) {
         return -1;
     }
 
-    // Clear existing stream configurations
-    memset(config->streams, 0, sizeof(stream_config_t) * max_streams);
+    // Initialize all stream slots to project defaults; loaded DB rows below
+    // will override these defaults for populated entries.
+    for (size_t i = 0; i < max_streams; i++) {
+        init_stream_config_defaults(&config->streams[i]);
+    }
 
     // Get stream count from database
     int count = count_stream_configs();
