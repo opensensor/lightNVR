@@ -1441,6 +1441,18 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
     int result = save_config(&cfg, path);
     TEST_ASSERT_EQUAL_INT(0, chmod(directory, 0700));
     TEST_ASSERT_EQUAL_INT(0, result);
+
+    FILE *saved = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    char saved_content[4096];
+    size_t n = fread(saved_content, 1, sizeof(saved_content) - 1, saved);
+    saved_content[n] = '\0';
+    TEST_ASSERT_FALSE(ferror(saved));
+    fclose(saved);
+    TEST_ASSERT_NOT_NULL(strstr(saved_content, "LightNVR Configuration File"));
+    TEST_ASSERT_NOT_NULL(strstr(saved_content, "[general]"));
+    TEST_ASSERT_NOT_EQUAL(0, strcmp(saved_content, "old content"));
+
     unlink(path);
     rmdir(directory);
 }
