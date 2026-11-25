@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/file.h>
 #include <libgen.h>
 #include <ctype.h>
 #include <limits.h>
