@@ -649,6 +649,13 @@ int daemon_status(const char *pid_file) {
         return finish_daemon_status(0);
     }
 
+    // Ensure the PID in the file matches the process that actually owns the lock.
+    if (fl.l_pid > 0 && pid != fl.l_pid) {
+        log_warn("PID file %s is locked by PID %d but contains PID %d; startup may be in progress",
+                 file_path, (int)fl.l_pid, (int)pid);
+        return finish_daemon_status(-1);
+    }
+
     // Check if process is running
     if (kill(pid, 0) == 0) {
         // Process is running
