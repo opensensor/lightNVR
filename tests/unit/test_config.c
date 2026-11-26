@@ -229,12 +229,7 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     TEST_ASSERT_TRUE(child >= 0);
     if (child == 0) {
         close(fd);
-        int probe = open(path, O_RDWR);
-        if (probe < 0) _exit(2);
-        int lock_result = lockf(probe, F_TLOCK, 0);
-        int lock_error = errno;
-        close(probe);
-        _exit(lock_result < 0 && (lock_error == EACCES || lock_error == EAGAIN) ? 0 : 3);
+        _exit(daemon_status(path) == 1 ? 0 : 2);
     }
     int status = 0;
     TEST_ASSERT_EQUAL_INT(child, waitpid(child, &status, 0));
@@ -243,6 +238,28 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
 
     TEST_ASSERT_EQUAL_INT(0, remove_pid_file(fd, path));
     TEST_ASSERT_EQUAL_INT(0, daemon_status(path));
+
+    int plain_fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0644);
+    TEST_ASSERT_TRUE(plain_fd >= 0);
+    char pid_text[32];
+    int pid_len = snprintf(pid_text, sizeof(pid_text), "%ld\n", (long)getpid());
+    TEST_ASSERT_TRUE(pid_len > 0);
+    TEST_ASSERT_EQUAL_INT(pid_len, write(plain_fd, pid_text, (size_t)pid_len));
+    TEST_ASSERT_EQUAL_INT(0, close(plain_fd));
+    TEST_ASSERT_EQUAL_INT(1, daemon_status(path));
+    TEST_ASSERT_EQUAL_INT(0, unlink(path));
+
+    int malformed_fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0644);
+    TEST_ASSERT_TRUE(malformed_fd >= 0);
+    const char *bad_pid_text = "not-a-pid\n";
+    TEST_ASSERT_EQUAL_INT((int)strlen(bad_pid_text), write(malformed_fd, bad_pid_text, strlen(bad_pid_text)));
+    TEST_ASSERT_EQUAL_INT(0, lseek(malformed_fd, 0, SEEK_SET));
+    TEST_ASSERT_EQUAL_INT(0, lockf(malformed_fd, F_LOCK, 0));
+    TEST_ASSERT_EQUAL_INT(1, daemon_status(path));
+    TEST_ASSERT_EQUAL_INT(0, lockf(malformed_fd, F_ULOCK, 0));
+    TEST_ASSERT_EQUAL_INT(0, close(malformed_fd));
+    TEST_ASSERT_EQUAL_INT(0, unlink(path));
+
     int second_fd = write_pid_file(path);
     TEST_ASSERT_TRUE(second_fd >= 0);
     TEST_ASSERT_EQUAL_INT(0, remove_pid_file(second_fd, path));
