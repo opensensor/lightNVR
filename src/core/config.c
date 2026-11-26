@@ -423,6 +423,8 @@ int config_reset_stream_slots(config_t *config) {
 void load_default_config(config_t *config) {
     if (!config) return;
 
+    pthread_mutex_lock(&mp4_faststart_mutex);
+
     // Free any existing dynamic streams array before zeroing the struct
     if (config->streams) {
         free(config->streams);
@@ -438,6 +440,7 @@ void load_default_config(config_t *config) {
     if (!config->streams) {
         // Fatal: we can't run without a streams array. Caller will detect NULL.
         log_error("load_default_config: failed to allocate streams array");
+        pthread_mutex_unlock(&mp4_faststart_mutex);
         return;
     }
 
@@ -481,7 +484,7 @@ void load_default_config(config_t *config) {
     config->max_storage_size = 0; // 0 means unlimited
     config->retention_days = 30;
     config->auto_delete_oldest = true;
-    config_set_mp4_faststart(config, true);
+    config->mp4_faststart = true; // mp4_faststart_mutex is already held.
 
     // Capacity-based retention: keep 10% of the volume free by default so the
     // disk is self-bounding even when retention_days exceeds what fits.
@@ -653,6 +656,7 @@ void load_default_config(config_t *config) {
 
     // Host and hardware health defaults from OPS-03.
     system_health_policy_settings_defaults(&config->health);
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 }
 
 // Ensure all required directories exist
@@ -1930,26 +1934,31 @@ int save_config(const config_t *config, const char *path) {
         log_error("Invalid config parameter for save_config: config=%p", config);
         return -1;
     }
-    if (contains_unsupported_ini_credential_chars(config->turn_username,
-                                                  sizeof(config->turn_username)) ||
-        contains_unsupported_ini_credential_chars(config->turn_password,
-                                                  sizeof(config->turn_password)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_username,
-                                                  sizeof(config->mqtt_username)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_password,
-                                                  sizeof(config->mqtt_password)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_client_id,
-                                                  sizeof(config->mqtt_client_id)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_topic_prefix,
-                                                  sizeof(config->mqtt_topic_prefix)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_ha_discovery_prefix,
-                                                  sizeof(config->mqtt_ha_discovery_prefix)) ||
-        contains_unsupported_ini_credential_chars(config->db_post_backup_script,
-                                                  sizeof(config->db_post_backup_script)) ||
-        contains_unsupported_ini_credential_chars(config->web_username,
-                                                  sizeof(config->web_username))) {
-        log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
-        return -1;
+    struct {
+        const char *name;
+        const char *value;
+        size_t capacity;
+    } validated_fields[] = {
+        {"turn_username", config->turn_username, sizeof(config->turn_username)},
+        {"turn_password", config->turn_password, sizeof(config->turn_password)},
+        {"mqtt_username", config->mqtt_username, sizeof(config->mqtt_username)},
+        {"mqtt_password", config->mqtt_password, sizeof(config->mqtt_password)},
+        {"mqtt_client_id", config->mqtt_client_id, sizeof(config->mqtt_client_id)},
+        {"mqtt_topic_prefix", config->mqtt_topic_prefix, sizeof(config->mqtt_topic_prefix)},
+        {"mqtt_broker_host", config->mqtt_broker_host, sizeof(config->mqtt_broker_host)},
+        {"turn_server_url", config->turn_server_url, sizeof(config->turn_server_url)},
+        {"mqtt_ha_discovery_prefix", config->mqtt_ha_discovery_prefix, sizeof(config->mqtt_ha_discovery_prefix)},
+        {"db_post_backup_script", config->db_post_backup_script, sizeof(config->db_post_backup_script)},
+        {"web_username", config->web_username, sizeof(config->web_username)},
+    };
+
+    for (size_t i = 0; i < sizeof(validated_fields) / sizeof(validated_fields[0]); ++i) {
+        if (contains_unsupported_ini_credential_chars(validated_fields[i].value,
+                                                      validated_fields[i].capacity)) {
+            log_error("Configuration field '%s' contains unsupported INI characters or boundary whitespace; refusing to save",
+                      validated_fields[i].name);
+            return -1;
+        }
     }
     
     // If no path is specified, try tracked paths then well-known defaults
