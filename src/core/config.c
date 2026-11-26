@@ -2699,33 +2699,41 @@ void print_config(const config_t *config) {
     printf("    HW Accel Device: %s\n", config->hw_accel_device);
     
     printf("  Stream Configurations:\n");
-    for (int i = 0; i < config->max_streams; i++) {
-        if (strlen(config->streams[i].name) > 0) {
+    config_t snapshot;
+    if (!config_copy(&snapshot, config)) {
+        printf("    (unable to snapshot stream configuration)\n");
+        return;
+    }
+
+    for (int i = 0; i < snapshot.max_streams; i++) {
+        if (strlen(snapshot.streams[i].name) > 0) {
             printf("    Stream %d:\n", i);
-            printf("      Name: %s\n", config->streams[i].name);
-            printf("      URL: %s\n", config->streams[i].url[0] ? "[redacted]" : "(empty)");
-            printf("      Enabled: %s\n", config->streams[i].enabled ? "true" : "false");
-            printf("      Resolution: %dx%d\n", config->streams[i].width, config->streams[i].height);
-            printf("      FPS: %d\n", config->streams[i].fps);
-            printf("      Codec: %s\n", config->streams[i].codec);
-            printf("      Priority: %d\n", config->streams[i].priority);
-            printf("      Record: %s\n", config->streams[i].record ? "true" : "false");
-            printf("      Segment Duration: %d seconds\n", config->streams[i].segment_duration);
+            printf("      Name: %s\n", snapshot.streams[i].name);
+            printf("      URL: %s\n", snapshot.streams[i].url[0] ? "[redacted]" : "(empty)");
+            printf("      Enabled: %s\n", snapshot.streams[i].enabled ? "true" : "false");
+            printf("      Resolution: %dx%d\n", snapshot.streams[i].width, snapshot.streams[i].height);
+            printf("      FPS: %d\n", snapshot.streams[i].fps);
+            printf("      Codec: %s\n", snapshot.streams[i].codec);
+            printf("      Priority: %d\n", snapshot.streams[i].priority);
+            printf("      Record: %s\n", snapshot.streams[i].record ? "true" : "false");
+            printf("      Segment Duration: %d seconds\n", snapshot.streams[i].segment_duration);
             printf("      Detection-based Recording: %s\n", 
-                   config->streams[i].detection_based_recording ? "true" : "false");
+                   snapshot.streams[i].detection_based_recording ? "true" : "false");
             printf("      Record Audio: %s\n",
-                   config->streams[i].record_audio ? "true" : "false");
+                   snapshot.streams[i].record_audio ? "true" : "false");
             
-            if (config->streams[i].detection_based_recording) {
+            if (snapshot.streams[i].detection_based_recording) {
                 printf("      Detection Model: %s\n", 
-                       config->streams[i].detection_model[0] ? config->streams[i].detection_model : "None");
-                printf("      Detection Interval: %d seconds\n", config->streams[i].detection_interval);
-                printf("      Detection Threshold: %.2f\n", config->streams[i].detection_threshold);
-                printf("      Pre-detection Buffer: %d seconds\n", config->streams[i].pre_detection_buffer);
-                printf("      Post-detection Buffer: %d seconds\n", config->streams[i].post_detection_buffer);
+                       snapshot.streams[i].detection_model[0] ? snapshot.streams[i].detection_model : "None");
+                printf("      Detection Interval: %d seconds\n", snapshot.streams[i].detection_interval);
+                printf("      Detection Threshold: %.2f\n", snapshot.streams[i].detection_threshold);
+                printf("      Pre-detection Buffer: %d seconds\n", snapshot.streams[i].pre_detection_buffer);
+                printf("      Post-detection Buffer: %d seconds\n", snapshot.streams[i].post_detection_buffer);
             }
         }
     }
+
+    free_config(&snapshot);
 }
 
 /* ------------------------------------------------------------------------- */
