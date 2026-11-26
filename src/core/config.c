@@ -423,6 +423,8 @@ int config_reset_stream_slots(config_t *config) {
 void load_default_config(config_t *config) {
     if (!config) return;
 
+    pthread_mutex_lock(&mp4_faststart_mutex);
+
     // Free any existing dynamic streams array before zeroing the struct
     if (config->streams) {
         free(config->streams);
@@ -438,6 +440,7 @@ void load_default_config(config_t *config) {
     if (!config->streams) {
         // Fatal: we can't run without a streams array. Caller will detect NULL.
         log_error("load_default_config: failed to allocate streams array");
+        pthread_mutex_unlock(&mp4_faststart_mutex);
         return;
     }
 
@@ -591,6 +594,7 @@ void load_default_config(config_t *config) {
     // falling back to the conventional system install location.
     // CMake passes these as string literals already (e.g. -DGO2RTC_BINARY_PATH_RAW="/usr/local/bin/go2rtc"),
     // so they must be used directly — NOT through STRINGIFY, which would double-quote the value.
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 #ifdef GO2RTC_BINARY_PATH_RAW
     safe_strcpy(config->go2rtc_binary_path, GO2RTC_BINARY_PATH_RAW, MAX_PATH_LENGTH, 0);
 #else
