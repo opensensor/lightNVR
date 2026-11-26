@@ -467,7 +467,9 @@ int daemon_status(const char *pid_file) {
     }
 
     // Closing any descriptor for this inode would release our process-scoped
-    // record lock. Check our retained lock descriptor before opening the path.
+    // record lock. Keep this mutex held across the complete status probe
+    // sequence (path checks + open/query/close) so another thread cannot
+    // establish PID ownership concurrently.
     pthread_mutex_lock(&owned_pid_mutex);
     if (owned_pid_fd >= 0 && owned_pid_process == getpid()) {
         struct stat held, current;
@@ -484,7 +486,6 @@ int daemon_status(const char *pid_file) {
         pthread_mutex_unlock(&owned_pid_mutex);
         return -1;
     }
-    pthread_mutex_unlock(&owned_pid_mutex);
 
     // Reject unsafe paths (including hard-linked PID files) before opening.
     // Opening and later closing another descriptor for the same inode in this
