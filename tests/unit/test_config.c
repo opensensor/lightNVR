@@ -411,13 +411,13 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
         }
     }
     int end_updates = atomic_load(&faststart_writer_updates);
-    TEST_ASSERT_TRUE_MESSAGE(end_updates > start_updates,
-                             "writer made no progress during read/copy/save loop");
     atomic_store(&faststart_writer_stop, true);
     int join_result = pthread_join(writer, NULL);
     unlink(path);
     rmdir(dir);
     TEST_ASSERT_EQUAL_INT(0, join_result);
+    TEST_ASSERT_TRUE_MESSAGE(end_updates > start_updates,
+                             "writer made no progress during read/copy/save loop");
     TEST_ASSERT_TRUE(streams_distinct_ok);
     TEST_ASSERT_EQUAL_INT(0, save_result);
     TEST_ASSERT_EQUAL_INT(50, valid_saves);
