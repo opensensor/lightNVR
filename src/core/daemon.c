@@ -379,6 +379,16 @@ int remove_pid_file(int fd, const char *pid_file) {
 
 // Check if daemon is already running
 static int check_running_daemon(const char *pid_file) {
+    // If this process already owns a PID lock, probing via another descriptor
+    // can accidentally release the existing lock when that descriptor is closed.
+    pthread_mutex_lock(&owned_pid_mutex);
+    if (owned_pid_fd >= 0 && owned_pid_process == getpid()) {
+        pthread_mutex_unlock(&owned_pid_mutex);
+        log_error("Refusing PID startup probe for %s: current process already owns PID file lock", pid_file);
+        return -1;
+    }
+    pthread_mutex_unlock(&owned_pid_mutex);
+
     // First try to open the file with exclusive locking
     int fd = open(pid_file, O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) {
