@@ -1527,6 +1527,16 @@ cleanup:
         // stdio and logger calls. Continue best-effort if setpgid fails.
         (void)setpgid(0, 0);
 
+        // Drop inherited descriptors so watchdog does not keep parent resources
+        // (recording files, sockets, DB handles, etc.) alive during its timeout wait.
+        long max_fd = sysconf(_SC_OPEN_MAX);
+        if (max_fd < 0) {
+            max_fd = 1024;
+        }
+        for (int fd = 3; fd < max_fd; ++fd) {
+            (void)close(fd);
+        }
+
         // Reset signal handlers to default to avoid inheriting any problematic dispositions
         struct sigaction sa_default;
         memset(&sa_default, 0, sizeof(sa_default));
