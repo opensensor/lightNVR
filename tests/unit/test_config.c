@@ -361,6 +361,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     while (atomic_load(&faststart_writer_updates) == 0) {
         sched_yield();
     }
+    int start_updates = atomic_load(&faststart_writer_updates);
     for (int i = 0; i < 50; ++i) {
         (void)config_get_mp4_faststart(&cfg);
         config_t snapshot = {0};
@@ -409,11 +410,14 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
             break;
         }
     }
+    int end_updates = atomic_load(&faststart_writer_updates);
     atomic_store(&faststart_writer_stop, true);
     int join_result = pthread_join(writer, NULL);
     unlink(path);
     rmdir(dir);
     TEST_ASSERT_EQUAL_INT(0, join_result);
+    TEST_ASSERT_TRUE_MESSAGE(end_updates > start_updates,
+                             "writer made no progress during read/copy/save loop");
     TEST_ASSERT_TRUE(streams_distinct_ok);
     TEST_ASSERT_EQUAL_INT(0, save_result);
     TEST_ASSERT_EQUAL_INT(50, valid_saves);
@@ -421,6 +425,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     config_set_mp4_faststart(&cfg, false);
     config_t snapshot = {0};
     TEST_ASSERT_TRUE(config_copy(&snapshot, &cfg));
+    owned_snapshot_streams = snapshot.streams;
     config_set_mp4_faststart(&cfg, true);
     TEST_ASSERT_FALSE(config_get_mp4_faststart(&snapshot));
     TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));
@@ -428,7 +433,6 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     TEST_ASSERT_EQUAL_INT(cfg.max_streams, snapshot.max_streams);
     TEST_ASSERT_EQUAL_MEMORY(cfg.streams, snapshot.streams,
                              (size_t)cfg.max_streams * sizeof(*cfg.streams));
-    free(snapshot.streams);
 }
 
 void test_default_config_buffer_size(void) {
@@ -1373,6 +1377,12 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
     cfg.db_post_backup_script[0] = '\0';
     snprintf(cfg.mqtt_ha_discovery_prefix, sizeof(cfg.mqtt_ha_discovery_prefix), "homeassistant#bad");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    snprintf(cfg.mqtt_ha_discovery_prefix, sizeof(cfg.mqtt_ha_discovery_prefix), "homeassistant");
+    snprintf(cfg.turn_server_url, sizeof(cfg.turn_server_url), "turn:example.com\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.turn_server_url[0] = '\0';
+    snprintf(cfg.mqtt_broker_host, sizeof(cfg.mqtt_broker_host), "broker#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
