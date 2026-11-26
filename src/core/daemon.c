@@ -112,6 +112,17 @@ int init_daemon(const char *pid_file) {
 
     // Child process continues
     close(status_pipe[0]);
+    // Redirection below may replace descriptors 0-2. Keep the status pipe
+    // above that range even when the launcher started with stdio closed.
+    if (status_pipe[1] <= STDERR_FILENO) {
+        int status_fd = fcntl(status_pipe[1], F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+        if (status_fd < 0) {
+            notify_startup_status(status_pipe[1], 0);
+            return -1;
+        }
+        close(status_pipe[1]);
+        status_pipe[1] = status_fd;
+    }
     log_info("Child process starting daemon initialization, PID: %d", getpid());
 
     // Create a new session
