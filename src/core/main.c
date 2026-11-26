@@ -515,7 +515,7 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
             int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
             bool still_running = true;
-            while (timeout-- > 0 && still_running) {
+            while (timeout-- > 0 && still_running && running) {
                 if (used_pidfd) {
                     struct pollfd pfd = { .fd = pidfd, .events = POLLIN };
                     int prc = poll(&pfd, 1, 1000);
@@ -535,6 +535,13 @@ static int check_and_kill_existing_instance(const char *pid_file) {
                         sleep(1);
                     }
                 }
+            }
+
+            if (!running) {
+                if (used_pidfd && pidfd >= 0) {
+                    close(pidfd);
+                }
+                return -1;
             }
 
             // If still running, force kill
@@ -1368,12 +1375,14 @@ int main(int argc, char *argv[]) {
     // are still connecting.
     if (!atomic_load(&running) || atomic_load(&restart_requested)) {
         log_info("Shutdown/restart requested before detection stream startup; aborting startup loop");
+        exit_code = EXIT_SUCCESS;
         goto cleanup;
     }
 
     for (int i = 0; i < g_config.max_streams; i++) {
         if (!atomic_load(&running) || atomic_load(&restart_requested)) {
             log_info("Shutdown/restart requested during detection stream startup; aborting remaining stream startup");
+            exit_code = EXIT_SUCCESS;
             goto cleanup;
         }
 
