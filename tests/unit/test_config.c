@@ -279,12 +279,18 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     close(ready_pipe[1]);
     close(release_pipe[0]);
     char ready;
-    TEST_ASSERT_EQUAL_INT(1, read(ready_pipe[0], &ready, 1));
-    TEST_ASSERT_EQUAL_INT(-1, daemon_status(path));
-    TEST_ASSERT_EQUAL_INT(1, write(release_pipe[1], "x", 1));
+    int ready_read_rc = (int)read(ready_pipe[0], &ready, 1);
+    int daemon_status_rc = ready_read_rc == 1 ? daemon_status(path) : -1;
+    int release_write_rc = ready_read_rc == 1 ?
+        (int)write(release_pipe[1], "x", 1) : -1;
     close(ready_pipe[0]);
     close(release_pipe[1]);
-    TEST_ASSERT_EQUAL_INT(locker, waitpid(locker, &status, 0));
+    pid_t waited = waitpid(locker, &status, 0);
+
+    TEST_ASSERT_EQUAL_INT(1, ready_read_rc);
+    TEST_ASSERT_EQUAL_INT(-1, daemon_status_rc);
+    TEST_ASSERT_EQUAL_INT(1, release_write_rc);
+    TEST_ASSERT_EQUAL_INT(locker, waited);
     TEST_ASSERT_TRUE(WIFEXITED(status));
     TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
@@ -1565,6 +1571,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     TEST_ASSERT_NOT_NULL(initial);
     fputs(original, initial);
     fclose(initial);
+    TEST_ASSERT_EQUAL_INT(0, chmod(path, 0644));
     struct stat before, after;
     struct stat baseline_stat;
     load_default_config(&cfg);
@@ -1578,6 +1585,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
         close(original_fd);
     }
     TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
+    TEST_ASSERT_TRUE(((before.st_mode & 0777) & 0044) != 0);
     if (!fail_copy) TEST_ASSERT_TRUE(before.st_size > baseline_stat.st_size);
 
     busy_config_rename = true;
@@ -1593,6 +1601,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     TEST_ASSERT_EQUAL_INT(fail_copy ? -1 : 0, result);
     if (fail_copy) TEST_ASSERT_TRUE(short_config_pwrite_done);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
+    TEST_ASSERT_EQUAL_UINT(0600, (unsigned)(after.st_mode & 0777));
     TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
     if (fail_copy) TEST_ASSERT_EQUAL_UINT64(before.st_size, after.st_size);
     FILE *saved = fopen(path, "rb");
