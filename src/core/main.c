@@ -519,13 +519,13 @@ static int check_and_kill_existing_instance(const char *pid_file) {
                 if (used_pidfd) {
                     struct pollfd pfd = { .fd = pidfd, .events = POLLIN };
                     int prc = poll(&pfd, 1, 1000);
-                    if (prc > 0) {
-                        // pidfd became readable/hup/err => process exited.
+                    if (prc > 0 && (pfd.revents & (POLLIN | POLLHUP))) {
+                        // pidfd became readable: the original process exited.
                         still_running = false;
                     } else if (prc == 0) {
                         still_running = true; // 1s tick elapsed
                     } else {
-                        // On poll failure, fall back to pid-based check.
+                        // On poll failure, fall back to a process-state check.
                         still_running = is_process_alive_or_non_zombie(existing_pid);
                         sleep(1);
                     }
