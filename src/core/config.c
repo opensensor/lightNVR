@@ -2652,10 +2652,21 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     return 0;
 }
 
+static bool config_copy_settings_only(config_t *dst, const config_t *src) {
+    if (!dst || !src) {
+        return false;
+    }
+
+    *dst = *src;
+    dst->streams = NULL;
+    dst->max_streams = src->max_streams;
+    return true;
+}
+
 int save_config(const config_t *config, const char *path) {
     if (!config) return -1;
     config_t snapshot = {0};
-    if (!config_copy(&snapshot, config)) {
+    if (!config_copy_settings_only(&snapshot, config)) {
         log_error("Could not create config snapshot for saving");
         return -1;
     }
