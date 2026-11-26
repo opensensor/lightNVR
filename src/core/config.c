@@ -1957,6 +1957,11 @@ int save_config(const config_t *config, const char *path) {
         {"web_username", config->web_username, sizeof(config->web_username)},
         {"api_detection_detector_name", config->api_detection_detector_name,
          sizeof(config->api_detection_detector_name)},
+        {"pid_file", config->pid_file, sizeof(config->pid_file)},
+        {"log_file", config->log_file, sizeof(config->log_file)},
+        {"syslog_ident", config->syslog_ident, sizeof(config->syslog_ident)},
+        {"storage_path", config->storage_path, sizeof(config->storage_path)},
+        {"api_detection_url", config->api_detection_url, sizeof(config->api_detection_url)},
     };
 
     for (size_t i = 0; i < sizeof(validated_fields) / sizeof(validated_fields[0]); ++i) {
