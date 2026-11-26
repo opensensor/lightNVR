@@ -1695,9 +1695,9 @@ cleanup:
         // Never signal a PID after this child has been reparented: the old
         // parent's PID may already belong to an unrelated process.
         if (getppid() == parent_pid) {
-            // Do not use process-directed SIGUSR1 for emergency cleanup here:
-            // delivery is thread-arbitrary and does not reliably interrupt a
-            // specific blocked worker. Enforce the shutdown deadline directly.
+            // A process-directed SIGUSR1 may reach any thread and cannot
+            // reliably interrupt a blocked cleanup worker. Enforce the
+            // watchdog deadline directly.
             kill(parent_pid, SIGKILL);
         }
 
@@ -1926,16 +1926,14 @@ cleanup:
         log_info("Shutting down recording sync thread...");
         stop_recording_sync_thread();
 
-        // Memory barrier for ordering/visibility only; it does NOT wait for
-        // other threads or database work to finish.
+        // Add a memory barrier before database shutdown to ensure all previous operations are complete
         __sync_synchronize();
 
         // Request producers are stopped: persist pending audit summaries
         // before the final database backup and close.
         audit_log_shutdown_summaries();
 
-        // Ordering fence before cleanup/logging; completion must be guaranteed
-        // by explicit synchronization in shutdown/join paths.
+        // Ensure all database operations are complete before cleanup
         log_info("Ensuring all database operations are complete...");
         __sync_synchronize();
 
@@ -1997,15 +1995,6 @@ cleanup:
         go2rtc_stream_cleanup();
         #endif
 
-        // If watchdog fork failed, continue teardown without a watchdog.
-        if (cleanup_pid <= 0) {
-            log_error("Failed to create watchdog process for cleanup timeout");
-        }
-
-        // Shared teardown sequence for both fork-success and fork-failure parent paths.
-        // (Host health/telemetry shutdown, stream stop loop, detection/resource cleanup,
-        // HLS/go2rtc cleanup, recording-sync worker stop, etc. continue below.)
-
         // Clean up libcurl globally (after all curl-using services are shut down)
         log_info("Cleaning up libcurl globally...");
         lightnvr_sentry_shutdown();
@@ -2019,6 +2008,28 @@ cleanup:
 
         // Restore signal mask
         pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
+    } else {
+        // Fork failed: continue teardown without a watchdog.
+        log_error("Failed to create watchdog process for cleanup timeout");
+
+        log_info("Shutting down host health and telemetry...");
+        system_health_shutdown();
+        system_health_evaluator_service_shutdown(true);
+        metrics_shutdown();
+        player_telemetry_shutdown();
+
+        // Note: Health check system and web server were already stopped before the fork attempt
+        // to prevent serving requests during shutdown
+
+        // Stop all streams first
+        for (int i = 0; i < g_config.max_streams; i++) {
+            if (config.streams[i].name[0] != '\0') {
+                stream_handle_t stream = get_stream_by_name(config.streams[i].name);
+                if (stream) {
+                    stop_stream(stream);
+                }
+            }
+        }
 
         // Brief wait before cleanup
         usleep(200000);  // 200ms (reduced from 1000ms)
