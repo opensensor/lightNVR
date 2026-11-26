@@ -147,9 +147,9 @@ int init_daemon(const char *pid_file) {
     log_info("Keeping current working directory for SQLite compatibility: %s", cwd ? cwd : "unknown");
     if (cwd) free(cwd);
 
-    // Reset file creation mask
-    umask(0);
-    log_debug("Reset file creation mask");
+    // Set a restrictive default file creation mask for daemon-created files
+    umask(0027);
+    log_debug("Set daemon file creation mask to 0027");
 
     // Preserve non-stdio descriptors (for web server compatibility), but
     // redirect standard streams to avoid leaking launcher pipes.
@@ -647,6 +647,13 @@ int daemon_status(const char *pid_file) {
     if (!locked_by_other) {
         log_warn("PID file %s is not locked; treating it as stale", file_path);
         return finish_daemon_status(0);
+    }
+
+    // Ensure the PID in the file matches the process that actually owns the lock.
+    if (fl.l_pid > 0 && pid != fl.l_pid) {
+        log_warn("PID file %s is locked by PID %d but contains PID %d; startup may be in progress",
+                 file_path, (int)fl.l_pid, (int)pid);
+        return finish_daemon_status(-1);
     }
 
     // Check if process is running
