@@ -106,6 +106,7 @@ ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
+    memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
     owned_snapshot_streams = NULL;
     observed_config_stream = false;
     observed_config_stream_with_private_mode = true;
@@ -152,6 +153,8 @@ void tearDown(void) {
         free(cfg.streams);
         cfg.streams = NULL;
     }
+    free(reloaded_cfg.streams);
+    reloaded_cfg.streams = NULL;
 }
 
 /* ================================================================
