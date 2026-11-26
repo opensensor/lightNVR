@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -26,6 +27,7 @@
 
 #include "unity.h"
 #include "core/config.h"
+#include "core/daemon.h"
 #include "core/logger.h"
 #include "core/path_utils.h"
 #include "video/streams.h"
@@ -206,6 +208,38 @@ void test_default_config_retention_days(void) {
     TEST_ASSERT_EQUAL_INT(30, cfg.retention_days);
 }
 
+void test_daemon_status_preserves_owned_pid_lock(void) {
+    char directory[] = "/tmp/lightnvr_pid_status_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/lightnvr.pid", directory);
+
+    int fd = write_pid_file(path);
+    TEST_ASSERT_TRUE(fd >= 0);
+    TEST_ASSERT_EQUAL_INT(1, daemon_status(path));
+
+    pid_t child = fork();
+    TEST_ASSERT_TRUE(child >= 0);
+    if (child == 0) {
+        close(fd);
+        int probe = open(path, O_RDWR);
+        if (probe < 0) _exit(2);
+        int lock_result = lockf(probe, F_TLOCK, 0);
+        int lock_error = errno;
+        close(probe);
+        _exit(lock_result < 0 && (lock_error == EACCES || lock_error == EAGAIN) ? 0 : 3);
+    }
+    int status = 0;
+    TEST_ASSERT_EQUAL_INT(child, waitpid(child, &status, 0));
+    TEST_ASSERT_TRUE(WIFEXITED(status));
+    TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
+
+    TEST_ASSERT_EQUAL_INT(0, remove_pid_file(fd, path));
+    TEST_ASSERT_EQUAL_INT(0, daemon_status(path));
+    TEST_ASSERT_EQUAL_INT(0, unlink(path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+}
+
 void test_default_config_mp4_faststart_on(void) {
     load_default_config(&cfg);
     TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));
@@ -359,11 +393,27 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     int save_result = 0;
     int valid_saves = 0;
     bool streams_distinct_ok = true;
-    while (atomic_load(&faststart_writer_updates) == 0) {
+    bool writer_progress_ok = true;
+    struct timespec initial_wait_start = {0};
+    if (clock_gettime(CLOCK_MONOTONIC, &initial_wait_start) != 0) {
+        writer_progress_ok = false;
+    }
+    while (writer_progress_ok && atomic_load(&faststart_writer_updates) == 0) {
+        struct timespec now = {0};
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            writer_progress_ok = false;
+            break;
+        }
+        long elapsed_ms =
+            (now.tv_sec - initial_wait_start.tv_sec) * 1000L +
+            (now.tv_nsec - initial_wait_start.tv_nsec) / 1000000L;
+        if (elapsed_ms > 2000L) {
+            writer_progress_ok = false;
+            break;
+        }
         sched_yield();
     }
-    bool writer_progress_ok = true;
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 0; i < 50 && writer_progress_ok; ++i) {
         (void)config_get_mp4_faststart(&cfg);
         config_t snapshot = {0};
         if (!config_copy(&snapshot, &cfg)) streams_distinct_ok = false;
@@ -1643,6 +1693,7 @@ int main(void) {
     init_logger();
 
     UNITY_BEGIN();
+    RUN_TEST(test_daemon_status_preserves_owned_pid_lock);
     RUN_TEST(test_save_config_tightens_existing_permissions_before_writing_secrets);
     RUN_TEST(test_save_config_rejects_hardlinks_without_truncation_or_mode_change);
     RUN_TEST(test_save_config_replaces_group_writable_legacy_file_privately);
