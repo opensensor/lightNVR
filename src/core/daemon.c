@@ -456,6 +456,12 @@ static int check_running_daemon(const char *pid_file) {
     }
 }
 
+/* Every return from the external status probe releases the ownership mutex. */
+static int finish_daemon_status(int result) {
+    pthread_mutex_unlock(&owned_pid_mutex);
+    return result;
+}
+
 // Get status of daemon
 int daemon_status(const char *pid_file) {
     char file_path[MAX_PATH_LENGTH];
@@ -494,13 +500,13 @@ int daemon_status(const char *pid_file) {
     if (lstat(file_path, &current) == 0) {
         if (!S_ISREG(current.st_mode) || current.st_nlink != 1) {
             log_error("Unsafe PID file path %s: expected single-link regular file", file_path);
-            return -1;
+            return finish_daemon_status(-1);
         }
     } else if (errno == ENOENT) {
-        return 0;
+        return finish_daemon_status(0);
     } else {
         log_error("Failed to stat PID file %s: %s", file_path, strerror(errno));
-        return -1;
+        return finish_daemon_status(-1);
     }
 
     // Open read-only so status checks can work across users (e.g., 0644 PID files)
@@ -508,24 +514,24 @@ int daemon_status(const char *pid_file) {
     if (fd < 0) {
         if (errno == ENOENT) {
             // PID file doesn't exist, daemon is not running
-            return 0;
+            return finish_daemon_status(0);
         }
         
         log_error("Failed to open PID file %s: %s", file_path, strerror(errno));
-        return -1;
+        return finish_daemon_status(-1);
     }
 
     struct stat st;
     if (fstat(fd, &st) < 0) {
         log_error("Failed to stat PID file %s: %s", file_path, strerror(errno));
         close(fd);
-        return -1;
+        return finish_daemon_status(-1);
     }
 
     if (!S_ISREG(st.st_mode) || st.st_nlink != 1) {
         log_error("PID file %s is not a regular single-link file", file_path);
         close(fd);
-        return -1;
+        return finish_daemon_status(-1);
     }
     
     // Query the instance lock. F_GETLK omits locks owned by this process;
@@ -538,7 +544,7 @@ int daemon_status(const char *pid_file) {
     if (lock_ret < 0) {
         log_error("Failed to query PID file lock %s: %s", file_path, strerror(errno));
         close(fd);
-        return -1;
+        return finish_daemon_status(-1);
     }
     bool locked_by_other = fl.l_type != F_UNLCK;
 
@@ -551,9 +557,9 @@ int daemon_status(const char *pid_file) {
     close(fd);
 
     if (bytes_read <= 0) {
-        if (!locked_by_other && bytes_read == 0) return 0;
+        if (!locked_by_other && bytes_read == 0) return finish_daemon_status(0);
         log_error("Failed to read PID from file %s", file_path);
-        return -1;
+        return finish_daemon_status(-1);
     }
 
     // Null-terminate the string
@@ -566,35 +572,35 @@ int daemon_status(const char *pid_file) {
     while (*end_ptr2 == '\n' || *end_ptr2 == '\r' || *end_ptr2 == ' ' || *end_ptr2 == '\t') end_ptr2++;
     if (end_ptr2 == pid_str || *end_ptr2 != '\0' || errno == ERANGE ||
         pid_val2 <= 0 || (long)(pid_t)pid_val2 != pid_val2) {
-        if (!locked_by_other) return 0;
+        if (!locked_by_other) return finish_daemon_status(0);
         log_error("Failed to parse PID from file %s", file_path);
-        return -1;
+        return finish_daemon_status(-1);
     }
     pid_t pid = (pid_t)pid_val2;
 
     if (!locked_by_other) {
         log_warn("PID file %s is not locked; treating it as stale", file_path);
-        return 0;
+        return finish_daemon_status(0);
     }
 
     // Check if process is running
     if (kill(pid, 0) == 0) {
         // Process is running
         log_info("Daemon is running with PID %d", pid);
-        return 1;
+        return finish_daemon_status(1);
     } else if (errno == EPERM) {
         // Process exists, but we don't have permission to signal it.
         // For status checks, this still means the daemon is running.
         log_info("Daemon is running with PID %d (no permission to signal)", pid);
-        return 1;
+        return finish_daemon_status(1);
     } else {
         if (errno == ESRCH) {
             // Process is not running; leave PID file handling to startup/cleanup paths.
             log_warn("PID file %s contains PID %d but process is not running", file_path, pid);
-            return 0;
+            return finish_daemon_status(0);
         } else {
             log_error("Failed to check process status: %s", strerror(errno));
-            return -1;
+            return finish_daemon_status(-1);
         }
     }
 }

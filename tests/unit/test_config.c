@@ -242,6 +242,9 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
 
     TEST_ASSERT_EQUAL_INT(0, remove_pid_file(fd, path));
     TEST_ASSERT_EQUAL_INT(0, daemon_status(path));
+    int second_fd = write_pid_file(path);
+    TEST_ASSERT_TRUE(second_fd >= 0);
+    TEST_ASSERT_EQUAL_INT(0, remove_pid_file(second_fd, path));
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
