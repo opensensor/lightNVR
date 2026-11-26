@@ -2010,7 +2010,7 @@ cleanup:
         // Restore signal mask
         pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
     } else {
-        // Fork failed: continue with the same shared teardown sequence (no watchdog).
+        // Fork failed: continue teardown without a watchdog.
         log_error("Failed to create watchdog process for cleanup timeout");
 
         log_info("Shutting down host health and telemetry...");
