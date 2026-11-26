@@ -2160,6 +2160,19 @@ cleanup:
                 // Give the system a moment to release resources
                 usleep(500000);  // 500ms
 
+                // Ensure termination signals are unblocked before exec; signal
+                // masks are inherited across exec and must not carry a blocked
+                // shutdown mask into the restarted process.
+                sigset_t restart_unblock_set;
+                if (sigemptyset(&restart_unblock_set) == 0) {
+                    sigaddset(&restart_unblock_set, SIGINT);
+                    sigaddset(&restart_unblock_set, SIGTERM);
+                    sigaddset(&restart_unblock_set, SIGHUP);
+                    if (pthread_sigmask(SIG_UNBLOCK, &restart_unblock_set, NULL) != 0) {
+                        fprintf(stderr, "Warning: failed to unblock restart signals before exec\n");
+                    }
+                }
+
                 // Re-exec the program with the same arguments
                 execv(exe_path, saved_argv);
 
