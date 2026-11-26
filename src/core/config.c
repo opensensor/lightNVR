@@ -2026,7 +2026,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
 }
 
 // Save configuration to file in INI format
-int save_config(const config_t *config, const char *path) {
+static int save_config_snapshot(const config_t *config, const char *path) {
     if (!config) {
         log_error("Invalid config parameter for save_config: config=%p", config);
         return -1;
@@ -2308,18 +2308,6 @@ int save_config(const config_t *config, const char *path) {
         return -1;
     }
 
-    config_t snapshot;
-    memset(&snapshot, 0, sizeof(snapshot));
-    if (!config_copy(&snapshot, config)) {
-        log_error("Could not create config snapshot for saving");
-        close(config_fd);
-        if (external_staging) unlink(external_staging_path);
-        else unlinkat(dir_fd, replacement_name, 0);
-        close_original_config_fd(original_fd);
-        close(dir_fd);
-        return -1;
-    }
-
     FILE *file = fdopen(config_fd, "w");
     if (!file) {
         log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
@@ -2328,7 +2316,6 @@ int save_config(const config_t *config, const char *path) {
         else unlinkat(dir_fd, replacement_name, 0);
         close_original_config_fd(original_fd);
         close(dir_fd);
-        config_free_streams(&snapshot);
         return -1;
     }
     
@@ -2337,15 +2324,15 @@ int save_config(const config_t *config, const char *path) {
     
     // Write general settings
     fprintf(file, "[general]\n");
-    fprintf(file, "pid_file = %s\n", snapshot.pid_file);
-    fprintf(file, "log_file = %s\n", snapshot.log_file);
-    fprintf(file, "log_level = %d  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG\n", snapshot.log_level);
-    fprintf(file, "syslog_enabled = %s\n", snapshot.syslog_enabled ? "true" : "false");
-    fprintf(file, "syslog_ident = %s\n", snapshot.syslog_ident);
+    fprintf(file, "pid_file = %s\n", config->pid_file);
+    fprintf(file, "log_file = %s\n", config->log_file);
+    fprintf(file, "log_level = %d  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG\n", config->log_level);
+    fprintf(file, "syslog_enabled = %s\n", config->syslog_enabled ? "true" : "false");
+    fprintf(file, "syslog_ident = %s\n", config->syslog_ident);
 
     // Convert facility number to name for readability
     const char *facility_name = "LOG_USER";
-    switch (snapshot.syslog_facility) {
+    switch (config->syslog_facility) {
         case LOG_USER: facility_name = "LOG_USER"; break;
         case LOG_DAEMON: facility_name = "LOG_DAEMON"; break;
         case LOG_LOCAL0: facility_name = "LOG_LOCAL0"; break;
@@ -2639,6 +2626,18 @@ int save_config(const config_t *config, const char *path) {
     // Stream configurations are managed separately through the streams API
     
     return 0;
+}
+
+int save_config(const config_t *config, const char *path) {
+    if (!config) return -1;
+    config_t snapshot = {0};
+    if (!config_copy(&snapshot, config)) {
+        log_error("Could not create config snapshot for saving");
+        return -1;
+    }
+    int result = save_config_snapshot(&snapshot, path);
+    free(snapshot.streams);
+    return result;
 }
 
 // Print configuration to stdout (for debugging)
