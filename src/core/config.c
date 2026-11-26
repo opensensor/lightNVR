@@ -2026,7 +2026,7 @@ static int publish_config_in_place(int dir_fd, const char *filename,
 }
 
 // Save configuration to file in INI format
-int save_config(const config_t *config, const char *path) {
+static int save_config_snapshot(const config_t *config, const char *path) {
     if (!config) {
         log_error("Invalid config parameter for save_config: config=%p", config);
         return -1;
@@ -2053,6 +2053,11 @@ int save_config(const config_t *config, const char *path) {
         {"log_file", config->log_file, sizeof(config->log_file)},
         {"syslog_ident", config->syslog_ident, sizeof(config->syslog_ident)},
         {"storage_path", config->storage_path, sizeof(config->storage_path)},
+        {"storage_path_hls", config->storage_path_hls, sizeof(config->storage_path_hls)},
+        {"db_path", config->db_path, sizeof(config->db_path)},
+        {"web_root", config->web_root, sizeof(config->web_root)},
+        {"models_path", config->models_path, sizeof(config->models_path)},
+        {"trusted_proxy_cidrs", config->trusted_proxy_cidrs, sizeof(config->trusted_proxy_cidrs)},
         {"api_detection_url", config->api_detection_url, sizeof(config->api_detection_url)},
         {"go2rtc_config_dir", config->go2rtc_config_dir, sizeof(config->go2rtc_config_dir)},
         {"go2rtc_binary_path", config->go2rtc_binary_path, sizeof(config->go2rtc_binary_path)},
@@ -2621,6 +2626,18 @@ int save_config(const config_t *config, const char *path) {
     // Stream configurations are managed separately through the streams API
     
     return 0;
+}
+
+int save_config(const config_t *config, const char *path) {
+    if (!config) return -1;
+    config_t snapshot = {0};
+    if (!config_copy(&snapshot, config)) {
+        log_error("Could not create config snapshot for saving");
+        return -1;
+    }
+    int result = save_config_snapshot(&snapshot, path);
+    free(snapshot.streams);
+    return result;
 }
 
 // Print configuration to stdout (for debugging)
