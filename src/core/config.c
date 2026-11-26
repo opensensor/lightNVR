@@ -1477,10 +1477,43 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
     }
     pthread_mutex_unlock(&mp4_faststart_mutex);
 
-    // Use inih to parse the INI file
+    // Use inih to parse the INI file through a locked descriptor
     config_ini_context_t context = {&temp_config, ini_present};
-    int result = ini_parse(filename, config_ini_handler, &context);
-    
+    int result = -1;
+    int cfg_fd = -1;
+    FILE *cfg_file = NULL;
+    struct flock rdlock;
+
+    memset(&rdlock, 0, sizeof(rdlock));
+    rdlock.l_type = F_RDLCK;
+    rdlock.l_whence = SEEK_SET;
+    rdlock.l_start = 0;
+    rdlock.l_len = 0;  // whole file
+
+    pthread_mutex_lock(&config_in_place_mutex);
+    cfg_fd = open(filename, O_RDONLY);
+    if (cfg_fd >= 0 && fcntl(cfg_fd, F_SETLKW, &rdlock) == 0) {
+        int parse_fd = dup(cfg_fd);
+        if (parse_fd >= 0) {
+            cfg_file = fdopen(parse_fd, "r");
+            if (cfg_file) {
+                result = ini_parse_file(cfg_file, config_ini_handler, &context);
+            } else {
+                close(parse_fd);
+            }
+        }
+    }
+
+    if (cfg_file) {
+        fclose(cfg_file);
+    }
+    if (cfg_fd >= 0) {
+        rdlock.l_type = F_UNLCK;
+        (void)fcntl(cfg_fd, F_SETLK, &rdlock);
+        close(cfg_fd);
+    }
+    pthread_mutex_unlock(&config_in_place_mutex);
+
     if (result < 0) {
         free(temp_config.streams);
         log_warn("Could not read config file %s", filename);
