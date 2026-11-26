@@ -1740,8 +1740,11 @@ cleanup:
         }
 
         _exit(EXIT_FAILURE);
-    } else if (cleanup_pid > 0) {
-        // Parent process - continue with cleanup
+    } else {
+        // Parent process continues cleanup, with or without a watchdog.
+        if (cleanup_pid < 0) {
+            log_error("Failed to create watchdog process for cleanup timeout");
+        }
 
         // Set up a handler for USR1 to interrupt blocking syscalls/probes.
         // Note: alarm_handler is intentionally a no-op; no cleanup is done
@@ -1751,10 +1754,8 @@ cleanup:
         sa_usr1.sa_handler = alarm_handler;  // Reuse no-op handler for USR1
         sigaction(SIGUSR1, &sa_usr1, NULL);
 
-        // Probe collection may block in a kernel filesystem call, so stop and
-        // join host-health workers only after the cleanup watchdog is active.
-        // The evaluator is stopped next while persistence is still available;
-        // general telemetry follows, exactly once.
+        // Stop and join host-health workers while persistence is available.
+        // If the watchdog fork failed, this still completes the same teardown.
         log_info("Shutting down host health and telemetry...");
         system_health_shutdown();
         system_health_evaluator_service_shutdown(true);
@@ -1926,16 +1927,9 @@ cleanup:
         log_info("Shutting down recording sync thread...");
         stop_recording_sync_thread();
 
-        // Add a memory barrier before database shutdown to ensure all previous operations are complete
-        __sync_synchronize();
-
         // Request producers are stopped: persist pending audit summaries
         // before the final database backup and close.
         audit_log_shutdown_summaries();
-
-        // Ensure all database operations are complete before cleanup
-        log_info("Ensuring all database operations are complete...");
-        __sync_synchronize();
 
         // Free schema cache first to ensure all schema-related statements are finalized
         log_info("Freeing schema cache...");
@@ -2005,126 +1999,6 @@ cleanup:
             kill(cleanup_pid, SIGKILL);
             waitpid(cleanup_pid, NULL, 0);
         }
-
-        // Restore signal mask
-        pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
-    } else {
-        // Fork failed: continue teardown without a watchdog.
-        log_error("Failed to create watchdog process for cleanup timeout");
-
-        log_info("Shutting down host health and telemetry...");
-        system_health_shutdown();
-        system_health_evaluator_service_shutdown(true);
-        metrics_shutdown();
-        player_telemetry_shutdown();
-
-        // Note: Health check system and web server were already stopped before the fork attempt
-        // to prevent serving requests during shutdown
-
-        // Stop all streams first
-        for (int i = 0; i < g_config.max_streams; i++) {
-            if (config.streams[i].name[0] != '\0') {
-                stream_handle_t stream = get_stream_by_name(config.streams[i].name);
-                if (stream) {
-                    stop_stream(stream);
-                }
-            }
-        }
-
-        // Brief wait before cleanup
-        usleep(200000);  // 200ms (reduced from 1000ms)
-
-        // Close all MP4 writers first
-        close_all_mp4_writers();
-
-        // Then clean up backends in the correct order
-        shutdown_detection_stream_system();
-        cleanup_mp4_recording_backend();
-        cleanup_hls_streaming_backend();
-        cleanup_transcoding_backend();
-
-        // Stop detection producers before tearing down their event consumers.
-        cleanup_detection_resources();
-
-        /* INT_01 shutdown (reverse of startup): relay (L5) first. */
-        observation_relay_stop();
-        observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);  /* then L3 */
-
-        event_bus_shutdown(true);
-        mqtt_event_adapter_unregister();
-        event_identity_shutdown();
-
-        mqtt_delivery_worker_shutdown();
-
-        // Cleanup MQTT client
-        mqtt_cleanup();
-
-        // Health check system already stopped early
-
-        // Cleanup batch delete progress tracking
-        batch_delete_progress_cleanup();
-
-        shutdown_stream_manager();
-        shutdown_stream_state_adapter();
-        shutdown_stream_state_manager();
-        shutdown_storage_manager();
-
-        // Request producers are stopped: persist pending audit summaries
-        // before the final database backup and close.
-        audit_log_shutdown_summaries();
-
-        // Ensure all database operations are complete before cleanup
-        log_info("Ensuring all database operations are complete...");
-        __sync_synchronize();
-
-        // Free schema cache first
-        log_info("Freeing schema cache...");
-        free_schema_cache();
-
-        // Add a small delay
-        usleep(100000);  // 100ms
-
-        // Same bounded join as the watchdog path above: never close the
-        // handle or take the final backup while a scheduled copy is in flight.
-        if (db_scheduled_backup_in_flight()) {
-            log_info("Waiting up to %d s for the in-flight scheduled database backup to abort...",
-                     DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
-            if (!db_scheduled_backup_wait_idle(DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS)) {
-                log_warn("Scheduled database backup worker did not stop within %d s, continuing shutdown",
-                         DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
-            }
-        }
-
-        // Stop recording sync worker before DB teardown to avoid concurrent DB access
-        log_info("Stopping recording sync thread...");
-        stop_recording_sync_thread();
-
-        // Ensure service-level workers are stopped before tearing down shared dependencies
-#ifdef USE_GO2RTC
-        go2rtc_integration_cleanup();
-#endif
-        shutdown_onvif_discovery();
-        cleanup_detection_resources();
-
-        // Shutdown database
-        log_info("Shutting down database...");
-        shutdown_database();
-
-        // Add another small delay after database shutdown
-        usleep(100000);  // 100ms
-
-        // Final SQLite memory cleanup
-        log_info("Performing final SQLite memory cleanup...");
-        sqlite3_release_memory(INT_MAX);
-        sqlite3_shutdown();
-
-        // Clean up the shutdown coordinator
-        shutdown_coordinator_cleanup();
-
-        // Clean up libcurl globally (after all curl-using services are shut down)
-        log_info("Cleaning up libcurl globally...");
-        lightnvr_sentry_shutdown();
-        curl_cleanup_global();
 
         // Restore signal mask
         pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
