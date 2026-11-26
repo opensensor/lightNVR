@@ -1471,6 +1471,9 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     snprintf(cfg.pid_file, sizeof(cfg.pid_file), "/tmp/lightnvr.pid");
     snprintf(cfg.api_detection_url, sizeof(cfg.api_detection_url), "http://example/#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.api_detection_url[0] = '\0';
+    snprintf(cfg.go2rtc_config_dir, sizeof(cfg.go2rtc_config_dir), "/etc/lightnvr\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
     FILE *saved = fopen(path, "r");

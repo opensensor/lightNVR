@@ -1797,7 +1797,9 @@ int load_config(config_t *config) {
     // Apply environment variable overrides
     // This allows LIGHTNVR_ prefixed env vars to set config values
     // that are not already set in the config file (useful for container deployments)
+    pthread_mutex_lock(&mp4_faststart_mutex);
     apply_env_overrides(config, ini_present);
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 
     // Set default web root if not specified
     if (strlen(config->web_root) == 0) {
@@ -1962,6 +1964,7 @@ int save_config(const config_t *config, const char *path) {
         {"syslog_ident", config->syslog_ident, sizeof(config->syslog_ident)},
         {"storage_path", config->storage_path, sizeof(config->storage_path)},
         {"api_detection_url", config->api_detection_url, sizeof(config->api_detection_url)},
+        {"go2rtc_config_dir", config->go2rtc_config_dir, sizeof(config->go2rtc_config_dir)},
     };
 
     for (size_t i = 0; i < sizeof(validated_fields) / sizeof(validated_fields[0]); ++i) {
