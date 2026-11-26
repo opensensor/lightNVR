@@ -1494,14 +1494,14 @@ cleanup:
 
     // Stop request producers before any state they can inspect is dismantled.
     // Keeping this at the shared cleanup label also covers partial startup.
+    log_info("Stopping health check system...");
+    cleanup_health_check_system();
     log_info("Stopping web server to prevent requests during shutdown...");
     if (http_server) {
         http_server_stop(http_server);
         http_server_destroy(http_server);
         http_server = NULL;
     }
-    log_info("Stopping health check system...");
-    cleanup_health_check_system();
 
     // Block most signals during cleanup to prevent interruptions
     // But keep SIGUSR1, SIGALRM, and SIGKILL unblocked for emergency shutdown
