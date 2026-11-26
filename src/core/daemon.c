@@ -479,6 +479,10 @@ int daemon_status(const char *pid_file) {
             pthread_mutex_unlock(&owned_pid_mutex);
             return 1;
         }
+        // A second open could resolve to our locked inode after the check and
+        // release its process-scoped lock when closed. Fail closed instead.
+        pthread_mutex_unlock(&owned_pid_mutex);
+        return -1;
     }
     pthread_mutex_unlock(&owned_pid_mutex);
 
