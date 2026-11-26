@@ -271,6 +271,7 @@ static void daemon_signal_handler(int sig) {
 
 // Write PID file
 int write_pid_file(const char *pid_file) {
+    pthread_mutex_lock(&owned_pid_mutex);
     // Make sure the directory exists
     if (ensure_path(pid_file) != 0) {
         log_error("Failed to create PID file directory %s: %s", pid_file, strerror(errno));
@@ -317,6 +318,7 @@ int write_pid_file(const char *pid_file) {
     if (write(fd, pid_str, strlen(pid_str)) != strlen(pid_str)) {
         log_error("Failed to write to PID file %s: %s", pid_file, strerror(errno));
         close(fd);
+        pthread_mutex_unlock(&owned_pid_mutex);
         return -1;
     }
     
@@ -335,7 +337,6 @@ int write_pid_file(const char *pid_file) {
     }
     
     log_info("Wrote PID %d to file %s", getpid(), pid_file);
-    pthread_mutex_lock(&owned_pid_mutex);
     owned_pid_fd = fd;
     owned_pid_process = getpid();
     pthread_mutex_unlock(&owned_pid_mutex);
