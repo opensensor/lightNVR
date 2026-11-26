@@ -1384,6 +1384,9 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     cfg.turn_server_url[0] = '\0';
     snprintf(cfg.mqtt_broker_host, sizeof(cfg.mqtt_broker_host), "broker#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.mqtt_broker_host[0] = '\0';
+    snprintf(cfg.api_detection_detector_name, sizeof(cfg.api_detection_detector_name), "model#bad");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
     FILE *saved = fopen(path, "r");
