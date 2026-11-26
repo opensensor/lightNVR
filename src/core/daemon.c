@@ -33,6 +33,9 @@ extern _Atomic bool running; // Reference to the global variable defined in main
 
 // Global variable to store PID file path
 static char pid_file_path[MAX_PATH_LENGTH] = "/run/lightnvr.pid";
+static pthread_mutex_t owned_pid_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int owned_pid_fd = -1;
+static pid_t owned_pid_process = 0;
 
 // Forward declarations
 static void daemon_signal_handler(int sig);
@@ -332,6 +335,10 @@ int write_pid_file(const char *pid_file) {
     }
     
     log_info("Wrote PID %d to file %s", getpid(), pid_file);
+    pthread_mutex_lock(&owned_pid_mutex);
+    owned_pid_fd = fd;
+    owned_pid_process = getpid();
+    pthread_mutex_unlock(&owned_pid_mutex);
     return fd;
 }
 
@@ -340,8 +347,16 @@ int remove_pid_file(int fd, const char *pid_file) {
     // Do not unlink the PID file path: removing it can cause split-inode races
     // with concurrent starters. Keep the inode in place and only release the lock.
     if (fd >= 0) {
-        if (close(fd) != 0) {
-            log_error("Failed to close PID file %s: %s", pid_file, strerror(errno));
+        pthread_mutex_lock(&owned_pid_mutex);
+        if (fd == owned_pid_fd && owned_pid_process == getpid()) {
+            owned_pid_fd = -1;
+            owned_pid_process = 0;
+        }
+        int close_result = close(fd);
+        int close_error = errno;
+        pthread_mutex_unlock(&owned_pid_mutex);
+        if (close_result != 0) {
+            log_error("Failed to close PID file %s: %s", pid_file, strerror(close_error));
             return -1;
         }
     }
@@ -451,6 +466,22 @@ int daemon_status(const char *pid_file) {
         safe_strcpy(file_path, pid_file_path, sizeof(file_path), 0);
     }
 
+    // Closing any descriptor for this inode would release our process-scoped
+    // record lock. Check our retained lock descriptor before opening the path.
+    pthread_mutex_lock(&owned_pid_mutex);
+    if (owned_pid_fd >= 0 && owned_pid_process == getpid()) {
+        struct stat held, current;
+        bool owns_path = fstat(owned_pid_fd, &held) == 0 &&
+                         lstat(file_path, &current) == 0 &&
+                         S_ISREG(current.st_mode) && current.st_nlink == 1 &&
+                         held.st_dev == current.st_dev && held.st_ino == current.st_ino;
+        if (owns_path) {
+            pthread_mutex_unlock(&owned_pid_mutex);
+            return 1;
+        }
+    }
+    pthread_mutex_unlock(&owned_pid_mutex);
+
     // Open read-only so status checks can work across users (e.g., 0644 PID files)
     int fd = open(file_path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) {
@@ -476,9 +507,21 @@ int daemon_status(const char *pid_file) {
         return -1;
     }
     
-    // Read PID from file and check process liveness directly.
-    // Avoid F_GETLK here: it does not report locks owned by this process,
-    // which can misreport "stopped" during in-process status checks.
+    // Query the instance lock. F_GETLK omits locks owned by this process;
+    // handle that case after reading the PID instead of trusting a reused PID.
+    struct flock fl = {.l_type = F_WRLCK, .l_whence = SEEK_SET};
+    int lock_ret;
+    do {
+        lock_ret = fcntl(fd, F_GETLK, &fl);
+    } while (lock_ret < 0 && errno == EINTR);
+    if (lock_ret < 0) {
+        log_error("Failed to query PID file lock %s: %s", file_path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    bool locked_by_other = fl.l_type != F_UNLCK;
+
+    // Read PID from file and check process liveness.
     char pid_str[16];
     ssize_t bytes_read;
     do {
@@ -487,6 +530,7 @@ int daemon_status(const char *pid_file) {
     close(fd);
 
     if (bytes_read <= 0) {
+        if (!locked_by_other && bytes_read == 0) return 0;
         log_error("Failed to read PID from file %s", file_path);
         return -1;
     }
@@ -496,12 +540,21 @@ int daemon_status(const char *pid_file) {
 
     // Parse the PID
     char *end_ptr2;
+    errno = 0;
     long pid_val2 = strtol(pid_str, &end_ptr2, 10);
-    if (end_ptr2 == pid_str || pid_val2 <= 0) {
+    while (*end_ptr2 == '\n' || *end_ptr2 == '\r' || *end_ptr2 == ' ' || *end_ptr2 == '\t') end_ptr2++;
+    if (end_ptr2 == pid_str || *end_ptr2 != '\0' || errno == ERANGE ||
+        pid_val2 <= 0 || (long)(pid_t)pid_val2 != pid_val2) {
+        if (!locked_by_other) return 0;
         log_error("Failed to parse PID from file %s", file_path);
         return -1;
     }
     pid_t pid = (pid_t)pid_val2;
+
+    if (!locked_by_other) {
+        log_warn("PID file %s is not locked; treating it as stale", file_path);
+        return 0;
+    }
 
     // Check if process is running
     if (kill(pid, 0) == 0) {
