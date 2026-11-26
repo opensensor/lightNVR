@@ -515,7 +515,7 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
             int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
             bool still_running = true;
-            while (timeout-- > 0 && still_running) {
+            while (timeout-- > 0 && still_running && running) {
                 if (used_pidfd) {
                     struct pollfd pfd = { .fd = pidfd, .events = POLLIN };
                     int prc = poll(&pfd, 1, 1000);
@@ -537,8 +537,15 @@ static int check_and_kill_existing_instance(const char *pid_file) {
                 }
             }
 
+            if (!running) {
+                if (used_pidfd && pidfd >= 0) {
+                    close(pidfd);
+                }
+                return -1;
+            }
+
             // If still running, force kill
-            if (timeout <= 0 && still_running &&
+            if (timeout <= 0 && still_running && running &&
                 is_lightnvr_process(existing_pid)) {
                 log_warn("Process didn't terminate gracefully within timeout, using SIGKILL");
                 if (used_pidfd) {
@@ -555,7 +562,7 @@ static int check_and_kill_existing_instance(const char *pid_file) {
 
             // Wait for PID file to be released
             timeout = 5;  // 5 seconds
-            while (timeout-- > 0) {
+            while (timeout-- > 0 && running) {
                 // Check if PID file still exists and is locked
                 int test_fd = open(pid_file, O_RDWR);
                 if (test_fd < 0) {
@@ -579,6 +586,10 @@ static int check_and_kill_existing_instance(const char *pid_file) {
                     close(test_fd);
                 }
                 sleep(1);
+            }
+
+            if (!running) {
+                return -1;
             }
 
             // If we get here, the PID file still exists and we could not acquire its lock.
@@ -1368,12 +1379,14 @@ int main(int argc, char *argv[]) {
     // are still connecting.
     if (!atomic_load(&running) || atomic_load(&restart_requested)) {
         log_info("Shutdown/restart requested before detection stream startup; aborting startup loop");
+        exit_code = EXIT_SUCCESS;
         goto cleanup;
     }
 
     for (int i = 0; i < g_config.max_streams; i++) {
         if (!atomic_load(&running) || atomic_load(&restart_requested)) {
             log_info("Shutdown/restart requested during detection stream startup; aborting remaining stream startup");
+            exit_code = EXIT_SUCCESS;
             goto cleanup;
         }
 
