@@ -1315,7 +1315,17 @@ int main(int argc, char *argv[]) {
     // Start detection-based streams after the web server is listening so the UI
     // can come up promptly and show stream-starting placeholders while cameras
     // are still connecting.
+    if (!atomic_load(&running) || atomic_load(&restart_requested)) {
+        log_info("Shutdown/restart requested before detection stream startup; aborting startup loop");
+        goto cleanup;
+    }
+
     for (int i = 0; i < g_config.max_streams; i++) {
+        if (!atomic_load(&running) || atomic_load(&restart_requested)) {
+            log_info("Shutdown/restart requested during detection stream startup; aborting remaining stream startup");
+            goto cleanup;
+        }
+
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled &&
             config.streams[i].detection_based_recording &&
             is_detection_recording_scheduled(&config.streams[i])) {
