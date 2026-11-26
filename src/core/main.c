@@ -22,6 +22,8 @@
 #include <sys/utsname.h>
 #include <sys/socket.h>
 #include <sys/prctl.h>
+#include <sys/syscall.h>
+#include <sys/pidfd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <limits.h>
@@ -124,6 +126,27 @@ _Atomic bool restart_requested = false;
 // fallback could deadlock if a signal lands while the lock is held.
 _Static_assert(ATOMIC_BOOL_LOCK_FREE == 2,
                "signal handlers require lock-free atomic bool");
+
+static int open_pidfd_for_pid(pid_t pid) {
+#ifdef SYS_pidfd_open
+    return (int)syscall(SYS_pidfd_open, pid, 0);
+#else
+    (void)pid;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
+
+static int send_signal_via_pidfd(int pidfd, int sig) {
+#ifdef SYS_pidfd_send_signal
+    return (int)syscall(SYS_pidfd_send_signal, pidfd, sig, NULL, 0);
+#else
+    (void)pidfd;
+    (void)sig;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
 
 // Store original argc/argv for restart functionality
 static int saved_argc = 0;
@@ -433,8 +456,13 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         // In a non-interactive environment, we can automatically kill it
         log_info("Attempting to terminate previous instance (PID: %d) with SIGTERM", existing_pid);
 
-        // Send SIGTERM to let it clean up
-        if (kill(existing_pid, SIGTERM) == 0) {
+        // Send SIGTERM to let it clean up. Prefer pidfd to avoid PID-reuse races.
+        int pidfd = open_pidfd_for_pid(existing_pid);
+        bool used_pidfd = (pidfd >= 0);
+
+        int term_rc = used_pidfd ? send_signal_via_pidfd(pidfd, SIGTERM)
+                                 : kill(existing_pid, SIGTERM);
+        if (term_rc == 0) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
             int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
             while (timeout-- > 0 && kill(existing_pid, 0) == 0) {
@@ -445,8 +473,16 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             if (timeout <= 0 && kill(existing_pid, 0) == 0 &&
                 is_lightnvr_process(existing_pid)) {
                 log_warn("Process didn't terminate gracefully within timeout, using SIGKILL");
-                kill(existing_pid, SIGKILL);
+                if (used_pidfd) {
+                    (void)send_signal_via_pidfd(pidfd, SIGKILL);
+                } else {
+                    kill(existing_pid, SIGKILL);
+                }
                 sleep(1);  // Give it a moment
+            }
+
+            if (used_pidfd) {
+                close(pidfd);
             }
 
             // Wait for PID file to be released
@@ -483,6 +519,9 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             log_error("Previous instance did not release PID file lock within timeout; refusing to remove PID file");
             return -1;
         } else {
+            if (used_pidfd) {
+                close(pidfd);
+            }
             log_error("Failed to terminate previous instance: %s", strerror(errno));
             return -1;
         }
