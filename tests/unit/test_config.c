@@ -22,6 +22,7 @@
 #include <stdatomic.h>
 #include <errno.h>
 #include <math.h>
+#include <time.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -411,11 +412,25 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
         }
         int progress_baseline = atomic_load(&faststart_writer_updates);
         bool observed_progress = false;
-        for (int spin = 0; spin < 1000; ++spin) {
+        struct timespec deadline, now;
+        if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0) {
+            writer_progress_ok = false;
+            save_result = -1;
+            break;
+        }
+        deadline.tv_nsec += 250000000L;
+        if (deadline.tv_nsec >= 1000000000L) {
+            deadline.tv_sec++;
+            deadline.tv_nsec -= 1000000000L;
+        }
+        for (;;) {
             if (atomic_load(&faststart_writer_updates) > progress_baseline) {
                 observed_progress = true;
                 break;
             }
+            if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) break;
+            if (now.tv_sec > deadline.tv_sec ||
+                (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) break;
             sched_yield();
         }
         if (!observed_progress) {
