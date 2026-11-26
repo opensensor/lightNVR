@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <ctype.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/utsname.h>
@@ -458,6 +459,9 @@ static int check_running_daemon(const char *pid_file) {
     char *end_ptr;
     errno = 0;
     long pid_val = strtol(pid_str, &end_ptr, 10);
+    while (*end_ptr != '\0' && isspace((unsigned char)*end_ptr)) {
+        end_ptr++;
+    }
     if (end_ptr == pid_str || *end_ptr != '\0' || errno == ERANGE || pid_val <= 0 || (long)(pid_t)pid_val != pid_val) {
         log_error("Failed to parse PID from file %s", pid_file);
         return finish_running_probe(-1);
