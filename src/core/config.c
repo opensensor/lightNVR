@@ -2305,8 +2305,15 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "backend = %s\n", config->api_detection_backend);
     fprintf(file, "format = %s  ; Request format: light-object-detect (multipart upload) or doods2 (JSON body)\n",
             config->api_detection_format);
+    const char *safe_detector_name = config->api_detection_detector_name;
+    if (contains_unsupported_ini_credential_chars(
+            config->api_detection_detector_name,
+            sizeof(config->api_detection_detector_name))) {
+        LOG_WARN("api_detection.detector_name contains unsupported INI characters; writing empty value");
+        safe_detector_name = "";
+    }
     fprintf(file, "detector_name = %s  ; DOODS2 only: detector_name sent with each request\n",
-            config->api_detection_detector_name);
+            safe_detector_name);
     fprintf(file, "detection_threshold = %d  ; Default confidence threshold (0-100%%)\n", config->default_detection_threshold);
     fprintf(file, "pre_detection_buffer = %d\n", config->default_pre_detection_buffer);
     fprintf(file, "post_detection_buffer = %d\n\n", config->default_post_detection_buffer);
