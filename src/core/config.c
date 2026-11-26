@@ -1823,7 +1823,7 @@ int load_config(config_t *config) {
 
     // Fail fast if defaults could not initialize required stream state.
     // This prevents continuing with a partially initialized config.
-    if (config->streams == NULL || config->stream_count <= 0) {
+    if (config->streams == NULL || config->max_streams <= 0) {
         log_error("Failed to initialize default stream configuration");
         return -1;
     }
@@ -2059,6 +2059,8 @@ int save_config(const config_t *config, const char *path) {
         {"go2rtc_stun_server", config->go2rtc_stun_server, sizeof(config->go2rtc_stun_server)},
         {"go2rtc_external_ip", config->go2rtc_external_ip, sizeof(config->go2rtc_external_ip)},
         {"go2rtc_ice_servers", config->go2rtc_ice_servers, sizeof(config->go2rtc_ice_servers)},
+        {"onvif_discovery_network", config->onvif_discovery_network,
+         sizeof(config->onvif_discovery_network)},
     };
 
     for (size_t i = 0; i < sizeof(validated_fields) / sizeof(validated_fields[0]); ++i) {
@@ -2237,7 +2239,7 @@ int save_config(const config_t *config, const char *path) {
     }
 
     int original_fd = openat(dir_fd, validated_filename,
-                             O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+                             O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     bool target_exists = original_fd >= 0;
     if (!target_exists && errno != ENOENT) {
         log_error("Could not open config file for writing: %s", strerror(errno));
@@ -2564,13 +2566,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "\n[onvif]\n");
     fprintf(file, "discovery_enabled = %s\n", config->onvif_discovery_enabled ? "true" : "false");
     fprintf(file, "discovery_interval = %d\n", config->onvif_discovery_interval);
-    if (contains_unsupported_ini_credential_chars(config->onvif_discovery_network,
-                                                  sizeof(config->onvif_discovery_network))) {
-        log_error("Refusing to save config: onvif_discovery_network contains unsupported INI characters");
-        write_failed = 1;
-    } else {
-        fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
-    }
+    fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
 
     // Stream configurations are stored exclusively in the database.
     // Do NOT write [stream.X] sections here.
@@ -2712,13 +2708,13 @@ void print_config(const config_t *config) {
     printf("    HW Accel Device: %s\n", config->hw_accel_device);
     
     printf("  Stream Configurations:\n");
-    config_t snapshot;
+    config_t snapshot = {0};
     if (!config_copy(&snapshot, config)) {
         printf("    (unable to snapshot stream configuration)\n");
         return;
     }
 
-    for (int i = 0; i < snapshot.max_streams; i++) {
+    for (int i = 0; snapshot.streams && i < snapshot.max_streams; i++) {
         if (strlen(snapshot.streams[i].name) > 0) {
             printf("    Stream %d:\n", i);
             printf("      Name: %s\n", snapshot.streams[i].name);
@@ -2746,7 +2742,7 @@ void print_config(const config_t *config) {
         }
     }
 
-    free_config(&snapshot);
+    free(snapshot.streams);
 }
 
 /* ------------------------------------------------------------------------- */
