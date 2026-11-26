@@ -147,9 +147,9 @@ int init_daemon(const char *pid_file) {
     log_info("Keeping current working directory for SQLite compatibility: %s", cwd ? cwd : "unknown");
     if (cwd) free(cwd);
 
-    // Reset file creation mask
-    umask(0);
-    log_debug("Reset file creation mask");
+    // Set a restrictive default file creation mask for daemon-created files
+    umask(0027);
+    log_debug("Set daemon file creation mask to 0027");
 
     // Preserve non-stdio descriptors (for web server compatibility), but
     // redirect standard streams to avoid leaking launcher pipes.
