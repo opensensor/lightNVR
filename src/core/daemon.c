@@ -390,8 +390,8 @@ int daemon_status(const char *pid_file) {
         safe_strcpy(file_path, pid_file_path, sizeof(file_path), 0);
     }
 
-    // First try to open the file with exclusive locking
-    int fd = open(file_path, O_RDWR);
+    // Open read-only so status checks can work across users (e.g., 0644 PID files)
+    int fd = open(file_path, O_RDONLY);
     if (fd < 0) {
         if (errno == ENOENT) {
             // PID file doesn't exist, daemon is not running
@@ -402,15 +402,27 @@ int daemon_status(const char *pid_file) {
         return -1;
     }
     
-    // Try to lock the file
+    // Query existing lock instead of trying to acquire one
+    struct flock fl;
+    memset(&fl, 0, sizeof(fl));
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_SET;
+    fl.l_start = 0;
+    fl.l_len = 0; // whole file
+
     int lock_ret;
     do {
-        lock_ret = lockf(fd, F_TLOCK, 0);
+        lock_ret = fcntl(fd, F_GETLK, &fl);
     } while (lock_ret < 0 && errno == EINTR);
 
-    if (lock_ret == 0) {
-        // We got the lock, which means no other process has it
-        // This is a stale PID file
+    if (lock_ret < 0) {
+        log_error("Failed to query lock on PID file %s: %s", file_path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    if (fl.l_type == F_UNLCK) {
+        // No process holds the expected lock; stale PID file
         log_warn("Found stale PID file %s (not locked), removing it", file_path);
         remove_pid_file(fd, file_path);
         return 0;
