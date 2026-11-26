@@ -2557,7 +2557,13 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "\n[onvif]\n");
     fprintf(file, "discovery_enabled = %s\n", config->onvif_discovery_enabled ? "true" : "false");
     fprintf(file, "discovery_interval = %d\n", config->onvif_discovery_interval);
-    fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
+    if (contains_unsupported_ini_credential_chars(config->onvif_discovery_network,
+                                                  sizeof(config->onvif_discovery_network))) {
+        log_error("Refusing to save config: onvif_discovery_network contains unsupported INI characters");
+        write_failed = 1;
+    } else {
+        fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
+    }
 
     // Stream configurations are stored exclusively in the database.
     // Do NOT write [stream.X] sections here.
