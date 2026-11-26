@@ -1744,10 +1744,12 @@ cleanup:
     } else if (cleanup_pid > 0) {
         // Parent process - continue with cleanup
 
-        // Set up a handler for USR1 to perform emergency cleanup
+        // Set up a handler for USR1 to interrupt blocking syscalls/probes.
+        // Note: alarm_handler is intentionally a no-op; no cleanup is done
+        // from signal context.
         struct sigaction sa_usr1;
         memset(&sa_usr1, 0, sizeof(sa_usr1));
-        sa_usr1.sa_handler = alarm_handler;  // Reuse the alarm handler for USR1
+        sa_usr1.sa_handler = alarm_handler;  // Reuse no-op handler for USR1
         sigaction(SIGUSR1, &sa_usr1, NULL);
 
         // Probe collection may block in a kernel filesystem call, so stop and
@@ -1999,14 +2001,16 @@ cleanup:
         lightnvr_sentry_shutdown();
         curl_cleanup_global();
 
-        // Kill the watchdog timer since we completed successfully
-        kill(cleanup_pid, SIGKILL);
-        waitpid(cleanup_pid, NULL, 0);
+        // Kill/reap watchdog only when it was created successfully.
+        if (cleanup_pid > 0) {
+            kill(cleanup_pid, SIGKILL);
+            waitpid(cleanup_pid, NULL, 0);
+        }
 
         // Restore signal mask
         pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
     } else {
-        // Fork failed
+        // Fork failed: continue teardown without a watchdog.
         log_error("Failed to create watchdog process for cleanup timeout");
 
         log_info("Shutting down host health and telemetry...");
@@ -2159,6 +2163,19 @@ cleanup:
 
                 // Give the system a moment to release resources
                 usleep(500000);  // 500ms
+
+                // Ensure termination signals are unblocked before exec; signal
+                // masks are inherited across exec and must not carry a blocked
+                // shutdown mask into the restarted process.
+                sigset_t restart_unblock_set;
+                if (sigemptyset(&restart_unblock_set) == 0) {
+                    sigaddset(&restart_unblock_set, SIGINT);
+                    sigaddset(&restart_unblock_set, SIGTERM);
+                    sigaddset(&restart_unblock_set, SIGHUP);
+                    if (pthread_sigmask(SIG_UNBLOCK, &restart_unblock_set, NULL) != 0) {
+                        fprintf(stderr, "Warning: failed to unblock restart signals before exec\n");
+                    }
+                }
 
                 // Re-exec the program with the same arguments
                 execv(exe_path, saved_argv);
