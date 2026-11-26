@@ -1452,17 +1452,20 @@ static int config_ini_handler(void* user, const char* section, const char* name,
 // Load configuration from file using inih
 static int load_config_from_file(const char *filename, config_t *config, bool *ini_present) {
     // Parsing may resize streams, so the temporary copy needs its own array.
+    pthread_mutex_lock(&mp4_faststart_mutex);
     config_t temp_config = *config;
     temp_config.streams = NULL;
     if (config->streams && config->max_streams > 0) {
         size_t bytes = (size_t)config->max_streams * sizeof(stream_config_t);
         temp_config.streams = malloc(bytes);
         if (!temp_config.streams) {
+            pthread_mutex_unlock(&mp4_faststart_mutex);
             log_error("Could not copy streams array before parsing %s", filename);
             return -1;
         }
         memcpy(temp_config.streams, config->streams, bytes);
     }
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 
     // Use inih to parse the INI file
     config_ini_context_t context = {&temp_config, ini_present};
@@ -1478,8 +1481,10 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
         return -1;
     }
 
+    pthread_mutex_lock(&mp4_faststart_mutex);
     free(config->streams);
     *config = temp_config;
+    pthread_mutex_unlock(&mp4_faststart_mutex);
     return 0;
 }
 
