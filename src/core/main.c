@@ -2001,15 +2001,15 @@ cleanup:
     // Check if restart was requested
     if (restart_requested) {
         if (container_mode) {
-            // In container mode, just exit cleanly with success code
-            // The container orchestrator (Docker/Kubernetes) will restart the container
-            log_info("Restart requested in container mode - exiting cleanly for orchestrator restart");
+            // In container mode, exit with a dedicated non-zero code so both
+            // always-restart and on-failure restart policies can restart us.
+            const int RESTART_EXIT_CODE = 75;
+            log_info("Restart requested in container mode - exiting with restart code for orchestrator restart");
             shutdown_logger();
 
-            // Exit with code 0 so the container orchestrator restarts us
-            // Note: In Kubernetes, the pod will be restarted by the deployment controller
-            // In Docker with --restart policy, Docker will restart the container
-            return EXIT_SUCCESS;
+            // Exit non-zero to reliably trigger restart under failure-based policies.
+            // (Docker: on-failure, Kubernetes: OnFailure)
+            return RESTART_EXIT_CODE;
         } else if (saved_argv != NULL) {
             // In native mode, use execv to restart the process
             log_info("Restart requested in native mode, re-executing LightNVR...");
