@@ -278,7 +278,7 @@ int write_pid_file(const char *pid_file) {
     }
     
     // Open PID file securely: reject symlinks and avoid fd inheritance.
-    int fd = open(pid_file, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0644);
+    int fd = open(pid_file, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0644);
     if (fd < 0) {
         log_error("Failed to open PID file %s: %s", pid_file, strerror(errno));
         return -1;
