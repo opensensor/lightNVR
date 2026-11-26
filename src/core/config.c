@@ -2481,7 +2481,7 @@ int save_config(const config_t *config, const char *path) {
      * fallback, but close the stream before publishing so close errors count. */
     int staged_fd = -1;
     if (!write_failed) {
-        staged_fd = dup(fileno(file));
+        staged_fd = fcntl(fileno(file), F_DUPFD_CLOEXEC, 0);
         if (staged_fd < 0) write_failed = 1;
     }
     if (fclose(file) != 0) write_failed = 1;
