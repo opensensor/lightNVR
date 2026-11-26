@@ -35,6 +35,7 @@
 /* File-scope config used by most tests — setUp zeros it, tearDown frees
    the dynamically allocated streams array to keep ASan leak-free. */
 static config_t cfg;
+static config_t reloaded_cfg;
 static stream_config_t *owned_snapshot_streams;
 static bool deny_config_chmod;
 static bool deny_config_rename;
@@ -105,6 +106,7 @@ ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
+    memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
     owned_snapshot_streams = NULL;
     observed_config_stream = false;
     observed_config_stream_with_private_mode = true;
@@ -151,6 +153,8 @@ void tearDown(void) {
         free(cfg.streams);
         cfg.streams = NULL;
     }
+    free(reloaded_cfg.streams);
+    reloaded_cfg.streams = NULL;
 }
 
 /* ================================================================
@@ -338,21 +342,20 @@ void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
     cfg.web_cache_max_age_default = 66;
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
-    config_t reloaded = {0};
+    memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
     set_custom_config_path(config_path);
-    TEST_ASSERT_EQUAL_INT(0, load_config(&reloaded));
-    TEST_ASSERT_FALSE(config_get_mp4_faststart(&reloaded));
-    TEST_ASSERT_FALSE(reloaded.web_compression_enabled);
-    TEST_ASSERT_FALSE(reloaded.web_use_minified_assets);
-    TEST_ASSERT_EQUAL_INT(11, reloaded.web_cache_max_age_html);
-    TEST_ASSERT_EQUAL_INT(22, reloaded.web_cache_max_age_css);
-    TEST_ASSERT_EQUAL_INT(33, reloaded.web_cache_max_age_js);
-    TEST_ASSERT_EQUAL_INT(44, reloaded.web_cache_max_age_images);
-    TEST_ASSERT_EQUAL_INT(55, reloaded.web_cache_max_age_fonts);
-    TEST_ASSERT_EQUAL_INT(66, reloaded.web_cache_max_age_default);
+    TEST_ASSERT_EQUAL_INT(0, load_config(&reloaded_cfg));
+    TEST_ASSERT_FALSE(config_get_mp4_faststart(&reloaded_cfg));
+    TEST_ASSERT_FALSE(reloaded_cfg.web_compression_enabled);
+    TEST_ASSERT_FALSE(reloaded_cfg.web_use_minified_assets);
+    TEST_ASSERT_EQUAL_INT(11, reloaded_cfg.web_cache_max_age_html);
+    TEST_ASSERT_EQUAL_INT(22, reloaded_cfg.web_cache_max_age_css);
+    TEST_ASSERT_EQUAL_INT(33, reloaded_cfg.web_cache_max_age_js);
+    TEST_ASSERT_EQUAL_INT(44, reloaded_cfg.web_cache_max_age_images);
+    TEST_ASSERT_EQUAL_INT(55, reloaded_cfg.web_cache_max_age_fonts);
+    TEST_ASSERT_EQUAL_INT(66, reloaded_cfg.web_cache_max_age_default);
     TEST_ASSERT_EQUAL_STRING(cfg.db_post_backup_script,
-                             reloaded.db_post_backup_script);
-    free(reloaded.streams);
+                             reloaded_cfg.db_post_backup_script);
 
     TEST_ASSERT_EQUAL_INT(0, unlink(config_path));
     if (access(cfg.log_file, F_OK) == 0)
@@ -416,8 +419,8 @@ static void *toggle_faststart(void *unused) {
     return NULL;
 }
 
-/* Exercise every shared read, including the whole-config snapshot that used
- * to bypass the option accessors. This also provides a ThreadSanitizer gate. */
+/* Verify config_copy() performs a deep copy and that snapshot-owned streams
+ * remain valid after the source config is reloaded. */
 void test_config_copy_owns_streams_after_source_reload(void) {
     load_default_config(&cfg);
     snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "original-camera");
