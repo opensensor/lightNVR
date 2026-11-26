@@ -2078,6 +2078,8 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         {"storage_path", config->storage_path, sizeof(config->storage_path)},
         {"storage_path_hls", config->storage_path_hls, sizeof(config->storage_path_hls)},
         {"mp4_storage_path", config->mp4_storage_path, sizeof(config->mp4_storage_path)},
+        {"swap_file", config->swap_file, sizeof(config->swap_file)},
+        {"hw_accel_device", config->hw_accel_device, sizeof(config->hw_accel_device)},
         {"db_path", config->db_path, sizeof(config->db_path)},
         {"web_root", config->web_root, sizeof(config->web_root)},
         {"models_path", config->models_path, sizeof(config->models_path)},

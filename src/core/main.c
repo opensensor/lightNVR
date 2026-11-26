@@ -1695,11 +1695,10 @@ cleanup:
         // Never signal a PID after this child has been reparented: the old
         // parent's PID may already belong to an unrelated process.
         if (getppid() == parent_pid) {
-            kill(parent_pid, SIGUSR1);  // Request emergency cleanup.
-            sleep(15);
-            if (getppid() == parent_pid) {
-                kill(parent_pid, SIGKILL);
-            }
+            // A process-directed SIGUSR1 may reach any thread and cannot
+            // reliably interrupt a blocked cleanup worker. Enforce the
+            // watchdog deadline directly.
+            kill(parent_pid, SIGKILL);
         }
 
         // Recover a requested restart if the parent died during cleanup.
