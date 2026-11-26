@@ -58,6 +58,7 @@ static bool contains_unsupported_ini_credential_chars(const char *value,
 
 // Also protects whole-config copies from racing with live option updates.
 static pthread_mutex_t mp4_faststart_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t config_in_place_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 bool config_get_mp4_faststart(const config_t *config) {
     pthread_mutex_lock(&mp4_faststart_mutex);
@@ -1491,25 +1492,15 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
     rdlock.l_len = 0;  // whole file
 
     pthread_mutex_lock(&config_in_place_mutex);
-    cfg_fd = open(filename, O_RDONLY);
+    cfg_fd = open(filename, O_RDONLY | O_CLOEXEC);
     if (cfg_fd >= 0 && fcntl(cfg_fd, F_SETLKW, &rdlock) == 0) {
-        int parse_fd = dup(cfg_fd);
-        if (parse_fd >= 0) {
-            cfg_file = fdopen(parse_fd, "r");
-            if (cfg_file) {
-                result = ini_parse_file(cfg_file, config_ini_handler, &context);
-            } else {
-                close(parse_fd);
-            }
-        }
+        cfg_file = fdopen(cfg_fd, "r");
+        if (cfg_file) result = ini_parse_file(cfg_file, config_ini_handler, &context);
     }
 
     if (cfg_file) {
         fclose(cfg_file);
-    }
-    if (cfg_fd >= 0) {
-        rdlock.l_type = F_UNLCK;
-        (void)fcntl(cfg_fd, F_SETLK, &rdlock);
+    } else if (cfg_fd >= 0) {
         close(cfg_fd);
     }
     pthread_mutex_unlock(&config_in_place_mutex);
@@ -1979,7 +1970,6 @@ static int copy_config_fd(int source_fd, int destination_fd) {
 
 /* Bind mounts and read-only parent directories cannot accept rename. Keep a
  * private, synced backup until the in-place copy has completed or recovered. */
-static pthread_mutex_t config_in_place_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Closing any descriptor for the same file can release process-scoped fcntl
  * locks. Serialize every close of the original with in-place publication. */
@@ -2087,6 +2077,7 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         {"syslog_ident", config->syslog_ident, sizeof(config->syslog_ident)},
         {"storage_path", config->storage_path, sizeof(config->storage_path)},
         {"storage_path_hls", config->storage_path_hls, sizeof(config->storage_path_hls)},
+        {"mp4_storage_path", config->mp4_storage_path, sizeof(config->mp4_storage_path)},
         {"db_path", config->db_path, sizeof(config->db_path)},
         {"web_root", config->web_root, sizeof(config->web_root)},
         {"models_path", config->models_path, sizeof(config->models_path)},
@@ -2277,7 +2268,7 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     }
 
     int original_fd = openat(dir_fd, validated_filename,
-                             O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+                             O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     bool target_exists = original_fd >= 0;
     if (!target_exists && errno != ENOENT) {
         log_error("Could not open config file for writing: %s", strerror(errno));
@@ -2425,9 +2416,7 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     // Write MP4 recording settings
     fprintf(file, "; New recording format options\n");
     fprintf(file, "record_mp4_directly = %s\n", config->record_mp4_directly ? "true" : "false");
-    if (config->mp4_storage_path[0] != '\0' &&
-        !contains_unsupported_ini_credential_chars(
-            config->mp4_storage_path, sizeof(config->mp4_storage_path))) {
+    if (config->mp4_storage_path[0] != '\0') {
         fprintf(file, "mp4_path = %s\n", config->mp4_storage_path);
     }
     fprintf(file, "mp4_directory_format = %s  ; flat, year_month, or year_month_day\n",
@@ -2666,16 +2655,13 @@ static int save_config_snapshot(const config_t *config, const char *path) {
 int save_config(const config_t *config, const char *path) {
     if (!config) return -1;
     config_t snapshot = {0};
-
-    /*
-     * Settings save does not consume stream slot data. Avoid deep-copying
-     * stream storage here to prevent unnecessary allocations and contention.
-     */
-    snapshot = *config;
-    snapshot.streams = NULL;
-    snapshot.num_streams = 0;
-
-    return save_config_snapshot(&snapshot, path);
+    if (!config_copy(&snapshot, config)) {
+        log_error("Could not create config snapshot for saving");
+        return -1;
+    }
+    int result = save_config_snapshot(&snapshot, path);
+    free(snapshot.streams);
+    return result;
 }
 
 // Print configuration to stdout (for debugging)
