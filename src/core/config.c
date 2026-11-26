@@ -411,11 +411,21 @@ static void init_stream_config_defaults(stream_config_t *stream) {
 }
 
 int config_reset_stream_slots(config_t *config) {
-    if (!config || !config->streams ||
-        config->max_streams <= 0 || config->max_streams > MAX_STREAMS) return -1;
+    if (!config) return -1;
+
+    pthread_mutex_lock(&mp4_faststart_mutex);
+
+    if (!config->streams ||
+        config->max_streams <= 0 || config->max_streams > MAX_STREAMS) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        return -1;
+    }
+
     for (int i = 0; i < config->max_streams; i++) {
         init_stream_config_defaults(&config->streams[i]);
     }
+
+    pthread_mutex_unlock(&mp4_faststart_mutex);
     return 0;
 }
 
@@ -1990,6 +2000,10 @@ int save_config(const config_t *config, const char *path) {
         {"storage_path", config->storage_path, sizeof(config->storage_path)},
         {"api_detection_url", config->api_detection_url, sizeof(config->api_detection_url)},
         {"go2rtc_config_dir", config->go2rtc_config_dir, sizeof(config->go2rtc_config_dir)},
+        {"go2rtc_binary_path", config->go2rtc_binary_path, sizeof(config->go2rtc_binary_path)},
+        {"go2rtc_stun_server", config->go2rtc_stun_server, sizeof(config->go2rtc_stun_server)},
+        {"go2rtc_external_ip", config->go2rtc_external_ip, sizeof(config->go2rtc_external_ip)},
+        {"go2rtc_ice_servers", config->go2rtc_ice_servers, sizeof(config->go2rtc_ice_servers)},
     };
 
     for (size_t i = 0; i < sizeof(validated_fields) / sizeof(validated_fields[0]); ++i) {
