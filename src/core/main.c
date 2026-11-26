@@ -1744,10 +1744,12 @@ cleanup:
     } else if (cleanup_pid > 0) {
         // Parent process - continue with cleanup
 
-        // Set up a handler for USR1 to perform emergency cleanup
+        // Set up a handler for USR1 to interrupt blocking syscalls/probes.
+        // Note: alarm_handler is intentionally a no-op; no cleanup is done
+        // from signal context.
         struct sigaction sa_usr1;
         memset(&sa_usr1, 0, sizeof(sa_usr1));
-        sa_usr1.sa_handler = alarm_handler;  // Reuse the alarm handler for USR1
+        sa_usr1.sa_handler = alarm_handler;  // Reuse no-op handler for USR1
         sigaction(SIGUSR1, &sa_usr1, NULL);
 
         // Probe collection may block in a kernel filesystem call, so stop and
