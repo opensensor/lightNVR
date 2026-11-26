@@ -393,11 +393,27 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     int save_result = 0;
     int valid_saves = 0;
     bool streams_distinct_ok = true;
-    while (atomic_load(&faststart_writer_updates) == 0) {
+    bool writer_progress_ok = true;
+    struct timespec initial_wait_start = {0};
+    if (clock_gettime(CLOCK_MONOTONIC, &initial_wait_start) != 0) {
+        writer_progress_ok = false;
+    }
+    while (writer_progress_ok && atomic_load(&faststart_writer_updates) == 0) {
+        struct timespec now = {0};
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            writer_progress_ok = false;
+            break;
+        }
+        long elapsed_ms =
+            (now.tv_sec - initial_wait_start.tv_sec) * 1000L +
+            (now.tv_nsec - initial_wait_start.tv_nsec) / 1000000L;
+        if (elapsed_ms > 2000L) {
+            writer_progress_ok = false;
+            break;
+        }
         sched_yield();
     }
-    bool writer_progress_ok = true;
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 0; i < 50 && writer_progress_ok; ++i) {
         (void)config_get_mp4_faststart(&cfg);
         config_t snapshot = {0};
         if (!config_copy(&snapshot, &cfg)) streams_distinct_ok = false;
