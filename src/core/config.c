@@ -2522,6 +2522,13 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "max_streams = %d  ; Runtime stream slot limit (default: %d, ceiling: %d; requires restart)\n\n",
             config->max_streams, DEFAULT_MAX_STREAMS, MAX_STREAMS);
     
+    if (contains_unsupported_ini_credential_chars(config->swap_file, sizeof(config->swap_file)) ||
+        contains_unsupported_ini_credential_chars(config->hw_accel_device, sizeof(config->hw_accel_device))) {
+        log_error("Refusing to save configuration: one or more serialized string fields contain unsupported INI characters");
+        fclose(file);
+        return false;
+    }
+
     // Write memory optimization settings
     fprintf(file, "[memory]\n");
     fprintf(file, "buffer_size = %d  ; Buffer size in KB\n", config->buffer_size);
