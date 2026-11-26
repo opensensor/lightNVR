@@ -2078,6 +2078,8 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         {"storage_path", config->storage_path, sizeof(config->storage_path)},
         {"storage_path_hls", config->storage_path_hls, sizeof(config->storage_path_hls)},
         {"mp4_storage_path", config->mp4_storage_path, sizeof(config->mp4_storage_path)},
+        {"swap_file", config->swap_file, sizeof(config->swap_file)},
+        {"hw_accel_device", config->hw_accel_device, sizeof(config->hw_accel_device)},
         {"db_path", config->db_path, sizeof(config->db_path)},
         {"web_root", config->web_root, sizeof(config->web_root)},
         {"models_path", config->models_path, sizeof(config->models_path)},
@@ -2522,13 +2524,6 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "max_streams = %d  ; Runtime stream slot limit (default: %d, ceiling: %d; requires restart)\n\n",
             config->max_streams, DEFAULT_MAX_STREAMS, MAX_STREAMS);
     
-    if (contains_unsupported_ini_credential_chars(config->swap_file, sizeof(config->swap_file)) ||
-        contains_unsupported_ini_credential_chars(config->hw_accel_device, sizeof(config->hw_accel_device))) {
-        log_error("Refusing to save configuration: one or more serialized string fields contain unsupported INI characters");
-        fclose(file);
-        return false;
-    }
-
     // Write memory optimization settings
     fprintf(file, "[memory]\n");
     fprintf(file, "buffer_size = %d  ; Buffer size in KB\n", config->buffer_size);
@@ -2659,21 +2654,10 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     return 0;
 }
 
-static bool config_copy_settings_only(config_t *dst, const config_t *src) {
-    if (!dst || !src) {
-        return false;
-    }
-
-    *dst = *src;
-    dst->streams = NULL;
-    dst->max_streams = src->max_streams;
-    return true;
-}
-
 int save_config(const config_t *config, const char *path) {
     if (!config) return -1;
     config_t snapshot = {0};
-    if (!config_copy_settings_only(&snapshot, config)) {
+    if (!config_copy(&snapshot, config)) {
         log_error("Could not create config snapshot for saving");
         return -1;
     }
