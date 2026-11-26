@@ -29,6 +29,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <stdatomic.h>
+#include <poll.h>
 
 #include "core/version.h"
 #include "core/config.h"
@@ -125,6 +126,37 @@ _Atomic bool restart_requested = false;
 // fallback could deadlock if a signal lands while the lock is held.
 _Static_assert(ATOMIC_BOOL_LOCK_FREE == 2,
                "signal handlers require lock-free atomic bool");
+
+static bool is_process_alive_or_non_zombie(pid_t pid) {
+    if (kill(pid, 0) != 0) {
+        return false;
+    }
+
+    char stat_path[64];
+    snprintf(stat_path, sizeof(stat_path), "/proc/%ld/stat", (long)pid);
+
+    FILE *fp = fopen(stat_path, "r");
+    if (fp == NULL) {
+        // If procfs is unavailable or raced, keep legacy behavior.
+        return true;
+    }
+
+    char buf[512];
+    if (fgets(buf, sizeof(buf), fp) == NULL) {
+        fclose(fp);
+        return true;
+    }
+    fclose(fp);
+
+    // /proc/<pid>/stat format: pid (comm) state ...
+    // Find the closing ')' of comm, then read the following state char.
+    char *rp = strrchr(buf, ')');
+    if (rp == NULL || rp[1] != ' ') {
+        return true;
+    }
+    char state = rp[2];
+    return state != 'Z';
+}
 
 static int open_pidfd_for_pid(pid_t pid) {
 #ifdef SYS_pidfd_open
@@ -482,12 +514,31 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         if (term_rc == 0) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
             int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
-            while (timeout-- > 0 && kill(existing_pid, 0) == 0) {
-                sleep(1);
+            bool still_running = true;
+            while (timeout-- > 0 && still_running) {
+                if (used_pidfd) {
+                    struct pollfd pfd = { .fd = pidfd, .events = POLLIN };
+                    int prc = poll(&pfd, 1, 1000);
+                    if (prc > 0) {
+                        // pidfd became readable/hup/err => process exited.
+                        still_running = false;
+                    } else if (prc == 0) {
+                        still_running = true; // 1s tick elapsed
+                    } else {
+                        // On poll failure, fall back to pid-based check.
+                        still_running = is_process_alive_or_non_zombie(existing_pid);
+                        sleep(1);
+                    }
+                } else {
+                    still_running = is_process_alive_or_non_zombie(existing_pid);
+                    if (still_running) {
+                        sleep(1);
+                    }
+                }
             }
 
             // If still running, force kill
-            if (timeout <= 0 && kill(existing_pid, 0) == 0 &&
+            if (timeout <= 0 && still_running &&
                 is_lightnvr_process(existing_pid)) {
                 log_warn("Process didn't terminate gracefully within timeout, using SIGKILL");
                 if (used_pidfd) {
