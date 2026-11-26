@@ -1927,14 +1927,16 @@ cleanup:
         log_info("Shutting down recording sync thread...");
         stop_recording_sync_thread();
 
-        // Add a memory barrier before database shutdown to ensure all previous operations are complete
+        // Memory barrier for ordering/visibility only; it does NOT wait for
+        // other threads or database work to finish.
         __sync_synchronize();
 
         // Request producers are stopped: persist pending audit summaries
         // before the final database backup and close.
         audit_log_shutdown_summaries();
 
-        // Ensure all database operations are complete before cleanup
+        // Ordering fence before cleanup/logging; completion must be guaranteed
+        // by explicit synchronization in shutdown/join paths.
         log_info("Ensuring all database operations are complete...");
         __sync_synchronize();
 
