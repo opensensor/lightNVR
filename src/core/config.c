@@ -2000,6 +2000,10 @@ int save_config(const config_t *config, const char *path) {
         {"storage_path", config->storage_path, sizeof(config->storage_path)},
         {"api_detection_url", config->api_detection_url, sizeof(config->api_detection_url)},
         {"go2rtc_config_dir", config->go2rtc_config_dir, sizeof(config->go2rtc_config_dir)},
+        {"go2rtc_binary_path", config->go2rtc_binary_path, sizeof(config->go2rtc_binary_path)},
+        {"go2rtc_stun_server", config->go2rtc_stun_server, sizeof(config->go2rtc_stun_server)},
+        {"go2rtc_external_ip", config->go2rtc_external_ip, sizeof(config->go2rtc_external_ip)},
+        {"go2rtc_ice_servers", config->go2rtc_ice_servers, sizeof(config->go2rtc_ice_servers)},
     };
 
     for (size_t i = 0; i < sizeof(validated_fields) / sizeof(validated_fields[0]); ++i) {
@@ -2446,23 +2450,6 @@ int save_config(const config_t *config, const char *path) {
     
     // Write go2rtc settings
     fprintf(file, "[go2rtc]\n");
-    if (contains_unsupported_ini_credential_chars(config->go2rtc_binary_path, sizeof(config->go2rtc_binary_path)) ||
-        contains_unsupported_ini_credential_chars(config->go2rtc_config_dir, sizeof(config->go2rtc_config_dir)) ||
-        contains_unsupported_ini_credential_chars(config->go2rtc_stun_server, sizeof(config->go2rtc_stun_server)) ||
-        (config->go2rtc_external_ip[0] != '\0' &&
-         contains_unsupported_ini_credential_chars(config->go2rtc_external_ip, sizeof(config->go2rtc_external_ip))) ||
-        (config->go2rtc_ice_servers[0] != '\0' &&
-         contains_unsupported_ini_credential_chars(config->go2rtc_ice_servers, sizeof(config->go2rtc_ice_servers))) ||
-        (config->turn_server_url[0] != '\0' &&
-         contains_unsupported_ini_credential_chars(config->turn_server_url, sizeof(config->turn_server_url))) ||
-        (config->turn_username[0] != '\0' &&
-         contains_unsupported_ini_credential_chars(config->turn_username, sizeof(config->turn_username))) ||
-        (config->turn_password[0] != '\0' &&
-         contains_unsupported_ini_credential_chars(config->turn_password, sizeof(config->turn_password)))) {
-        log_error("Refusing to save config: one or more go2rtc/TURN string values contain unsupported INI control characters");
-        fclose(file);
-        return false;
-    }
     fprintf(file, "enabled = %s\n", config->go2rtc_enabled ? "true" : "false");
     fprintf(file, "binary_path = %s\n", config->go2rtc_binary_path);
     fprintf(file, "config_dir = %s\n", config->go2rtc_config_dir);
