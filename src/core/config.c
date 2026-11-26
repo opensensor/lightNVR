@@ -484,7 +484,7 @@ void load_default_config(config_t *config) {
     config->max_storage_size = 0; // 0 means unlimited
     config->retention_days = 30;
     config->auto_delete_oldest = true;
-    config_set_mp4_faststart(config, true);
+    config->mp4_faststart = true; // mp4_faststart_mutex is already held.
 
     // Capacity-based retention: keep 10% of the volume free by default so the
     // disk is self-bounding even when retention_days exceeds what fits.
@@ -594,7 +594,6 @@ void load_default_config(config_t *config) {
     // falling back to the conventional system install location.
     // CMake passes these as string literals already (e.g. -DGO2RTC_BINARY_PATH_RAW="/usr/local/bin/go2rtc"),
     // so they must be used directly — NOT through STRINGIFY, which would double-quote the value.
-    pthread_mutex_unlock(&mp4_faststart_mutex);
 #ifdef GO2RTC_BINARY_PATH_RAW
     safe_strcpy(config->go2rtc_binary_path, GO2RTC_BINARY_PATH_RAW, MAX_PATH_LENGTH, 0);
 #else
@@ -657,6 +656,7 @@ void load_default_config(config_t *config) {
 
     // Host and hardware health defaults from OPS-03.
     system_health_policy_settings_defaults(&config->health);
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 }
 
 // Ensure all required directories exist
@@ -1945,6 +1945,8 @@ int save_config(const config_t *config, const char *path) {
         {"mqtt_password", config->mqtt_password, sizeof(config->mqtt_password)},
         {"mqtt_client_id", config->mqtt_client_id, sizeof(config->mqtt_client_id)},
         {"mqtt_topic_prefix", config->mqtt_topic_prefix, sizeof(config->mqtt_topic_prefix)},
+        {"mqtt_broker_host", config->mqtt_broker_host, sizeof(config->mqtt_broker_host)},
+        {"turn_server_url", config->turn_server_url, sizeof(config->turn_server_url)},
         {"mqtt_ha_discovery_prefix", config->mqtt_ha_discovery_prefix, sizeof(config->mqtt_ha_discovery_prefix)},
         {"db_post_backup_script", config->db_post_backup_script, sizeof(config->db_post_backup_script)},
         {"web_username", config->web_username, sizeof(config->web_username)},
@@ -2416,12 +2418,7 @@ int save_config(const config_t *config, const char *path) {
     // TURN server settings
     fprintf(file, "turn_enabled = %s\n", config->turn_enabled ? "true" : "false");
     if (config->turn_server_url[0] != '\0') {
-        if (!contains_unsupported_ini_credential_chars(config->turn_server_url,
-                                                       sizeof(config->turn_server_url))) {
-            fprintf(file, "turn_server_url = %s\n", config->turn_server_url);
-        } else {
-            LOG_WARN("Skipping unsafe INI value for turn_server_url");
-        }
+        fprintf(file, "turn_server_url = %s\n", config->turn_server_url);
     }
     if (config->turn_username[0] != '\0') {
         fprintf(file, "turn_username = %s\n", config->turn_username);
@@ -2434,12 +2431,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "\n[mqtt]\n");
     fprintf(file, "enabled = %s\n", config->mqtt_enabled ? "true" : "false");
     if (config->mqtt_broker_host[0] != '\0') {
-        if (!contains_unsupported_ini_credential_chars(config->mqtt_broker_host,
-                                                       sizeof(config->mqtt_broker_host))) {
-            fprintf(file, "broker_host = %s\n", config->mqtt_broker_host);
-        } else {
-            LOG_WARN("Skipping unsafe INI value for mqtt.broker_host");
-        }
+        fprintf(file, "broker_host = %s\n", config->mqtt_broker_host);
     }
     fprintf(file, "broker_port = %d\n", config->mqtt_broker_port);
     if (config->mqtt_username[0] != '\0') {
