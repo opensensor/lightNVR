@@ -2177,6 +2177,17 @@ int save_config(const config_t *config, const char *path) {
             O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
         if (config_fd >= 0 || errno != EEXIST) break;
     }
+    if (contains_unsupported_ini_credential_chars(config->pid_file, PATH_MAX) ||
+        contains_unsupported_ini_credential_chars(config->log_file, PATH_MAX) ||
+        contains_unsupported_ini_credential_chars(config->syslog_ident, sizeof(config->syslog_ident)) ||
+        contains_unsupported_ini_credential_chars(config->storage_path, PATH_MAX) ||
+        contains_unsupported_ini_credential_chars(config->api_detection_url, sizeof(config->api_detection_url))) {
+        log_error("Refusing to save config: one or more string values contain unsupported INI characters");
+        close_original_config_fd(original_fd);
+        close(dir_fd);
+        return -1;
+    }
+
     if (config_fd < 0 && original_fd >= 0 &&
         (errno == EACCES || errno == EROFS)) {
         /* A writable existing file may live in an unwritable directory. */
