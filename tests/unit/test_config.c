@@ -1415,6 +1415,12 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     cfg.mqtt_broker_host[0] = '\0';
     snprintf(cfg.api_detection_detector_name, sizeof(cfg.api_detection_detector_name), "model#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    snprintf(cfg.api_detection_detector_name, sizeof(cfg.api_detection_detector_name), "default");
+    snprintf(cfg.pid_file, sizeof(cfg.pid_file), "/tmp/lightnvr.pid\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    snprintf(cfg.pid_file, sizeof(cfg.pid_file), "/tmp/lightnvr.pid");
+    snprintf(cfg.api_detection_url, sizeof(cfg.api_detection_url), "http://example/#bad");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
     FILE *saved = fopen(path, "r");
