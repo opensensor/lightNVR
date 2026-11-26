@@ -361,6 +361,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     while (atomic_load(&faststart_writer_updates) == 0) {
         sched_yield();
     }
+    int start_updates = atomic_load(&faststart_writer_updates);
     for (int i = 0; i < 50; ++i) {
         (void)config_get_mp4_faststart(&cfg);
         config_t snapshot = {0};
@@ -409,6 +410,9 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
             break;
         }
     }
+    int end_updates = atomic_load(&faststart_writer_updates);
+    TEST_ASSERT_TRUE_MESSAGE(end_updates > start_updates,
+                             "writer made no progress during read/copy/save loop");
     atomic_store(&faststart_writer_stop, true);
     int join_result = pthread_join(writer, NULL);
     unlink(path);
