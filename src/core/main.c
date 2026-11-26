@@ -505,11 +505,9 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             }
         }
         if (!used_pidfd) {
-            if (!is_lightnvr_process(existing_pid)) {
-                log_error("Previous instance identity changed before SIGTERM");
-                return -1;
-            }
-            term_rc = kill(existing_pid, SIGTERM);
+            log_error("Cannot safely terminate previous instance without pidfd support");
+            log_error("Refusing numeric-PID signaling to avoid PID reuse race");
+            return -1;
         }
         if (term_rc == 0) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
