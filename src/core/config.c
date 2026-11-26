@@ -1820,6 +1820,13 @@ int load_config(config_t *config) {
     
     // Load default configuration
     load_default_config(config);
+
+    // Fail fast if defaults could not initialize required stream state.
+    // This prevents continuing with a partially initialized config.
+    if (config->streams == NULL || config->stream_count <= 0) {
+        log_error("Failed to initialize default stream configuration");
+        return -1;
+    }
     
     int loaded = 0;
     
