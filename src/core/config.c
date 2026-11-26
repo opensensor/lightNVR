@@ -411,11 +411,21 @@ static void init_stream_config_defaults(stream_config_t *stream) {
 }
 
 int config_reset_stream_slots(config_t *config) {
-    if (!config || !config->streams ||
-        config->max_streams <= 0 || config->max_streams > MAX_STREAMS) return -1;
+    if (!config) return -1;
+
+    pthread_mutex_lock(&mp4_faststart_mutex);
+
+    if (!config->streams ||
+        config->max_streams <= 0 || config->max_streams > MAX_STREAMS) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        return -1;
+    }
+
     for (int i = 0; i < config->max_streams; i++) {
         init_stream_config_defaults(&config->streams[i]);
     }
+
+    pthread_mutex_unlock(&mp4_faststart_mutex);
     return 0;
 }
 
