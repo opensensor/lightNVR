@@ -45,9 +45,23 @@ static int check_running_daemon(const char *pid_file);
 // Report child startup result to the waiting parent and close the pipe.
 static void notify_startup_status(int fd, unsigned char status) {
     ssize_t n;
+    sigset_t block_set, old_set;
+    bool sigpipe_blocked = false;
+
+    if (sigemptyset(&block_set) == 0 && sigaddset(&block_set, SIGPIPE) == 0) {
+        if (pthread_sigmask(SIG_BLOCK, &block_set, &old_set) == 0) {
+            sigpipe_blocked = true;
+        }
+    }
+
     do {
         n = write(fd, &status, 1);
     } while (n < 0 && errno == EINTR);
+
+    if (sigpipe_blocked) {
+        (void)pthread_sigmask(SIG_SETMASK, &old_set, NULL);
+    }
+
     if (n != 1) {
         log_warn("Failed to report daemon startup status to parent: %s",
                  n < 0 ? strerror(errno) : "short write");
