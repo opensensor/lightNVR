@@ -317,14 +317,26 @@ int remove_pid_file(int fd, const char *pid_file) {
 // Check if daemon is already running
 static int check_running_daemon(const char *pid_file) {
     // First try to open the file with exclusive locking
-    int fd = open(pid_file, O_RDWR);
+    int fd = open(pid_file, O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) {
         if (errno == ENOENT) {
             // PID file doesn't exist, daemon is not running
             return 0;
         }
-        
+
         log_error("Failed to open PID file %s: %s", pid_file, strerror(errno));
+        return -1;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        log_error("Failed to stat PID file %s: %s", pid_file, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    if (!S_ISREG(st.st_mode) || st.st_nlink != 1) {
+        log_error("PID file %s is not a safe regular single-link file", pid_file);
+        close(fd);
         return -1;
     }
     
