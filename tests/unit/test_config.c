@@ -1542,6 +1542,10 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     cfg.go2rtc_stun_server[0] = '\0';
     snprintf(cfg.go2rtc_ice_servers, sizeof(cfg.go2rtc_ice_servers), "stun:example\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.go2rtc_ice_servers[0] = '\0';
+    snprintf(cfg.onvif_discovery_network, sizeof(cfg.onvif_discovery_network),
+             "192.168.1.0/24\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
     FILE *saved = fopen(path, "r");
