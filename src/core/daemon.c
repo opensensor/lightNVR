@@ -422,8 +422,8 @@ int daemon_status(const char *pid_file) {
         return -1;
     }
 
-    if (!S_ISREG(st.st_mode)) {
-        log_error("PID file %s is not a regular file", file_path);
+    if (!S_ISREG(st.st_mode) || st.st_nlink != 1) {
+        log_error("PID file %s is not a regular single-link file", file_path);
         close(fd);
         return -1;
     }
