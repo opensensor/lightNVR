@@ -1834,6 +1834,13 @@ int load_config(config_t *config) {
     // that are not already set in the config file (useful for container deployments)
     pthread_mutex_lock(&mp4_faststart_mutex);
     apply_env_overrides(config, ini_present);
+
+    // Validate configuration while holding the same mutex used by config snapshots/readers
+    if (validate_config(config) != 0) {
+        log_error("Invalid configuration");
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        return -1;
+    }
     pthread_mutex_unlock(&mp4_faststart_mutex);
 
     // Set default web root if not specified
@@ -1850,12 +1857,6 @@ int load_config(config_t *config) {
     if (stat(config->web_root, &st) != 0 || !S_ISDIR(st.st_mode)) {
         log_warn("Web root directory %s does not exist or is not a directory", config->web_root);
         // Possibly create it or use a fallback
-    }
-    
-    // Validate configuration
-    if (validate_config(config) != 0) {
-        log_error("Invalid configuration");
-        return -1;
     }
     
     // Ensure directories exist
