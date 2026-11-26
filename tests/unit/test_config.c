@@ -279,12 +279,17 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     close(ready_pipe[1]);
     close(release_pipe[0]);
     char ready;
-    TEST_ASSERT_EQUAL_INT(1, read(ready_pipe[0], &ready, 1));
-    TEST_ASSERT_EQUAL_INT(-1, daemon_status(path));
-    TEST_ASSERT_EQUAL_INT(1, write(release_pipe[1], "x", 1));
+    int ready_read_rc = (int)read(ready_pipe[0], &ready, 1);
+    int daemon_status_rc = daemon_status(path);
+    int release_write_rc = (int)write(release_pipe[1], "x", 1);
     close(ready_pipe[0]);
     close(release_pipe[1]);
-    TEST_ASSERT_EQUAL_INT(locker, waitpid(locker, &status, 0));
+    pid_t waited = waitpid(locker, &status, 0);
+
+    TEST_ASSERT_EQUAL_INT(1, ready_read_rc);
+    TEST_ASSERT_EQUAL_INT(-1, daemon_status_rc);
+    TEST_ASSERT_EQUAL_INT(1, release_write_rc);
+    TEST_ASSERT_EQUAL_INT(locker, waited);
     TEST_ASSERT_TRUE(WIFEXITED(status));
     TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
