@@ -404,7 +404,7 @@ int daemon_status(const char *pid_file) {
     }
 
     // Open read-only so status checks can work across users (e.g., 0644 PID files)
-    int fd = open(file_path, O_RDONLY);
+    int fd = open(file_path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) {
         if (errno == ENOENT) {
             // PID file doesn't exist, daemon is not running
@@ -436,15 +436,9 @@ int daemon_status(const char *pid_file) {
 
     if (fl.l_type == F_UNLCK) {
         // No process holds the expected lock; stale PID file
-        log_warn("Found stale PID file %s (not locked), removing it", file_path);
-        remove_pid_file(fd, file_path);
-        return 0;
-    }
-
-    if (errno != EACCES && errno != EAGAIN) {
-        log_error("Failed to lock PID file %s: %s", file_path, strerror(errno));
+        log_warn("Found stale PID file %s (not locked)", file_path);
         close(fd);
-        return -1;
+        return 0;
     }
     
     // File is locked by another process, read the PID
