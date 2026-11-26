@@ -472,45 +472,24 @@ int daemon_status(const char *pid_file) {
         return -1;
     }
     
-    // Query existing lock instead of trying to acquire one
-    struct flock fl;
-    memset(&fl, 0, sizeof(fl));
-    fl.l_type = F_WRLCK;
-    fl.l_whence = SEEK_SET;
-    fl.l_start = 0;
-    fl.l_len = 0; // whole file
-
-    int lock_ret;
-    do {
-        lock_ret = fcntl(fd, F_GETLK, &fl);
-    } while (lock_ret < 0 && errno == EINTR);
-
-    if (lock_ret < 0) {
-        log_error("Failed to query lock on PID file %s: %s", file_path, strerror(errno));
-        close(fd);
-        return -1;
-    }
-
-    if (fl.l_type == F_UNLCK) {
-        // No process holds the expected lock; stale PID file
-        log_warn("Found stale PID file %s (not locked)", file_path);
-        close(fd);
-        return 0;
-    }
-    
-    // File is locked by another process, read the PID
+    // Read PID from file and check process liveness directly.
+    // Avoid F_GETLK here: it does not report locks owned by this process,
+    // which can misreport "stopped" during in-process status checks.
     char pid_str[16];
-    ssize_t bytes_read = read(fd, pid_str, sizeof(pid_str) - 1);
+    ssize_t bytes_read;
+    do {
+        bytes_read = read(fd, pid_str, sizeof(pid_str) - 1);
+    } while (bytes_read < 0 && errno == EINTR);
     close(fd);
-    
+
     if (bytes_read <= 0) {
         log_error("Failed to read PID from file %s", file_path);
         return -1;
     }
-    
+
     // Null-terminate the string
     pid_str[bytes_read] = '\0';
-    
+
     // Parse the PID
     char *end_ptr2;
     long pid_val2 = strtol(pid_str, &end_ptr2, 10);
@@ -532,11 +511,9 @@ int daemon_status(const char *pid_file) {
         return 1;
     } else {
         if (errno == ESRCH) {
-            // Process is not running, but the PID file is still locked by another process.
-            // Do NOT remove a locked PID file here: unlinking a locked entry can race with
-            // another instance creating a new PID file, allowing multiple daemons to coexist.
-            log_warn("PID file %s is locked but process %d is not running; leaving file in place", file_path, pid);
-            return -1;
+            // Process is not running; leave PID file handling to startup/cleanup paths.
+            log_warn("PID file %s contains PID %d but process is not running", file_path, pid);
+            return 0;
         } else {
             log_error("Failed to check process status: %s", strerror(errno));
             return -1;
