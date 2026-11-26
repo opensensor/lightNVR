@@ -473,7 +473,7 @@ int daemon_status(const char *pid_file) {
         struct stat held, current;
         bool owns_path = fstat(owned_pid_fd, &held) == 0 &&
                          lstat(file_path, &current) == 0 &&
-                         S_ISREG(current.st_mode) && current.st_nlink == 1 &&
+                         S_ISREG(current.st_mode) &&
                          held.st_dev == current.st_dev && held.st_ino == current.st_ino;
         if (owns_path) {
             pthread_mutex_unlock(&owned_pid_mutex);
@@ -481,6 +481,22 @@ int daemon_status(const char *pid_file) {
         }
     }
     pthread_mutex_unlock(&owned_pid_mutex);
+
+    // Reject unsafe paths (including hard-linked PID files) before opening.
+    // Opening and later closing another descriptor for the same inode in this
+    // process can release our existing process-scoped record lock.
+    struct stat current;
+    if (lstat(file_path, &current) == 0) {
+        if (!S_ISREG(current.st_mode) || current.st_nlink != 1) {
+            log_error("Unsafe PID file path %s: expected single-link regular file", file_path);
+            return -1;
+        }
+    } else if (errno == ENOENT) {
+        return 0;
+    } else {
+        log_error("Failed to stat PID file %s: %s", file_path, strerror(errno));
+        return -1;
+    }
 
     // Open read-only so status checks can work across users (e.g., 0644 PID files)
     int fd = open(file_path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
