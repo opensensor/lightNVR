@@ -2631,13 +2631,16 @@ static int save_config_snapshot(const config_t *config, const char *path) {
 int save_config(const config_t *config, const char *path) {
     if (!config) return -1;
     config_t snapshot = {0};
-    if (!config_copy(&snapshot, config)) {
-        log_error("Could not create config snapshot for saving");
-        return -1;
-    }
-    int result = save_config_snapshot(&snapshot, path);
-    free(snapshot.streams);
-    return result;
+
+    /*
+     * Settings save does not consume stream slot data. Avoid deep-copying
+     * stream storage here to prevent unnecessary allocations and contention.
+     */
+    snapshot = *config;
+    snapshot.streams = NULL;
+    snapshot.num_streams = 0;
+
+    return save_config_snapshot(&snapshot, path);
 }
 
 // Print configuration to stdout (for debugging)
