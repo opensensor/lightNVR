@@ -1581,7 +1581,10 @@ cleanup:
             } else if (saved_argv != NULL) {
                 // Give the system a moment to release resources
                 // The parent is now dead, wait for it to fully exit
-                usleep(2000000);  // 2 seconds
+                struct timespec initial_delay = {2, 0};  // 2 seconds
+                while (nanosleep(&initial_delay, &initial_delay) == -1 && errno == EINTR) {
+                    // Retry with remaining time if interrupted.
+                }
 
                 // Wait for the parent to terminate before re-exec. Do not
                 // probe a numeric PID after this child has been reparented.
@@ -1590,7 +1593,10 @@ cleanup:
                         // Parent is gone
                         break;
                     }
-                    usleep(500000);  // 500ms
+                    struct timespec poll_delay = {0, 500000000L};  // 500ms
+                    while (nanosleep(&poll_delay, &poll_delay) == -1 && errno == EINTR) {
+                        // Retry with remaining time if interrupted.
+                    }
                 }
 
                 // Get the executable path
