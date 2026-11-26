@@ -216,6 +216,7 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
 
     int fd = write_pid_file(path);
     TEST_ASSERT_TRUE(fd >= 0);
+    TEST_ASSERT_EQUAL_INT(-1, write_pid_file(path));
     TEST_ASSERT_EQUAL_INT(1, daemon_status(path));
     char alias[MAX_PATH_LENGTH];
     snprintf(alias, sizeof(alias), "%s/alias.pid", directory);
@@ -1482,6 +1483,12 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
     cfg.api_detection_url[0] = '\0';
     snprintf(cfg.go2rtc_config_dir, sizeof(cfg.go2rtc_config_dir), "/etc/lightnvr\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    snprintf(cfg.go2rtc_config_dir, sizeof(cfg.go2rtc_config_dir), "/etc/lightnvr");
+    snprintf(cfg.go2rtc_stun_server, sizeof(cfg.go2rtc_stun_server), "stun.example#bad");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.go2rtc_stun_server[0] = '\0';
+    snprintf(cfg.go2rtc_ice_servers, sizeof(cfg.go2rtc_ice_servers), "stun:example\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
