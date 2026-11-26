@@ -216,6 +216,7 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
 
     int fd = write_pid_file(path);
     TEST_ASSERT_TRUE(fd >= 0);
+    TEST_ASSERT_EQUAL_INT(-1, write_pid_file(path));
     TEST_ASSERT_EQUAL_INT(1, daemon_status(path));
     char alias[MAX_PATH_LENGTH];
     snprintf(alias, sizeof(alias), "%s/alias.pid", directory);

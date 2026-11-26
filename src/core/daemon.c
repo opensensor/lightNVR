@@ -272,9 +272,15 @@ static void daemon_signal_handler(int sig) {
 // Write PID file
 int write_pid_file(const char *pid_file) {
     pthread_mutex_lock(&owned_pid_mutex);
+    if (owned_pid_fd >= 0 && owned_pid_process == getpid()) {
+        log_error("PID file already owned by this process");
+        pthread_mutex_unlock(&owned_pid_mutex);
+        return -1;
+    }
     // Make sure the directory exists
     if (ensure_path(pid_file) != 0) {
         log_error("Failed to create PID file directory %s: %s", pid_file, strerror(errno));
+        pthread_mutex_unlock(&owned_pid_mutex);
         return -1;
     }
     
@@ -282,6 +288,7 @@ int write_pid_file(const char *pid_file) {
     int fd = open(pid_file, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0644);
     if (fd < 0) {
         log_error("Failed to open PID file %s: %s", pid_file, strerror(errno));
+        pthread_mutex_unlock(&owned_pid_mutex);
         return -1;
     }
 
@@ -290,11 +297,13 @@ int write_pid_file(const char *pid_file) {
     if (fstat(fd, &st) != 0) {
         log_error("Failed to stat PID file %s: %s", pid_file, strerror(errno));
         close(fd);
+        pthread_mutex_unlock(&owned_pid_mutex);
         return -1;
     }
     if (!S_ISREG(st.st_mode) || st.st_nlink != 1) {
         log_error("Unsafe PID file %s: expected regular file with a single link", pid_file);
         close(fd);
+        pthread_mutex_unlock(&owned_pid_mutex);
         return -1;
     }
     
@@ -302,6 +311,7 @@ int write_pid_file(const char *pid_file) {
     if (lockf(fd, F_TLOCK, 0) < 0) {
         log_error("Failed to lock PID file %s: %s", pid_file, strerror(errno));
         close(fd);
+        pthread_mutex_unlock(&owned_pid_mutex);
         return -1;
     }
     
@@ -309,6 +319,7 @@ int write_pid_file(const char *pid_file) {
     if (ftruncate(fd, 0) < 0) {
         log_error("Failed to truncate PID file %s: %s", pid_file, strerror(errno));
         close(fd);
+        pthread_mutex_unlock(&owned_pid_mutex);
         return -1;
     }
     
