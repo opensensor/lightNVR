@@ -2392,7 +2392,9 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     // Write MP4 recording settings
     fprintf(file, "; New recording format options\n");
     fprintf(file, "record_mp4_directly = %s\n", config->record_mp4_directly ? "true" : "false");
-    if (config->mp4_storage_path[0] != '\0') {
+    if (config->mp4_storage_path[0] != '\0' &&
+        !contains_unsupported_ini_credential_chars(
+            config->mp4_storage_path, sizeof(config->mp4_storage_path))) {
         fprintf(file, "mp4_path = %s\n", config->mp4_storage_path);
     }
     fprintf(file, "mp4_directory_format = %s  ; flat, year_month, or year_month_day\n",
