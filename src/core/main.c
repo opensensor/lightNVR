@@ -346,14 +346,15 @@ static bool is_lightnvr_process(pid_t pid) {
     snprintf(path, sizeof(path), "/proc/%d/comm", (int)pid);
     FILE *fp = fopen(path, "r");
     if (!fp) {
-        /* Cannot read comm – be conservative and assume it might be lightnvr. */
-        return true;
+        /* Cannot verify process identity; fail closed and refuse termination. */
+        return false;
     }
     char comm[32] = {0};
     bool ok = (fgets(comm, sizeof(comm), fp) != NULL);
     fclose(fp);
     if (!ok) {
-        return true;
+        /* Cannot verify process identity; fail closed and refuse termination. */
+        return false;
     }
     comm[strcspn(comm, "\n")] = '\0';
     /* The kernel truncates comm to TASK_COMM_LEN-1 (15) characters, so
