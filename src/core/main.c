@@ -587,8 +587,9 @@ int main(int argc, char *argv[]) {
     // The host kernel default of THP=always causes the kernel to promote 4 kB
     // anonymous pages to 2 MB huge pages, which dramatically inflates RSS for
     // processes like lightnvr that have many small, scattered allocations.
-    // PR_SET_THP_DISABLE must be set per-process and cannot be inherited, so
-    // we do it as the very first thing in main().
+    // PR_SET_THP_DISABLE is process-scoped and may already be inherited across
+    // fork()/execve(); we set it here at startup to ensure the desired state
+    // for this process regardless of what was inherited.
     if (prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0) != 0) {
         // Non-fatal – older kernels (< 3.15) don't support this.
         fprintf(stderr, "Note: prctl(PR_SET_THP_DISABLE) not supported on this kernel\n");
