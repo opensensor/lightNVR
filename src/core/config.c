@@ -1964,6 +1964,7 @@ int save_config(const config_t *config, const char *path) {
         {"syslog_ident", config->syslog_ident, sizeof(config->syslog_ident)},
         {"storage_path", config->storage_path, sizeof(config->storage_path)},
         {"api_detection_url", config->api_detection_url, sizeof(config->api_detection_url)},
+        {"go2rtc_config_dir", config->go2rtc_config_dir, sizeof(config->go2rtc_config_dir)},
     };
 
     for (size_t i = 0; i < sizeof(validated_fields) / sizeof(validated_fields[0]); ++i) {
@@ -2412,12 +2413,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "[go2rtc]\n");
     fprintf(file, "enabled = %s\n", config->go2rtc_enabled ? "true" : "false");
     fprintf(file, "binary_path = %s\n", config->go2rtc_binary_path);
-    if (contains_unsupported_ini_credential_chars(
-            config->go2rtc_config_dir, sizeof(config->go2rtc_config_dir))) {
-        fprintf(file, "config_dir = %s\n", DEFAULT_GO2RTC_CONFIG_DIR);
-    } else {
-        fprintf(file, "config_dir = %s\n", config->go2rtc_config_dir);
-    }
+    fprintf(file, "config_dir = %s\n", config->go2rtc_config_dir);
     fprintf(file, "api_port = %d\n", config->go2rtc_api_port);
     fprintf(file, "rtsp_port = %d\n", config->go2rtc_rtsp_port);
     fprintf(file, "webrtc_enabled = %s\n", config->go2rtc_webrtc_enabled ? "true" : "false");
