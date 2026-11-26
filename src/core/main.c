@@ -22,6 +22,7 @@
 #include <sys/utsname.h>
 #include <sys/socket.h>
 #include <sys/prctl.h>
+#include <sys/syscall.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <limits.h>
@@ -124,6 +125,27 @@ _Atomic bool restart_requested = false;
 // fallback could deadlock if a signal lands while the lock is held.
 _Static_assert(ATOMIC_BOOL_LOCK_FREE == 2,
                "signal handlers require lock-free atomic bool");
+
+static int open_pidfd_for_pid(pid_t pid) {
+#ifdef SYS_pidfd_open
+    return (int)syscall(SYS_pidfd_open, pid, 0);
+#else
+    (void)pid;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
+
+static int send_signal_via_pidfd(int pidfd, int sig) {
+#ifdef SYS_pidfd_send_signal
+    return (int)syscall(SYS_pidfd_send_signal, pidfd, sig, NULL, 0);
+#else
+    (void)pidfd;
+    (void)sig;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
 
 // Store original argc/argv for restart functionality
 static int saved_argc = 0;
@@ -433,8 +455,31 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         // In a non-interactive environment, we can automatically kill it
         log_info("Attempting to terminate previous instance (PID: %d) with SIGTERM", existing_pid);
 
-        // Send SIGTERM to let it clean up
-        if (kill(existing_pid, SIGTERM) == 0) {
+        // Send SIGTERM to let it clean up. Prefer pidfd to avoid PID-reuse races.
+        int pidfd = open_pidfd_for_pid(existing_pid);
+        bool used_pidfd = (pidfd >= 0);
+        if (used_pidfd && !is_lightnvr_process(existing_pid)) {
+            close(pidfd);
+            log_error("Previous instance identity changed before SIGTERM");
+            return -1;
+        }
+        int term_rc = -1;
+        if (used_pidfd) {
+            term_rc = send_signal_via_pidfd(pidfd, SIGTERM);
+            if (term_rc != 0 && errno == ENOSYS) {
+                close(pidfd);
+                pidfd = -1;
+                used_pidfd = false;
+            }
+        }
+        if (!used_pidfd) {
+            if (!is_lightnvr_process(existing_pid)) {
+                log_error("Previous instance identity changed before SIGTERM");
+                return -1;
+            }
+            term_rc = kill(existing_pid, SIGTERM);
+        }
+        if (term_rc == 0) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
             int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
             while (timeout-- > 0 && kill(existing_pid, 0) == 0) {
@@ -445,8 +490,16 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             if (timeout <= 0 && kill(existing_pid, 0) == 0 &&
                 is_lightnvr_process(existing_pid)) {
                 log_warn("Process didn't terminate gracefully within timeout, using SIGKILL");
-                kill(existing_pid, SIGKILL);
+                if (used_pidfd) {
+                    (void)send_signal_via_pidfd(pidfd, SIGKILL);
+                } else {
+                    kill(existing_pid, SIGKILL);
+                }
                 sleep(1);  // Give it a moment
+            }
+
+            if (used_pidfd) {
+                close(pidfd);
             }
 
             // Wait for PID file to be released
@@ -483,7 +536,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             log_error("Previous instance did not release PID file lock within timeout; refusing to remove PID file");
             return -1;
         } else {
-            log_error("Failed to terminate previous instance: %s", strerror(errno));
+            int signal_error = errno;
+            if (used_pidfd) {
+                close(pidfd);
+            }
+            log_error("Failed to terminate previous instance: %s", strerror(signal_error));
             return -1;
         }
     } else if (errno == ESRCH) {
@@ -1581,7 +1638,10 @@ cleanup:
             } else if (saved_argv != NULL) {
                 // Give the system a moment to release resources
                 // The parent is now dead, wait for it to fully exit
-                usleep(2000000);  // 2 seconds
+                struct timespec initial_delay = {2, 0};  // 2 seconds
+                while (nanosleep(&initial_delay, &initial_delay) == -1 && errno == EINTR) {
+                    // Retry with remaining time if interrupted.
+                }
 
                 // Wait for the parent to terminate before re-exec. Do not
                 // probe a numeric PID after this child has been reparented.
@@ -1590,7 +1650,10 @@ cleanup:
                         // Parent is gone
                         break;
                     }
-                    usleep(500000);  // 500ms
+                    struct timespec poll_delay = {0, 500000000L};  // 500ms
+                    while (nanosleep(&poll_delay, &poll_delay) == -1 && errno == EINTR) {
+                        // Retry with remaining time if interrupted.
+                    }
                 }
 
                 // Get the executable path
@@ -2001,15 +2064,15 @@ cleanup:
     // Check if restart was requested
     if (restart_requested) {
         if (container_mode) {
-            // In container mode, just exit cleanly with success code
-            // The container orchestrator (Docker/Kubernetes) will restart the container
-            log_info("Restart requested in container mode - exiting cleanly for orchestrator restart");
+            // In container mode, exit with a dedicated non-zero code so both
+            // always-restart and on-failure restart policies can restart us.
+            const int RESTART_EXIT_CODE = 75;
+            log_info("Restart requested in container mode - exiting with restart code for orchestrator restart");
             shutdown_logger();
 
-            // Exit with code 0 so the container orchestrator restarts us
-            // Note: In Kubernetes, the pod will be restarted by the deployment controller
-            // In Docker with --restart policy, Docker will restart the container
-            return EXIT_SUCCESS;
+            // Exit non-zero to reliably trigger restart under failure-based policies.
+            // (Docker: on-failure, Kubernetes: OnFailure)
+            return RESTART_EXIT_CODE;
         } else if (saved_argv != NULL) {
             // In native mode, use execv to restart the process
             log_info("Restart requested in native mode, re-executing LightNVR...");
