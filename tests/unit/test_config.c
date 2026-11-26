@@ -280,8 +280,9 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     close(release_pipe[0]);
     char ready;
     int ready_read_rc = (int)read(ready_pipe[0], &ready, 1);
-    int daemon_status_rc = daemon_status(path);
-    int release_write_rc = (int)write(release_pipe[1], "x", 1);
+    int daemon_status_rc = ready_read_rc == 1 ? daemon_status(path) : -1;
+    int release_write_rc = ready_read_rc == 1 ?
+        (int)write(release_pipe[1], "x", 1) : -1;
     close(ready_pipe[0]);
     close(release_pipe[1]);
     pid_t waited = waitpid(locker, &status, 0);
