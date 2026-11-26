@@ -22,6 +22,7 @@
 #include <stdatomic.h>
 #include <errno.h>
 #include <math.h>
+#include <time.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -361,7 +362,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     while (atomic_load(&faststart_writer_updates) == 0) {
         sched_yield();
     }
-    int start_updates = atomic_load(&faststart_writer_updates);
+    bool writer_progress_ok = true;
     for (int i = 0; i < 50; ++i) {
         (void)config_get_mp4_faststart(&cfg);
         config_t snapshot = {0};
@@ -409,15 +410,42 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
             save_result = -1;
             break;
         }
+        int progress_baseline = atomic_load(&faststart_writer_updates);
+        bool observed_progress = false;
+        struct timespec deadline, now;
+        if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0) {
+            writer_progress_ok = false;
+            save_result = -1;
+            break;
+        }
+        deadline.tv_nsec += 250000000L;
+        if (deadline.tv_nsec >= 1000000000L) {
+            deadline.tv_sec++;
+            deadline.tv_nsec -= 1000000000L;
+        }
+        for (;;) {
+            if (atomic_load(&faststart_writer_updates) > progress_baseline) {
+                observed_progress = true;
+                break;
+            }
+            if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) break;
+            if (now.tv_sec > deadline.tv_sec ||
+                (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) break;
+            sched_yield();
+        }
+        if (!observed_progress) {
+            writer_progress_ok = false;
+            save_result = -1;
+            break;
+        }
     }
-    int end_updates = atomic_load(&faststart_writer_updates);
     atomic_store(&faststart_writer_stop, true);
     int join_result = pthread_join(writer, NULL);
     unlink(path);
     rmdir(dir);
     TEST_ASSERT_EQUAL_INT(0, join_result);
-    TEST_ASSERT_TRUE_MESSAGE(end_updates > start_updates,
-                             "writer made no progress during read/copy/save loop");
+    TEST_ASSERT_TRUE_MESSAGE(writer_progress_ok,
+                             "writer made no bounded progress during read/copy/save loop");
     TEST_ASSERT_TRUE(streams_distinct_ok);
     TEST_ASSERT_EQUAL_INT(0, save_result);
     TEST_ASSERT_EQUAL_INT(50, valid_saves);
