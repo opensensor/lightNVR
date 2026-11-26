@@ -377,40 +377,43 @@ int remove_pid_file(int fd, const char *pid_file) {
     return 0;
 }
 
+static int finish_running_probe(int result) {
+    pthread_mutex_unlock(&owned_pid_mutex);
+    return result;
+}
+
 // Check if daemon is already running
 static int check_running_daemon(const char *pid_file) {
     // If this process already owns a PID lock, probing via another descriptor
     // can accidentally release the existing lock when that descriptor is closed.
     pthread_mutex_lock(&owned_pid_mutex);
     if (owned_pid_fd >= 0 && owned_pid_process == getpid()) {
-        pthread_mutex_unlock(&owned_pid_mutex);
         log_error("Refusing PID startup probe for %s: current process already owns PID file lock", pid_file);
-        return -1;
+        return finish_running_probe(-1);
     }
-    pthread_mutex_unlock(&owned_pid_mutex);
 
     // First try to open the file with exclusive locking
     int fd = open(pid_file, O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) {
         if (errno == ENOENT) {
             // PID file doesn't exist, daemon is not running
-            return 0;
+            return finish_running_probe(0);
         }
 
         log_error("Failed to open PID file %s: %s", pid_file, strerror(errno));
-        return -1;
+        return finish_running_probe(-1);
     }
 
     struct stat st;
     if (fstat(fd, &st) != 0) {
         log_error("Failed to stat PID file %s: %s", pid_file, strerror(errno));
         close(fd);
-        return -1;
+        return finish_running_probe(-1);
     }
     if (!S_ISREG(st.st_mode) || st.st_nlink != 1) {
         log_error("PID file %s is not a safe regular single-link file", pid_file);
         close(fd);
-        return -1;
+        return finish_running_probe(-1);
     }
     
     // Try to lock the file
@@ -421,7 +424,7 @@ static int check_running_daemon(const char *pid_file) {
             // overwrite it. Unlinking here creates a second-lock race.
             log_warn("Found stale PID file %s (not locked)", pid_file);
             close(fd);
-            return 0;
+            return finish_running_probe(0);
         }
 
         if (errno == EINTR) {
@@ -435,7 +438,7 @@ static int check_running_daemon(const char *pid_file) {
 
         log_error("Failed to lock PID file %s: %s", pid_file, strerror(errno));
         close(fd);
-        return -1;
+        return finish_running_probe(-1);
     }
     
     // File is locked by another process, read the PID
@@ -445,7 +448,7 @@ static int check_running_daemon(const char *pid_file) {
     
     if (bytes_read <= 0) {
         log_error("Failed to read PID from file %s", pid_file);
-        return -1;
+        return finish_running_probe(-1);
     }
     
     // Null-terminate the string
@@ -457,7 +460,7 @@ static int check_running_daemon(const char *pid_file) {
     long pid_val = strtol(pid_str, &end_ptr, 10);
     if (end_ptr == pid_str || *end_ptr != '\0' || errno == ERANGE || pid_val <= 0 || (long)(pid_t)pid_val != pid_val) {
         log_error("Failed to parse PID from file %s", pid_file);
-        return -1;
+        return finish_running_probe(-1);
     }
     pid_t pid = (pid_t)pid_val;
 
@@ -465,16 +468,16 @@ static int check_running_daemon(const char *pid_file) {
     if (kill(pid, 0) == 0) {
         // Process is running
         log_error("Daemon is already running with PID %d", pid);
-        return 1;
+        return finish_running_probe(1);
     } else {
         if (errno == ESRCH) {
             // Process in PID file is not running, but lock is held by another process.
             // Do not unlink: removing a lock-held PID path can allow multiple daemon instances.
             log_error("PID file %s is lock-held but process %d is not running; refusing to remove due to ambiguous lock ownership", pid_file, pid);
-            return -1;
+            return finish_running_probe(-1);
         } else {
             log_error("Failed to check process status: %s", strerror(errno));
-            return -1;
+            return finish_running_probe(-1);
         }
     }
 }
