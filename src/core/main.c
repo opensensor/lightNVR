@@ -1949,7 +1949,6 @@ cleanup:
         go2rtc_integration_cleanup();
 #endif
         shutdown_onvif_discovery();
-        cleanup_detection_resources();
 
         // Shutdown database
         log_info("Shutting down database...");
