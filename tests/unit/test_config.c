@@ -1561,6 +1561,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     TEST_ASSERT_NOT_NULL(initial);
     fputs(original, initial);
     fclose(initial);
+    TEST_ASSERT_EQUAL_INT(0, chmod(path, 0644));
     struct stat before, after;
     struct stat baseline_stat;
     load_default_config(&cfg);
@@ -1574,6 +1575,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
         close(original_fd);
     }
     TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
+    TEST_ASSERT_TRUE(((before.st_mode & 0777) & 0044) != 0);
     if (!fail_copy) TEST_ASSERT_TRUE(before.st_size > baseline_stat.st_size);
 
     busy_config_rename = true;
@@ -1589,6 +1591,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     TEST_ASSERT_EQUAL_INT(fail_copy ? -1 : 0, result);
     if (fail_copy) TEST_ASSERT_TRUE(short_config_pwrite_done);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
+    TEST_ASSERT_EQUAL_UINT(0600, (unsigned)(after.st_mode & 0777));
     TEST_ASSERT_EQUAL_UINT64(before.st_ino, after.st_ino);
     if (fail_copy) TEST_ASSERT_EQUAL_UINT64(before.st_size, after.st_size);
     FILE *saved = fopen(path, "rb");
