@@ -23,7 +23,6 @@
 #include <sys/socket.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
-#include <sys/pidfd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <limits.h>
@@ -459,9 +458,27 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         // Send SIGTERM to let it clean up. Prefer pidfd to avoid PID-reuse races.
         int pidfd = open_pidfd_for_pid(existing_pid);
         bool used_pidfd = (pidfd >= 0);
-
-        int term_rc = used_pidfd ? send_signal_via_pidfd(pidfd, SIGTERM)
-                                 : kill(existing_pid, SIGTERM);
+        if (used_pidfd && !is_lightnvr_process(existing_pid)) {
+            close(pidfd);
+            log_error("Previous instance identity changed before SIGTERM");
+            return -1;
+        }
+        int term_rc = -1;
+        if (used_pidfd) {
+            term_rc = send_signal_via_pidfd(pidfd, SIGTERM);
+            if (term_rc != 0 && errno == ENOSYS) {
+                close(pidfd);
+                pidfd = -1;
+                used_pidfd = false;
+            }
+        }
+        if (!used_pidfd) {
+            if (!is_lightnvr_process(existing_pid)) {
+                log_error("Previous instance identity changed before SIGTERM");
+                return -1;
+            }
+            term_rc = kill(existing_pid, SIGTERM);
+        }
         if (term_rc == 0) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
             int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
@@ -519,10 +536,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             log_error("Previous instance did not release PID file lock within timeout; refusing to remove PID file");
             return -1;
         } else {
+            int signal_error = errno;
             if (used_pidfd) {
                 close(pidfd);
             }
-            log_error("Failed to terminate previous instance: %s", strerror(errno));
+            log_error("Failed to terminate previous instance: %s", strerror(signal_error));
             return -1;
         }
     } else if (errno == ESRCH) {
