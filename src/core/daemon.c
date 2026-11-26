@@ -238,10 +238,23 @@ int write_pid_file(const char *pid_file) {
         return -1;
     }
     
-    // Open the file initially without exclusive locking
-    int fd = open(pid_file, O_RDWR | O_CREAT, 0644);
+    // Open PID file securely: reject symlinks and avoid fd inheritance.
+    int fd = open(pid_file, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0644);
     if (fd < 0) {
         log_error("Failed to open PID file %s: %s", pid_file, strerror(errno));
+        return -1;
+    }
+
+    // Validate that we opened a regular file (not device/FIFO/etc.) and not a hardlink.
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        log_error("Failed to stat PID file %s: %s", pid_file, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    if (!S_ISREG(st.st_mode) || st.st_nlink != 1) {
+        log_error("Unsafe PID file %s: expected regular file with a single link", pid_file);
+        close(fd);
         return -1;
     }
     
@@ -390,8 +403,8 @@ int daemon_status(const char *pid_file) {
         safe_strcpy(file_path, pid_file_path, sizeof(file_path), 0);
     }
 
-    // First try to open the file with exclusive locking
-    int fd = open(file_path, O_RDWR);
+    // Open read-only so status checks can work across users (e.g., 0644 PID files)
+    int fd = open(file_path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) {
         if (errno == ENOENT) {
             // PID file doesn't exist, daemon is not running
@@ -402,24 +415,30 @@ int daemon_status(const char *pid_file) {
         return -1;
     }
     
-    // Try to lock the file
+    // Query existing lock instead of trying to acquire one
+    struct flock fl;
+    memset(&fl, 0, sizeof(fl));
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_SET;
+    fl.l_start = 0;
+    fl.l_len = 0; // whole file
+
     int lock_ret;
     do {
-        lock_ret = lockf(fd, F_TLOCK, 0);
+        lock_ret = fcntl(fd, F_GETLK, &fl);
     } while (lock_ret < 0 && errno == EINTR);
 
-    if (lock_ret == 0) {
-        // We got the lock, which means no other process has it
-        // This is a stale PID file
-        log_warn("Found stale PID file %s (not locked), removing it", file_path);
-        remove_pid_file(fd, file_path);
-        return 0;
-    }
-
-    if (errno != EACCES && errno != EAGAIN) {
-        log_error("Failed to lock PID file %s: %s", file_path, strerror(errno));
+    if (lock_ret < 0) {
+        log_error("Failed to query lock on PID file %s: %s", file_path, strerror(errno));
         close(fd);
         return -1;
+    }
+
+    if (fl.l_type == F_UNLCK) {
+        // No process holds the expected lock; stale PID file
+        log_warn("Found stale PID file %s (not locked)", file_path);
+        close(fd);
+        return 0;
     }
     
     // File is locked by another process, read the PID
