@@ -484,7 +484,7 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         // Process exists, ask user if they want to kill it
         log_warn("Another instance with PID %d appears to be running", existing_pid);
 
-        // In a non-interactive environment, we can automatically kill it
+        // Automatic replacement requires a stable process handle.
         log_info("Attempting to terminate previous instance (PID: %d) with SIGTERM", existing_pid);
 
         // Send SIGTERM to let it clean up. Prefer pidfd to avoid PID-reuse races.
@@ -505,11 +505,8 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             }
         }
         if (!used_pidfd) {
-            if (!is_lightnvr_process(existing_pid)) {
-                log_error("Previous instance identity changed before SIGTERM");
-                return -1;
-            }
-            term_rc = kill(existing_pid, SIGTERM);
+            log_error("Cannot safely terminate previous instance without pidfd support; stop it through the service manager before starting LightNVR again");
+            return -1;
         }
         if (term_rc == 0) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
