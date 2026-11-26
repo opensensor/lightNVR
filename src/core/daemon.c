@@ -132,9 +132,30 @@ int init_daemon(const char *pid_file) {
     umask(0);
     log_debug("Reset file creation mask");
 
-    // DO NOT close file descriptors in daemon mode
-    // This was causing issues with the web server socket
-    log_info("Keeping all file descriptors open for web server compatibility");
+    // Preserve non-stdio descriptors (for web server compatibility), but
+    // redirect standard streams to avoid leaking launcher pipes.
+    int null_fd = open("/dev/null", O_RDWR);
+    if (null_fd < 0) {
+        log_error("Failed to open /dev/null for stdio redirection: %s", strerror(errno));
+        notify_startup_status(status_pipe[1], 0);
+        return -1;
+    }
+
+    if (dup2(null_fd, STDIN_FILENO) < 0 ||
+        dup2(null_fd, STDOUT_FILENO) < 0 ||
+        dup2(null_fd, STDERR_FILENO) < 0) {
+        log_error("Failed to redirect standard file descriptors to /dev/null: %s", strerror(errno));
+        if (null_fd > STDERR_FILENO) {
+            close(null_fd);
+        }
+        notify_startup_status(status_pipe[1], 0);
+        return -1;
+    }
+
+    if (null_fd > STDERR_FILENO) {
+        close(null_fd);
+    }
+    log_info("Redirected standard file descriptors to /dev/null; preserved other descriptors");
 
     // Setup signal handlers with SA_RESTART for better compatibility
     struct sigaction sa;
