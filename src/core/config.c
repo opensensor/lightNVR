@@ -1503,12 +1503,6 @@ int load_stream_configs(config_t *config) {
         return -1;
     }
 
-    // Initialize all stream slots to project defaults; loaded DB rows below
-    // will override these defaults for populated entries.
-    for (size_t i = 0; i < max_streams; i++) {
-        init_stream_config_defaults(&config->streams[i]);
-    }
-
     // Get stream count from database
     int count = count_stream_configs();
     if (count < 0) {
@@ -1517,6 +1511,12 @@ int load_stream_configs(config_t *config) {
     }
 
     if (count == 0) {
+        pthread_mutex_lock(&config_mutex);
+        for (size_t i = 0; i < max_streams; i++) {
+            init_stream_config_defaults(&config->streams[i]);
+        }
+        pthread_mutex_unlock(&config_mutex);
+
         log_info("No stream configurations found in database");
         return 0;
     }
@@ -1541,10 +1541,20 @@ int load_stream_configs(config_t *config) {
         return -1;
     }
 
+    // Publish stream configurations under the same mutex used by snapshot readers.
+    pthread_mutex_lock(&config_mutex);
+
+    // Reset all slots to defaults first; populated DB rows override these defaults.
+    for (size_t i = 0; i < max_streams; i++) {
+        init_stream_config_defaults(&config->streams[i]);
+    }
+
     // Copy stream configurations to config
     for (int i = 0; i < loaded; i++) {
         memcpy(&config->streams[i], &db_streams[i], sizeof(stream_config_t));
     }
+
+    pthread_mutex_unlock(&config_mutex);
     free(db_streams);
 
     log_info("Loaded %d stream configurations from database", loaded);
