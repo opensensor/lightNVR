@@ -1588,8 +1588,23 @@ int load_stream_configs(config_t *config) {
 
 // Save stream configurations to database with improved timeout protection
 int save_stream_configs(config_t *config) {
-    if (!config || !config->streams || config->max_streams <= 0 ||
-        config->max_streams > MAX_STREAMS) return -1;
+    if (!config) return -1;
+    pthread_mutex_lock(&mp4_faststart_mutex);
+    int max_streams = config->max_streams;
+    stream_config_t *initial_streams = config->streams;
+    if (!initial_streams || max_streams <= 0 || max_streams > MAX_STREAMS) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        return -1;
+    }
+    stream_config_t *streams_snapshot = malloc((size_t)max_streams * sizeof(*streams_snapshot));
+    if (!streams_snapshot) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        log_error("Failed to allocate stream snapshot");
+        return -1;
+    }
+    memcpy(streams_snapshot, initial_streams,
+           (size_t)max_streams * sizeof(*streams_snapshot));
+    pthread_mutex_unlock(&mp4_faststart_mutex);
     
     int saved = 0;
 
@@ -1599,6 +1614,7 @@ int save_stream_configs(config_t *config) {
     // Begin transaction
     if (begin_transaction() != 0) {
         log_error("Failed to begin transaction for saving stream configurations");
+        free(streams_snapshot);
         return -1;
     }
 
@@ -1606,32 +1622,36 @@ int save_stream_configs(config_t *config) {
     int count = count_stream_configs();
     if (count < 0) {
         log_error("Failed to count stream configurations in database");
+        free(streams_snapshot);
         rollback_transaction();
         return -1;
     }
     
     // Always continue so initial in-memory stream configs can be inserted
     // into an empty database. Only skip existing-row loading work when count is zero.
-    if (count > config->max_streams) {
+    if (count > max_streams) {
         log_error("Cannot replace stream configurations: database has %d streams, exceeds max_streams=%d",
-                  count, config->max_streams);
+                  count, max_streams);
+        free(streams_snapshot);
         rollback_transaction();
         return -1;
     }
 
-    stream_config_t *db_streams = calloc((size_t)config->max_streams, sizeof(*db_streams));
+    stream_config_t *db_streams = calloc((size_t)max_streams, sizeof(*db_streams));
     if (!db_streams) {
         log_error("save_stream_configs: out of memory");
+        free(streams_snapshot);
         rollback_transaction();
         return -1;
     }
 
     int loaded = 0;
     if (count > 0) {
-        loaded = get_all_stream_configs(db_streams, config->max_streams);
+        loaded = get_all_stream_configs(db_streams, max_streams);
         if (loaded < 0) {
             log_error("Failed to load stream configurations from database");
             free(db_streams);
+            free(streams_snapshot);
             rollback_transaction();
             return -1;
         }
@@ -1639,28 +1659,29 @@ int save_stream_configs(config_t *config) {
 
     /* Database-owned identity belongs to each matching stream, regardless of
      * whether other streams were added, removed, or renamed. */
-    for (int i = 0; i < config->max_streams; i++) {
-        if (config->streams[i].name[0] == '\0') continue;
+    for (int i = 0; i < max_streams; i++) {
+        if (streams_snapshot[i].name[0] == '\0') continue;
         for (int j = 0; j < loaded; j++) {
-            if (strcmp(config->streams[i].name, db_streams[j].name) == 0) {
-                safe_strcpy(config->streams[i].camera_uuid,
+            if (strcmp(streams_snapshot[i].name, db_streams[j].name) == 0) {
+                safe_strcpy(streams_snapshot[i].camera_uuid,
                             db_streams[j].camera_uuid,
-                            sizeof(config->streams[i].camera_uuid), 0);
-                safe_strcpy(config->streams[i].location_uuid,
+                            sizeof(streams_snapshot[i].camera_uuid), 0);
+                safe_strcpy(streams_snapshot[i].location_uuid,
                             db_streams[j].location_uuid,
-                            sizeof(config->streams[i].location_uuid), 0);
+                            sizeof(streams_snapshot[i].location_uuid), 0);
                 break;
             }
         }
     }
 
     // Delete existing stream configurations
-    // 'loaded' is bounded by config->max_streams (the calloc capacity)
-    if (loaded > config->max_streams) loaded = config->max_streams;
+    // 'loaded' is bounded by max_streams (the calloc capacity)
+    if (loaded > max_streams) loaded = max_streams;
     for (int i = 0; i < loaded; i++) {
         if (delete_stream_config(db_streams[i].name) != 0) {
             log_error("Failed to delete stream configuration: %s", db_streams[i].name);
             free(db_streams);
+            free(streams_snapshot);
             rollback_transaction();
             return -1;
         }
@@ -1668,21 +1689,23 @@ int save_stream_configs(config_t *config) {
     free(db_streams);
 
     // Add stream configurations to database
-    for (int i = 0; i < config->max_streams; i++) {
-        if (strlen(config->streams[i].name) > 0) {
+    for (int i = 0; i < max_streams; i++) {
+        if (strlen(streams_snapshot[i].name) > 0) {
             char stream_name[MAX_STREAM_NAME];
-            safe_strcpy(stream_name, config->streams[i].name,
+            safe_strcpy(stream_name, streams_snapshot[i].name,
                         sizeof(stream_name), 0);
-            uint64_t result = add_stream_config(&config->streams[i]);
+            uint64_t result = add_stream_config(&streams_snapshot[i]);
             if (result == 0) {
                 log_error("Failed to add stream configuration: %s", stream_name);
+                free(streams_snapshot);
                 rollback_transaction();
                 return -1;
             }
             if (get_stream_config_by_name(stream_name,
-                                          &config->streams[i]) != 0) {
+                                          &streams_snapshot[i]) != 0) {
                 log_error("Failed to reload stable identity for stream: %s",
                           stream_name);
+                free(streams_snapshot);
                 rollback_transaction();
                 return -1;
             }
@@ -1694,10 +1717,35 @@ int save_stream_configs(config_t *config) {
     if (commit_transaction() != 0) {
         log_error("Failed to commit transaction for saving stream configurations");
         // Try to rollback, but don't check the result since we're already in an error state
+        free(streams_snapshot);
         rollback_transaction();
         return -1;
     }
-    
+
+    pthread_mutex_lock(&mp4_faststart_mutex);
+    if (config->streams != initial_streams || config->max_streams != max_streams) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        free(streams_snapshot);
+        log_warn("Stream destination changed after database save; stable identities will reload later");
+        return saved;
+    }
+    for (int i = 0; i < max_streams; i++) {
+        if (streams_snapshot[i].name[0] == '\0') continue;
+        for (int j = 0; j < max_streams; j++) {
+            if (strcmp(config->streams[j].name, streams_snapshot[i].name) == 0) {
+                safe_strcpy(config->streams[j].camera_uuid,
+                            streams_snapshot[i].camera_uuid,
+                            sizeof(config->streams[j].camera_uuid), 0);
+                safe_strcpy(config->streams[j].location_uuid,
+                            streams_snapshot[i].location_uuid,
+                            sizeof(config->streams[j].location_uuid), 0);
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&mp4_faststart_mutex);
+
+    free(streams_snapshot);
     log_info("Saved %d stream configurations to database", saved);
     return saved;
 }
@@ -1834,13 +1882,19 @@ int load_config(config_t *config) {
     // that are not already set in the config file (useful for container deployments)
     pthread_mutex_lock(&mp4_faststart_mutex);
     apply_env_overrides(config, ini_present);
-    pthread_mutex_unlock(&mp4_faststart_mutex);
 
-    // Set default web root if not specified
-    if (strlen(config->web_root) == 0) {
-        // Set a default web root path
-        safe_strcpy(config->web_root, "/var/www/lightnvr", sizeof(config->web_root), 0);  // or another appropriate default
+    // Set the web root default before validation checks required paths.
+    if (config->web_root[0] == '\0') {
+        safe_strcpy(config->web_root, "/var/www/lightnvr", sizeof(config->web_root), 0);
     }
+
+    // Validate configuration while holding the same mutex used by config snapshots/readers
+    if (validate_config(config) != 0) {
+        log_error("Invalid configuration");
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        return -1;
+    }
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 
     // Add logging to debug
     log_info("Using web root: %s", config->web_root);
@@ -1850,12 +1904,6 @@ int load_config(config_t *config) {
     if (stat(config->web_root, &st) != 0 || !S_ISDIR(st.st_mode)) {
         log_warn("Web root directory %s does not exist or is not a directory", config->web_root);
         // Possibly create it or use a fallback
-    }
-    
-    // Validate configuration
-    if (validate_config(config) != 0) {
-        log_error("Invalid configuration");
-        return -1;
     }
     
     // Ensure directories exist
