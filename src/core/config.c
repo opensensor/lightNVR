@@ -2244,7 +2244,7 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     }
 
     int original_fd = openat(dir_fd, validated_filename,
-                             O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+                             O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     bool target_exists = original_fd >= 0;
     if (!target_exists && errno != ENOENT) {
         log_error("Could not open config file for writing: %s", strerror(errno));
