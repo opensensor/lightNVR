@@ -1999,14 +1999,16 @@ cleanup:
         lightnvr_sentry_shutdown();
         curl_cleanup_global();
 
-        // Kill the watchdog timer since we completed successfully
-        kill(cleanup_pid, SIGKILL);
-        waitpid(cleanup_pid, NULL, 0);
+        // Kill/reap watchdog only when it was created successfully.
+        if (cleanup_pid > 0) {
+            kill(cleanup_pid, SIGKILL);
+            waitpid(cleanup_pid, NULL, 0);
+        }
 
         // Restore signal mask
         pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
     } else {
-        // Fork failed
+        // Fork failed: continue with the same shared teardown sequence (no watchdog).
         log_error("Failed to create watchdog process for cleanup timeout");
 
         log_info("Shutting down host health and telemetry...");
