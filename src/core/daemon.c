@@ -595,11 +595,36 @@ int daemon_status(const char *pid_file) {
     do {
         bytes_read = read(fd, pid_str, sizeof(pid_str) - 1);
     } while (bytes_read < 0 && errno == EINTR);
-    close(fd);
 
     if (bytes_read <= 0) {
+        close(fd);
         if (!locked_by_other && bytes_read == 0) return finish_daemon_status(0);
         log_error("Failed to read PID from file %s", file_path);
+        return finish_daemon_status(-1);
+    }
+
+    // Reject embedded NUL bytes in the PID payload.
+    for (ssize_t i = 0; i < bytes_read; ++i) {
+        if (pid_str[i] == '\0') {
+            close(fd);
+            log_error("PID file %s contains embedded NUL bytes", file_path);
+            return finish_daemon_status(-1);
+        }
+    }
+
+    // Ensure no unread trailing bytes remain in the file.
+    char extra;
+    ssize_t extra_read;
+    do {
+        extra_read = read(fd, &extra, 1);
+    } while (extra_read < 0 && errno == EINTR);
+    close(fd);
+    if (extra_read < 0) {
+        log_error("Failed to validate PID file %s length: %s", file_path, strerror(errno));
+        return finish_daemon_status(-1);
+    }
+    if (extra_read > 0) {
+        log_error("PID file %s contains trailing data", file_path);
         return finish_daemon_status(-1);
     }
 
