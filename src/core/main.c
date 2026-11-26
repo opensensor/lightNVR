@@ -1286,7 +1286,14 @@ int main(int argc, char *argv[]) {
                 const char *models_dir = config.models_path[0] != '\0'
                                              ? config.models_path
                                              : "/etc/lightnvr/models";
-                snprintf(model_path, sizeof(model_path), "%s/%s", models_dir, config.streams[i].detection_model);
+                int model_path_len = snprintf(model_path, sizeof(model_path), "%s/%s", models_dir,
+                                              config.streams[i].detection_model);
+                if (model_path_len < 0 || (size_t)model_path_len >= sizeof(model_path)) {
+                    log_error("Detection model path too long for stream %s (models_dir='%s', model='%s'); "
+                              "skipping detection startup for this stream",
+                              config.streams[i].name, models_dir, config.streams[i].detection_model);
+                    continue;
+                }
 
                 // Check if file exists
                 FILE *model_file = fopen(model_path, "r");
