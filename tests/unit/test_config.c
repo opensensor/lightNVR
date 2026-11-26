@@ -36,6 +36,8 @@
    the dynamically allocated streams array to keep ASan leak-free. */
 static config_t cfg;
 static config_t reloaded_cfg;
+static FILE *saved_config_file;
+static char *saved_config_text;
 static stream_config_t *owned_snapshot_streams;
 static bool deny_config_chmod;
 static bool deny_config_rename;
@@ -107,6 +109,8 @@ ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
     memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
+    saved_config_file = NULL;
+    saved_config_text = NULL;
     owned_snapshot_streams = NULL;
     observed_config_stream = false;
     observed_config_stream_with_private_mode = true;
@@ -126,6 +130,10 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (saved_config_file) fclose(saved_config_file);
+    saved_config_file = NULL;
+    free(saved_config_text);
+    saved_config_text = NULL;
     free(owned_snapshot_streams);
     owned_snapshot_streams = NULL;
     deny_config_chmod = deny_config_rename = busy_config_rename = false;
@@ -155,6 +163,8 @@ void tearDown(void) {
     }
     free(reloaded_cfg.streams);
     reloaded_cfg.streams = NULL;
+    free(g_config.streams);
+    g_config.streams = NULL;
 }
 
 /* ================================================================
@@ -1092,26 +1102,28 @@ void test_save_config_writes_api_detection_format(void) {
     snprintf(cfg.api_detection_detector_name, sizeof(cfg.api_detection_detector_name), "tensorflow");
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
-    FILE *saved = fopen(config_path, "r");
-    TEST_ASSERT_NOT_NULL(saved);
-    if (saved) {
-        TEST_ASSERT_EQUAL_INT(0, fseek(saved, 0, SEEK_END));
-        long file_size = ftell(saved);
+    saved_config_file = fopen(config_path, "r");
+    TEST_ASSERT_NOT_NULL(saved_config_file);
+    if (saved_config_file) {
+        TEST_ASSERT_EQUAL_INT(0, fseek(saved_config_file, 0, SEEK_END));
+        long file_size = ftell(saved_config_file);
         TEST_ASSERT_GREATER_THAN(0, (int)file_size);
-        rewind(saved);
+        rewind(saved_config_file);
 
-        char *file_buffer = (char *)malloc((size_t)file_size + 1);
-        TEST_ASSERT_NOT_NULL(file_buffer);
-        if (file_buffer) {
-            size_t bytes_read = fread(file_buffer, 1, (size_t)file_size, saved);
+        saved_config_text = malloc((size_t)file_size + 1);
+        TEST_ASSERT_NOT_NULL(saved_config_text);
+        if (saved_config_text) {
+            size_t bytes_read = fread(saved_config_text, 1, (size_t)file_size, saved_config_file);
             TEST_ASSERT_EQUAL_size_t((size_t)file_size, bytes_read);
-            file_buffer[bytes_read] = '\0';
-            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "[api_detection]"));
-            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "format = doods2"));
-            TEST_ASSERT_NOT_NULL(strstr(file_buffer, "detector_name = tensorflow"));
-            free(file_buffer);
+            saved_config_text[bytes_read] = '\0';
+            TEST_ASSERT_NOT_NULL(strstr(saved_config_text, "[api_detection]"));
+            TEST_ASSERT_NOT_NULL(strstr(saved_config_text, "format = doods2"));
+            TEST_ASSERT_NOT_NULL(strstr(saved_config_text, "detector_name = tensorflow"));
         }
-        fclose(saved);
+        fclose(saved_config_file);
+        saved_config_file = NULL;
+        free(saved_config_text);
+        saved_config_text = NULL;
     }
 
     unlink(config_path);
