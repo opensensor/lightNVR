@@ -444,11 +444,22 @@ static int check_running_daemon(const char *pid_file) {
     
     // File is locked by another process, read the PID
     char pid_str[16];
-    ssize_t bytes_read = read(fd, pid_str, sizeof(pid_str) - 1);
+    ssize_t bytes_read;
+    do {
+        bytes_read = read(fd, pid_str, sizeof(pid_str) - 1);
+    } while (bytes_read < 0 && errno == EINTR);
+    char extra;
+    ssize_t extra_read = -1;
+    if (bytes_read > 0) {
+        do {
+            extra_read = read(fd, &extra, 1);
+        } while (extra_read < 0 && errno == EINTR);
+    }
     close(fd);
     
-    if (bytes_read <= 0) {
-        log_error("Failed to read PID from file %s", pid_file);
+    if (bytes_read <= 0 || extra_read != 0 ||
+        memchr(pid_str, '\0', (size_t)bytes_read) != NULL) {
+        log_error("Invalid PID file contents: %s", pid_file);
         return finish_running_probe(-1);
     }
     
