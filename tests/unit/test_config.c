@@ -416,8 +416,8 @@ static void *toggle_faststart(void *unused) {
     return NULL;
 }
 
-/* Exercise every shared read, including the whole-config snapshot that used
- * to bypass the option accessors. This also provides a ThreadSanitizer gate. */
+/* Verify config_copy() performs a deep copy and that snapshot-owned streams
+ * remain valid after the source config is reloaded. */
 void test_config_copy_owns_streams_after_source_reload(void) {
     load_default_config(&cfg);
     snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "original-camera");
