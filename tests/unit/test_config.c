@@ -421,6 +421,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     config_set_mp4_faststart(&cfg, false);
     config_t snapshot = {0};
     TEST_ASSERT_TRUE(config_copy(&snapshot, &cfg));
+    owned_snapshot_streams = snapshot.streams;
     config_set_mp4_faststart(&cfg, true);
     TEST_ASSERT_FALSE(config_get_mp4_faststart(&snapshot));
     TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));
@@ -428,7 +429,6 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     TEST_ASSERT_EQUAL_INT(cfg.max_streams, snapshot.max_streams);
     TEST_ASSERT_EQUAL_MEMORY(cfg.streams, snapshot.streams,
                              (size_t)cfg.max_streams * sizeof(*cfg.streams));
-    free(snapshot.streams);
 }
 
 void test_default_config_buffer_size(void) {
