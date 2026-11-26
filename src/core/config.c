@@ -1667,22 +1667,34 @@ int save_stream_configs(config_t *config) {
     }
     free(db_streams);
 
+    stream_config_t *streams_snapshot = calloc((size_t)config->max_streams,
+                                               sizeof(*streams_snapshot));
+    if (!streams_snapshot) {
+        log_error("Failed to allocate stream snapshot");
+        rollback_transaction();
+        return -1;
+    }
+    memcpy(streams_snapshot, config->streams,
+           (size_t)config->max_streams * sizeof(*streams_snapshot));
+
     // Add stream configurations to database
     for (int i = 0; i < config->max_streams; i++) {
-        if (strlen(config->streams[i].name) > 0) {
+        if (strlen(streams_snapshot[i].name) > 0) {
             char stream_name[MAX_STREAM_NAME];
-            safe_strcpy(stream_name, config->streams[i].name,
+            safe_strcpy(stream_name, streams_snapshot[i].name,
                         sizeof(stream_name), 0);
-            uint64_t result = add_stream_config(&config->streams[i]);
+            uint64_t result = add_stream_config(&streams_snapshot[i]);
             if (result == 0) {
                 log_error("Failed to add stream configuration: %s", stream_name);
+                free(streams_snapshot);
                 rollback_transaction();
                 return -1;
             }
             if (get_stream_config_by_name(stream_name,
-                                          &config->streams[i]) != 0) {
+                                          &streams_snapshot[i]) != 0) {
                 log_error("Failed to reload stable identity for stream: %s",
                           stream_name);
+                free(streams_snapshot);
                 rollback_transaction();
                 return -1;
             }
@@ -1694,10 +1706,23 @@ int save_stream_configs(config_t *config) {
     if (commit_transaction() != 0) {
         log_error("Failed to commit transaction for saving stream configurations");
         // Try to rollback, but don't check the result since we're already in an error state
+        free(streams_snapshot);
         rollback_transaction();
         return -1;
     }
-    
+
+    pthread_mutex_lock(&mp4_faststart_mutex);
+    if (config->streams == NULL) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        free(streams_snapshot);
+        log_error("Stream destination changed while saving configurations");
+        return -1;
+    }
+    memcpy(config->streams, streams_snapshot,
+           (size_t)config->max_streams * sizeof(*streams_snapshot));
+    pthread_mutex_unlock(&mp4_faststart_mutex);
+
+    free(streams_snapshot);
     log_info("Saved %d stream configurations to database", saved);
     return saved;
 }
