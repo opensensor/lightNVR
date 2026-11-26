@@ -1286,7 +1286,14 @@ int main(int argc, char *argv[]) {
                 const char *models_dir = config.models_path[0] != '\0'
                                              ? config.models_path
                                              : "/etc/lightnvr/models";
-                snprintf(model_path, sizeof(model_path), "%s/%s", models_dir, config.streams[i].detection_model);
+                int model_path_len = snprintf(model_path, sizeof(model_path), "%s/%s", models_dir,
+                                              config.streams[i].detection_model);
+                if (model_path_len < 0 || (size_t)model_path_len >= sizeof(model_path)) {
+                    log_error("Detection model path too long for stream %s (models_dir='%s', model='%s'); "
+                              "skipping detection startup for this stream",
+                              config.streams[i].name, models_dir, config.streams[i].detection_model);
+                    continue;
+                }
 
                 // Check if file exists
                 FILE *model_file = fopen(model_path, "r");
@@ -1515,6 +1522,9 @@ cleanup:
     // Capture the original PID before fork so the child never mistakes itself
     // for its parent if the parent exits before the child is scheduled.
     pid_t expected_parent_pid = getpid();
+    // Query descriptor limits before forking from a multithreaded process.
+    long watchdog_max_fd = sysconf(_SC_OPEN_MAX);
+    if (watchdog_max_fd < 0) watchdog_max_fd = 1024;
     // Set up a watchdog timer to force exit if cleanup takes too long
     pid_t cleanup_pid = fork();
 
@@ -1526,6 +1536,12 @@ cleanup:
         // Post-fork child from a multithreaded parent: keep this path free of
         // stdio and logger calls. Continue best-effort if setpgid fails.
         (void)setpgid(0, 0);
+
+        // Drop inherited descriptors so watchdog does not keep parent resources
+        // (recording files, sockets, DB handles, etc.) alive during its timeout wait.
+        for (long fd = 3; fd < watchdog_max_fd; ++fd) {
+            (void)close(fd);
+        }
 
         // Reset signal handlers to default to avoid inheriting any problematic dispositions
         struct sigaction sa_default;
