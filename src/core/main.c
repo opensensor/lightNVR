@@ -1522,6 +1522,9 @@ cleanup:
     // Capture the original PID before fork so the child never mistakes itself
     // for its parent if the parent exits before the child is scheduled.
     pid_t expected_parent_pid = getpid();
+    // Query descriptor limits before forking from a multithreaded process.
+    long watchdog_max_fd = sysconf(_SC_OPEN_MAX);
+    if (watchdog_max_fd < 0) watchdog_max_fd = 1024;
     // Set up a watchdog timer to force exit if cleanup takes too long
     pid_t cleanup_pid = fork();
 
@@ -1536,11 +1539,7 @@ cleanup:
 
         // Drop inherited descriptors so watchdog does not keep parent resources
         // (recording files, sockets, DB handles, etc.) alive during its timeout wait.
-        long max_fd = sysconf(_SC_OPEN_MAX);
-        if (max_fd < 0) {
-            max_fd = 1024;
-        }
-        for (int fd = 3; fd < max_fd; ++fd) {
+        for (long fd = 3; fd < watchdog_max_fd; ++fd) {
             (void)close(fd);
         }
 
@@ -1968,6 +1967,7 @@ cleanup:
         go2rtc_integration_cleanup();
 #endif
         shutdown_onvif_discovery();
+        cleanup_detection_resources();
 
         // Shutdown database
         log_info("Shutting down database...");
