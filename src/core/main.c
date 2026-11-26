@@ -1368,12 +1368,14 @@ int main(int argc, char *argv[]) {
     // are still connecting.
     if (!atomic_load(&running) || atomic_load(&restart_requested)) {
         log_info("Shutdown/restart requested before detection stream startup; aborting startup loop");
+        exit_code = EXIT_SUCCESS;
         goto cleanup;
     }
 
     for (int i = 0; i < g_config.max_streams; i++) {
         if (!atomic_load(&running) || atomic_load(&restart_requested)) {
             log_info("Shutdown/restart requested during detection stream startup; aborting remaining stream startup");
+            exit_code = EXIT_SUCCESS;
             goto cleanup;
         }
 
