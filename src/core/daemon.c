@@ -404,7 +404,7 @@ int daemon_status(const char *pid_file) {
     }
 
     // Open read-only so status checks can work across users (e.g., 0644 PID files)
-    int fd = open(file_path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    int fd = open(file_path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) {
         if (errno == ENOENT) {
             // PID file doesn't exist, daemon is not running
@@ -412,6 +412,19 @@ int daemon_status(const char *pid_file) {
         }
         
         log_error("Failed to open PID file %s: %s", file_path, strerror(errno));
+        return -1;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) < 0) {
+        log_error("Failed to stat PID file %s: %s", file_path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    if (!S_ISREG(st.st_mode)) {
+        log_error("PID file %s is not a regular file", file_path);
+        close(fd);
         return -1;
     }
     
