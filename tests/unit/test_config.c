@@ -1374,6 +1374,12 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     cfg.db_post_backup_script[0] = '\0';
     snprintf(cfg.mqtt_ha_discovery_prefix, sizeof(cfg.mqtt_ha_discovery_prefix), "homeassistant#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    snprintf(cfg.mqtt_ha_discovery_prefix, sizeof(cfg.mqtt_ha_discovery_prefix), "homeassistant");
+    snprintf(cfg.turn_server_url, sizeof(cfg.turn_server_url), "turn:example.com\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.turn_server_url[0] = '\0';
+    snprintf(cfg.mqtt_broker_host, sizeof(cfg.mqtt_broker_host), "broker#bad");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
     FILE *saved = fopen(path, "r");
