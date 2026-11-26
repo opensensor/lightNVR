@@ -238,10 +238,23 @@ int write_pid_file(const char *pid_file) {
         return -1;
     }
     
-    // Open the file initially without exclusive locking
-    int fd = open(pid_file, O_RDWR | O_CREAT, 0644);
+    // Open PID file securely: reject symlinks and avoid fd inheritance.
+    int fd = open(pid_file, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0644);
     if (fd < 0) {
         log_error("Failed to open PID file %s: %s", pid_file, strerror(errno));
+        return -1;
+    }
+
+    // Validate that we opened a regular file (not device/FIFO/etc.) and not a hardlink.
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        log_error("Failed to stat PID file %s: %s", pid_file, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    if (!S_ISREG(st.st_mode) || st.st_nlink != 1) {
+        log_error("Unsafe PID file %s: expected regular file with a single link", pid_file);
+        close(fd);
         return -1;
     }
     
