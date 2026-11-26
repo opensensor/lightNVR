@@ -1930,26 +1930,29 @@ int save_config(const config_t *config, const char *path) {
         log_error("Invalid config parameter for save_config: config=%p", config);
         return -1;
     }
-    if (contains_unsupported_ini_credential_chars(config->turn_username,
-                                                  sizeof(config->turn_username)) ||
-        contains_unsupported_ini_credential_chars(config->turn_password,
-                                                  sizeof(config->turn_password)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_username,
-                                                  sizeof(config->mqtt_username)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_password,
-                                                  sizeof(config->mqtt_password)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_client_id,
-                                                  sizeof(config->mqtt_client_id)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_topic_prefix,
-                                                  sizeof(config->mqtt_topic_prefix)) ||
-        contains_unsupported_ini_credential_chars(config->mqtt_ha_discovery_prefix,
-                                                  sizeof(config->mqtt_ha_discovery_prefix)) ||
-        contains_unsupported_ini_credential_chars(config->db_post_backup_script,
-                                                  sizeof(config->db_post_backup_script)) ||
-        contains_unsupported_ini_credential_chars(config->web_username,
-                                                  sizeof(config->web_username))) {
-        log_error("Credential contains unsupported INI characters or boundary whitespace; refusing to save");
-        return -1;
+    struct {
+        const char *name;
+        const char *value;
+        size_t capacity;
+    } validated_fields[] = {
+        {"turn_username", config->turn_username, sizeof(config->turn_username)},
+        {"turn_password", config->turn_password, sizeof(config->turn_password)},
+        {"mqtt_username", config->mqtt_username, sizeof(config->mqtt_username)},
+        {"mqtt_password", config->mqtt_password, sizeof(config->mqtt_password)},
+        {"mqtt_client_id", config->mqtt_client_id, sizeof(config->mqtt_client_id)},
+        {"mqtt_topic_prefix", config->mqtt_topic_prefix, sizeof(config->mqtt_topic_prefix)},
+        {"mqtt_ha_discovery_prefix", config->mqtt_ha_discovery_prefix, sizeof(config->mqtt_ha_discovery_prefix)},
+        {"db_post_backup_script", config->db_post_backup_script, sizeof(config->db_post_backup_script)},
+        {"web_username", config->web_username, sizeof(config->web_username)},
+    };
+
+    for (size_t i = 0; i < sizeof(validated_fields) / sizeof(validated_fields[0]); ++i) {
+        if (contains_unsupported_ini_credential_chars(validated_fields[i].value,
+                                                      validated_fields[i].capacity)) {
+            log_error("Configuration field '%s' contains unsupported INI characters or boundary whitespace; refusing to save",
+                      validated_fields[i].name);
+            return -1;
+        }
     }
     
     // If no path is specified, try tracked paths then well-known defaults
