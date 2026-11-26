@@ -1490,23 +1490,23 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
 
 // Load stream configurations from database
 int load_stream_configs(config_t *config) {
-    if (!config || !config->streams) return -1;
+    if (!config) return -1;
 
-    if (config->max_streams <= 0 || config->max_streams > MAX_STREAMS) {
-        log_error("load_stream_configs: invalid max_streams value (%d)", config->max_streams);
+    pthread_mutex_lock(&mp4_faststart_mutex);
+    stream_config_t *initial_streams = config->streams;
+    int initial_max_streams = config->max_streams;
+    pthread_mutex_unlock(&mp4_faststart_mutex);
+    if (!initial_streams) return -1;
+
+    if (initial_max_streams <= 0 || initial_max_streams > MAX_STREAMS) {
+        log_error("load_stream_configs: invalid max_streams value (%d)", initial_max_streams);
         return -1;
     }
 
-    size_t max_streams = (size_t)config->max_streams;
+    size_t max_streams = (size_t)initial_max_streams;
     if (max_streams > SIZE_MAX / sizeof(stream_config_t)) {
         log_error("load_stream_configs: max_streams causes size overflow");
         return -1;
-    }
-
-    // Initialize all stream slots to project defaults; loaded DB rows below
-    // will override these defaults for populated entries.
-    for (size_t i = 0; i < max_streams; i++) {
-        init_stream_config_defaults(&config->streams[i]);
     }
 
     // Get stream count from database
@@ -1517,6 +1517,16 @@ int load_stream_configs(config_t *config) {
     }
 
     if (count == 0) {
+        pthread_mutex_lock(&mp4_faststart_mutex);
+        if (config->streams != initial_streams || config->max_streams != initial_max_streams) {
+            pthread_mutex_unlock(&mp4_faststart_mutex);
+            return -1;
+        }
+        for (size_t i = 0; i < max_streams; i++) {
+            init_stream_config_defaults(&config->streams[i]);
+        }
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+
         log_info("No stream configurations found in database");
         return 0;
     }
@@ -1541,10 +1551,25 @@ int load_stream_configs(config_t *config) {
         return -1;
     }
 
+    // Publish stream configurations under the same mutex used by snapshot readers.
+    pthread_mutex_lock(&mp4_faststart_mutex);
+    if (config->streams != initial_streams || config->max_streams != initial_max_streams) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        free(db_streams);
+        return -1;
+    }
+
+    // Reset all slots to defaults first; populated DB rows override these defaults.
+    for (size_t i = 0; i < max_streams; i++) {
+        init_stream_config_defaults(&config->streams[i]);
+    }
+
     // Copy stream configurations to config
     for (int i = 0; i < loaded; i++) {
         memcpy(&config->streams[i], &db_streams[i], sizeof(stream_config_t));
     }
+
+    pthread_mutex_unlock(&mp4_faststart_mutex);
     free(db_streams);
 
     log_info("Loaded %d stream configurations from database", loaded);
@@ -2481,7 +2506,7 @@ int save_config(const config_t *config, const char *path) {
      * fallback, but close the stream before publishing so close errors count. */
     int staged_fd = -1;
     if (!write_failed) {
-        staged_fd = dup(fileno(file));
+        staged_fd = fcntl(fileno(file), F_DUPFD_CLOEXEC, 0);
         if (staged_fd < 0) write_failed = 1;
     }
     if (fclose(file) != 0) write_failed = 1;

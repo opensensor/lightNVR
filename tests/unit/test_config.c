@@ -217,6 +217,12 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     int fd = write_pid_file(path);
     TEST_ASSERT_TRUE(fd >= 0);
     TEST_ASSERT_EQUAL_INT(1, daemon_status(path));
+    char alias[MAX_PATH_LENGTH];
+    snprintf(alias, sizeof(alias), "%s/alias.pid", directory);
+    TEST_ASSERT_EQUAL_INT(0, link(path, alias));
+    TEST_ASSERT_EQUAL_INT(1, daemon_status(path));
+    TEST_ASSERT_EQUAL_INT(1, daemon_status(alias));
+    TEST_ASSERT_EQUAL_INT(0, unlink(alias));
 
     pid_t child = fork();
     TEST_ASSERT_TRUE(child >= 0);
