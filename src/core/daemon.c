@@ -59,8 +59,12 @@ int init_daemon(const char *pid_file) {
     }
 
     // Check if daemon is already running
-    if (check_running_daemon(pid_file_path) != 0) {
+    int daemon_check = check_running_daemon(pid_file_path);
+    if (daemon_check > 0) {
         log_error("Daemon is already running");
+        return -1;
+    } else if (daemon_check < 0) {
+        log_error("Failed to verify daemon state from PID file: %s", pid_file_path);
         return -1;
     }
 
