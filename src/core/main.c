@@ -931,8 +931,9 @@ int main(int argc, char *argv[]) {
     // reclaim before touching the database. A 100%-full disk both corrupts the
     // DB (truncated writes) and prevents the restore-from-backup recovery inside
     // init_database from writing, which is exactly what turns a full disk into an
-    // unrecoverable crash loop. g_config is not populated yet here, so pass the
-    // freshly loaded config.
+    // unrecoverable crash loop. g_config has already been copied, but DB-backed
+    // stream/runtime configuration is not loaded yet here, so pass the freshly
+    // loaded config.
     storage_startup_reclaim_if_full(config.storage_path, &config);
 
     // Initialize database
@@ -1780,8 +1781,7 @@ cleanup:
         log_info("Stopping all detection stream readers...");
         for (int i = 0; i < g_config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0' &&
-                config.streams[i].detection_based_recording &&
-                config.streams[i].detection_model[0] != '\0') {
+                config.streams[i].detection_based_recording) {
 
                 log_info("Stopping detection stream reader for: %s", config.streams[i].name);
                 stop_detection_stream_reader(config.streams[i].name);
