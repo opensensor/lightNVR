@@ -1780,8 +1780,7 @@ cleanup:
         log_info("Stopping all detection stream readers...");
         for (int i = 0; i < g_config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0' &&
-                config.streams[i].detection_based_recording &&
-                config.streams[i].detection_model[0] != '\0') {
+                config.streams[i].detection_based_recording) {
 
                 log_info("Stopping detection stream reader for: %s", config.streams[i].name);
                 stop_detection_stream_reader(config.streams[i].name);
