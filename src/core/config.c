@@ -1955,6 +1955,8 @@ int save_config(const config_t *config, const char *path) {
         {"mqtt_ha_discovery_prefix", config->mqtt_ha_discovery_prefix, sizeof(config->mqtt_ha_discovery_prefix)},
         {"db_post_backup_script", config->db_post_backup_script, sizeof(config->db_post_backup_script)},
         {"web_username", config->web_username, sizeof(config->web_username)},
+        {"api_detection_detector_name", config->api_detection_detector_name,
+         sizeof(config->api_detection_detector_name)},
     };
 
     for (size_t i = 0; i < sizeof(validated_fields) / sizeof(validated_fields[0]); ++i) {
@@ -2310,15 +2312,8 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "backend = %s\n", config->api_detection_backend);
     fprintf(file, "format = %s  ; Request format: light-object-detect (multipart upload) or doods2 (JSON body)\n",
             config->api_detection_format);
-    const char *safe_detector_name = config->api_detection_detector_name;
-    if (contains_unsupported_ini_credential_chars(
-            config->api_detection_detector_name,
-            sizeof(config->api_detection_detector_name))) {
-        LOG_WARN("api_detection.detector_name contains unsupported INI characters; writing empty value");
-        safe_detector_name = "";
-    }
     fprintf(file, "detector_name = %s  ; DOODS2 only: detector_name sent with each request\n",
-            safe_detector_name);
+            config->api_detection_detector_name);
     fprintf(file, "detection_threshold = %d  ; Default confidence threshold (0-100%%)\n", config->default_detection_threshold);
     fprintf(file, "pre_detection_buffer = %d\n", config->default_pre_detection_buffer);
     fprintf(file, "post_detection_buffer = %d\n\n", config->default_post_detection_buffer);
