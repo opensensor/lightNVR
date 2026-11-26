@@ -1797,7 +1797,9 @@ int load_config(config_t *config) {
     // Apply environment variable overrides
     // This allows LIGHTNVR_ prefixed env vars to set config values
     // that are not already set in the config file (useful for container deployments)
+    pthread_mutex_lock(&mp4_faststart_mutex);
     apply_env_overrides(config, ini_present);
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 
     // Set default web root if not specified
     if (strlen(config->web_root) == 0) {
