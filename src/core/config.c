@@ -2409,7 +2409,12 @@ int save_config(const config_t *config, const char *path) {
     // TURN server settings
     fprintf(file, "turn_enabled = %s\n", config->turn_enabled ? "true" : "false");
     if (config->turn_server_url[0] != '\0') {
-        fprintf(file, "turn_server_url = %s\n", config->turn_server_url);
+        if (!contains_unsupported_ini_credential_chars(config->turn_server_url,
+                                                       sizeof(config->turn_server_url))) {
+            fprintf(file, "turn_server_url = %s\n", config->turn_server_url);
+        } else {
+            LOG_WARN("Skipping unsafe INI value for turn_server_url");
+        }
     }
     if (config->turn_username[0] != '\0') {
         fprintf(file, "turn_username = %s\n", config->turn_username);
@@ -2422,7 +2427,12 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "\n[mqtt]\n");
     fprintf(file, "enabled = %s\n", config->mqtt_enabled ? "true" : "false");
     if (config->mqtt_broker_host[0] != '\0') {
-        fprintf(file, "broker_host = %s\n", config->mqtt_broker_host);
+        if (!contains_unsupported_ini_credential_chars(config->mqtt_broker_host,
+                                                       sizeof(config->mqtt_broker_host))) {
+            fprintf(file, "broker_host = %s\n", config->mqtt_broker_host);
+        } else {
+            LOG_WARN("Skipping unsafe INI value for mqtt.broker_host");
+        }
     }
     fprintf(file, "broker_port = %d\n", config->mqtt_broker_port);
     if (config->mqtt_username[0] != '\0') {
