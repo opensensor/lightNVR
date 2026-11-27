@@ -56,8 +56,13 @@ test('pipelined requests are replayed after the first response', async () => {
   try {
     const response = await rawExchange(server.port,
       'GET /api/health?liveness=true HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n' +
-      'GET /api/health?liveness=true HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
+      'GET /api/health?liveness=false HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
     expect(response.match(/HTTP\/1\.1 200 /g)).toHaveLength(2);
+    const firstBodyIndex = response.indexOf('"liveness":true');
+    const secondBodyIndex = response.indexOf('"liveness":false');
+    expect(firstBodyIndex).toBeGreaterThan(-1);
+    expect(secondBodyIndex).toBeGreaterThan(-1);
+    expect(firstBodyIndex).toBeLessThan(secondBodyIndex);
   } finally {
     await server.stop();
   }
