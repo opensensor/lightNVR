@@ -197,8 +197,8 @@ static void test_tls_request_does_not_start_plain_http(void) {
     config.web_root = "/nonexistent-lifecycle-fixture";
     config.ssl_enabled = true;
     if (libuv_tls_compiled_in()) {
-        config.ssl_cert = "/nonexistent-lifecycle-fixture-cert.pem";
-        config.ssl_key = "/nonexistent-lifecycle-fixture-key.pem";
+        snprintf(config.cert_path, sizeof(config.cert_path), "%s", "/nonexistent-lifecycle-fixture-cert.pem");
+        snprintf(config.key_path, sizeof(config.key_path), "%s", "/nonexistent-lifecycle-fixture-key.pem");
     }
     TEST_ASSERT_NULL(libuv_server_init(&config));
 }
