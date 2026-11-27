@@ -376,6 +376,11 @@ static void test_collection_realloc_growth_failure_preserves_all(void) {
     TEST_ASSERT_NOT_EQUAL(0, prune(1));
     TEST_ASSERT_EQUAL_UINT(1, fault_hits);
     assert_both_originals();
+    for (unsigned i = 0; i < 8; ++i) {
+        char path[384];
+        snprintf(path, sizeof(path), "%s/20230101T%06uZ.sqlite3", backups, i);
+        assert_bytes(path, "older");
+    }
 }
 static void test_collection_strdup_late_failure_preserves_all(void) {
     /* Fail strdup after at least one prior name has been collected. */
