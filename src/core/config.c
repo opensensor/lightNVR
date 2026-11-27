@@ -2073,8 +2073,10 @@ void set_custom_config_path(const char *path) {
         return;
     }
 
+    pthread_mutex_lock(&config_load_mutex);
     safe_strcpy(g_custom_config_path, path, MAX_PATH_LENGTH, 0);
     log_info("Custom config path set to: %s", g_custom_config_path);
+    pthread_mutex_unlock(&config_load_mutex);
 }
 
 // Function to get the custom config path
