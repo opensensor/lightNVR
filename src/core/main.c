@@ -1714,14 +1714,11 @@ cleanup:
                 remaining = sleep(remaining);
             }
         }
-        // Never signal a PID after this child has been reparented: the old
-        // parent's PID may already belong to an unrelated process.
-        if (getppid() == parent_pid) {
-            // A process-directed SIGUSR1 may reach any thread and cannot
-            // reliably interrupt a blocked cleanup worker. Enforce the
-            // watchdog deadline directly.
-            kill(parent_pid, SIGKILL);
-        }
+        // Never signal by numeric PID here. Even with getppid()==parent_pid,
+        // the parent can exit between check and signal, and PID reuse could
+        // target an unrelated process. A race-free implementation must use a
+        // pidfd acquired for the parent before fork() and pidfd_send_signal().
+        // Until pidfd wiring is in place, intentionally avoid kill(parent_pid).
 
         // Recover a requested restart if the parent died during cleanup.
         if (restart_requested) {
