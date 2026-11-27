@@ -1504,8 +1504,16 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "turn_server_url") == 0) {
             safe_strcpy(config->turn_server_url, value, sizeof(config->turn_server_url), 0);
         } else if (strcmp(name, "turn_username") == 0) {
+            if (contains_unsupported_ini_credential_chars(value, sizeof(config->turn_username))) {
+                log_error("Invalid go2rtc.turn_username in INI: unsupported characters or value too long");
+                return 0;
+            }
             safe_strcpy(config->turn_username, value, sizeof(config->turn_username), 0);
         } else if (strcmp(name, "turn_password") == 0) {
+            if (contains_unsupported_ini_credential_chars(value, sizeof(config->turn_password))) {
+                log_error("Invalid go2rtc.turn_password in INI: unsupported characters or value too long");
+                return 0;
+            }
             safe_strcpy(config->turn_password, value, sizeof(config->turn_password), 0);
         }
     }
