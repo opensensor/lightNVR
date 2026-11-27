@@ -47,6 +47,7 @@ static bool stream_save_db_active;
 static char group_replace_dir[MAX_PATH_LENGTH];
 static char group_replace_path[MAX_PATH_LENGTH];
 static bool group_replace_cleanup_active;
+static char round_trip_dir[MAX_PATH_LENGTH];
 static char hardlink_original_path[MAX_PATH_LENGTH];
 static char pid_validation_dir[MAX_PATH_LENGTH];
 static char pid_validation_path[MAX_PATH_LENGTH];
@@ -179,6 +180,7 @@ void setUp(void) {
     group_replace_dir[0] = '\0';
     group_replace_path[0] = '\0';
     group_replace_cleanup_active = false;
+    round_trip_dir[0] = '\0';
     hardlink_original_path[0] = '\0';
     pid_validation_dir[0] = '\0';
     pid_validation_path[0] = '\0';
@@ -247,6 +249,21 @@ void tearDown(void) {
         unlink(group_replace_path);
         rmdir(group_replace_dir);
         group_replace_cleanup_active = false;
+    }
+    if (round_trip_dir[0]) {
+        static const char *files[] = {"faststart.ini", "lightnvr.log", "lightnvr.pid"};
+        static const char *dirs[] = {"recordings", "mp4", "hls", "models", "web"};
+        char path[MAX_PATH_LENGTH];
+        for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); ++i) {
+            snprintf(path, sizeof(path), "%s/%s", round_trip_dir, files[i]);
+            unlink(path);
+        }
+        for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); ++i) {
+            snprintf(path, sizeof(path), "%s/%s", round_trip_dir, dirs[i]);
+            rmdir(path);
+        }
+        rmdir(round_trip_dir);
+        round_trip_dir[0] = '\0';
     }
     if (pid_validation_cleanup_active) {
         unlink(pid_validation_alias);
@@ -624,6 +641,7 @@ void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
     char temp_dir[] = "/tmp/lightnvr_faststart_XXXXXX";
     char *dir = mkdtemp(temp_dir);
     TEST_ASSERT_NOT_NULL(dir);
+    snprintf(round_trip_dir, sizeof(round_trip_dir), "%s", dir);
     char config_path[MAX_PATH_LENGTH];
     snprintf(config_path, sizeof(config_path), "%s/faststart.ini", dir);
 
@@ -651,11 +669,6 @@ void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
     memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
-    /* Register temporary config artifacts for tearDown() so assertion
-     * failures below do not skip cleanup. */
-    snprintf(group_replace_path, sizeof(group_replace_path), "%s", config_path);
-    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", dir);
-    group_replace_cleanup_active = true;
     set_custom_config_path(config_path);
     TEST_ASSERT_EQUAL_INT(0, load_config(&reloaded_cfg));
     TEST_ASSERT_FALSE(config_get_mp4_faststart(&reloaded_cfg));
@@ -683,6 +696,7 @@ void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
         TEST_ASSERT_EQUAL_INT(0, rmdir(cfg.models_path));
     TEST_ASSERT_EQUAL_INT(0, rmdir(cfg.web_root));
     TEST_ASSERT_EQUAL_INT(0, rmdir(dir));
+    round_trip_dir[0] = '\0';
 }
 
 static atomic_bool faststart_writer_stop;
