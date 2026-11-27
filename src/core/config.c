@@ -3088,6 +3088,11 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     // Stream configurations are stored exclusively in the database.
     // Do NOT write [stream.X] sections here.
     
+    if (pthread_mutex_lock(&stream_save_mutex) != 0) {
+        fclose(file);
+        return -1;
+    }
+
     int write_failed = ferror(file);
     if (fflush(file) != 0 || fsync(fileno(file)) != 0) write_failed = 1;
     /* Keep a stable handle to the private staging file for the in-place
@@ -3128,6 +3133,7 @@ static int save_config_snapshot(const config_t *config, const char *path) {
             pthread_mutex_unlock(&config_in_place_mutex);
         }
     }
+    pthread_mutex_unlock(&stream_save_mutex);
     if (staged_fd >= 0) close(staged_fd);
     if (external_staging) unlink(external_staging_path);
     else unlinkat(dir_fd, replacement_name, 0);
