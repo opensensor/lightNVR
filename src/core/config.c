@@ -1628,24 +1628,24 @@ int load_stream_configs(config_t *config) {
     int initial_max_streams = config->max_streams;
     if (!initial_streams || initial_max_streams <= 0 || initial_max_streams > MAX_STREAMS) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
-        pthread_mutex_unlock(&stream_save_mutex);
         log_error("load_stream_configs: invalid max_streams value (%d)", initial_max_streams);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
     size_t max_streams = (size_t)initial_max_streams;
     if (max_streams > SIZE_MAX / sizeof(stream_config_t)) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
-        pthread_mutex_unlock(&stream_save_mutex);
         log_error("load_stream_configs: max_streams causes size overflow");
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     size_t snapshot_bytes = max_streams * sizeof(stream_config_t);
     stream_config_t *initial_snapshot = malloc(snapshot_bytes);
     if (!initial_snapshot) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
-        pthread_mutex_unlock(&stream_save_mutex);
         log_error("load_stream_configs: out of memory allocating stream snapshot");
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     memcpy(initial_snapshot, initial_streams, snapshot_bytes);
@@ -1693,6 +1693,7 @@ int load_stream_configs(config_t *config) {
     if (!db_streams) {
         log_error("load_stream_configs: out of memory allocating %zu stream configs", load_capacity);
         free(initial_snapshot);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     int loaded = get_all_stream_configs(db_streams, (int)load_capacity);
@@ -1700,6 +1701,7 @@ int load_stream_configs(config_t *config) {
         log_error("Failed to load stream configurations from database");
         free(db_streams);
         free(initial_snapshot);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1711,6 +1713,7 @@ int load_stream_configs(config_t *config) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
         free(db_streams);
         free(initial_snapshot);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1728,6 +1731,7 @@ int load_stream_configs(config_t *config) {
     free(initial_snapshot);
 
     log_info("Loaded %d stream configurations from database", loaded);
+    pthread_mutex_unlock(&stream_save_mutex);
     return loaded;
 }
 
