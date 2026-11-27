@@ -177,11 +177,6 @@ static void maybe_compress_response(const http_request_t *request,
         return;
     }
 
-    if (request->method == HTTP_METHOD_HEAD) {
-        http_response_add_header(response, "Content-Encoding", "gzip");
-        return;
-    }
-
     z_stream stream = {0};
     if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
                      15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
@@ -965,7 +960,9 @@ static int on_message_complete(llhttp_t *parser) {
     for (int i = 0; i < server->handler_count; i++) {
         // Check method match (empty = any)
         if (server->handlers[i].method[0] != '\0') {
-            if (strcmp(server->handlers[i].method, conn->request.method_str) != 0) {
+            if (strcmp(server->handlers[i].method, conn->request.method_str) != 0 &&
+                !(conn->request.method == HTTP_METHOD_HEAD &&
+                  strcmp(server->handlers[i].method, "GET") == 0)) {
                 continue;
             }
         }

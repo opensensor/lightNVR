@@ -357,6 +357,17 @@ static void on_file_stat(uv_fs_t *req) {
     }
     memcpy(header_buf, headers, len);
 
+    if (conn->request.method == HTTP_METHOD_HEAD) {
+        write_complete_action_t action =
+            (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
+                ? WRITE_ACTION_KEEP_ALIVE : WRITE_ACTION_CLOSE;
+        ctx->head_response_managed = true;
+        conn->async_response_pending = false;
+        (void)libuv_connection_send_ex(conn, header_buf, len, true, action);
+        uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+
     if (libuv_connection_send(ctx->conn, header_buf, len, true) != 0) {
         // Send failed; libuv_connection_send already closed the connection.
         // Clear the pending flag so on_file_close won't try to manage it again.
@@ -500,6 +511,10 @@ static void on_file_read(uv_fs_t *req) {
  */
 static void on_file_close(uv_fs_t *req) {
     file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
+    if (ctx->head_response_managed) {
+        file_serve_cleanup(ctx);
+        return;
+    }
     libuv_connection_t *conn = ctx->conn;
 
     // Check if this is a successful file serve or an error case
