@@ -41,6 +41,9 @@ static FILE *saved_config_file;
 static FILE *saved_baseline_file;
 static void assert_files_equal_binary(FILE *expected, FILE *actual);
 static char concurrent_config_dir[MAX_PATH_LENGTH];
+static char group_replace_dir[MAX_PATH_LENGTH];
+static char group_replace_path[MAX_PATH_LENGTH];
+static bool group_replace_cleanup_active;
 static char *saved_config_text;
 static stream_config_t *owned_snapshot_streams;
 static int owned_pid_fd;
@@ -146,6 +149,9 @@ void setUp(void) {
     owned_credential_config_dir[0] = '\0';
     owned_credential_config_path[0] = '\0';
     owned_credential_control_path[0] = '\0';
+    group_replace_dir[0] = '\0';
+    group_replace_path[0] = '\0';
+    group_replace_cleanup_active = false;
     saved_config_file = NULL;
     saved_baseline_file = NULL;
     concurrent_config_dir[0] = '\0';
@@ -176,6 +182,11 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (group_replace_cleanup_active) {
+        unlink(group_replace_path);
+        rmdir(group_replace_dir);
+        group_replace_cleanup_active = false;
+    }
     if (owned_private_config_path[0]) unlink(owned_private_config_path);
     if (owned_private_config_dir[0]) rmdir(owned_private_config_dir);
     if (owned_credential_config_path[0]) unlink(owned_credential_config_path);
@@ -1694,6 +1705,9 @@ static void check_group_writable_config_replacement(bool fail_publish) {
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", directory);
+    snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
+    group_replace_cleanup_active = true;
     FILE *old = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(old);
     fputs("preserve-old-content", old); fclose(old);
@@ -1732,6 +1746,7 @@ static void check_group_writable_config_replacement(bool fail_publish) {
     unlink(path);
     /* Also verifies no private staging file is left behind on either path. */
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    group_replace_cleanup_active = false;
 }
 static void test_save_config_replaces_group_writable_legacy_file_privately(void) {
     check_group_writable_config_replacement(false);
