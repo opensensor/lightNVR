@@ -307,19 +307,18 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     TEST_ASSERT_EQUAL_INT(0, daemon_status(path));
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
 
-    int malformed_fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0644);
     pid_t supervised = fork();
     TEST_ASSERT_TRUE(supervised >= 0);
     if (supervised == 0) {
-        TEST_ASSERT_TRUE(malformed_fd >= 0);
+        int malformed_fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0644);
+        if (malformed_fd < 0) _exit(10);
         const char *bad_pid_text = "not-a-pid\n";
-        TEST_ASSERT_EQUAL_INT((int)strlen(bad_pid_text), write(malformed_fd, bad_pid_text, strlen(bad_pid_text)));
-        TEST_ASSERT_EQUAL_INT(0, close(malformed_fd));
+        if (write(malformed_fd, bad_pid_text, strlen(bad_pid_text)) !=
+            (ssize_t)strlen(bad_pid_text) || close(malformed_fd) != 0) _exit(11);
         int ready_pipe[2], release_pipe[2];
-        TEST_ASSERT_EQUAL_INT(0, pipe(ready_pipe));
-        TEST_ASSERT_EQUAL_INT(0, pipe(release_pipe));
+        if (pipe(ready_pipe) != 0 || pipe(release_pipe) != 0) _exit(12);
         pid_t locker = fork();
-        TEST_ASSERT_TRUE(locker >= 0);
+        if (locker < 0) _exit(13);
         if (locker == 0) {
             close(ready_pipe[0]);
             close(release_pipe[1]);
@@ -342,18 +341,14 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         close(release_pipe[1]);
         pid_t waited = waitpid(locker, &status, 0);
 
-        TEST_ASSERT_EQUAL_INT(1, ready_read_rc);
-        TEST_ASSERT_EQUAL_INT(-1, daemon_status_rc);
-        TEST_ASSERT_EQUAL_INT(1, release_write_rc);
-        TEST_ASSERT_EQUAL_INT(locker, waited);
-        TEST_ASSERT_TRUE(WIFEXITED(status));
-        TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
-        TEST_ASSERT_EQUAL_INT(0, unlink(path));
+        if (ready_read_rc != 1 || daemon_status_rc != -1 ||
+            release_write_rc != 1 || waited != locker ||
+            !WIFEXITED(status) || WEXITSTATUS(status) != 0 ||
+            unlink(path) != 0) _exit(14);
 
         int second_fd = write_pid_file(path);
-        TEST_ASSERT_TRUE(second_fd >= 0);
-        TEST_ASSERT_EQUAL_INT(0, remove_pid_file(second_fd, path));
-        TEST_ASSERT_EQUAL_INT(0, unlink(path));
+        if (second_fd < 0 || remove_pid_file(second_fd, path) != 0 ||
+            unlink(path) != 0) _exit(15);
         _exit(0);
     } else {
         int supervised_status = 0;
@@ -363,6 +358,8 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         do {
             wait_rc = waitpid(supervised, &supervised_status, WNOHANG);
             if (wait_rc == supervised) break;
+            if (wait_rc < 0 && errno == EINTR) continue;
+            if (wait_rc < 0) break;
             usleep(10000);
             elapsed_ms += 10;
         } while (elapsed_ms < timeout_ms);
