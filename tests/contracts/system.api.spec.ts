@@ -143,6 +143,7 @@ test('restart and shutdown acknowledgments are followed by actual owned-process 
   await expect.poll(()=>readFileSync(server.logPath,'utf8').slice(before.length),{timeout:30000}).toMatch(/Restart requested in (native|container) mode/);
   const after=readFileSync(server.logPath,'utf8').slice(before.length);
   if(after.includes('native mode')){
+   // Keep the pre-request baseline: re-exec may finish before this first poll.
    await expect.poll(()=>readFileSync(server.logPath,'utf8').slice(before.length),{timeout:30000})
     .toMatch(new RegExp(`Restart requested in native mode[\\s\\S]*libuv_server_start: Listening on 127\\.0\\.0\\.1:${server.port}`));
    await expect.poll(async()=>{try{return (await server.request('/api/system/status')).status;}catch{return 0;}},{timeout:30000}).toBe(200);
