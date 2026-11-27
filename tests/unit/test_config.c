@@ -56,6 +56,9 @@ static stream_config_t *owned_snapshot_streams;
 static int owned_pid_fd;
 static char owned_pid_path[MAX_PATH_LENGTH];
 static bool deny_config_chmod;
+static bool deny_config_chmod_target_set;
+static dev_t deny_config_chmod_target_dev;
+static ino_t deny_config_chmod_target_ino;
 static bool owned_bind_dir_active;
 static char owned_bind_dir_path[MAX_PATH_LENGTH];
 static char owned_bind_file_path[MAX_PATH_LENGTH];
@@ -92,9 +95,15 @@ int __real_fchmod(int, mode_t);
 FILE *__real_fdopen(int, const char *);
 int __wrap_fchmod(int fd, mode_t mode) {
     if (deny_config_chmod) {
-        deny_config_chmod = false;
-        errno = EPERM;
-        return -1;
+        struct stat st;
+        if (deny_config_chmod_target_set &&
+            fstat(fd, &st) == 0 &&
+            st.st_dev == deny_config_chmod_target_dev &&
+            st.st_ino == deny_config_chmod_target_ino) {
+            deny_config_chmod = false;
+            errno = EPERM;
+            return -1;
+        }
     }
     return __real_fchmod(fd, mode);
 }
@@ -257,6 +266,7 @@ void tearDown(void) {
     free(owned_snapshot_streams);
     owned_snapshot_streams = NULL;
     deny_config_chmod = deny_config_rename = busy_config_rename = false;
+    deny_config_chmod_target_set = false;
     fail_config_pwrite = false;
     short_config_pwrite = false;
     short_config_pwrite_done = false;
@@ -1779,6 +1789,9 @@ static void check_group_writable_config_replacement(bool fail_publish) {
     TEST_ASSERT_EQUAL_INT(0, chmod(path, 0660));
     struct stat before, after;
     TEST_ASSERT_EQUAL_INT(0, stat(path, &before));
+    deny_config_chmod_target_dev = before.st_dev;
+    deny_config_chmod_target_ino = before.st_ino;
+    deny_config_chmod_target_set = true;
     load_default_config(&cfg);
     snprintf(cfg.mqtt_password, sizeof(cfg.mqtt_password), "synthetic-replacement-secret");
     /* Reproduce chmod EPERM for an otherwise writable legacy root-owned file
