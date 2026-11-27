@@ -609,6 +609,7 @@ impl uv_run_mode {
 pub type uv_walk_cb =
     Option<unsafe extern "C" fn(*mut uv_handle_t, *mut ::core::ffi::c_void) -> ()>;
 pub type uv_thread_cb = Option<unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()>;
+pub type atomic_bool = bool;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct system_health_policy_settings_t {
@@ -924,9 +925,9 @@ pub struct libuv_server {
     pub listener: uv_tcp_t,
     pub stop_async: uv_async_t,
     pub config: http_server_config_t,
-    pub running: bool,
+    pub running: atomic_bool,
     pub owns_loop: bool,
-    pub shutting_down: bool,
+    pub shutting_down: atomic_bool,
     pub handlers: *mut C2Rust_Unnamed_11,
     pub handler_count: ::core::ffi::c_int,
     pub handler_capacity: ::core::ffi::c_int,
@@ -1070,6 +1071,8 @@ unsafe extern "C" fn libuv_server_init_internal(
         );
         return ::core::ptr::null_mut::<http_server_t>();
     }
+    *&raw mut (*server).running = r#false != 0;
+    *&raw mut (*server).shutting_down = r#false != 0;
     memcpy(
         &raw mut (*server).config as *mut ::core::ffi::c_void,
         config as *const ::core::ffi::c_void,
@@ -1312,7 +1315,7 @@ pub unsafe extern "C" fn libuv_server_start(
     if server.is_null() {
         return -1 as ::core::ffi::c_int;
     }
-    ::core::ptr::write_volatile(&raw mut (*server).shutting_down, r#false != 0);
+    (*server).shutting_down = r#false != 0;
     let mut need_reinit: bool = uv_is_closing(&raw mut (*server).listener as *mut uv_handle_t) != 0
         || uv_is_closing(&raw mut (*server).stop_async as *mut uv_handle_t) != 0;
     if need_reinit {
@@ -1453,7 +1456,7 @@ pub unsafe extern "C" fn libuv_server_start(
         );
         return -1 as ::core::ffi::c_int;
     }
-    ::core::ptr::write_volatile(&raw mut (*server).running, r#true != 0);
+    (*server).running = r#true != 0;
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT.as_ptr(),
@@ -1494,10 +1497,10 @@ unsafe extern "C" fn server_thread_func(mut arg: *mut ::core::ffi::c_void) {
     let MAX_UNEXPECTED_RESTARTS: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
     let RESTART_DELAY_SEC: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
     let mut unexpected_restarts: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while ::core::ptr::read_volatile::<bool>(&raw const (*server).running) {
+    while (*server).running {
         let mut run_result: ::core::ffi::c_int =
             uv_run((*server).r#loop, uv_run_mode::UV_RUN_DEFAULT);
-        if !::core::ptr::read_volatile::<bool>(&raw const (*server).running) {
+        if !(*server).running {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_INFO,
                 LOG_COMPONENT.as_ptr(),
@@ -1591,11 +1594,7 @@ unsafe extern "C" fn count_handles_cb(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
     let mut server: *mut libuv_server_t = handle as *mut libuv_server_t;
-    if server.is_null()
-        || ::core::ptr::read_volatile::<bool>(&raw const (*server).shutting_down)
-            as ::core::ffi::c_int
-            != 0
-    {
+    if server.is_null() || (*server).shutting_down as ::core::ffi::c_int != 0 {
         return;
     }
     _log_message_ctx(
@@ -1604,8 +1603,8 @@ pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
         _log_stream_name,
         b"libuv_server_stop: Stopping server\0".as_ptr() as *const ::core::ffi::c_char,
     );
-    ::core::ptr::write_volatile(&raw mut (*server).running, r#false != 0);
-    ::core::ptr::write_volatile(&raw mut (*server).shutting_down, r#true != 0);
+    (*server).running = r#false != 0;
+    (*server).shutting_down = r#true != 0;
     if (*server).thread_running {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
@@ -1761,7 +1760,7 @@ pub unsafe extern "C" fn libuv_server_destroy(mut handle: http_server_handle_t) 
     if server.is_null() {
         return;
     }
-    if !::core::ptr::read_volatile::<bool>(&raw const (*server).shutting_down) {
+    if !(*server).shutting_down {
         libuv_server_stop(handle);
     }
     thumbnail_thread_shutdown();

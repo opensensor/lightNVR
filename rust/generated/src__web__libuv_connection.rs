@@ -180,10 +180,6 @@ unsafe extern "C" {
         __s2: *const ::core::ffi::c_char,
         __n: size_t,
     ) -> ::core::ffi::c_int;
-    unsafe fn strtod(
-        __nptr: *const ::core::ffi::c_char,
-        __endptr: *mut *mut ::core::ffi::c_char,
-    ) -> ::core::ffi::c_double;
     unsafe fn strtoull(
         __nptr: *const ::core::ffi::c_char,
         __endptr: *mut *mut ::core::ffi::c_char,
@@ -905,6 +901,7 @@ pub struct z_stream_s {
 }
 pub type z_stream = z_stream_s;
 pub type z_streamp = *mut z_stream;
+pub type atomic_bool = bool;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct system_health_policy_settings_t {
@@ -1201,9 +1198,9 @@ pub struct libuv_server {
     pub listener: uv_tcp_t,
     pub stop_async: uv_async_t,
     pub config: http_server_config_t,
-    pub running: bool,
+    pub running: atomic_bool,
     pub owns_loop: bool,
-    pub shutting_down: bool,
+    pub shutting_down: atomic_bool,
     pub handlers: *mut C2Rust_Unnamed_11,
     pub handler_count: ::core::ffi::c_int,
     pub handler_capacity: ::core::ffi::c_int,
@@ -1370,6 +1367,78 @@ pub const MAX_HEADERS: ::core::ffi::c_int = 50 as ::core::ffi::c_int;
 pub const LOG_COMPONENT: [::core::ffi::c_char; 5] =
     unsafe { ::core::mem::transmute::<[u8; 5], [::core::ffi::c_char; 5]>(*b"HTTP\0") };
 pub const HTTP_COMPRESSION_MIN_BYTES: ::core::ffi::c_int = 1024 as ::core::ffi::c_int;
+unsafe extern "C" fn parse_http_qvalue(
+    mut value: *const ::core::ffi::c_char,
+    mut out_quality: *mut ::core::ffi::c_double,
+) -> bool {
+    if value.is_null() || *value == 0 {
+        return r#false != 0;
+    }
+    let mut p: *const ::core::ffi::c_char = value;
+    if *p as ::core::ffi::c_int == '0' as ::core::ffi::c_int {
+        p = p.offset(1);
+        if *p as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
+            *out_quality = 0.0f64;
+            return r#true != 0;
+        }
+        if *p as ::core::ffi::c_int != '.' as ::core::ffi::c_int {
+            return r#false != 0;
+        }
+        p = p.offset(1);
+        let mut digits: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while *p as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+            && *p as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+            && digits < 3 as ::core::ffi::c_int
+        {
+            p = p.offset(1);
+            digits += 1;
+        }
+        if *p as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+            return r#false != 0;
+        }
+        let mut thousandths: ::core::ffi::c_uint = 0 as ::core::ffi::c_uint;
+        let mut place: ::core::ffi::c_uint = 100 as ::core::ffi::c_uint;
+        let mut digit: *const ::core::ffi::c_char = value.offset(2 as ::core::ffi::c_int as isize);
+        while digit < p {
+            thousandths = thousandths.wrapping_add(
+                ((*digit as ::core::ffi::c_int - '0' as ::core::ffi::c_int) as ::core::ffi::c_uint)
+                    .wrapping_mul(place),
+            );
+            digit = digit.offset(1);
+            place = place.wrapping_div(10 as ::core::ffi::c_uint);
+        }
+        *out_quality = thousandths as ::core::ffi::c_double / 1000.0f64;
+        return r#true != 0;
+    }
+    if *p as ::core::ffi::c_int == '1' as ::core::ffi::c_int {
+        p = p.offset(1);
+        if *p as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
+            *out_quality = 1.0f64;
+            return r#true != 0;
+        }
+        if *p as ::core::ffi::c_int != '.' as ::core::ffi::c_int {
+            return r#false != 0;
+        }
+        p = p.offset(1);
+        let mut digits_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while *p as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+            && *p as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+            && digits_0 < 3 as ::core::ffi::c_int
+        {
+            if *p as ::core::ffi::c_int != '0' as ::core::ffi::c_int {
+                return r#false != 0;
+            }
+            p = p.offset(1);
+            digits_0 += 1;
+        }
+        if *p as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+            return r#false != 0;
+        }
+        *out_quality = 1.0f64;
+        return r#true != 0;
+    }
+    return r#false != 0;
+}
 unsafe extern "C" fn request_accepts_gzip(mut request: *const http_request_t) -> bool {
     let mut header: *const ::core::ffi::c_char = http_request_get_header(
         request,
@@ -1438,16 +1507,20 @@ unsafe extern "C" fn request_accepts_gzip(mut request: *const http_request_t) ->
                     2 as size_t,
                 ) == 0 as ::core::ffi::c_int
                 {
+                    let mut quality_value: *mut ::core::ffi::c_char =
+                        parameter.offset(2 as ::core::ffi::c_int as isize);
                     let mut quality_end: *mut ::core::ffi::c_char =
-                        ::core::ptr::null_mut::<::core::ffi::c_char>();
-                    quality = strtod(
-                        parameter.offset(2 as ::core::ffi::c_int as isize),
-                        &raw mut quality_end,
-                    );
-                    if quality_end == parameter.offset(2 as ::core::ffi::c_int as isize)
-                        || quality < 0.0f64
-                        || quality > 1.0f64
+                        quality_value.offset(strlen(quality_value) as isize);
+                    while quality_end > quality_value
+                        && (*quality_end.offset(-1isize) as ::core::ffi::c_int
+                            == ' ' as ::core::ffi::c_int
+                            || *quality_end.offset(-1isize) as ::core::ffi::c_int
+                                == '\t' as ::core::ffi::c_int)
                     {
+                        quality_end = quality_end.offset(-1);
+                        *quality_end = '\0' as ::core::ffi::c_char;
+                    }
+                    if !parse_http_qvalue(quality_value, &raw mut quality) {
                         quality = 0.0f64;
                     }
                 }
@@ -2357,9 +2430,7 @@ unsafe extern "C" fn handler_after_work_cb(
         libuv_connection_destroy(conn);
         return;
     }
-    if ::core::ptr::read_volatile::<bool>(&raw const (*(*conn).server).shutting_down)
-        as ::core::ffi::c_int
-        != 0
+    if (*(*conn).server).shutting_down as ::core::ffi::c_int != 0
         || uv_is_closing(&raw mut (*conn).handle as *mut uv_handle_t) != 0
     {
         libuv_connection_close(conn);

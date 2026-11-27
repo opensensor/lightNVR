@@ -1155,9 +1155,9 @@ pub struct libuv_server {
     pub listener: uv_tcp_t,
     pub stop_async: uv_async_t,
     pub config: http_server_config_t,
-    pub running: bool,
+    pub running: atomic_bool,
     pub owns_loop: bool,
-    pub shutting_down: bool,
+    pub shutting_down: atomic_bool,
     pub handlers: *mut C2Rust_Unnamed_1,
     pub handler_count: ::core::ffi::c_int,
     pub handler_capacity: ::core::ffi::c_int,
@@ -1173,6 +1173,7 @@ pub struct C2Rust_Unnamed_1 {
     pub method: [::core::ffi::c_char; 16],
     pub handler: request_handler_t,
 }
+pub type atomic_bool = bool;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct http_server_config_t {

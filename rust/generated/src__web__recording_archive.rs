@@ -665,6 +665,7 @@ pub union C2Rust_Unnamed_12 {
     pub reserved2: [*mut ::core::ffi::c_void; 1],
     pub write_extra: uv__req_write_extra_s,
 }
+pub type atomic_bool = bool;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct http_server_config_t {
@@ -693,9 +694,9 @@ pub struct libuv_server {
     pub listener: uv_tcp_t,
     pub stop_async: uv_async_t,
     pub config: http_server_config_t,
-    pub running: bool,
+    pub running: atomic_bool,
     pub owns_loop: bool,
-    pub shutting_down: bool,
+    pub shutting_down: atomic_bool,
     pub handlers: *mut C2Rust_Unnamed_13,
     pub handler_count: ::core::ffi::c_int,
     pub handler_capacity: ::core::ffi::c_int,
@@ -776,7 +777,6 @@ pub struct archive_stream_t {
     pub header_length: size_t,
     pub buffer: [::core::ffi::c_uchar; 1048576],
 }
-pub type atomic_bool = bool;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct storage_remote_source_t {
@@ -928,7 +928,7 @@ unsafe extern "C" fn archive_finish(mut stream: *mut archive_stream_t, mut faile
     } else if !failed
         && (*conn).keep_alive as ::core::ffi::c_int != 0
         && llhttp_should_keep_alive(&raw mut (*conn).parser) != 0
-        && !::core::ptr::read_volatile::<bool>(&raw const (*(*conn).server).shutting_down)
+        && !(*(*conn).server).shutting_down
     {
         libuv_connection_reset(conn);
     } else {

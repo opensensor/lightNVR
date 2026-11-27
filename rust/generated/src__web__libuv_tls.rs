@@ -718,6 +718,7 @@ pub type llhttp_data_cb = Option<
     unsafe extern "C" fn(*mut llhttp_t, *const ::core::ffi::c_char, size_t) -> ::core::ffi::c_int,
 >;
 pub type llhttp_settings_t = llhttp_settings_s;
+pub type atomic_bool = bool;
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct http_method_t(pub ::core::ffi::c_uint);
@@ -798,9 +799,9 @@ pub struct libuv_server {
     pub listener: uv_tcp_t,
     pub stop_async: uv_async_t,
     pub config: http_server_config_t,
-    pub running: bool,
+    pub running: atomic_bool,
     pub owns_loop: bool,
-    pub shutting_down: bool,
+    pub shutting_down: atomic_bool,
     pub handlers: *mut C2Rust_Unnamed_12,
     pub handler_count: ::core::ffi::c_int,
     pub handler_capacity: ::core::ffi::c_int,

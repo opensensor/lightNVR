@@ -75,14 +75,6 @@ unsafe extern "C" {
         deferred_action: deferred_action_handle_t,
         callback: deferred_response_callback_t,
     ) -> ::core::ffi::c_int;
-    unsafe fn _log_message_ctx(
-        level: log_level_t,
-        component: *const ::core::ffi::c_char,
-        stream: *const ::core::ffi::c_char,
-        format: *const ::core::ffi::c_char,
-        ...
-    );
-    unsafe fn ensure_dir(path: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn libuv_serve_file(
         conn: *mut libuv_connection_t,
         path: *const ::core::ffi::c_char,
@@ -94,6 +86,14 @@ unsafe extern "C" {
         response: *const http_response_t,
         action: write_complete_action_t,
     ) -> ::core::ffi::c_int;
+    unsafe fn _log_message_ctx(
+        level: log_level_t,
+        component: *const ::core::ffi::c_char,
+        stream: *const ::core::ffi::c_char,
+        format: *const ::core::ffi::c_char,
+        ...
+    );
+    unsafe fn ensure_dir(path: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn get_recording_metadata_by_id(
         id: uint64_t,
         metadata: *mut recording_metadata_t,
@@ -600,9 +600,9 @@ pub struct libuv_server {
     pub listener: uv_tcp_t,
     pub stop_async: uv_async_t,
     pub config: http_server_config_t,
-    pub running: bool,
+    pub running: atomic_bool,
     pub owns_loop: bool,
-    pub shutting_down: bool,
+    pub shutting_down: atomic_bool,
     pub handlers: *mut C2Rust_Unnamed,
     pub handler_count: ::core::ffi::c_int,
     pub handler_capacity: ::core::ffi::c_int,
@@ -618,6 +618,7 @@ pub struct C2Rust_Unnamed {
     pub method: [::core::ffi::c_char; 16],
     pub handler: request_handler_t,
 }
+pub type atomic_bool = bool;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct http_server_config_t {

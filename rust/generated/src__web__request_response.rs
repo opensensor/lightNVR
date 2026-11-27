@@ -165,6 +165,7 @@ pub type uint16_t = u16;
 pub type uint64_t = u64;
 pub type uint_fast64_t = ::core::ffi::c_ulong;
 pub type uintptr_t = usize;
+pub type atomic_bool = bool;
 pub type atomic_uint_fast64_t = uint_fast64_t;
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -644,9 +645,9 @@ pub struct libuv_server {
     pub listener: uv_tcp_t,
     pub stop_async: uv_async_t,
     pub config: http_server_config_t,
-    pub running: bool,
+    pub running: atomic_bool,
     pub owns_loop: bool,
-    pub shutting_down: bool,
+    pub shutting_down: atomic_bool,
     pub handlers: *mut C2Rust_Unnamed_10,
     pub handler_count: ::core::ffi::c_int,
     pub handler_capacity: ::core::ffi::c_int,
