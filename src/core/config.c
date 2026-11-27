@@ -1231,9 +1231,19 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "demo_mode") == 0) {
             config->demo_mode = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "force_mfa_on_login") == 0) {
-            config->force_mfa_on_login = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.force_mfa_on_login: '%s'", value);
+                return 0;
+            }
+            config->force_mfa_on_login = parsed_bool;
         } else if (strcmp(name, "login_rate_limit_enabled") == 0) {
-            config->login_rate_limit_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.login_rate_limit_enabled: '%s'", value);
+                return 0;
+            }
+            config->login_rate_limit_enabled = parsed_bool;
         } else if (strcmp(name, "login_rate_limit_max_attempts") == 0) {
             config->login_rate_limit_max_attempts = safe_atoi(value, 0);
             if (config->login_rate_limit_max_attempts < 1) {
