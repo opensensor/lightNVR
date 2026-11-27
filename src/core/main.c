@@ -1648,6 +1648,9 @@ cleanup:
     // Capture the original PID before fork so the child never mistakes itself
     // for its parent if the parent exits before the child is scheduled.
     pid_t expected_parent_pid = getpid();
+    // Open a stable handle before fork so the child can enforce the deadline
+    // without signaling a potentially reused numeric PID.
+    int watchdog_parent_pidfd = open_pidfd_for_pid(expected_parent_pid);
     // Query descriptor limits before forking from a multithreaded process.
     long watchdog_max_fd = sysconf(_SC_OPEN_MAX);
     if (watchdog_max_fd < 0) watchdog_max_fd = 1024;
@@ -1668,12 +1671,21 @@ cleanup:
         // Prefer close_range to avoid O(RLIMIT_NOFILE) close syscalls on large limits.
         int close_range_failed = 1;
 #ifdef SYS_close_range
-        close_range_failed = syscall(SYS_close_range, 3u, ~0u, 0u) != 0;
+        if (watchdog_parent_pidfd >= 3) {
+            bool lower_closed = watchdog_parent_pidfd == 3 ||
+                syscall(SYS_close_range, 3u,
+                        (unsigned int)watchdog_parent_pidfd - 1u, 0u) == 0;
+            bool upper_closed = syscall(SYS_close_range,
+                (unsigned int)watchdog_parent_pidfd + 1u, ~0u, 0u) == 0;
+            close_range_failed = !(lower_closed && upper_closed);
+        } else {
+            close_range_failed = syscall(SYS_close_range, 3u, ~0u, 0u) != 0;
+        }
 #endif
         if (close_range_failed) {
             // Fallback for older kernels or any close_range failure.
             for (long fd = 3; fd < watchdog_max_fd; ++fd) {
-                (void)close(fd);
+                if (fd != watchdog_parent_pidfd) (void)close(fd);
             }
         }
 
@@ -1714,11 +1726,13 @@ cleanup:
                 remaining = sleep(remaining);
             }
         }
-        // Never signal by numeric PID here. Even with getppid()==parent_pid,
-        // the parent can exit between check and signal, and PID reuse could
-        // target an unrelated process. A race-free implementation must use a
-        // pidfd acquired for the parent before fork() and pidfd_send_signal().
-        // Until pidfd wiring is in place, intentionally avoid kill(parent_pid).
+        // The pidfd remains bound to the original parent even if it exits and
+        // its numeric PID is reused. The thread watchdog remains the fallback
+        // on kernels without pidfd support.
+        if (watchdog_parent_pidfd >= 0) {
+            (void)send_signal_via_pidfd(watchdog_parent_pidfd, SIGKILL);
+            (void)close(watchdog_parent_pidfd);
+        }
 
         // Recover a requested restart if the parent died during cleanup.
         if (restart_requested) {
@@ -1759,6 +1773,7 @@ cleanup:
         _exit(EXIT_FAILURE);
     } else {
         // Parent process continues cleanup, with or without a watchdog.
+        if (watchdog_parent_pidfd >= 0) close(watchdog_parent_pidfd);
         if (cleanup_pid < 0) {
             log_error("Failed to create watchdog process for cleanup timeout");
         }
