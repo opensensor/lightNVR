@@ -367,11 +367,29 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
       return;
     }
 
-    setSettings(prev => {
-      const current = prev.go2rtcConfigOverride || '';
-      const sep = (current && !current.endsWith('\n')) ? '\n' : '';
-      return { ...prev, go2rtcConfigOverride: current + sep + preset!.yaml };
-    });
+    let mergedYaml: string;
+    try {
+      let currentDoc = parseDocument(cur);
+      const presetDoc = parseDocument(preset!.yaml);
+      if (currentDoc.errors.length || presetDoc.errors.length) throw new Error('YAML parsing failed');
+      const presetRoot = presetDoc.contents;
+      if (!isMap(presetRoot)) throw new Error('Preset root is not a mapping');
+      if (currentDoc.contents == null) {
+        currentDoc = parseDocument(`${cur}${cur.endsWith('\n') ? '' : '\n'}{}`);
+      }
+      const currentRoot = currentDoc.contents;
+      if (!isMap(currentRoot)) throw new Error('Current override root is not a mapping');
+      currentRoot.items.push(...presetRoot.items);
+      mergedYaml = currentDoc.toString();
+    } catch (error) {
+      invalidateOverrideValidation();
+      setOverrideValidation({
+        valid: false,
+        error: { message: `Cannot insert preset: ${error instanceof Error ? error.message : 'YAML merge failed'}.` },
+      });
+      return;
+    }
+    setSettings(prev => ({ ...prev, go2rtcConfigOverride: mergedYaml }));
     invalidateOverrideValidation();
   };
 
