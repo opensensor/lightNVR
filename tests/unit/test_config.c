@@ -174,6 +174,12 @@ void setUp(void) {
     group_replace_dir[0] = '\0';
     group_replace_path[0] = '\0';
     group_replace_cleanup_active = false;
+    read_only_test_dir[0] = '\0';
+    read_only_test_path[0] = '\0';
+    read_only_test_cleanup_active = false;
+    baseline_test_dir[0] = '\0';
+    baseline_test_path[0] = '\0';
+    baseline_test_cleanup_active = false;
     short_write_dir[0] = '\0';
     short_write_path[0] = '\0';
     short_write_baseline_dir[0] = '\0';
@@ -267,6 +273,17 @@ void tearDown(void) {
     saved_config_file = NULL;
     if (saved_baseline_file) fclose(saved_baseline_file);
     saved_baseline_file = NULL;
+    if (read_only_test_cleanup_active) {
+        chmod(read_only_test_dir, 0700);
+        unlink(read_only_test_path);
+        rmdir(read_only_test_dir);
+        read_only_test_cleanup_active = false;
+    }
+    if (baseline_test_cleanup_active) {
+        unlink(baseline_test_path);
+        rmdir(baseline_test_dir);
+        baseline_test_cleanup_active = false;
+    }
     free(saved_config_text);
     saved_config_text = NULL;
     free(owned_snapshot_streams);
