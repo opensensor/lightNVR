@@ -1695,10 +1695,13 @@ cleanup:
         struct timespec watchdog_deadline;
         if (clock_gettime(CLOCK_MONOTONIC, &watchdog_deadline) == 0) {
             watchdog_deadline.tv_sec += SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS;
-            while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &watchdog_deadline, NULL) == -1 &&
-                   errno == EINTR) {
-                // Retry until absolute deadline is reached.
-            }
+            int sleep_result;
+            do {
+                sleep_result = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME,
+                                               &watchdog_deadline, NULL);
+            } while (sleep_result == EINTR);
+            // An unexpected clock error falls through to the parent-liveness
+            // check so the watchdog remains fail-safe.
         } else {
             // Fallback if monotonic clock is unavailable.
             unsigned int remaining = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS;
