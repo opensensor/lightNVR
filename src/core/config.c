@@ -1507,7 +1507,12 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "topic_prefix") == 0) {
             safe_strcpy(config->mqtt_topic_prefix, value, sizeof(config->mqtt_topic_prefix), 0);
         } else if (strcmp(name, "tls_enabled") == 0) {
-            config->mqtt_tls_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool tls_enabled = false;
+            if (!parse_bool_strict(value, &tls_enabled)) {
+                log_error("Invalid mqtt.tls_enabled value '%s' (expected true/false, yes/no, on/off, 1/0)", value ? value : "(null)");
+                return 0;
+            }
+            config->mqtt_tls_enabled = tls_enabled;
         } else if (strcmp(name, "keepalive") == 0) {
             config->mqtt_keepalive = safe_atoi(value, 0);
             if (config->mqtt_keepalive < 5) {
@@ -2122,10 +2127,17 @@ const char* get_loaded_config_path(void) {
 
 // Function to set the loaded config path
 static void set_loaded_config_path(const char *path) {
-    if (path && path[0] != '\0') {
-        safe_strcpy(g_loaded_config_path, path, MAX_PATH_LENGTH, 0);
-        log_info("Loaded config path set to: %s", g_loaded_config_path);
+    if (!path || path[0] == '\0') return;
+
+    // Prevent silent truncation of resolved paths that exceed storage capacity.
+    size_t len = strnlen(path, MAX_PATH_LENGTH);
+    if (len >= MAX_PATH_LENGTH) {
+        log_warn("Loaded config path too long, ignoring");
+        return;
     }
+
+    safe_strcpy(g_loaded_config_path, path, MAX_PATH_LENGTH, 0);
+    log_info("Loaded config path set to: %s", g_loaded_config_path);
 }
 
 // Load configuration into a private destination. The public wrapper publishes
