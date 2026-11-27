@@ -729,6 +729,7 @@ set(HLS_UNIFIED_THREAD_SOURCES
 # Set up go2rtc integration if enabled
 set(GO2RTC_SOURCES "")
 if(ENABLE_GO2RTC)
+    math(EXPR GO2RTC_API_PORT "0 + ${GO2RTC_API_PORT}")
     add_definitions(-DUSE_GO2RTC)
     add_definitions(-DGO2RTC_BINARY_PATH_RAW=\"${GO2RTC_BINARY_PATH}\")
     add_definitions(-DGO2RTC_CONFIG_DIR_RAW=\"${GO2RTC_CONFIG_DIR}\")
