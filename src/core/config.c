@@ -2564,8 +2564,10 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "root = %s\n", config->web_root);
     fprintf(file, "ssl_enabled = %s  ; Serve HTTPS directly (needs a build with -DENABLE_SSL=ON)\n",
             config->web_ssl_enabled ? "true" : "false");
-    fprintf(file, "ssl_cert_path = %s  ; PEM certificate chain, leaf first\n", config->web_ssl_cert_path);
-    fprintf(file, "ssl_key_path = %s  ; PEM private key (unencrypted)\n", config->web_ssl_key_path);
+    fprintf(file, "; PEM certificate chain, leaf first\n");
+    fprintf(file, "ssl_cert_path = %s\n", config->web_ssl_cert_path);
+    fprintf(file, "; PEM private key (unencrypted)\n");
+    fprintf(file, "ssl_key_path = %s\n", config->web_ssl_key_path);
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
     fprintf(file, "username = %s\n", config->web_username);
     // Note: web_password is no longer saved to config - user passwords are managed in the database
