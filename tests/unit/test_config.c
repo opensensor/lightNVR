@@ -47,6 +47,7 @@ static bool stream_save_db_active;
 static char group_replace_dir[MAX_PATH_LENGTH];
 static char group_replace_path[MAX_PATH_LENGTH];
 static bool group_replace_cleanup_active;
+static char hardlink_original_path[MAX_PATH_LENGTH];
 static char pid_validation_dir[MAX_PATH_LENGTH];
 static char pid_validation_path[MAX_PATH_LENGTH];
 static char pid_validation_alias[MAX_PATH_LENGTH];
@@ -178,6 +179,7 @@ void setUp(void) {
     group_replace_dir[0] = '\0';
     group_replace_path[0] = '\0';
     group_replace_cleanup_active = false;
+    hardlink_original_path[0] = '\0';
     pid_validation_dir[0] = '\0';
     pid_validation_path[0] = '\0';
     pid_validation_alias[0] = '\0';
@@ -241,6 +243,7 @@ void tearDown(void) {
     if (short_write_baseline_path[0]) unlink(short_write_baseline_path);
     if (short_write_baseline_dir[0]) rmdir(short_write_baseline_dir);
     if (group_replace_cleanup_active) {
+        if (hardlink_original_path[0]) unlink(hardlink_original_path);
         unlink(group_replace_path);
         rmdir(group_replace_dir);
         group_replace_cleanup_active = false;
@@ -1843,8 +1846,10 @@ void test_save_config_rejects_hardlinks_without_truncation_or_mode_change(void) 
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
     snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
     snprintf(original, sizeof(original), "%s/original.ini", directory);
-    FILE *file = fopen(original, "w"); TEST_ASSERT_NOT_NULL(file);
-    fputs("preserve-me", file); fclose(file);
+    snprintf(hardlink_original_path, sizeof(hardlink_original_path), "%s", original);
+    saved_config_file = fopen(original, "w"); TEST_ASSERT_NOT_NULL(saved_config_file);
+    fputs("preserve-me", saved_config_file);
+    fclose(saved_config_file); saved_config_file = NULL;
     TEST_ASSERT_EQUAL_INT(0, chmod(original, 0640));
     TEST_ASSERT_EQUAL_INT(0, link(original, path));
     load_default_config(&cfg);
@@ -1852,8 +1857,9 @@ void test_save_config_rejects_hardlinks_without_truncation_or_mode_change(void) 
     struct stat info;
     TEST_ASSERT_EQUAL_INT(0, stat(original, &info));
     TEST_ASSERT_EQUAL_UINT(0640, info.st_mode & 0777);
-    file = fopen(original, "r"); TEST_ASSERT_NOT_NULL(file);
-    char text[32] = {0}; fread(text, 1, sizeof(text)-1, file); fclose(file);
+    saved_config_file = fopen(original, "r"); TEST_ASSERT_NOT_NULL(saved_config_file);
+    char text[32] = {0}; fread(text, 1, sizeof(text)-1, saved_config_file);
+    fclose(saved_config_file); saved_config_file = NULL;
     TEST_ASSERT_EQUAL_STRING("preserve-me", text);
     unlink(path); unlink(original); rmdir(directory);
 }
