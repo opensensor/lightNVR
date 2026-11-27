@@ -298,6 +298,8 @@ int libuv_server_start(http_server_handle_t handle) {
         // Reinitialize the async handle for stop signaling
         if (uv_async_init(server->loop, &server->stop_async, stop_async_cb) != 0) {
             log_error("libuv_server_start: Failed to reinitialize async handle");
+            /* Roll back partial reinitialization: listener was reinitialized above. */
+            uv_close((uv_handle_t *)&server->listener, NULL);
             return -1;
         }
         server->stop_async.data = server;
