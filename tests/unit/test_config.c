@@ -683,6 +683,9 @@ void test_config_reset_stream_slots_clears_stale_rows(void) {
 }
 
 void test_save_stream_configs_preserves_identities_after_batch_reload(void) {
+    if (DEFAULT_MAX_STREAMS < 2) {
+        TEST_IGNORE_MESSAGE("Requires at least two default stream slots");
+    }
     char db_path[] = "/tmp/lightnvr_stream_save_XXXXXX";
     int fd = mkstemp(db_path);
     TEST_ASSERT_TRUE(fd >= 0);
