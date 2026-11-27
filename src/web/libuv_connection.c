@@ -610,12 +610,27 @@ static int on_body(llhttp_t *parser, const char *at, size_t length) {
 
     size_t old_len = conn->request.body_len;
     if (length > LIBUV_RECV_BUFFER_MAX - old_len) return HPE_USER;
-    char *new_body = safe_realloc(conn->request.body, old_len + length + 1);
-    if (!new_body) return HPE_USER;
-    memcpy(new_body + old_len, at, length);
-    new_body[old_len + length] = '\0';
 
-    conn->request.body = new_body;
+    size_t required = old_len + length + 1; /* +1 for NUL terminator */
+    if (required > conn->request.body_capacity) {
+        size_t new_capacity = conn->request.body_capacity ? conn->request.body_capacity : 1024;
+        while (new_capacity < required) {
+            if (new_capacity > LIBUV_RECV_BUFFER_MAX / 2) {
+                new_capacity = LIBUV_RECV_BUFFER_MAX;
+                break;
+            }
+            new_capacity *= 2;
+        }
+        if (new_capacity < required || new_capacity > LIBUV_RECV_BUFFER_MAX) return HPE_USER;
+
+        char *new_body = safe_realloc(conn->request.body, new_capacity);
+        if (!new_body) return HPE_USER;
+        conn->request.body = new_body;
+        conn->request.body_capacity = new_capacity;
+    }
+
+    memcpy(conn->request.body + old_len, at, length);
+    conn->request.body[old_len + length] = '\0';
     conn->request.body_len = old_len + length;
 
     return 0;
