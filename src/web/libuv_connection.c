@@ -363,12 +363,15 @@ void libuv_connection_destroy(libuv_connection_t *conn) {
     }
     
     safe_free(conn);
-}
+        log_debug("libuv_close_cb: Connection closed after %d requests",
 
 /**
  * @brief Handle close callback
- */
-void libuv_close_cb(uv_handle_t *handle) {
+         * its after-work callback. Closing TCP does not end that ownership.
+         * File-serving async operations also keep references to conn. */
+        if (!conn->handler_on_worker && !conn->async_response_pending) {
+            libuv_connection_destroy(conn);
+        }
     libuv_connection_t *conn = (libuv_connection_t *)handle->data;
     if (conn) {
         log_debug("libuv_close_cb: Connection closed after %d requests", 
