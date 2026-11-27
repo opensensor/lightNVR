@@ -13,6 +13,7 @@
 #include "core/config.h"
 #include "web/libuv_connection.h"
 #include "web/libuv_server.h"
+#include "web/libuv_tls.h"
 
 extern int libuv_server_register_handler(http_server_handle_t, const char *, const char *, request_handler_t);
 extern int libuv_server_start(http_server_handle_t);
@@ -189,10 +190,21 @@ static void test_destroy_initialized_server_without_start(void) {
     server = NULL; /* ASan/LSan verifies registry and initialized handles freed. */
 }
 
+static void test_tls_request_does_not_start_plain_http(void) {
+    tearDown();
+    if (libuv_tls_compiled_in()) return;
+    http_server_config_t config = {0};
+    config.bind_ip = "127.0.0.1";
+    config.web_root = "/nonexistent-lifecycle-fixture";
+    config.ssl_enabled = true;
+    TEST_ASSERT_NULL(libuv_server_init(&config));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_disconnect_close_keeps_worker_response_alive);
     RUN_TEST(test_shutdown_waits_for_handler_beyond_three_second_warning);
     RUN_TEST(test_destroy_initialized_server_without_start);
+    RUN_TEST(test_tls_request_does_not_start_plain_http);
     return UNITY_END();
 }
