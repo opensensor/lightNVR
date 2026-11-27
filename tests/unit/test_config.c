@@ -302,7 +302,11 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     const long wait_timeout_ns = 2L * 1000L * 1000L * 1000L;  /* 2 s */
     struct timespec start_ts;
     struct timespec now_ts;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, clock_gettime(CLOCK_MONOTONIC, &start_ts), "clock_gettime failed");
+    if (clock_gettime(CLOCK_MONOTONIC, &start_ts) != 0) {
+        (void)kill(child, SIGKILL);
+        (void)waitpid(child, &status, 0);
+        TEST_FAIL_MESSAGE("clock_gettime failed");
+    }
     long long deadline_ns =
         (long long)start_ts.tv_sec * 1000000000LL + start_ts.tv_nsec + wait_timeout_ns;
     pid_t waited = -1;
@@ -317,7 +321,11 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
             TEST_FAIL_MESSAGE("waitpid failed while polling child");
         }
 
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, clock_gettime(CLOCK_MONOTONIC, &now_ts), "clock_gettime failed");
+        if (clock_gettime(CLOCK_MONOTONIC, &now_ts) != 0) {
+            (void)kill(child, SIGKILL);
+            (void)waitpid(child, &status, 0);
+            TEST_FAIL_MESSAGE("clock_gettime failed");
+        }
         long long now_ns = (long long)now_ts.tv_sec * 1000000000LL + now_ts.tv_nsec;
         if (now_ns >= deadline_ns) {
             break;
