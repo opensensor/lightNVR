@@ -307,7 +307,12 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         if (waited == child) {
             break;
         }
-        TEST_ASSERT_NOT_EQUAL_INT_MESSAGE(-1, waited, "waitpid failed while polling child");
+        if (waited < 0) {
+            if (errno == EINTR) continue;
+            (void)kill(child, SIGKILL);
+            (void)waitpid(child, &status, 0);
+            TEST_FAIL_MESSAGE("waitpid failed while polling child");
+        }
         usleep((useconds_t)wait_step_us);
         waited_us += wait_step_us;
     }
