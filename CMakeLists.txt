@@ -823,6 +823,7 @@ if(ENABLE_SENTRY)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_executable(lightnvr-ffmpeg-guard src/tools/ffmpeg_rss_guard.c)
+    add_dependencies(lightnvr lightnvr-ffmpeg-guard)
     set_target_properties(lightnvr-ffmpeg-guard PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     # Audio workers receive RLIMIT_AS. ASan reserves a large virtual shadow
