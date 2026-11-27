@@ -108,13 +108,20 @@ static bool response_has_header(const http_response_t *response,
 
 static void maybe_compress_response(const http_request_t *request,
                                     http_response_t *response) {
-    if (!g_config.web_compression_enabled || !request_accepts_gzip(request) ||
-        !response || !response->body ||
+    if (!g_config.web_compression_enabled || !response || !response->body ||
         response->body_length < HTTP_COMPRESSION_MIN_BYTES ||
         !response_content_is_compressible(response->content_type) ||
         response_has_header(response, "Content-Encoding") ||
         response->status_code == 204 || response->status_code == 206 ||
         response->status_code == 304 || request->method == HTTP_METHOD_HEAD) {
+        return;
+    }
+
+    // A separate Vary field is valid even when another field already names
+    // Origin or another request header; caches combine the field values.
+    http_response_add_header(response, "Vary", "Accept-Encoding");
+
+    if (!request_accepts_gzip(request)) {
         return;
     }
 
@@ -146,7 +153,6 @@ static void maybe_compress_response(const http_request_t *request,
     response->body_length = compressed_length;
     response->body_allocated = true;
     http_response_add_header(response, "Content-Encoding", "gzip");
-    http_response_add_header(response, "Vary", "Accept-Encoding");
 }
 
 /**
@@ -221,6 +227,7 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     // The body is assembled separately from the receive buffer because
     // chunk framing may separate successive on_body callbacks.
     safe_free(conn->request.body);
+    conn->body_capacity = 0;
     // Reset request/response
     http_request_init(&conn->request);
     http_response_init(&conn->response);
@@ -610,12 +617,29 @@ static int on_body(llhttp_t *parser, const char *at, size_t length) {
 
     size_t old_len = conn->request.body_len;
     if (length > LIBUV_RECV_BUFFER_MAX - old_len) return HPE_USER;
-    char *new_body = safe_realloc(conn->request.body, old_len + length + 1);
-    if (!new_body) return HPE_USER;
-    memcpy(new_body + old_len, at, length);
-    new_body[old_len + length] = '\0';
 
-    conn->request.body = new_body;
+    size_t required = old_len + length + 1; /* +1 for NUL terminator */
+    if (required > conn->body_capacity) {
+        const size_t max_capacity = LIBUV_RECV_BUFFER_MAX + 1;
+        size_t new_capacity = conn->body_capacity ? conn->body_capacity : 1024;
+        while (new_capacity < required) {
+            if (new_capacity > max_capacity / 2) {
+                new_capacity = max_capacity;
+                break;
+            }
+            new_capacity *= 2;
+        }
+        if (new_capacity < required) return HPE_USER;
+
+        char *new_body = safe_realloc(conn->request.body, new_capacity);
+        if (!new_body) return HPE_USER;
+        conn->request.body = new_body;
+        conn->body_capacity = new_capacity;
+    }
+
+    char *body = conn->request.body;
+    memcpy(body + old_len, at, length);
+    body[old_len + length] = '\0';
     conn->request.body_len = old_len + length;
 
     return 0;
@@ -819,13 +843,22 @@ static void static_file_resolve_handler(const http_request_t *req, http_response
     }
 
     char file_path[MAX_PATH_LENGTH];
-    snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, req->path);
+    int file_path_written = snprintf(file_path, sizeof(file_path), "%s%s",
+                                     server->config.web_root, req->path);
+    if (file_path_written < 0 || (size_t)file_path_written >= sizeof(file_path)) {
+        http_response_set_json_error(res, 400, "Bad Request");
+        return;
+    }
 
     struct stat st;
     bool original_exists = stat(file_path, &st) == 0;
     if (original_exists && S_ISDIR(st.st_mode)) {
-        snprintf(file_path, sizeof(file_path), "%s%s/index.html",
-                 server->config.web_root, req->path);
+        file_path_written = snprintf(file_path, sizeof(file_path), "%s%s/index.html",
+                                     server->config.web_root, req->path);
+        if (file_path_written < 0 || (size_t)file_path_written >= sizeof(file_path)) {
+            http_response_set_json_error(res, 400, "Bad Request");
+            return;
+        }
         original_exists = stat(file_path, &st) == 0 && S_ISREG(st.st_mode);
     }
 
@@ -970,7 +1003,7 @@ static int on_message_complete(llhttp_t *parser) {
             log_error("on_message_complete: Failed to allocate static file work context");
             http_response_set_json_error(&conn->response, 500, "Internal Server Error");
             libuv_send_response_ex(conn, &conn->response, action);
-            return HPE_OK;
+            return HPE_PAUSED;
         }
 
         hw->work.data = hw;
@@ -990,7 +1023,7 @@ static int on_message_complete(llhttp_t *parser) {
             safe_free(hw);
             http_response_set_json_error(&conn->response, 500, "Internal Server Error");
             libuv_send_response_ex(conn, &conn->response, action);
-            return HPE_OK;
+            return HPE_PAUSED;
         }
 
         return HPE_PAUSED;

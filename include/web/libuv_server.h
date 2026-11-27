@@ -76,6 +76,7 @@ typedef struct libuv_connection {
 
     http_request_t request;             // Parsed request
     http_response_t response;           // Response being built
+    size_t body_capacity;               // Capacity of owned request.body, including terminator
 
     // Bytes after a paused message in the most recent read. Replay them
     // after its response completes so pipelined requests are not lost.

@@ -55,3 +55,19 @@ test('double-slash static paths are rejected before file lookup', async () => {
     await server.stop();
   }
 });
+
+test('compressible responses vary by accepted content encoding', async () => {
+  const server = await startFixture();
+  try {
+    for (const encoding of ['identity', 'gzip']) {
+      const response = await server.request('/api/openapi.json', {
+        headers: {'Accept-Encoding': encoding},
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('vary')?.toLowerCase()).toContain('accept-encoding');
+      expect(response.headers.get('content-encoding')).toBe(encoding === 'gzip' ? 'gzip' : null);
+    }
+  } finally {
+    await server.stop();
+  }
+});
