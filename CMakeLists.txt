@@ -391,7 +391,8 @@ if(NOT LLHTTP_FOUND)
     # Check if llhttp is in external directory, downloading any missing files.
     # A partial prior download can leave src/llhttp.c present while api.c/http.c
     # are absent, which would otherwise fail later with "No SOURCES given".
-    set(LLHTTP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp")
+    # Use a build-local directory to avoid races between concurrent build dirs.
+    set(LLHTTP_DIR "${CMAKE_CURRENT_BINARY_DIR}/external/llhttp")
     set(LLHTTP_REQUIRED_FILES
         "src/llhttp.c"
         "src/api.c"
