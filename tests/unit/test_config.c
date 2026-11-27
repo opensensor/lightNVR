@@ -50,6 +50,11 @@ static bool owned_bind_dir_active;
 static char owned_bind_dir_path[MAX_PATH_LENGTH];
 static char owned_bind_file_path[MAX_PATH_LENGTH];
 static char owned_bind_baseline_path[MAX_PATH_LENGTH];
+static char owned_private_config_dir[MAX_PATH_LENGTH];
+static char owned_private_config_path[MAX_PATH_LENGTH];
+static char owned_credential_config_dir[MAX_PATH_LENGTH];
+static char owned_credential_config_path[MAX_PATH_LENGTH];
+static char owned_credential_control_path[MAX_PATH_LENGTH];
 static bool deny_config_rename;
 static bool busy_config_rename;
 static bool fail_config_pwrite;
@@ -135,6 +140,11 @@ void setUp(void) {
     owned_bind_dir_path[0] = '\0';
     owned_bind_file_path[0] = '\0';
     owned_bind_baseline_path[0] = '\0';
+    owned_private_config_dir[0] = '\0';
+    owned_private_config_path[0] = '\0';
+    owned_credential_config_dir[0] = '\0';
+    owned_credential_config_path[0] = '\0';
+    owned_credential_control_path[0] = '\0';
     saved_config_file = NULL;
     saved_baseline_file = NULL;
     concurrent_config_dir[0] = '\0';
@@ -161,6 +171,11 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (owned_private_config_path[0]) unlink(owned_private_config_path);
+    if (owned_private_config_dir[0]) rmdir(owned_private_config_dir);
+    if (owned_credential_config_path[0]) unlink(owned_credential_config_path);
+    if (owned_credential_control_path[0]) unlink(owned_credential_control_path);
+    if (owned_credential_config_dir[0]) rmdir(owned_credential_config_dir);
     if (owned_bind_dir_active) {
         unlink(owned_bind_file_path);
         unlink(owned_bind_baseline_path);
@@ -1582,11 +1597,10 @@ void test_env_integer_whitespace_handling(void) {
 void test_save_config_tightens_existing_permissions_before_writing_secrets(void) {
     char directory[] = "/tmp/lightnvr_private_config_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
-    snprintf(owned_pid_path, sizeof(owned_pid_path), "%s", directory);
-    owned_pid_fd = -1;
+    snprintf(owned_private_config_dir, sizeof(owned_private_config_dir), "%s", directory);
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
-    snprintf(concurrent_config_dir, sizeof(concurrent_config_dir), "%s", path);
+    snprintf(owned_private_config_path, sizeof(owned_private_config_path), "%s", path);
     FILE *old = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(old);
     fputs("old content", old); fclose(old);
@@ -1738,6 +1752,9 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     char control_path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
     snprintf(control_path, sizeof(control_path), "%s/control.ini", directory);
+    snprintf(owned_credential_config_dir, sizeof(owned_credential_config_dir), "%s", directory);
+    snprintf(owned_credential_config_path, sizeof(owned_credential_config_path), "%s", path);
+    snprintf(owned_credential_control_path, sizeof(owned_credential_control_path), "%s", control_path);
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
     fputs("previous configuration", initial);
@@ -1836,11 +1853,14 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     char content[64] = {0};
     FILE *saved = fopen(path, "r");
     TEST_ASSERT_NOT_NULL(saved);
+    saved_config_file = saved;
     TEST_ASSERT_EQUAL_UINT(strlen("previous configuration"),
                            fread(content, 1, sizeof(content) - 1, saved));
     fclose(saved);
+    saved_config_file = NULL;
     TEST_ASSERT_EQUAL_STRING("previous configuration", content);
     unlink(path);
+    unlink(control_path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
 
