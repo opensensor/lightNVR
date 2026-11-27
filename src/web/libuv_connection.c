@@ -790,6 +790,13 @@ static void static_file_resolve_handler(const http_request_t *req, http_response
     libuv_connection_t *conn = (libuv_connection_t *)req->user_data;
     const libuv_server_t *server = conn->server;
 
+    /* Backups contain system configuration and must not inherit the public
+     * static asset policy merely because they live below web_root. */
+    if (strcmp(req->path, "/backups") == 0 ||
+        strncmp(req->path, "/backups/", 9) == 0) {
+        if (!httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN)) return;
+    }
+
     char file_path[MAX_PATH_LENGTH];
     snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, req->path);
 
