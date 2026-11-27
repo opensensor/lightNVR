@@ -148,6 +148,9 @@ void setUp(void) {
     owned_credential_config_dir[0] = '\0';
     owned_credential_config_path[0] = '\0';
     owned_credential_control_path[0] = '\0';
+    group_replace_dir[0] = '\0';
+    group_replace_path[0] = '\0';
+    group_replace_cleanup_active = false;
     saved_config_file = NULL;
     saved_baseline_file = NULL;
     concurrent_config_dir[0] = '\0';
@@ -174,6 +177,11 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (group_replace_cleanup_active) {
+        unlink(group_replace_path);
+        rmdir(group_replace_dir);
+        group_replace_cleanup_active = false;
+    }
     if (owned_private_config_path[0]) unlink(owned_private_config_path);
     if (owned_private_config_dir[0]) rmdir(owned_private_config_dir);
     if (owned_credential_config_path[0]) unlink(owned_credential_config_path);
@@ -1676,15 +1684,6 @@ void test_save_config_rejects_hardlinks_without_truncation_or_mode_change(void) 
     unlink(path); unlink(original); rmdir(directory);
 }
 
-static void cleanup_group_writable_config_replacement_artifacts(void) {
-    if (!group_replace_cleanup_active) return;
-    if (group_replace_path[0] != '\0') unlink(group_replace_path);
-    if (group_replace_dir[0] != '\0') rmdir(group_replace_dir);
-    group_replace_path[0] = '\0';
-    group_replace_dir[0] = '\0';
-    group_replace_cleanup_active = false;
-}
-
 static void check_group_writable_config_replacement(bool fail_publish) {
     char directory[] = "/tmp/lightnvr_group_config_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
@@ -1728,19 +1727,16 @@ static void check_group_writable_config_replacement(bool fail_publish) {
     fread(content, 1, sizeof(content)-1, saved); fclose(saved);
     if (fail_publish) TEST_ASSERT_EQUAL_STRING("preserve-old-content", content);
     else TEST_ASSERT_NOT_NULL(strstr(content, "synthetic-replacement-secret"));
+    unlink(path);
     /* Also verifies no private staging file is left behind on either path. */
-    cleanup_group_writable_config_replacement_artifacts();
-    TEST_ASSERT_FALSE(group_replace_cleanup_active);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    group_replace_cleanup_active = false;
 }
 static void test_save_config_replaces_group_writable_legacy_file_privately(void) {
     check_group_writable_config_replacement(false);
 }
 static void test_save_config_preserves_legacy_file_when_replacement_fails(void) {
     check_group_writable_config_replacement(true);
-}
-
-void tearDown(void) {
-    cleanup_group_writable_config_replacement_artifacts();
 }
 
 static void test_save_config_atomically_replaces_owned_file(void) {
