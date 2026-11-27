@@ -23,6 +23,8 @@ static char overlong_parent_dir[512];
 static int test_paths_initialized = 0;
 static unsigned char *wal_before_bytes;
 static unsigned char *wal_after_bytes;
+static sqlite3 *tracked_fixture_db = NULL;
+static sqlite3_stmt *tracked_fixture_stmt = NULL;
 #define TEST_DB_PATH test_db_path
 #define TEST_BACKUP_DIR test_backup_dir
 
@@ -139,6 +141,14 @@ void setUp(void) {
 void tearDown(void) {
     free(wal_before_bytes);
     free(wal_after_bytes);
+    if (tracked_fixture_stmt) {
+        sqlite3_finalize(tracked_fixture_stmt);
+        tracked_fixture_stmt = NULL;
+    }
+    if (tracked_fixture_db) {
+        sqlite3_close(tracked_fixture_db);
+        tracked_fixture_db = NULL;
+    }
     if (get_db_handle()) {
         shutdown_database();
     }
@@ -398,14 +408,15 @@ static void test_new_database_and_sidecars_are_private_with_permissive_umask(voi
 }
 
 static void test_writable_startup_tightens_legacy_database_and_wal_permissions(void) {
-    sqlite3 *fixture = NULL;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &fixture));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(fixture,
+    tracked_fixture_db = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &tracked_fixture_db));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(tracked_fixture_db,
         "PRAGMA journal_mode=WAL; CREATE TABLE sample(value TEXT);"
         "INSERT INTO sample VALUES('preserved');", NULL, NULL, NULL));
     int persist = 1;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_file_control(fixture, "main", SQLITE_FCNTL_PERSIST_WAL, &persist));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(fixture));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_file_control(tracked_fixture_db, "main", SQLITE_FCNTL_PERSIST_WAL, &persist));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(tracked_fixture_db));
+    tracked_fixture_db = NULL;
     static const char *suffixes[] = {"", "-wal", "-shm"};
     char path[512];
     for (size_t i = 0; i < sizeof(suffixes)/sizeof(suffixes[0]); ++i) {
@@ -414,11 +425,12 @@ static void test_writable_startup_tightens_legacy_database_and_wal_permissions(v
     }
     TEST_ASSERT_EQUAL_INT(0, init_database_ex(TEST_DB_PATH, DB_INIT_NO_BACKUP));
     assert_database_private();
-    sqlite3_stmt *stmt = NULL;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(), "SELECT value FROM sample", -1, &stmt, NULL));
-    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
-    TEST_ASSERT_EQUAL_STRING("preserved", sqlite3_column_text(stmt, 0));
-    sqlite3_finalize(stmt);
+    tracked_fixture_stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(), "SELECT value FROM sample", -1, &tracked_fixture_stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(tracked_fixture_stmt));
+    TEST_ASSERT_EQUAL_STRING("preserved", sqlite3_column_text(tracked_fixture_stmt, 0));
+    sqlite3_finalize(tracked_fixture_stmt);
+    tracked_fixture_stmt = NULL;
 }
 
 static void test_backup_copy_is_private_without_changing_source_permissions(void) {
@@ -445,18 +457,21 @@ static void test_private_backup_creation_failure_is_reported_and_can_retry(void)
     TEST_ASSERT_EQUAL_INT(-1, backup_database(TEST_DB_PATH,
                                             path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"), false));
     TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"), F_OK));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(TEST_BACKUP_DIR, 0700));
     TEST_ASSERT_EQUAL_INT(0, backup_database(TEST_DB_PATH,
-                                           path_with_suffix(TEST_DB_PATH, ".private-backup"), false));
-    sqlite3 *copy = NULL;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path_with_suffix(TEST_DB_PATH, ".private-backup"),
-                                                  &copy, SQLITE_OPEN_READONLY, NULL));
-    sqlite3_stmt *stmt = NULL;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(copy, "SELECT value FROM sample",
-                                                     -1, &stmt, NULL));
-    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
-    TEST_ASSERT_EQUAL_STRING("unchanged", sqlite3_column_text(stmt, 0));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(copy));
+                                           path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"), false));
+    TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite.tmp"), F_OK));
+    TEST_ASSERT_EQUAL_INT(ENOENT, errno);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"),
+                                                  &tracked_fixture_db, SQLITE_OPEN_READONLY, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(tracked_fixture_db, "SELECT value FROM sample",
+                                                     -1, &tracked_fixture_stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(tracked_fixture_stmt));
+    TEST_ASSERT_EQUAL_STRING("unchanged", sqlite3_column_text(tracked_fixture_stmt, 0));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(tracked_fixture_stmt));
+    tracked_fixture_stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(tracked_fixture_db));
+    tracked_fixture_db = NULL;
 }
 
 int main(void) {
