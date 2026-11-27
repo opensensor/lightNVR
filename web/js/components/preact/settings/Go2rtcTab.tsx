@@ -11,6 +11,7 @@ import {validateGo2rtcConfiguration,getGo2rtcEffectiveConfiguration,getGo2rtcOve
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
+import { parseDocument } from 'yaml';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type {
   Go2rtcEffectiveConfig,
@@ -298,16 +299,24 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     return null;
   };
 
-  const getTopLevelYamlKeys = (yaml: string): Set<string> => {
-    const keys = new Set<string>();
-    for (const rawLine of yaml.split('\n')) {
-      const line = rawLine.trimEnd();
-      if (!line || line.trimStart().startsWith('#')) continue;
-      if (/^\s/.test(rawLine)) continue;
-      const m = line.match(/^([A-Za-z0-9_-]+)\s*:/);
-      if (m?.[1]) keys.add(m[1]);
+  const getTopLevelYamlKeys = (yaml: string): { keys: Set<string>; error: string | null } => {
+    const doc = parseDocument(yaml);
+    if (doc.errors.length > 0) {
+      return { keys: new Set<string>(), error: doc.errors[0].message };
     }
-    return keys;
+
+    const keys = new Set<string>();
+    const contents = doc.contents;
+    if (contents && contents.type === 'MAP') {
+      for (const item of contents.items) {
+        const keyNode = item.key;
+        if (!keyNode) continue;
+        const key = keyNode.toString();
+        if (key) keys.add(key);
+      }
+    }
+
+    return { keys, error: null };
   };
 
   const handleInsertPreset = (e: Event) => {
@@ -317,9 +326,31 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     const preset = OVERRIDE_PRESETS[idx];
 
     const cur = settings.go2rtcConfigOverride || '';
-    const existingKeys = getTopLevelYamlKeys(cur);
-    const presetKeys = getTopLevelYamlKeys(preset!.yaml);
-    const conflicts = Array.from(presetKeys).filter(k => existingKeys.has(k));
+    const existingParsed = getTopLevelYamlKeys(cur);
+    if (existingParsed.error) {
+      invalidateOverrideValidation();
+      setOverrideValidation({
+        valid: false,
+        error: {
+          message: `Cannot insert preset because the current override YAML is invalid: ${existingParsed.error}`,
+        },
+      });
+      return;
+    }
+
+    const presetParsed = getTopLevelYamlKeys(preset!.yaml);
+    if (presetParsed.error) {
+      invalidateOverrideValidation();
+      setOverrideValidation({
+        valid: false,
+        error: {
+          message: `Cannot insert preset because the preset YAML is invalid: ${presetParsed.error}`,
+        },
+      });
+      return;
+    }
+
+    const conflicts = Array.from(presetParsed.keys).filter(k => existingParsed.keys.has(k));
     if (conflicts.length > 0) {
       invalidateOverrideValidation();
       setOverrideValidation({
