@@ -447,7 +447,7 @@ static int copy_file_contents(const char *source_path, const char *dest_path) {
         return -1;
     }
 
-    dst_fd = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    dst_fd = open(dest_path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
     if (dst_fd < 0) {
         log_error("Failed to open destination file for copy: %s (%s)", dest_path, strerror(errno));
         close(src_fd);
