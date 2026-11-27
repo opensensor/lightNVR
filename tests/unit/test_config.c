@@ -1170,6 +1170,11 @@ void test_validate_config_preserves_valid_startup_check(void) {
     cfg.db_startup_check = DB_STARTUP_CHECK_OFF;
     TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
     TEST_ASSERT_EQUAL_INT(DB_STARTUP_CHECK_OFF, cfg.db_startup_check);
+
+    load_default_config(&cfg);
+    cfg.db_startup_check = DB_STARTUP_CHECK_QUICK;
+    TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(DB_STARTUP_CHECK_QUICK, cfg.db_startup_check);
 }
 
 void test_default_config_models_path_nonempty(void) {
