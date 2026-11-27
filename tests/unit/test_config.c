@@ -307,50 +307,73 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     TEST_ASSERT_EQUAL_INT(0, daemon_status(path));
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
 
-    int malformed_fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0644);
-    TEST_ASSERT_TRUE(malformed_fd >= 0);
-    const char *bad_pid_text = "not-a-pid\n";
-    TEST_ASSERT_EQUAL_INT((int)strlen(bad_pid_text), write(malformed_fd, bad_pid_text, strlen(bad_pid_text)));
-    TEST_ASSERT_EQUAL_INT(0, close(malformed_fd));
-    int ready_pipe[2], release_pipe[2];
-    TEST_ASSERT_EQUAL_INT(0, pipe(ready_pipe));
-    TEST_ASSERT_EQUAL_INT(0, pipe(release_pipe));
-    pid_t locker = fork();
-    TEST_ASSERT_TRUE(locker >= 0);
-    if (locker == 0) {
+    pid_t supervised = fork();
+    TEST_ASSERT_TRUE(supervised >= 0);
+    if (supervised == 0) {
+        int malformed_fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0644);
+        if (malformed_fd < 0) _exit(10);
+        const char *bad_pid_text = "not-a-pid\n";
+        if (write(malformed_fd, bad_pid_text, strlen(bad_pid_text)) !=
+            (ssize_t)strlen(bad_pid_text) || close(malformed_fd) != 0) _exit(11);
+        int ready_pipe[2], release_pipe[2];
+        if (pipe(ready_pipe) != 0 || pipe(release_pipe) != 0) _exit(12);
+        pid_t locker = fork();
+        if (locker < 0) _exit(13);
+        if (locker == 0) {
+            close(ready_pipe[0]);
+            close(release_pipe[1]);
+            int lock_fd = open(path, O_RDWR);
+            if (lock_fd < 0 || lockf(lock_fd, F_LOCK, 0) != 0) _exit(2);
+            if (write(ready_pipe[1], "r", 1) != 1) _exit(3);
+            char release;
+            if (read(release_pipe[0], &release, 1) != 1) _exit(4);
+            close(lock_fd);
+            _exit(0);
+        }
+        close(ready_pipe[1]);
+        close(release_pipe[0]);
+        char ready;
+        int ready_read_rc = (int)read(ready_pipe[0], &ready, 1);
+        int daemon_status_rc = ready_read_rc == 1 ? daemon_status(path) : -1;
+        int release_write_rc = ready_read_rc == 1 ?
+            (int)write(release_pipe[1], "x", 1) : -1;
         close(ready_pipe[0]);
         close(release_pipe[1]);
-        int lock_fd = open(path, O_RDWR);
-        if (lock_fd < 0 || lockf(lock_fd, F_LOCK, 0) != 0) _exit(2);
-        if (write(ready_pipe[1], "r", 1) != 1) _exit(3);
-        char release;
-        if (read(release_pipe[0], &release, 1) != 1) _exit(4);
-        close(lock_fd);
+        pid_t waited = waitpid(locker, &status, 0);
+
+        if (ready_read_rc != 1 || daemon_status_rc != -1 ||
+            release_write_rc != 1 || waited != locker ||
+            !WIFEXITED(status) || WEXITSTATUS(status) != 0 ||
+            unlink(path) != 0) _exit(14);
+
+        int second_fd = write_pid_file(path);
+        if (second_fd < 0 || remove_pid_file(second_fd, path) != 0 ||
+            unlink(path) != 0) _exit(15);
         _exit(0);
+    } else {
+        int supervised_status = 0;
+        const int timeout_ms = 3000;
+        int elapsed_ms = 0;
+        pid_t wait_rc;
+        do {
+            wait_rc = waitpid(supervised, &supervised_status, WNOHANG);
+            if (wait_rc == supervised) break;
+            if (wait_rc < 0 && errno == EINTR) continue;
+            if (wait_rc < 0) break;
+            usleep(10000);
+            elapsed_ms += 10;
+        } while (elapsed_ms < timeout_ms);
+
+        if (wait_rc == 0) {
+            kill(supervised, SIGKILL);
+            (void)waitpid(supervised, &supervised_status, 0);
+            TEST_FAIL_MESSAGE("lock-regression scenario timed out");
+        }
+
+        TEST_ASSERT_EQUAL_INT(supervised, wait_rc);
+        TEST_ASSERT_TRUE(WIFEXITED(supervised_status));
+        TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(supervised_status));
     }
-    close(ready_pipe[1]);
-    close(release_pipe[0]);
-    char ready;
-    int ready_read_rc = (int)read(ready_pipe[0], &ready, 1);
-    int daemon_status_rc = ready_read_rc == 1 ? daemon_status(path) : -1;
-    int release_write_rc = ready_read_rc == 1 ?
-        (int)write(release_pipe[1], "x", 1) : -1;
-    close(ready_pipe[0]);
-    close(release_pipe[1]);
-    pid_t waited = waitpid(locker, &status, 0);
-
-    TEST_ASSERT_EQUAL_INT(1, ready_read_rc);
-    TEST_ASSERT_EQUAL_INT(-1, daemon_status_rc);
-    TEST_ASSERT_EQUAL_INT(1, release_write_rc);
-    TEST_ASSERT_EQUAL_INT(locker, waited);
-    TEST_ASSERT_TRUE(WIFEXITED(status));
-    TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
-    TEST_ASSERT_EQUAL_INT(0, unlink(path));
-
-    int second_fd = write_pid_file(path);
-    TEST_ASSERT_TRUE(second_fd >= 0);
-    TEST_ASSERT_EQUAL_INT(0, remove_pid_file(second_fd, path));
-    TEST_ASSERT_EQUAL_INT(0, unlink(path));
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
 
@@ -638,8 +661,11 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     }
 
     struct timespec start = {0};
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, clock_gettime(CLOCK_MONOTONIC, &start),
-                                  "clock_gettime failed in timeout harness");
+    if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) {
+        kill(child, SIGKILL);
+        waitpid(child, NULL, 0);
+        TEST_FAIL_MESSAGE("clock_gettime failed in timeout harness");
+    }
     for (;;) {
         int status = 0;
         pid_t waited = waitpid(child, &status, WNOHANG);
@@ -649,11 +675,21 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
                                           "child reported failure in concurrency scenario");
             break;
         }
-        TEST_ASSERT_TRUE_MESSAGE(waited == 0, "waitpid failed while monitoring child");
+        if (waited == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            kill(child, SIGKILL);
+            waitpid(child, NULL, 0);
+            TEST_FAIL_MESSAGE("waitpid failed while monitoring child");
+        }
 
         struct timespec now = {0};
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, clock_gettime(CLOCK_MONOTONIC, &now),
-                                      "clock_gettime failed during timeout monitoring");
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            kill(child, SIGKILL);
+            waitpid(child, NULL, 0);
+            TEST_FAIL_MESSAGE("clock_gettime failed during timeout monitoring");
+        }
         long elapsed_ms =
             (now.tv_sec - start.tv_sec) * 1000L + (now.tv_nsec - start.tv_nsec) / 1000000L;
         if (elapsed_ms > 8000L) {
@@ -1867,35 +1903,37 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
     snprintf(baseline_path, sizeof(baseline_path), "%s/settings.ini", baseline_directory);
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
 
-    FILE *saved = fopen(path, "rb");
-    TEST_ASSERT_NOT_NULL(saved);
-    FILE *baseline = fopen(baseline_path, "rb");
-    TEST_ASSERT_NOT_NULL(baseline);
+    saved_config_file = fopen(path, "rb");
+    TEST_ASSERT_NOT_NULL(saved_config_file);
+    saved_baseline_file = fopen(baseline_path, "rb");
+    TEST_ASSERT_NOT_NULL(saved_baseline_file);
 
-    TEST_ASSERT_EQUAL_INT(0, fseek(saved, 0, SEEK_END));
-    long saved_size = ftell(saved);
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved_config_file, 0, SEEK_END));
+    long saved_size = ftell(saved_config_file);
     TEST_ASSERT_TRUE(saved_size >= 0);
-    TEST_ASSERT_EQUAL_INT(0, fseek(saved, 0, SEEK_SET));
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved_config_file, 0, SEEK_SET));
 
-    TEST_ASSERT_EQUAL_INT(0, fseek(baseline, 0, SEEK_END));
-    long baseline_size = ftell(baseline);
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved_baseline_file, 0, SEEK_END));
+    long baseline_size = ftell(saved_baseline_file);
     TEST_ASSERT_TRUE(baseline_size >= 0);
-    TEST_ASSERT_EQUAL_INT(0, fseek(baseline, 0, SEEK_SET));
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved_baseline_file, 0, SEEK_SET));
 
     TEST_ASSERT_EQUAL_INT64((long long)baseline_size, (long long)saved_size);
 
     unsigned char saved_content[256], baseline_content[256];
     while (true) {
-        size_t saved_read = fread(saved_content, 1, sizeof(saved_content), saved);
-        size_t baseline_read = fread(baseline_content, 1, sizeof(baseline_content), baseline);
+        size_t saved_read = fread(saved_content, 1, sizeof(saved_content), saved_config_file);
+        size_t baseline_read = fread(baseline_content, 1, sizeof(baseline_content), saved_baseline_file);
         TEST_ASSERT_EQUAL_UINT(baseline_read, saved_read);
         if (saved_read == 0) break;
         TEST_ASSERT_EQUAL_MEMORY(baseline_content, saved_content, saved_read);
     }
-    TEST_ASSERT_FALSE(ferror(saved));
-    TEST_ASSERT_FALSE(ferror(baseline));
-    fclose(saved);
-    fclose(baseline);
+    TEST_ASSERT_FALSE(ferror(saved_config_file));
+    TEST_ASSERT_FALSE(ferror(saved_baseline_file));
+    fclose(saved_config_file);
+    saved_config_file = NULL;
+    fclose(saved_baseline_file);
+    saved_baseline_file = NULL;
 
     unlink(path);
     rmdir(directory);
