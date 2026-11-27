@@ -1823,11 +1823,11 @@ static char g_custom_config_path[MAX_PATH_LENGTH] = {0};
 static char g_loaded_config_path[MAX_PATH_LENGTH] = {0};
 
 // Function to set the custom config path
-// Validates the path to reject null bytes and path-traversal sequences before storing.
+// Validates the path length and rejects path-traversal parent components ("..") before storing.
 void set_custom_config_path(const char *path) {
     if (!path || path[0] == '\0') return;
 
-    // Reject paths containing null bytes embedded before the terminator
+    // Enforce maximum C-string length (strlen checks up to the first terminator)
     size_t provided_len = strlen(path);
     if (provided_len >= MAX_PATH_LENGTH) {
         log_warn("Custom config path too long, ignoring");
