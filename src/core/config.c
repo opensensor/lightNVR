@@ -1344,9 +1344,8 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             char *endptr = NULL;
             errno = 0;
 
-            if (value[0] == '-') {
-                log_warn("Invalid swap_size '%s': negative values are not allowed. Keeping previous value.",
-                         value);
+            if (value[0] == '\0' || strspn(value, "0123456789") != strlen(value)) {
+                log_warn("Invalid swap_size '%s': expected a non-negative integer. Keeping previous value.", value);
             } else {
                 unsigned long long parsed = strtoull(value, &endptr, 10);
                 if (errno == ERANGE || endptr == value || *endptr != '\0') {
@@ -2682,7 +2681,6 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     }
     if (fclose(file) != 0) write_failed = 1;
     if (!write_failed) {
-        pthread_mutex_lock(&config_in_place_mutex);
         /* Do not replace a symlink, hardlink, or changed target introduced
          * while the replacement was being written. */
         struct stat current;
@@ -2706,7 +2704,6 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         } else if (fsync(dir_fd) != 0) {
             log_warn("Could not sync config directory after replacement: %s", strerror(errno));
         }
-        pthread_mutex_unlock(&config_in_place_mutex);
     }
     if (staged_fd >= 0) close(staged_fd);
     if (external_staging) unlink(external_staging_path);
