@@ -724,6 +724,21 @@ void test_save_stream_configs_preserves_identities_after_batch_reload(void) {
     snprintf(second_uuid, sizeof(second_uuid), "%s", cfg.streams[1].camera_uuid);
 
     load_default_config(&reloaded_cfg);
+    TEST_ASSERT_EQUAL_INT(2, load_stream_configs_from_db(&reloaded_cfg));
+
+    TEST_ASSERT_EQUAL_STRING("camera-one", reloaded_cfg.streams[0].name);
+    TEST_ASSERT_EQUAL_STRING("rtsp://example.invalid/one", reloaded_cfg.streams[0].url);
+    TEST_ASSERT_EQUAL_STRING(original_uuid, reloaded_cfg.streams[0].camera_uuid);
+
+    TEST_ASSERT_EQUAL_STRING("camera-two", reloaded_cfg.streams[1].name);
+    TEST_ASSERT_EQUAL_STRING("rtsp://example.invalid/two", reloaded_cfg.streams[1].url);
+    TEST_ASSERT_EQUAL_STRING(second_uuid, reloaded_cfg.streams[1].camera_uuid);
+
+    TEST_ASSERT_NOT_EQUAL(0, strcmp(reloaded_cfg.streams[0].camera_uuid, reloaded_cfg.streams[1].camera_uuid));
+    char second_uuid[sizeof(cfg.streams[1].camera_uuid)];
+    snprintf(second_uuid, sizeof(second_uuid), "%s", cfg.streams[1].camera_uuid);
+
+    load_default_config(&reloaded_cfg);
     TEST_ASSERT_EQUAL_INT(2, load_stream_configs(&reloaded_cfg));
 
     TEST_ASSERT_EQUAL_STRING("camera-one", reloaded_cfg.streams[0].name);
