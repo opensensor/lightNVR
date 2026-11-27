@@ -154,3 +154,13 @@ test('restart and shutdown acknowledgments are followed by actual owned-process 
   await expect.poll(()=>{try{process.kill(server.pid,0);return true;}catch{return false;}},{timeout:30000}).toBe(false);
  } finally {await server.stop({expectedExitCode});}
 });
+
+test('shutdown acknowledgment is followed by process exit in any runtime mode',async()=>{
+ const server=await startFixture();
+ try {
+  const before=readFileSync(server.logPath,'utf8');
+  valid('SystemActionAccepted',await ok(server,'/api/system/shutdown',admin,'POST'));
+  await expect.poll(()=>readFileSync(server.logPath,'utf8').slice(before.length),{timeout:30000}).toMatch(/Shutdown requested in (native|container) mode/);
+  await expect.poll(()=>{try{process.kill(server.pid,0);return true;}catch{return false;}},{timeout:30000}).toBe(false);
+ } finally {await server.stop();}
+});
