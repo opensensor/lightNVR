@@ -1772,11 +1772,18 @@ void shutdown_database(void) {
         // If WAL mode is enabled, checkpoint the database to ensure all changes are written to the main database file
         if (wal_mode_enabled) {
             log_info("Checkpointing WAL before closing database");
-            int rc = sqlite3_exec(db_to_close, "PRAGMA wal_checkpoint(FULL);", NULL, NULL, NULL);
+            int log_frames = 0;
+            int ckpt_frames = 0;
+            int rc = sqlite3_wal_checkpoint_v2(
+                db_to_close, NULL, SQLITE_CHECKPOINT_FULL, &log_frames, &ckpt_frames);
             if (rc != SQLITE_OK) {
                 log_warn("Failed to checkpoint WAL: %s", sqlite3_errmsg(db_to_close));
+            } else if (ckpt_frames < log_frames) {
+                log_warn("WAL checkpoint incomplete before shutdown (checkpointed %d of %d frames)",
+                         ckpt_frames, log_frames);
             } else {
-                log_info("WAL checkpoint successful");
+                log_info("WAL checkpoint successful (%d of %d frames checkpointed)",
+                         ckpt_frames, log_frames);
             }
         }
 
