@@ -131,10 +131,46 @@ static void test_legacy_database_enables_incremental_auto_vacuum(void) {
 }
 
 static void test_overlong_database_path_is_rejected_before_initialization(void) {
-    char path[8192];
-    memset(path, 'x', sizeof(path) - 1);
-    path[sizeof(path) - 1] = '\0';
-    TEST_ASSERT_EQUAL_INT(-1, init_database_ex(path, DB_INIT_NO_BACKUP));
+    char accepted_path[1024];
+    char rejected_path[2048];
+    size_t i = 0;
+
+    accepted_path[0] = '\0';
+    rejected_path[0] = '\0';
+
+    /* Build paths from many short components so we do not exceed per-component filename limits. */
+    for (i = 0; i < 40; i++) {
+        TEST_ASSERT_TRUE(strlen(accepted_path) + strlen("/segment000000000") < sizeof(accepted_path));
+        TEST_ASSERT_TRUE(strlen(rejected_path) + strlen("/segment000000000") < sizeof(rejected_path));
+        snprintf(accepted_path + strlen(accepted_path),
+                 sizeof(accepted_path) - strlen(accepted_path),
+                 "/segment%06zu",
+                 i);
+        snprintf(rejected_path + strlen(rejected_path),
+                 sizeof(rejected_path) - strlen(rejected_path),
+                 "/segment%06zu",
+                 i);
+    }
+
+    /* Extend only rejected_path so it crosses application's total path-length guard. */
+    for (i = 40; i < 120; i++) {
+        if (strlen(rejected_path) + strlen("/segment000000000") >= sizeof(rejected_path)) {
+            break;
+        }
+        snprintf(rejected_path + strlen(rejected_path),
+                 sizeof(rejected_path) - strlen(rejected_path),
+                 "/segment%06zu",
+                 i);
+    }
+
+    /* Accepted boundary candidate should not fail because of invalid single-component length. */
+    (void)init_database_ex(accepted_path, DB_INIT_NO_BACKUP);
+    if (get_db_handle()) {
+        shutdown_database();
+    }
+
+    /* Rejected boundary candidate should fail early and not leave an open handle. */
+    TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
     TEST_ASSERT_NULL(get_db_handle());
 }
 
