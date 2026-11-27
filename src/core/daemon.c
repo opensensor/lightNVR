@@ -586,7 +586,7 @@ int daemon_status(const char *pid_file) {
 
     // Closing any descriptor for this inode would release our process-scoped
     // record lock. Keep this mutex held across the complete status probe
-    // sequence (path checks + open/query/close) so another thread cannot
+    // sequence (open/query/close) so another thread cannot
     // establish PID ownership concurrently.
     pthread_mutex_lock(&owned_pid_mutex);
     if (owned_pid_fd >= 0 && owned_pid_process == getpid()) {
@@ -605,23 +605,9 @@ int daemon_status(const char *pid_file) {
         return -1;
     }
 
-    // Reject unsafe paths (including hard-linked PID files) before opening.
-    // Opening and later closing another descriptor for the same inode in this
-    // process can release our existing process-scoped record lock.
-    struct stat current;
-    if (lstat(file_path, &current) == 0) {
-        if (!S_ISREG(current.st_mode) || current.st_nlink != 1) {
-            log_error("Unsafe PID file path %s: expected single-link regular file", file_path);
-            return finish_daemon_status(-1);
-        }
-    } else if (errno == ENOENT) {
-        return finish_daemon_status(0);
-    } else {
-        log_error("Failed to stat PID file %s: %s", file_path, strerror(errno));
-        return finish_daemon_status(-1);
-    }
-
-    // Open read-only so status checks can work across users (e.g., 0644 PID files)
+    // Open first, then validate the opened inode. A pathname check here would
+    // race with replacement of the PID file before open().
+    // Read-only access lets status checks work across users (e.g., 0644 files).
     int fd = open(file_path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) {
         if (errno == ENOENT) {
