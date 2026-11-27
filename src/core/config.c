@@ -2056,6 +2056,7 @@ static int publish_config_in_place_locked(int dir_fd, const char *filename,
         int fd_flags = fcntl(backup_fd, F_GETFD);
         if (fd_flags < 0 || fcntl(backup_fd, F_SETFD, fd_flags | FD_CLOEXEC) != 0) {
             close(backup_fd);
+            unlink(backup_path);
             backup_fd = -1;
         }
     }
@@ -2713,9 +2714,16 @@ static int save_config_snapshot(const config_t *config, const char *path) {
                 : stat_result != 0 && errno == ENOENT;
             if (!unchanged) {
                 write_failed = 1;
-            } else if (publish_config_in_place_locked(dir_fd, validated_filename,
-                    &config_stat, original_fd, staged_fd) != 0) {
-                write_failed = 1;
+            } else if (external_staging) {
+                if (publish_config_in_place_locked(dir_fd, validated_filename,
+                        &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
+            } else if (renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
+                if (errno == EBUSY && original_fd >= 0) {
+                    if (publish_config_in_place_locked(dir_fd, validated_filename,
+                            &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
+                } else {
+                    write_failed = 1;
+                }
             } else if (fsync(dir_fd) != 0) {
                 log_warn("Could not sync config directory after replacement: %s", strerror(errno));
             }
