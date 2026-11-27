@@ -361,6 +361,10 @@ void test_read_only_initialization_cannot_write(void) {
     TEST_ASSERT_EQUAL_UINT(before.st_mode, after.st_mode);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_sec, after.st_mtim.tv_sec);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_nsec, after.st_mtim.tv_nsec);
+    TEST_ASSERT_EQUAL_UINT((unsigned int)(wal_before.st_mode & 07777),
+                           (unsigned int)(wal_after.st_mode & 07777));
+    TEST_ASSERT_EQUAL_UINT((unsigned int)(shm_before.st_mode & 07777),
+                           (unsigned int)(shm_after.st_mode & 07777));
     TEST_ASSERT_EQUAL_UINT64((uint64_t)wal_before_size, (uint64_t)wal_after_size);
     TEST_ASSERT_EQUAL_INT64(shm_before.st_size, shm_after.st_size);
     if (wal_before_size > 0) {
