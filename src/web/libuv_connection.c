@@ -165,7 +165,7 @@ static void maybe_compress_response(const http_request_t *request,
         !response_content_is_compressible(response->content_type) ||
         response_has_header(response, "Content-Encoding") ||
         response->status_code == 204 || response->status_code == 206 ||
-        response->status_code == 304 || request->method == HTTP_METHOD_HEAD) {
+        response->status_code == 304) {
         return;
     }
 
@@ -960,7 +960,9 @@ static int on_message_complete(llhttp_t *parser) {
     for (int i = 0; i < server->handler_count; i++) {
         // Check method match (empty = any)
         if (server->handlers[i].method[0] != '\0') {
-            if (strcmp(server->handlers[i].method, conn->request.method_str) != 0) {
+            if (strcmp(server->handlers[i].method, conn->request.method_str) != 0 &&
+                !(conn->request.method == HTTP_METHOD_HEAD &&
+                  strcmp(server->handlers[i].method, "GET") == 0)) {
                 continue;
             }
         }

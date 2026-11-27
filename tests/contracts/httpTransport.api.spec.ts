@@ -1,4 +1,7 @@
 import {connect} from 'node:net';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import {test, expect} from '@playwright/test';
 import {startFixture} from './fixture-server.mjs';
 
@@ -136,5 +139,40 @@ test('gzip quality values follow the HTTP grammar', async () => {
     }
   } finally {
     await server.stop();
+  }
+});
+
+test('HEAD reports the selected API representation without sending a body', async () => {
+  const server = await startFixture();
+  try {
+    const headers = {'Accept-Encoding': 'gzip'};
+    const get = await server.request('/api/openapi.json', {headers});
+    const head = await server.request('/api/openapi.json', {method: 'HEAD', headers});
+    expect(get.status).toBe(200);
+    expect(head.status).toBe(200);
+    expect(head.headers.get('content-encoding')).toBe('gzip');
+    expect(head.headers.get('content-length')).toBe(get.headers.get('content-length'));
+    expect(await head.text()).toBe('');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('HEAD serves static file headers without file bytes', async () => {
+  const webRoot = mkdtempSync(path.join(tmpdir(), 'lightnvr-head-'));
+  writeFileSync(path.join(webRoot, 'head.txt'), 'x'.repeat(1500));
+  let server: Awaited<ReturnType<typeof startFixture>> | undefined;
+  try {
+    server = await startFixture({webRoot});
+    const raw = await rawExchange(server.port,
+      'HEAD /head.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
+    const separator = raw.indexOf('\r\n\r\n');
+    expect(raw).toMatch(/^HTTP\/1\.1 200 /);
+    expect(raw).toContain('Content-Length: 1500');
+    expect(separator).toBeGreaterThan(0);
+    expect(raw.slice(separator + 4)).toBe('');
+  } finally {
+    if (server) await server.stop();
+    rmSync(webRoot, {recursive: true, force: true});
   }
 });

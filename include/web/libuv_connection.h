@@ -56,6 +56,7 @@ typedef struct file_serve_ctx {
     
     // Response state
     bool headers_sent;                  // Headers already sent
+    bool head_response_managed;         // HEAD write owns connection completion
     bool write_error;                   // Set when a chunk write fails; forces CLOSE in on_file_close
     char content_type[128];             // MIME type
     char extra_headers[512];            // Additional headers (CORS, Cache-Control, etc.)

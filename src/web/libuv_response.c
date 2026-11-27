@@ -204,7 +204,8 @@ int libuv_send_response(libuv_connection_t *conn, const http_response_t *respons
     headers_size += 64;  // Content-Length header
     headers_size += 4;   // Final "\r\n"
     
-    size_t total_size = headers_size + response->body_length;
+    bool send_body = conn->request.method != HTTP_METHOD_HEAD;
+    size_t total_size = headers_size + (send_body ? response->body_length : 0);
     
     char *buffer = safe_malloc(total_size);
     if (!buffer) {
@@ -284,7 +285,7 @@ int libuv_send_response(libuv_connection_t *conn, const http_response_t *respons
     }
 
     // Body
-    if (response->body && response->body_length > 0) {
+    if (send_body && response->body && response->body_length > 0) {
         if (response->body_length > total_size - offset) {
             log_error("libuv_send_response: Body does not fit into allocated buffer");
             safe_free(buffer);
@@ -323,7 +324,8 @@ int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *resp
     headers_size += 64;  // Content-Length header
     headers_size += 4;   // Final "\r\n"
 
-    size_t total_size = headers_size + response->body_length;
+    bool send_body = conn->request.method != HTTP_METHOD_HEAD;
+    size_t total_size = headers_size + (send_body ? response->body_length : 0);
 
     char *buffer = safe_malloc(total_size);
     if (!buffer) {
@@ -403,7 +405,7 @@ int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *resp
     }
 
     // Body
-    if (response->body && response->body_length > 0) {
+    if (send_body && response->body && response->body_length > 0) {
         if (response->body_length > total_size - offset) {
             log_error("libuv_send_response_ex: Body does not fit into allocated buffer");
             safe_free(buffer);
