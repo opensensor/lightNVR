@@ -1632,15 +1632,15 @@ int init_database_ex(const char *db_path, unsigned flags) {
         rc = sqlite3_exec(db, "INSERT INTO __lightnvr_write_probe__ (id) VALUES (1);", NULL, NULL, &err_msg);
     }
 
-    {
-        int rollback_rc = sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
-        if (rollback_rc != SQLITE_OK) {
-            log_warn("Write probe rollback failed");
-        }
+    int rollback_rc = sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    if (rollback_rc != SQLITE_OK) {
+        log_error("Write probe rollback failed: %s", sqlite3_errmsg(db));
+        if (rc == SQLITE_OK) rc = rollback_rc;
     }
 
     if (rc != SQLITE_OK) {
-        log_error("Database write probe failed: %s", err_msg);
+        log_error("Database write probe failed: %s",
+                  err_msg ? err_msg : sqlite3_errmsg(db));
         if (err_msg) {
             sqlite3_free(err_msg);
             err_msg = NULL;
