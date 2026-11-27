@@ -359,6 +359,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
     const conflicts = Array.from(presetParsed.keys).filter(k => existingParsed.keys.has(k));
     if (conflicts.length > 0) {
+      invalidateOverrideValidation();
       setOverrideValidation(prev => ({
         ...prev,
         valid: false,
