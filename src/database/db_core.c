@@ -546,7 +546,6 @@ static int refresh_latest_backup(const char *timestamped_backup_path) {
 
 typedef struct {
     char *name;
-    int fd;
     struct stat selected;
 } selected_backup_t;
 
@@ -658,10 +657,9 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
     selected_backup_t *backups = NULL;
     size_t backup_count = 0, backup_capacity = 0;
     int result = 0;
-    /* All regular candidates remain pinned until selection/deletion finishes.
-     * This temporarily costs O(number of eligible backups) descriptors. Actual
-     * resource/allocation/enumeration failure aborts before ANY deletion; do
-     * not silently truncate the inventory or invent a retention-count limit. */
+    /* Collect the complete inventory before deleting anything. Keep inode
+     * metadata rather than an open descriptor per backup; reopen each selected
+     * name and verify it is still the inspected file before moving it. */
     for (;;) {
         errno = 0;
         struct dirent *entry = readdir(dir);
@@ -692,7 +690,7 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
         }
         char *name = strdup(entry->d_name);
         if (!name) { result = -1; break; }
-        backups[backup_count++] = (selected_backup_t){name, -1, selected};
+        backups[backup_count++] = (selected_backup_t){name, selected};
     }
 
     if (result == 0 && backup_count > 1) {
@@ -709,17 +707,19 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
     if (result == 0 && backup_count > (size_t)retention_count) {
         size_t remove_count = backup_count - (size_t)retention_count;
         for (size_t i = 0; i < remove_count; ++i) {
+            int candidate = openat(parent, backups[i].name,
+                                   O_PATH | O_NOFOLLOW | O_CLOEXEC);
+            if (candidate < 0) { result = -1; break; }
             if (remove_pinned_backup_entry(parent, backup_dir, backups[i].name,
-                                          backups[i].fd, &backups[i].selected, false) != 0) {
+                                          candidate, &backups[i].selected, false) != 0) {
+                close(candidate);
                 result = -1;
                 break;  /* Do not continue after uncertainty or restoration. */
             }
-            close(backups[i].fd);
-            backups[i].fd = -1;
+            close(candidate);
         }
     }
     for (size_t i = 0; i < backup_count; ++i) {
-        if (backups[i].fd >= 0) close(backups[i].fd);
         free(backups[i].name);
     }
     free(backups);

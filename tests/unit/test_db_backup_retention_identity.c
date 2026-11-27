@@ -12,7 +12,7 @@ static unsigned inspected_files, swaps;
 static int swap_kind;
 static bool fixture_error, active;
 static struct stat old_identity, newer_identity;
-static unsigned seen_mask, candidate_stats, candidate_opens, fault_hits, pins_at_swap;
+static unsigned seen_mask, candidate_stats, candidate_opens, fault_hits, pins_at_swap, max_pins;
 static int owned_fds[256], owned_roles[256], owned_count, private_fd;
 static DIR *held_directory;
 static bool repeat_name, repeated_name, repeat_ready;
@@ -87,7 +87,11 @@ int __wrap_openat(int fd, const char *name, int flags, ...) {
         if (owned_count >= 256) { fixture_error = true; close(result); errno = EMFILE; return -1; }
         owned_fds[owned_count] = result;
         owned_roles[owned_count++] = candidate ? 1 : 2;
-        if (candidate) candidate_opens++;
+        if (candidate) {
+            candidate_opens++;
+            unsigned pins = pin_count();
+            if (pins > max_pins) max_pins = pins;
+        }
         if (flags & O_DIRECTORY) private_fd = result;
     }
     return result;
@@ -218,7 +222,7 @@ static int remove_owned_tree(const char *path) {
 
 void setUp(void) {
     swap_kind = 0;
-    swaps = inspected_files = seen_mask = candidate_stats = candidate_opens = fault_hits = pins_at_swap = 0;
+    swaps = inspected_files = seen_mask = candidate_stats = candidate_opens = fault_hits = pins_at_swap = max_pins = 0;
     owned_count = 0; private_fd = -1; held_directory = NULL; active = false;
     fail_open_after = fail_stat_after = -1; move_error = 0;
     fail_realloc = fail_strdup = fail_read = fail_delete = restore_collision = change_after_move = false;
@@ -402,11 +406,11 @@ static void test_changed_after_move_is_restored_and_pass_stops(void) {
     assert_bytes(old_path, "inspected-old-changed");
     assert_bytes(newer_path, "inspected-newer");
 }
-static void test_both_selection_inodes_remain_pinned_during_replacement(void) {
+static void test_selected_inode_remains_pinned_during_replacement(void) {
     swap_kind = 2;
     TEST_ASSERT_NOT_EQUAL(0, prune(1));
     TEST_ASSERT_EQUAL_UINT(1, swaps);
-    TEST_ASSERT_EQUAL_UINT(2, pins_at_swap);
+    TEST_ASSERT_EQUAL_UINT(1, pins_at_swap);
     assert_bytes(old_path, "replacement-leaf");
     assert_bytes(saved_old, "inspected-old");
 }
@@ -416,6 +420,7 @@ static void test_more_than_sixty_four_backups_preserve_configured_order(void) {
         TEST_ASSERT_EQUAL_INT(0, write_bytes(path, "older"));
     }
     TEST_ASSERT_EQUAL_INT(0, prune(2));
+    TEST_ASSERT_EQUAL_UINT(1, max_pins);
     assert_both_originals();
     for (unsigned i = 0; i < 70; ++i) {
         char path[384]; snprintf(path, sizeof(path), "%s/20230101T%06uZ.sqlite3", backups, i);
@@ -472,7 +477,7 @@ int main(void) {
     RUN_TEST(test_unlink_failure_restores_without_overwrite);
     RUN_TEST(test_restore_collision_retains_quarantined_original);
     RUN_TEST(test_changed_after_move_is_restored_and_pass_stops);
-    RUN_TEST(test_both_selection_inodes_remain_pinned_during_replacement);
+    RUN_TEST(test_selected_inode_remains_pinned_during_replacement);
     RUN_TEST(test_more_than_sixty_four_backups_preserve_configured_order);
     RUN_TEST(test_published_suffix_symlink_and_fifo_are_not_counted_or_removed);
     RUN_TEST(test_repeated_selected_name_aborts_before_any_deletion);
