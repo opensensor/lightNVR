@@ -47,6 +47,9 @@ static bool stream_save_db_active;
 static char group_replace_dir[MAX_PATH_LENGTH];
 static char group_replace_path[MAX_PATH_LENGTH];
 static bool group_replace_cleanup_active;
+static char malformed_ini_dir[MAX_PATH_LENGTH];
+static char malformed_ini_path[MAX_PATH_LENGTH];
+static bool malformed_ini_cleanup_active;
 static char round_trip_dir[MAX_PATH_LENGTH];
 static char hardlink_original_path[MAX_PATH_LENGTH];
 static char pid_validation_dir[MAX_PATH_LENGTH];
@@ -1140,8 +1143,12 @@ void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
     char temp_dir[] = "/tmp/lightnvr_bad_ini_XXXXXX";
     char *dir = mkdtemp(temp_dir);
     TEST_ASSERT_NOT_NULL(dir);
+    snprintf(malformed_ini_dir, sizeof(malformed_ini_dir), "%s", dir);
+    malformed_ini_cleanup_active = true;
+
     char config_path[MAX_PATH_LENGTH];
     snprintf(config_path, sizeof(config_path), "%s/bad.ini", dir);
+    snprintf(malformed_ini_path, sizeof(malformed_ini_path), "%s", config_path);
     FILE *file = fopen(config_path, "w");
     TEST_ASSERT_NOT_NULL(file);
     char ini_contents[128];
@@ -1165,6 +1172,9 @@ void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
 
     unlink(config_path);
     rmdir(dir);
+    malformed_ini_cleanup_active = false;
+    malformed_ini_path[0] = '\0';
+    malformed_ini_dir[0] = '\0';
 }
 
 void test_validate_config_clamps_out_of_range_startup_check(void) {
