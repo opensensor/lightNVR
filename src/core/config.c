@@ -2284,10 +2284,9 @@ int load_config(config_t *config) {
             if (config->streams && next_config.streams &&
                 config->max_streams == next_config.max_streams) {
                 stream_config_t *preserved_streams = config->streams;
-                memcpy(preserved_streams, next_config.streams,
-                       (size_t)next_config.max_streams * sizeof(*preserved_streams));
                 *config = next_config;
                 config->streams = preserved_streams;
+                next_config.streams = NULL;
             } else {
                 free(config->streams);
                 *config = next_config;
