@@ -2395,7 +2395,19 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     if (config_fd < 0 && original_fd >= 0 &&
         (errno == EACCES || errno == EROFS)) {
         /* A writable existing file may live in an unwritable directory. */
+#if defined(__GLIBC__) || defined(__linux__)
+        config_fd = mkostemp(external_staging_path, O_CLOEXEC);
+#else
         config_fd = mkstemp(external_staging_path);
+        if (config_fd >= 0) {
+            int fd_flags = fcntl(config_fd, F_GETFD);
+            if (fd_flags < 0 || fcntl(config_fd, F_SETFD, fd_flags | FD_CLOEXEC) != 0) {
+                close(config_fd);
+                unlink(external_staging_path);
+                config_fd = -1;
+            }
+        }
+#endif
         if (config_fd >= 0) external_staging = true;
     }
     if (config_fd < 0) {
