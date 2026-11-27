@@ -2694,28 +2694,36 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     }
     if (fclose(file) != 0) write_failed = 1;
     if (!write_failed) {
-        /* Do not replace a symlink, hardlink, or changed target introduced
-         * while the replacement was being written. */
-        struct stat current;
-        int stat_result = fstatat(dir_fd, validated_filename, &current, AT_SYMLINK_NOFOLLOW);
-        bool unchanged = target_exists
-            ? stat_result == 0 && S_ISREG(current.st_mode) && current.st_nlink == 1 &&
-              current.st_dev == config_stat.st_dev && current.st_ino == config_stat.st_ino
-            : stat_result != 0 && errno == ENOENT;
-        if (!unchanged) {
+        if (pthread_mutex_lock(&config_in_place_mutex) != 0) {
             write_failed = 1;
-        } else if (external_staging) {
-            if (publish_config_in_place(dir_fd, validated_filename,
-                    &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
-        } else if (renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
-            if (errno == EBUSY && original_fd >= 0) {
+        } else {
+            /* Do not replace a symlink, hardlink, or changed target introduced
+             * while the replacement was being written. Serialize this revalidation
+             * and both publication paths with config_in_place_mutex. */
+            struct stat current;
+            int stat_result = fstatat(dir_fd, validated_filename, &current, AT_SYMLINK_NOFOLLOW);
+            bool unchanged = target_exists
+                ? stat_result == 0 && S_ISREG(current.st_mode) && current.st_nlink == 1 &&
+                  current.st_dev == config_stat.st_dev && current.st_ino == config_stat.st_ino
+                : stat_result != 0 && errno == ENOENT;
+            if (!unchanged) {
+                write_failed = 1;
+            } else if (external_staging) {
                 if (publish_config_in_place(dir_fd, validated_filename,
                         &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
-            } else {
+            } else if (renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
+                if (errno == EBUSY && original_fd >= 0) {
+                    if (publish_config_in_place(dir_fd, validated_filename,
+                            &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
+                } else {
+                    write_failed = 1;
+                }
+            } else if (fsync(dir_fd) != 0) {
+                log_warn("Could not sync config directory after replacement: %s", strerror(errno));
+            }
+            if (pthread_mutex_unlock(&config_in_place_mutex) != 0) {
                 write_failed = 1;
             }
-        } else if (fsync(dir_fd) != 0) {
-            log_warn("Could not sync config directory after replacement: %s", strerror(errno));
         }
     }
     if (staged_fd >= 0) close(staged_fd);
