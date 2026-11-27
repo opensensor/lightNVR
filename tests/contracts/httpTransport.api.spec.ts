@@ -8,7 +8,7 @@ function rawExchange(port: number, bytes: string): Promise<string> {
     const chunks: Buffer[] = [];
     const timer = setTimeout(() => socket.destroy(new Error('HTTP response timed out')), 10000);
     socket.on('connect', () => socket.write(bytes));
-    socket.on('data', chunk => chunks.push(chunk));
+    socket.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
     socket.on('error', reject);
     socket.on('close', hadError => {
       clearTimeout(timer);
@@ -40,6 +40,17 @@ test('chunked request body is assembled without transfer framing', async () => {
       'POST /api/auth/login HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n' +
       `Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n${chunks}0\r\n\r\n`);
     expect(response).toMatch(/^HTTP\/1\.1 200 /);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('double-slash static paths are rejected before file lookup', async () => {
+  const server = await startFixture();
+  try {
+    const response = await rawExchange(server.port,
+      'GET //backups/unknown.json HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
+    expect(response).toMatch(/^HTTP\/1\.1 400 /);
   } finally {
     await server.stop();
   }
