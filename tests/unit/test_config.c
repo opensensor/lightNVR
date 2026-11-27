@@ -39,6 +39,7 @@ static config_t cfg;
 static config_t reloaded_cfg;
 static FILE *saved_config_file;
 static FILE *saved_baseline_file;
+static char concurrent_config_dir[MAX_PATH_LENGTH];
 static char *saved_config_text;
 static stream_config_t *owned_snapshot_streams;
 static int owned_pid_fd;
@@ -127,6 +128,7 @@ void setUp(void) {
     owned_pid_path[0] = '\0';
     saved_config_file = NULL;
     saved_baseline_file = NULL;
+    concurrent_config_dir[0] = '\0';
     saved_config_text = NULL;
     check_config_pwrite_mode = false;
     check_config_pwrite_saw_write = false;
@@ -150,6 +152,13 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (concurrent_config_dir[0]) {
+        char path[MAX_PATH_LENGTH];
+        snprintf(path, sizeof(path), "%s/settings.ini", concurrent_config_dir);
+        unlink(path);
+        rmdir(concurrent_config_dir);
+        concurrent_config_dir[0] = '\0';
+    }
     if (owned_pid_fd >= 0) {
         remove_pid_file(owned_pid_fd, owned_pid_path);
         owned_pid_fd = -1;
@@ -516,6 +525,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
     char *dir = mkdtemp(temp_dir);
     TEST_ASSERT_NOT_NULL_MESSAGE(dir, "mkdtemp failed for concurrency timeout harness");
+    snprintf(concurrent_config_dir, sizeof(concurrent_config_dir), "%s", dir);
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", dir);
 
@@ -701,6 +711,7 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     }
     unlink(path);
     rmdir(dir);
+    concurrent_config_dir[0] = '\0';
 }
 
 void test_default_config_buffer_size(void) {
