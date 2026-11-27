@@ -983,7 +983,18 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "path_hls") == 0) {
             safe_strcpy(config->storage_path_hls, value, MAX_PATH_LENGTH, 0);
         } else if (strcmp(name, "max_size") == 0) {
-            config->max_storage_size = strtoull(value, NULL, 10);
+            char *endptr = NULL;
+            errno = 0;
+            if (value[0] == '\0' || strspn(value, "0123456789") != strlen(value)) {
+                log_warn("Ignoring invalid max_size '%s'", value);
+            } else {
+                unsigned long long parsed = strtoull(value, &endptr, 10);
+                if (errno == ERANGE || endptr == value || *endptr != '\0') {
+                    log_warn("Ignoring out-of-range max_size '%s'", value);
+                } else {
+                    config->max_storage_size = parsed;
+                }
+            }
         } else if (strcmp(name, "retention_days") == 0) {
             config->retention_days = safe_atoi(value, 0);
         } else if (strcmp(name, "auto_delete_oldest") == 0) {
@@ -2564,8 +2575,10 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "root = %s\n", config->web_root);
     fprintf(file, "ssl_enabled = %s  ; Serve HTTPS directly (needs a build with -DENABLE_SSL=ON)\n",
             config->web_ssl_enabled ? "true" : "false");
-    fprintf(file, "ssl_cert_path = %s  ; PEM certificate chain, leaf first\n", config->web_ssl_cert_path);
-    fprintf(file, "ssl_key_path = %s  ; PEM private key (unencrypted)\n", config->web_ssl_key_path);
+    fprintf(file, "; PEM certificate chain, leaf first\n");
+    fprintf(file, "ssl_cert_path = %s\n", config->web_ssl_cert_path);
+    fprintf(file, "; PEM private key (unencrypted)\n");
+    fprintf(file, "ssl_key_path = %s\n", config->web_ssl_key_path);
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
     fprintf(file, "username = %s\n", config->web_username);
     // Note: web_password is no longer saved to config - user passwords are managed in the database
