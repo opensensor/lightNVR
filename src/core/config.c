@@ -2080,13 +2080,35 @@ void set_custom_config_path(const char *path) {
 }
 
 // Function to get the custom config path
-const char* get_custom_config_path(void) {
-    return g_custom_config_path[0] != '\0' ? g_custom_config_path : NULL;
+// Copies into caller-owned buffer under lock; returns true if a path is set.
+bool get_custom_config_path(char *out, size_t out_size) {
+    if (!out || out_size == 0) return false;
+
+    pthread_mutex_lock(&config_load_mutex);
+    if (g_custom_config_path[0] == '\0') {
+        pthread_mutex_unlock(&config_load_mutex);
+        return false;
+    }
+
+    safe_strcpy(out, g_custom_config_path, out_size, 0);
+    pthread_mutex_unlock(&config_load_mutex);
+    return true;
 }
 
 // Function to get the actual loaded config path
-const char* get_loaded_config_path(void) {
-    return g_loaded_config_path[0] != '\0' ? g_loaded_config_path : NULL;
+// Copies into caller-owned buffer under lock; returns true if a path is set.
+bool get_loaded_config_path(char *out, size_t out_size) {
+    if (!out || out_size == 0) return false;
+
+    pthread_mutex_lock(&config_load_mutex);
+    if (g_loaded_config_path[0] == '\0') {
+        pthread_mutex_unlock(&config_load_mutex);
+        return false;
+    }
+
+    safe_strcpy(out, g_loaded_config_path, out_size, 0);
+    pthread_mutex_unlock(&config_load_mutex);
+    return true;
 }
 
 // Function to set the loaded config path
