@@ -1124,6 +1124,13 @@ void test_custom_config_path_roundtrip(void) {
     const char *path = get_custom_config_path();
     TEST_ASSERT_NOT_NULL(path);
     TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", path);
+
+    /* Empty and NULL inputs must not overwrite an existing stored value. */
+    set_custom_config_path("");
+    TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", get_custom_config_path());
+    set_custom_config_path(NULL);
+    TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", get_custom_config_path());
+
     set_custom_config_path("/tmp/..data/settings.ini");
     TEST_ASSERT_EQUAL_STRING("/tmp/..data/settings.ini", get_custom_config_path());
     set_custom_config_path("/tmp/../escape.ini");
