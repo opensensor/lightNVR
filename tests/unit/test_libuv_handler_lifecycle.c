@@ -200,11 +200,30 @@ static void test_tls_request_does_not_start_plain_http(void) {
     TEST_ASSERT_NULL(libuv_server_init(&config));
 }
 
+static void test_clean_stop_can_restart_on_same_loop(void) {
+    tearDown();
+    http_server_config_t config = {0};
+    config.bind_ip = "127.0.0.1";
+    config.web_root = "/nonexistent-lifecycle-fixture";
+    config.max_connections = 8;
+    server = (libuv_server_t *)libuv_server_init(&config);
+    TEST_ASSERT_NOT_NULL(server);
+    TEST_ASSERT_EQUAL_INT(0, libuv_server_start((http_server_handle_t)server));
+    libuv_server_stop((http_server_handle_t)server);
+    TEST_ASSERT_EQUAL_INT(0, uv_loop_alive(server->loop));
+    TEST_ASSERT_EQUAL_INT(0, libuv_server_start((http_server_handle_t)server));
+    libuv_server_stop((http_server_handle_t)server);
+    TEST_ASSERT_EQUAL_INT(0, uv_loop_alive(server->loop));
+    libuv_server_destroy((http_server_handle_t)server);
+    server = NULL;
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_disconnect_close_keeps_worker_response_alive);
     RUN_TEST(test_shutdown_waits_for_handler_beyond_three_second_warning);
     RUN_TEST(test_destroy_initialized_server_without_start);
     RUN_TEST(test_tls_request_does_not_start_plain_http);
+    RUN_TEST(test_clean_stop_can_restart_on_same_loop);
     return UNITY_END();
 }

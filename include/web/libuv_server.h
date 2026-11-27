@@ -52,6 +52,7 @@ typedef struct libuv_server {
     uv_thread_t thread;
     atomic_bool thread_running;        // Cross-thread liveness state
     atomic_bool thread_joinable;       // True after successful create, false after join
+    unsigned init_close_pending;       // Failed-init handles awaiting close callbacks
 } libuv_server_t;
 
 /**
