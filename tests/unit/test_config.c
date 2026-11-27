@@ -1761,7 +1761,6 @@ static void check_bind_mount_fallback(bool fail_copy) {
     TEST_ASSERT_FALSE(ferror(saved));
     fclose(saved);
     saved_config_file = NULL;
-    fclose(saved);
     if (!fail_copy) unlink(baseline_path);
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
