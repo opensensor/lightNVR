@@ -1391,8 +1391,9 @@ void test_go2rtc_ini_rejects_oversized_turn_credentials(void) {
         TEST_ASSERT_NOT_NULL(saved_config_file);
         TEST_ASSERT_TRUE(fprintf(saved_config_file, "[go2rtc]\n%s = %s\n",
                                  fields[i], oversized) > 0);
-        TEST_ASSERT_EQUAL_INT(0, fclose(saved_config_file));
+        int close_result = fclose(saved_config_file);
         saved_config_file = NULL;
+        TEST_ASSERT_EQUAL_INT(0, close_result);
         TEST_ASSERT_EQUAL_INT(-1, load_config(&cfg));
         TEST_ASSERT_EQUAL_STRING("", cfg.turn_username);
         TEST_ASSERT_EQUAL_STRING("", cfg.turn_password);
