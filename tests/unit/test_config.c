@@ -47,6 +47,12 @@ static bool stream_save_db_active;
 static char group_replace_dir[MAX_PATH_LENGTH];
 static char group_replace_path[MAX_PATH_LENGTH];
 static bool group_replace_cleanup_active;
+static char read_only_test_dir[MAX_PATH_LENGTH];
+static char read_only_test_path[MAX_PATH_LENGTH];
+static bool read_only_test_cleanup_active;
+static char baseline_test_dir[MAX_PATH_LENGTH];
+static char baseline_test_path[MAX_PATH_LENGTH];
+static bool baseline_test_cleanup_active;
 static char short_write_dir[MAX_PATH_LENGTH];
 static char short_write_path[MAX_PATH_LENGTH];
 static char short_write_baseline_dir[MAX_PATH_LENGTH];
@@ -168,6 +174,12 @@ void setUp(void) {
     group_replace_dir[0] = '\0';
     group_replace_path[0] = '\0';
     group_replace_cleanup_active = false;
+    read_only_test_dir[0] = '\0';
+    read_only_test_path[0] = '\0';
+    read_only_test_cleanup_active = false;
+    baseline_test_dir[0] = '\0';
+    baseline_test_path[0] = '\0';
+    baseline_test_cleanup_active = false;
     short_write_dir[0] = '\0';
     short_write_path[0] = '\0';
     short_write_baseline_dir[0] = '\0';
@@ -261,6 +273,17 @@ void tearDown(void) {
     saved_config_file = NULL;
     if (saved_baseline_file) fclose(saved_baseline_file);
     saved_baseline_file = NULL;
+    if (read_only_test_cleanup_active) {
+        chmod(read_only_test_dir, 0700);
+        unlink(read_only_test_path);
+        rmdir(read_only_test_dir);
+        read_only_test_cleanup_active = false;
+    }
+    if (baseline_test_cleanup_active) {
+        unlink(baseline_test_path);
+        rmdir(baseline_test_dir);
+        baseline_test_cleanup_active = false;
+    }
     free(saved_config_text);
     saved_config_text = NULL;
     free(owned_snapshot_streams);
@@ -2188,8 +2211,11 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
 
     char directory[] = "/tmp/lightnvr_config_read_only_dir_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    snprintf(read_only_test_dir, sizeof(read_only_test_dir), "%s", directory);
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(read_only_test_path, sizeof(read_only_test_path), "%s", path);
+    read_only_test_cleanup_active = true;
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
     fputs("old content", initial);
@@ -2206,8 +2232,11 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
 
     char baseline_directory[] = "/tmp/lightnvr_config_baseline_dir_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(baseline_directory));
+    snprintf(baseline_test_dir, sizeof(baseline_test_dir), "%s", baseline_directory);
     char baseline_path[MAX_PATH_LENGTH];
     snprintf(baseline_path, sizeof(baseline_path), "%s/settings.ini", baseline_directory);
+    snprintf(baseline_test_path, sizeof(baseline_test_path), "%s", baseline_path);
+    baseline_test_cleanup_active = true;
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
 
     saved_config_file = fopen(path, "rb");
@@ -2233,10 +2262,6 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
     fclose(saved_baseline_file);
     saved_baseline_file = NULL;
 
-    unlink(path);
-    rmdir(directory);
-    unlink(baseline_path);
-    rmdir(baseline_directory);
 }
 
 int main(void) {
