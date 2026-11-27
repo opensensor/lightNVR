@@ -2295,44 +2295,18 @@ int load_config(config_t *config) {
                              (size_t)original.max_streams * sizeof(*original_streams)) != 0;
         }
         if (!changed) {
-            stream_config_t *preserved_streams = config->streams;
-            int preserved_max_streams = config->max_streams;
-            stream_config_t *resized_streams = preserved_streams;
-
-            if (preserved_streams && preserved_max_streams > 0 &&
-                next_config.max_streams > 0 &&
-                preserved_max_streams != next_config.max_streams) {
-                size_t new_count = (size_t)next_config.max_streams;
-                if (new_count > SIZE_MAX / sizeof(*resized_streams)) {
-                    result = -1;
-                } else {
-                    resized_streams = calloc(new_count, sizeof(*resized_streams));
-                    if (!resized_streams) {
-                        result = -1;
-                    } else {
-                        size_t copy_count = (size_t)((preserved_max_streams < next_config.max_streams)
-                                                         ? preserved_max_streams
-                                                         : next_config.max_streams);
-                        memcpy(resized_streams, preserved_streams,
-                               copy_count * sizeof(*resized_streams));
-                    }
-                }
-            }
-
-            if (result == 0) {
+            if (config->streams && next_config.streams &&
+                config->max_streams == next_config.max_streams) {
+                stream_config_t *preserved_streams = config->streams;
+                memcpy(preserved_streams, next_config.streams,
+                       (size_t)next_config.max_streams * sizeof(*preserved_streams));
                 *config = next_config;
-                config->streams = resized_streams;
-                if (resized_streams) {
-                    config->max_streams = next_config.max_streams;
-                } else {
-                    config->max_streams = 0;
-                }
+                config->streams = preserved_streams;
+            } else {
+                stream_config_t *old_streams = config->streams;
+                *config = next_config;
                 next_config.streams = NULL;
-                if (resized_streams != preserved_streams) {
-                    free(preserved_streams);
-                }
-            } else if (resized_streams && resized_streams != preserved_streams) {
-                free(resized_streams);
+                free(old_streams);
             }
         } else {
             result = -1;
