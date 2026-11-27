@@ -1315,9 +1315,9 @@ int init_database_ex(const char *db_path, unsigned flags) {
 
                 if (step_rc == SQLITE_ROW) {
                     const char *result = (const char *)sqlite3_column_text(stmt, 0);
-                    if (result && strcmp(result, "ok") != 0) {
+                    if (!result || strcmp(result, "ok") != 0) {
                         check_failed = true;
-                        failure_reason = result;
+                        failure_reason = result ? result : "empty check result";
                     } else {
                         log_info("Database %s check passed (%ld s)", check_label,
                                  (long)(time(NULL) - check_started));
