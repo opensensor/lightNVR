@@ -2260,18 +2260,10 @@ int load_config(config_t *config) {
                              (size_t)original.max_streams * sizeof(*original_streams)) != 0;
         }
         if (!changed) {
-            if (config->streams && next_config.streams &&
-                config->max_streams == next_config.max_streams) {
-                stream_config_t *preserved_streams = config->streams;
-                memcpy(preserved_streams, next_config.streams,
-                       (size_t)next_config.max_streams * sizeof(*preserved_streams));
-                *config = next_config;
-                config->streams = preserved_streams;
-            } else {
-                free(config->streams);
-                *config = next_config;
-                next_config.streams = NULL;
-            }
+            stream_config_t *preserved_streams = config->streams;
+            *config = next_config;
+            config->streams = preserved_streams;
+        } else {
         } else {
             result = -1;
         }
