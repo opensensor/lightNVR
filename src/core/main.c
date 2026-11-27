@@ -1830,16 +1830,20 @@ cleanup:
         // Wait for detection stream readers to stop
         usleep(500000);  // 500ms
 
-        // Stop all streams to ensure clean shutdown
-        for (int i = 0; i < g_config.max_streams; i++) {
-            if (config.streams[i].name[0] != '\0') {
-                stream_handle_t stream = get_stream_by_name(config.streams[i].name);
-                if (stream) {
-                    log_info("Stopping stream: %s", config.streams[i].name);
-                    stop_stream(stream);
-                }
+        // Stop all streams to ensure clean shutdown.
+        // Enumerate currently registered runtime streams (not startup config),
+        // so streams added/renamed at runtime are also stopped.
+        stream_handle_t *registered_streams = NULL;
+        int registered_stream_count = get_all_streams(&registered_streams);
+        for (int i = 0; i < registered_stream_count; i++) {
+            stream_handle_t stream = registered_streams[i];
+            if (stream) {
+                const char *stream_name = get_stream_name(stream);
+                log_info("Stopping stream: %s", stream_name ? stream_name : "(unknown)");
+                stop_stream(stream);
             }
         }
+        free(registered_streams);
 
         // Wait longer for streams to stop
         usleep(1500000);  // 1500ms
