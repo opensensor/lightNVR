@@ -82,6 +82,15 @@ def _boolean_atomics(source, file, targets):
         return base + "." + method + "(" + ", ".join(values + orders) + ")"
 
     result = re.sub(pattern, replace, source, flags=re.S)
+    remaining_pattern = (
+        r"::core::intrinsics::atomic_(load|store|xchg|cxchg)::"
+        r"<[^<>]*>\(\s*&raw mut (" + locations + r")\s*,?\s*.*?\)"
+    )
+    remaining = [m.group(0) for m in re.finditer(remaining_pattern, result, flags=re.S)]
+    if remaining:
+        raise StaleRepair(
+            f"{file}: atomic_bool repair left intrinsic operations unchanged: {remaining}"
+        )
     missing = [t for t, n in counts.items() if n == 0]
     if missing:
         raise StaleRepair(f"{file}: atomic_bool repair targets no longer present: {missing}")
