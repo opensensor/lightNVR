@@ -573,8 +573,15 @@ static int compare_selected_backups(const void *lhs, const void *rhs) {
     size_t min_len;
     int cmp;
 
-    if (parse_backup_name_components(left->name, &left_ts, &left_ts_len, &left_suffix) != 0 ||
-        parse_backup_name_components(right->name, &right_ts, &right_ts_len, &right_suffix) != 0) {
+    bool left_generated = parse_backup_name_components(
+        left->name, &left_ts, &left_ts_len, &left_suffix) == 0;
+    bool right_generated = parse_backup_name_components(
+        right->name, &right_ts, &right_ts_len, &right_suffix) == 0;
+    if (left_generated != right_generated) {
+        /* Keep malformed or foreign names ahead of generated snapshots. */
+        return left_generated ? 1 : -1;
+    }
+    if (!left_generated) {
         return strcmp(left->name, right->name);
     }
 
