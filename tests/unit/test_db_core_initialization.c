@@ -445,10 +445,13 @@ static void test_private_backup_creation_failure_is_reported_and_can_retry(void)
     TEST_ASSERT_EQUAL_INT(-1, backup_database(TEST_DB_PATH,
                                             path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"), false));
     TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"), F_OK));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(TEST_BACKUP_DIR, 0700));
     TEST_ASSERT_EQUAL_INT(0, backup_database(TEST_DB_PATH,
-                                           path_with_suffix(TEST_DB_PATH, ".private-backup"), false));
+                                           path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"), false));
+    TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite.tmp"), F_OK));
+    TEST_ASSERT_EQUAL_INT(ENOENT, errno);
     sqlite3 *copy = NULL;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path_with_suffix(TEST_DB_PATH, ".private-backup"),
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"),
                                                   &copy, SQLITE_OPEN_READONLY, NULL));
     sqlite3_stmt *stmt = NULL;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(copy, "SELECT value FROM sample",
