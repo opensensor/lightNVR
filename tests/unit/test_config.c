@@ -2137,11 +2137,15 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
     TEST_ASSERT_NOT_NULL(initial);
     fputs("old content", initial);
     fclose(initial);
+    TEST_ASSERT_EQUAL_INT(0, chmod(path, 0644));
     TEST_ASSERT_EQUAL_INT(0, chmod(directory, 0500));
     load_default_config(&cfg);
     int result = save_config(&cfg, path);
     TEST_ASSERT_EQUAL_INT(0, chmod(directory, 0700));
     TEST_ASSERT_EQUAL_INT(0, result);
+    struct stat saved_st;
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &saved_st));
+    TEST_ASSERT_EQUAL_INT(0600, (saved_st.st_mode & 0777));
 
     char baseline_directory[] = "/tmp/lightnvr_config_baseline_dir_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(baseline_directory));
