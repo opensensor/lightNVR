@@ -1613,11 +1613,11 @@ int init_database_ex(const char *db_path, unsigned flags) {
         log_warn("auto_vacuum is not INCREMENTAL after configuration attempt (mode=%d)", auto_vacuum_after);
     }
 
-    // Check if we can write to the database
+    // Check if we can write to the database without mutating persistent schema/data
     log_info("Testing database write capability");
-    rc = sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS test_table (id INTEGER);", NULL, NULL, &err_msg);
+    rc = sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
-        log_error("Failed to create test table: %s", err_msg);
+        log_error("Failed to begin write probe transaction: %s", err_msg);
         if (err_msg) {
             sqlite3_free(err_msg);
             err_msg = NULL;
@@ -1627,15 +1627,27 @@ int init_database_ex(const char *db_path, unsigned flags) {
         return -1;
     }
 
-    // Drop test table
-    rc = sqlite3_exec(db, "DROP TABLE test_table;", NULL, NULL, &err_msg);
+    rc = sqlite3_exec(db, "CREATE TABLE __lightnvr_write_probe__ (id INTEGER);", NULL, NULL, &err_msg);
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_exec(db, "INSERT INTO __lightnvr_write_probe__ (id) VALUES (1);", NULL, NULL, &err_msg);
+    }
+
+    {
+        int rollback_rc = sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        if (rollback_rc != SQLITE_OK) {
+            log_warn("Write probe rollback failed");
+        }
+    }
+
     if (rc != SQLITE_OK) {
-        log_warn("Failed to drop test table: %s", err_msg);
+        log_error("Database write probe failed: %s", err_msg);
         if (err_msg) {
             sqlite3_free(err_msg);
             err_msg = NULL;
         }
-        // Continue anyway
+        sqlite3_close_v2(db); // Use close_v2 for better cleanup
+        db = NULL;
+        return -1;
     } else {
         log_info("Database write test successful");
     }
