@@ -310,14 +310,16 @@ void test_read_only_initialization_cannot_write(void) {
     TEST_ASSERT_NOT_NULL(handle);
     TEST_ASSERT_EQUAL_INT(1, sqlite3_db_readonly(handle, "main"));
 
-    sqlite3_stmt *stmt = NULL;
+    tracked_fixture_stmt = NULL;
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
         sqlite3_prepare_v2(handle, "SELECT value FROM sample WHERE id=1;",
-                           -1, &stmt, NULL));
-    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
-    TEST_ASSERT_EQUAL_STRING("wal_only", sqlite3_column_text(stmt, 0));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
+                           -1, &tracked_fixture_stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(tracked_fixture_stmt));
+    TEST_ASSERT_EQUAL_STRING("wal_only",
+                             sqlite3_column_text(tracked_fixture_stmt, 0));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(tracked_fixture_stmt));
+    tracked_fixture_stmt = NULL;
 
     TEST_ASSERT_EQUAL_INT(
         SQLITE_READONLY,
