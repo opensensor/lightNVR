@@ -359,13 +359,13 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
     const conflicts = Array.from(presetParsed.keys).filter(k => existingParsed.keys.has(k));
     if (conflicts.length > 0) {
-      invalidateOverrideValidation();
-      setOverrideValidation({
+      setOverrideValidation(prev => ({
+        ...prev,
         valid: false,
         error: {
           message: `Preset insertion would duplicate top-level section(s): ${conflicts.join(', ')}. Merge into the existing section instead of inserting the full preset.`,
         },
-      });
+      }));
       return;
     }
 
