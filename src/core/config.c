@@ -985,14 +985,15 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "max_size") == 0) {
             char *endptr = NULL;
             errno = 0;
-            unsigned long long parsed = strtoull(value, &endptr, 10);
-            while (endptr && isspace((unsigned char)*endptr)) {
-                endptr++;
-            }
-            if (value[0] == '-' || endptr == value || (endptr && *endptr != '\0') || errno == ERANGE) {
+            if (value[0] == '\0' || strspn(value, "0123456789") != strlen(value)) {
                 log_warn("Ignoring invalid max_size '%s'", value);
             } else {
-                config->max_storage_size = parsed;
+                unsigned long long parsed = strtoull(value, &endptr, 10);
+                if (errno == ERANGE || endptr == value || *endptr != '\0') {
+                    log_warn("Ignoring out-of-range max_size '%s'", value);
+                } else {
+                    config->max_storage_size = parsed;
+                }
             }
         } else if (strcmp(name, "retention_days") == 0) {
             config->retention_days = safe_atoi(value, 0);
