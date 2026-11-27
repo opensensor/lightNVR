@@ -1571,6 +1571,7 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
     int cfg_fd = -1;
     FILE *cfg_file = NULL;
     struct flock rdlock;
+    struct stat st;
 
     memset(&rdlock, 0, sizeof(rdlock));
     rdlock.l_type = F_RDLCK;
@@ -1579,8 +1580,9 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
     rdlock.l_len = 0;  // whole file
 
     pthread_mutex_lock(&config_in_place_mutex);
-    cfg_fd = open(filename, O_RDONLY | O_CLOEXEC);
-    if (cfg_fd >= 0 && fcntl(cfg_fd, F_SETLKW, &rdlock) == 0) {
+    cfg_fd = open(filename, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    if (cfg_fd >= 0 && fstat(cfg_fd, &st) == 0 && S_ISREG(st.st_mode) &&
+        fcntl(cfg_fd, F_SETLKW, &rdlock) == 0) {
         cfg_file = fdopen(cfg_fd, "r");
         if (cfg_file) result = ini_parse_file(cfg_file, config_ini_handler, &context);
     }
