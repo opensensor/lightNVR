@@ -587,21 +587,18 @@ static int on_headers_complete(llhttp_t *parser) {
 static int on_body(llhttp_t *parser, const char *at, size_t length) {
     libuv_connection_t *conn = (libuv_connection_t *)parser->data;
 
-    if (!conn->body_present) {
-        // First chunk of this request's body — record where it lands.
-        // Guard against `at` somehow pointing outside recv_buffer (parser
-        // misuse or defensive programming): if so, skip tracking so the
-        // handler sees no body rather than a bogus offset.
-        if (at >= conn->recv_buffer &&
-            at <= conn->recv_buffer + conn->recv_buffer_size) {
-            conn->body_offset  = (size_t)(at - conn->recv_buffer);
-            conn->body_present = true;
-            conn->request.body_len = length;
-        }
-    } else {
-        // Continuation — only the length needs updating.
-        conn->request.body_len += length;
+    if (length == 0) {
+        return 0;
     }
+
+    size_t old_len = conn->request.body_len;
+    char *new_body = safe_realloc(conn->request.body, old_len + length + 1);
+    memcpy(new_body + old_len, at, length);
+    new_body[old_len + length] = '\0';
+
+    conn->request.body = new_body;
+    conn->request.body_len = old_len + length;
+    conn->body_present = true;
 
     return 0;
 }
