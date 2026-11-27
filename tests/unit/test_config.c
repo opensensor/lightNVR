@@ -1544,9 +1544,14 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
     char temp_dir[] = "/tmp/lightnvr_save_config_XXXXXX";
     char *dir = mkdtemp(temp_dir);
     TEST_ASSERT_NOT_NULL(dir);
+    if (dir) {
+        snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", dir);
+        group_replace_cleanup_active = true;
+    }
 
     char config_path[MAX_PATH_LENGTH];
     snprintf(config_path, sizeof(config_path), "%s/.ini", dir);
+    snprintf(group_replace_path, sizeof(group_replace_path), "%s", config_path);
 
     load_default_config(&cfg);
     cfg.db_backup_interval_minutes = 15;
