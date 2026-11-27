@@ -1610,11 +1610,13 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
 int load_stream_configs(config_t *config) {
     if (!config) return -1;
 
+    pthread_mutex_lock(&stream_save_mutex);
     pthread_mutex_lock(&mp4_faststart_mutex);
     stream_config_t *initial_streams = config->streams;
     int initial_max_streams = config->max_streams;
     if (!initial_streams || initial_max_streams <= 0 || initial_max_streams > MAX_STREAMS) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
+        pthread_mutex_unlock(&stream_save_mutex);
         log_error("load_stream_configs: invalid max_streams value (%d)", initial_max_streams);
         return -1;
     }
@@ -1622,6 +1624,7 @@ int load_stream_configs(config_t *config) {
     size_t max_streams = (size_t)initial_max_streams;
     if (max_streams > SIZE_MAX / sizeof(stream_config_t)) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
+        pthread_mutex_unlock(&stream_save_mutex);
         log_error("load_stream_configs: max_streams causes size overflow");
         return -1;
     }
@@ -1629,6 +1632,7 @@ int load_stream_configs(config_t *config) {
     stream_config_t *initial_snapshot = malloc(snapshot_bytes);
     if (!initial_snapshot) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
+        pthread_mutex_unlock(&stream_save_mutex);
         log_error("load_stream_configs: out of memory allocating stream snapshot");
         return -1;
     }
@@ -1640,6 +1644,7 @@ int load_stream_configs(config_t *config) {
     if (count < 0) {
         log_error("Failed to count stream configurations in database");
         free(initial_snapshot);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1650,6 +1655,7 @@ int load_stream_configs(config_t *config) {
             memcmp(config->streams, initial_snapshot, snapshot_bytes) != 0) {
             pthread_mutex_unlock(&mp4_faststart_mutex);
             free(initial_snapshot);
+            pthread_mutex_unlock(&stream_save_mutex);
             return -1;
         }
         for (size_t i = 0; i < max_streams; i++) {
@@ -1659,6 +1665,7 @@ int load_stream_configs(config_t *config) {
         free(initial_snapshot);
 
         log_info("No stream configurations found in database");
+        pthread_mutex_unlock(&stream_save_mutex);
         return 0;
     }
 
