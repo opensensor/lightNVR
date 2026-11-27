@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <sqlite3.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -18,13 +19,24 @@ static char test_fixture_dir[] = "/tmp/lightnvr_db_core_initialization.XXXXXX";
 static char test_db_path[512];
 static char test_backup_dir[512];
 static int test_paths_initialized = 0;
+#define TEST_DB_PATH test_db_path
+#define TEST_BACKUP_DIR test_backup_dir
+
+static const char *path_with_suffix(const char *base, const char *suffix) {
+    static char path[1024];
+    int written = snprintf(path, sizeof(path), "%s%s", base, suffix);
+    TEST_ASSERT_TRUE(written >= 0 && (size_t)written < sizeof(path));
+    return path;
+}
 
 static void initialize_test_paths(void) {
     if (test_paths_initialized) return;
 
     TEST_ASSERT_NOT_NULL(mkdtemp(test_fixture_dir));
-    TEST_ASSERT_TRUE(snprintf(test_db_path, sizeof(test_db_path), "%s/db.sqlite", test_fixture_dir) > 0);
-    TEST_ASSERT_TRUE(snprintf(test_backup_dir, sizeof(test_backup_dir), "%s.backups", test_db_path) > 0);
+    int written = snprintf(test_db_path, sizeof(test_db_path), "%s/db.sqlite", test_fixture_dir);
+    TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(test_db_path));
+    written = snprintf(test_backup_dir, sizeof(test_backup_dir), "%s.backups", test_db_path);
+    TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(test_backup_dir));
     test_paths_initialized = 1;
 }
 
@@ -162,10 +174,13 @@ static void create_readable_wal_database(void) {
                      "INSERT OR REPLACE INTO sample(id, value) "
                      "VALUES(1, 'unchanged');",
                      NULL, NULL, NULL));
+    int persist_wal = 1;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_file_control(db, "main", SQLITE_FCNTL_PERSIST_WAL, &persist_wal));
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(db));
 
-    TEST_ASSERT_EQUAL_INT(0, access(TEST_DB_PATH "-wal", F_OK));
-    TEST_ASSERT_EQUAL_INT(0, access(TEST_DB_PATH "-shm", F_OK));
+    TEST_ASSERT_EQUAL_INT(0, access(path_with_suffix(TEST_DB_PATH, "-wal"), F_OK));
+    TEST_ASSERT_EQUAL_INT(0, access(path_with_suffix(TEST_DB_PATH, "-shm"), F_OK));
 }
 
 void test_read_only_initialization_cannot_write(void) {
@@ -178,8 +193,8 @@ void test_read_only_initialization_cannot_write(void) {
     create_readable_wal_database();
     TEST_ASSERT_EQUAL_INT(0, chmod(TEST_DB_PATH, 0400));
     TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &before));
-    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH "-wal", &wal_before));
-    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH "-shm", &shm_before));
+    TEST_ASSERT_EQUAL_INT(0, stat(path_with_suffix(TEST_DB_PATH, "-wal"), &wal_before));
+    TEST_ASSERT_EQUAL_INT(0, stat(path_with_suffix(TEST_DB_PATH, "-shm"), &shm_before));
 
     TEST_ASSERT_EQUAL_INT(
         0, init_database_ex(TEST_DB_PATH, DB_INIT_READ_ONLY));
@@ -203,8 +218,8 @@ void test_read_only_initialization_cannot_write(void) {
 
     shutdown_database();
     TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &after));
-    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH "-wal", &wal_after));
-    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH "-shm", &shm_after));
+    TEST_ASSERT_EQUAL_INT(0, stat(path_with_suffix(TEST_DB_PATH, "-wal"), &wal_after));
+    TEST_ASSERT_EQUAL_INT(0, stat(path_with_suffix(TEST_DB_PATH, "-shm"), &shm_after));
     TEST_ASSERT_EQUAL_INT64(before.st_size, after.st_size);
     TEST_ASSERT_EQUAL_UINT(before.st_mode, after.st_mode);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_sec, after.st_mtim.tv_sec);
@@ -307,11 +322,12 @@ static void test_backup_copy_is_private_without_changing_source_permissions(void
     create_readable_database();
     TEST_ASSERT_EQUAL_INT(0, chmod(TEST_DB_PATH, 0644));
     mode_t previous = umask(0);
-    int result = backup_database(TEST_DB_PATH, TEST_DB_PATH ".private-backup", false);
+    int result = backup_database(TEST_DB_PATH,
+                                 path_with_suffix(TEST_DB_PATH, ".private-backup"), false);
     umask(previous);
     TEST_ASSERT_EQUAL_INT(0, result);
     struct stat info;
-    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH ".private-backup", &info));
+    TEST_ASSERT_EQUAL_INT(0, stat(path_with_suffix(TEST_DB_PATH, ".private-backup"), &info));
     TEST_ASSERT_EQUAL_UINT(0600, info.st_mode & 0777);
     TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &info));
     TEST_ASSERT_EQUAL_UINT(0644, info.st_mode & 0777);
@@ -324,12 +340,12 @@ static void test_private_backup_creation_failure_is_reported_and_can_retry(void)
     /* A missing parent allows stale-file cleanup but prevents creation of the
      * private staging inode, independently of root/non-root test privileges. */
     TEST_ASSERT_EQUAL_INT(-1, backup_database(TEST_DB_PATH,
-                                            TEST_BACKUP_DIR "/missing.sqlite", false));
-    TEST_ASSERT_EQUAL_INT(-1, access(TEST_BACKUP_DIR "/missing.sqlite", F_OK));
+                                            path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"), false));
+    TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"), F_OK));
     TEST_ASSERT_EQUAL_INT(0, backup_database(TEST_DB_PATH,
-                                           TEST_DB_PATH ".private-backup", false));
+                                           path_with_suffix(TEST_DB_PATH, ".private-backup"), false));
     sqlite3 *copy = NULL;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(TEST_DB_PATH ".private-backup",
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path_with_suffix(TEST_DB_PATH, ".private-backup"),
                                                   &copy, SQLITE_OPEN_READONLY, NULL));
     sqlite3_stmt *stmt = NULL;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(copy, "SELECT value FROM sample",
@@ -350,5 +366,7 @@ int main(void) {
     RUN_TEST(test_private_backup_creation_failure_is_reported_and_can_retry);
     RUN_TEST(test_read_only_initialization_cannot_write);
     RUN_TEST(test_writable_initialization_removes_only_stale_backup_artifacts);
-    return UNITY_END();
+    int result = UNITY_END();
+    if (test_paths_initialized && rmdir(test_fixture_dir) != 0) return 1;
+    return result;
 }
