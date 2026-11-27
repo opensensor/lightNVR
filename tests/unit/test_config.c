@@ -2380,6 +2380,28 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
 
 }
 
+static void test_save_config_allows_only_tracked_non_ini_path(void) {
+    char directory[] = "/tmp/lightnvr_config_suffix_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.conf", directory);
+    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", directory);
+    snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
+    group_replace_cleanup_active = true;
+
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    TEST_ASSERT_EQUAL_INT(-1, access(path, F_OK));
+    set_custom_config_path(path);
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, path));
+    struct stat saved;
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &saved));
+    TEST_ASSERT_EQUAL_UINT(0600, saved.st_mode & 0777);
+    TEST_ASSERT_EQUAL_INT(0, unlink(path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    group_replace_cleanup_active = false;
+}
+
 int main(void) {
     init_logger();
 
@@ -2475,6 +2497,7 @@ int main(void) {
     /* Uses the process-wide custom config path; run last to avoid affecting later tests. */
     RUN_TEST(test_save_config_round_trips_web_cache_and_mp4_faststart);
     RUN_TEST(test_streaming_config_snapshots_are_thread_local);
+    RUN_TEST(test_save_config_allows_only_tracked_non_ini_path);
 
     int result = UNITY_END();
     shutdown_logger();
