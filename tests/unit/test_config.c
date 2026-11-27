@@ -121,6 +121,8 @@ ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
     memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
+    owned_pid_fd = -1;
+    owned_pid_path[0] = '\0';
     saved_config_file = NULL;
     saved_config_text = NULL;
     check_config_pwrite_mode = false;
@@ -145,6 +147,19 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (owned_pid_fd >= 0) {
+        remove_pid_file(owned_pid_fd, owned_pid_path);
+        owned_pid_fd = -1;
+    }
+    if (owned_pid_path[0]) {
+        unlink(owned_pid_path);
+        char *last_slash = strrchr(owned_pid_path, '/');
+        if (last_slash) {
+            *last_slash = '\0';
+            rmdir(owned_pid_path);
+        }
+        owned_pid_path[0] = '\0';
+    }
     check_config_pwrite_mode = false;
     if (saved_config_file) fclose(saved_config_file);
     saved_config_file = NULL;
@@ -273,7 +288,8 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     TEST_ASSERT_TRUE(WIFEXITED(status));
     TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
 
-    TEST_ASSERT_EQUAL_INT(0, remove_pid_file(fd, path));
+    TEST_ASSERT_EQUAL_INT(0, remove_pid_file(owned_pid_fd, path));
+    owned_pid_fd = -1;
     TEST_ASSERT_EQUAL_INT(0, daemon_status(path));
 
     int plain_fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0644);
