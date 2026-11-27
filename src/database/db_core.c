@@ -1291,41 +1291,86 @@ int init_database_ex(const char *db_path, unsigned flags) {
             } else if (rc == SQLITE_OK) {
                 log_info("Starting database %s check", check_label);
                 time_t check_started = time(NULL);
-                if (sqlite3_step(stmt) == SQLITE_ROW) {
+                int step_rc = sqlite3_step(stmt);
+                bool check_failed = false;
+                const char *failure_reason = NULL;
+
+                if (step_rc == SQLITE_ROW) {
                     const char *result = (const char *)sqlite3_column_text(stmt, 0);
                     if (result && strcmp(result, "ok") != 0) {
-                        log_error("Database %s check failed: %s", check_label, result);
-
-                        // Try to restore from backup
-                        if (stmt) {
-                            sqlite3_finalize(stmt);
-                            stmt = NULL;
-                        }
-
-                        if (test_db) {
-                            sqlite3_close_v2(test_db);
-                            test_db = NULL;
-                        }
-
-                        test_file = fopen(db_backup_path, "r");
-                        if (test_file) {
-                            log_info("Backup database file exists, attempting recovery");
-                            fclose(test_file);
-
-                            if (restore_database_from_backup(db_backup_path, db_path) != 0) {
-                                log_error("Failed to restore database from backup");
-                                // Continue anyway, we'll try to repair the database
-                            } else {
-                                log_info("Successfully restored database from backup");
-                                restored_from_backup = true;
-                            }
-                        } else {
-                            log_warn("No backup database file found, will attempt to repair");
-                        }
+                        check_failed = true;
+                        failure_reason = result;
                     } else {
                         log_info("Database %s check passed (%ld s)", check_label,
                                  (long)(time(NULL) - check_started));
                     }
+                } else {
+                    check_failed = true;
+                    failure_reason = sqlite3_errmsg(test_db);
+                    log_error("Database %s check execution failed (rc=%d): %s",
+                              check_label, step_rc,
+                              failure_reason ? failure_reason : "unknown error");
+                }
+
+                if (check_failed) {
+                    log_error("Database %s check failed: %s", check_label,
+                              failure_reason ? failure_reason : "unknown error");
+
+                    // Try to restore from backup
+                    if (stmt) {
+                        sqlite3_finalize(stmt);
+                        stmt = NULL;
+                    }
+
+                    if (test_db) {
+                        sqlite3_close_v2(test_db);
+                        test_db = NULL;
+                    }
+
+                    test_file = fopen(db_backup_path, "r");
+                    if (test_file) {
+                        log_info("Backup database file exists, attempting recovery");
+                        fclose(test_file);
+
+                        if (restore_database_from_backup(db_backup_path, db_path) != 0) {
+                            log_error("Failed to restore database from backup");
+                            // Continue anyway, we'll try to repair the database
+                        } else {
+                            log_info("Successfully restored database from backup");
+                            restored_from_backup = true;
+                        }
+                    } else {
+                        log_warn("No backup database file found, will attempt to repair");
+                    }
+                }
+            } else {
+                log_error("Failed to prepare database %s check (rc=%d): %s",
+                          check_label, rc, sqlite3_errmsg(test_db));
+
+                if (stmt) {
+                    sqlite3_finalize(stmt);
+                    stmt = NULL;
+                }
+
+                if (test_db) {
+                    sqlite3_close_v2(test_db);
+                    test_db = NULL;
+                }
+
+                test_file = fopen(db_backup_path, "r");
+                if (test_file) {
+                    log_info("Backup database file exists, attempting recovery");
+                    fclose(test_file);
+
+                    if (restore_database_from_backup(db_backup_path, db_path) != 0) {
+                        log_error("Failed to restore database from backup");
+                        // Continue anyway, we'll try to repair the database
+                    } else {
+                        log_info("Successfully restored database from backup");
+                        restored_from_backup = true;
+                    }
+                } else {
+                    log_warn("No backup database file found, will attempt to repair");
                 }
             }
             if (stmt) {
