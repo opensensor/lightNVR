@@ -1836,15 +1836,6 @@ int save_stream_configs(config_t *config) {
             saved++;
         }
     }
-    
-    // Commit transaction
-    if (commit_transaction() != 0) {
-        log_error("Failed to commit transaction for saving stream configurations");
-        // Try to rollback, but don't check the result since we're already in an error state
-        free(streams_snapshot);
-        rollback_transaction();
-        return -1;
-    }
 
     int table_size = 1;
     while (table_size < (max_streams * 2)) table_size <<= 1;
@@ -1852,9 +1843,20 @@ int save_stream_configs(config_t *config) {
     if (!hash_slots) {
         free(streams_snapshot);
         log_error("Failed to allocate stream identity index");
+        rollback_transaction();
         return -1;
     }
     for (int i = 0; i < table_size; i++) hash_slots[i] = -1;
+
+    // Commit transaction
+    if (commit_transaction() != 0) {
+        log_error("Failed to commit transaction for saving stream configurations");
+        // Try to rollback, but don't check the result since we're already in an error state
+        free(hash_slots);
+        free(streams_snapshot);
+        rollback_transaction();
+        return -1;
+    }
 
     for (int i = 0; i < max_streams; i++) {
         if (streams_snapshot[i].name[0] == '\0') continue;
