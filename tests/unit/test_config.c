@@ -47,6 +47,10 @@ static bool stream_save_db_active;
 static char group_replace_dir[MAX_PATH_LENGTH];
 static char group_replace_path[MAX_PATH_LENGTH];
 static bool group_replace_cleanup_active;
+static char pid_validation_dir[MAX_PATH_LENGTH];
+static char pid_validation_path[MAX_PATH_LENGTH];
+static char pid_validation_alias[MAX_PATH_LENGTH];
+static bool pid_validation_cleanup_active;
 static char read_only_test_dir[MAX_PATH_LENGTH];
 static char read_only_test_path[MAX_PATH_LENGTH];
 static bool read_only_test_cleanup_active;
@@ -174,6 +178,10 @@ void setUp(void) {
     group_replace_dir[0] = '\0';
     group_replace_path[0] = '\0';
     group_replace_cleanup_active = false;
+    pid_validation_dir[0] = '\0';
+    pid_validation_path[0] = '\0';
+    pid_validation_alias[0] = '\0';
+    pid_validation_cleanup_active = false;
     read_only_test_dir[0] = '\0';
     read_only_test_path[0] = '\0';
     read_only_test_cleanup_active = false;
@@ -236,6 +244,12 @@ void tearDown(void) {
         unlink(group_replace_path);
         rmdir(group_replace_dir);
         group_replace_cleanup_active = false;
+    }
+    if (pid_validation_cleanup_active) {
+        unlink(pid_validation_alias);
+        unlink(pid_validation_path);
+        rmdir(pid_validation_dir);
+        pid_validation_cleanup_active = false;
     }
     if (owned_private_config_path[0]) unlink(owned_private_config_path);
     if (owned_private_config_dir[0]) rmdir(owned_private_config_dir);
@@ -474,6 +488,7 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     pid_t supervised = fork();
     TEST_ASSERT_TRUE(supervised >= 0);
     if (supervised == 0) {
+        if (setpgid(0, 0) != 0) _exit(16);
         int malformed_fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0644);
         if (malformed_fd < 0) _exit(10);
         const char *bad_pid_text = "not-a-pid\n";
@@ -573,10 +588,10 @@ void test_daemon_status_validates_opened_pid_file(void) {
     snprintf(path, sizeof(path), "%s/lightnvr.pid", directory);
     snprintf(alias, sizeof(alias), "%s/alias.pid", directory);
 
-    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", directory);
-    snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
-    snprintf(stream_save_db_path, sizeof(stream_save_db_path), "%s", alias);
-    group_replace_cleanup_active = true;
+    snprintf(pid_validation_dir, sizeof(pid_validation_dir), "%s", directory);
+    snprintf(pid_validation_path, sizeof(pid_validation_path), "%s", path);
+    snprintf(pid_validation_alias, sizeof(pid_validation_alias), "%s", alias);
+    pid_validation_cleanup_active = true;
 
     int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
     TEST_ASSERT_TRUE(fd >= 0);
@@ -593,7 +608,7 @@ void test_daemon_status_validates_opened_pid_file(void) {
     TEST_ASSERT_EQUAL_INT(0, unlink(alias));
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
-    group_replace_cleanup_active = false;
+    pid_validation_cleanup_active = false;
 }
 
 void test_default_config_mp4_faststart_on(void) {
