@@ -723,11 +723,11 @@ set(HLS_UNIFIED_THREAD_SOURCES
 # Set up go2rtc integration if enabled
 set(GO2RTC_SOURCES "")
 if(ENABLE_GO2RTC)
-    add_subdirectory(src/video/go2rtc)
     add_definitions(-DUSE_GO2RTC)
     add_definitions(-DGO2RTC_BINARY_PATH_RAW=\"${GO2RTC_BINARY_PATH}\")
     add_definitions(-DGO2RTC_CONFIG_DIR_RAW=\"${GO2RTC_CONFIG_DIR}\")
     add_definitions(-DGO2RTC_API_PORT=${GO2RTC_API_PORT})
+    add_subdirectory(src/video/go2rtc)
     message(STATUS "go2rtc integration enabled with binary path: ${GO2RTC_BINARY_PATH}")
     message(STATUS "go2rtc config directory: ${GO2RTC_CONFIG_DIR}")
     message(STATUS "go2rtc API port: ${GO2RTC_API_PORT}")
@@ -758,7 +758,7 @@ list(APPEND SOURCES ${GO2RTC_SOURCES})
 # Add libuv server sources
 list(APPEND SOURCES ${LIBUV_SERVER_SOURCES})
 
-# Define the shared library
+# Define the static library
 add_library(lightnvr_lib STATIC ${SOURCES})
 if(ENABLE_LITERT)
     target_compile_features(lightnvr_lib PRIVATE cxx_std_17)
@@ -784,7 +784,7 @@ target_link_libraries(lightnvr_lib PUBLIC
         ${CJSON_LINK_LIB}
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
-        pthread
+        Threads::Threads
         dl
         m
 )
