@@ -45,6 +45,10 @@ static bool busy_config_rename;
 static bool fail_config_pwrite;
 static ino_t fail_config_pwrite_inode;
 static bool short_config_pwrite;
+static bool check_config_pwrite_mode;
+static ino_t check_config_pwrite_inode;
+static bool check_config_pwrite_saw_write;
+static bool check_config_pwrite_mode_violation;
 static ino_t short_config_pwrite_inode;
 static size_t short_config_pwrite_max_bytes;
 static bool short_config_pwrite_done;
@@ -1630,8 +1634,15 @@ static void check_bind_mount_fallback(bool fail_copy) {
     }
     fail_config_pwrite = fail_copy;
     fail_config_pwrite_inode = before.st_ino;
+    check_config_pwrite_inode = before.st_ino;
+    check_config_pwrite_saw_write = false;
+    check_config_pwrite_mode_violation = false;
+    check_config_pwrite_mode = true;
     int result = save_config(&cfg, path);
+    check_config_pwrite_mode = false;
     TEST_ASSERT_EQUAL_INT(fail_copy ? -1 : 0, result);
+    if (!fail_copy) TEST_ASSERT_TRUE(check_config_pwrite_saw_write);
+    TEST_ASSERT_FALSE(check_config_pwrite_mode_violation);
     if (fail_copy) TEST_ASSERT_TRUE(short_config_pwrite_done);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
     TEST_ASSERT_EQUAL_UINT(0600, (unsigned)(after.st_mode & 0777));
