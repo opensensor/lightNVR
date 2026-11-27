@@ -108,13 +108,20 @@ static bool response_has_header(const http_response_t *response,
 
 static void maybe_compress_response(const http_request_t *request,
                                     http_response_t *response) {
-    if (!g_config.web_compression_enabled || !request_accepts_gzip(request) ||
-        !response || !response->body ||
+    if (!g_config.web_compression_enabled || !response || !response->body ||
         response->body_length < HTTP_COMPRESSION_MIN_BYTES ||
         !response_content_is_compressible(response->content_type) ||
         response_has_header(response, "Content-Encoding") ||
         response->status_code == 204 || response->status_code == 206 ||
         response->status_code == 304 || request->method == HTTP_METHOD_HEAD) {
+        return;
+    }
+
+    if (!response_has_header(response, "Vary")) {
+        http_response_add_header(response, "Vary", "Accept-Encoding");
+    }
+
+    if (!request_accepts_gzip(request)) {
         return;
     }
 
