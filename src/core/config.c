@@ -2048,7 +2048,18 @@ static int publish_config_in_place_locked(int dir_fd, const char *filename,
         return -1;
     }
     char backup_path[] = "/tmp/lightnvr-config-backup-XXXXXX";
+#if defined(__GLIBC__) || defined(__linux__) || defined(__APPLE__)
+    int backup_fd = mkostemp(backup_path, O_CLOEXEC);
+#else
     int backup_fd = mkstemp(backup_path);
+    if (backup_fd >= 0) {
+        int fd_flags = fcntl(backup_fd, F_GETFD);
+        if (fd_flags < 0 || fcntl(backup_fd, F_SETFD, fd_flags | FD_CLOEXEC) != 0) {
+            close(backup_fd);
+            backup_fd = -1;
+        }
+    }
+#endif
     if (backup_fd < 0) {
         close(read_fd);
         lock.l_type = F_UNLCK;
