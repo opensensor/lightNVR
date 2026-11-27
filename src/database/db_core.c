@@ -472,10 +472,11 @@ static int copy_file_contents(const char *source_path, const char *dest_path) {
         ssize_t total_written = 0;
         while (total_written < bytes_read) {
             ssize_t bytes_written = write(dst_fd, buffer + total_written, (size_t)(bytes_read - total_written));
-            if (bytes_written < 0) {
-                if (errno == EINTR) {
+            if (bytes_written <= 0) {
+                if (bytes_written < 0 && errno == EINTR) {
                     continue;
                 }
+                if (bytes_written == 0) errno = EIO;
                 log_error("Failed to write destination file during copy: %s (%s)", dest_path, strerror(errno));
                 close(src_fd);
                 close(dst_fd);
