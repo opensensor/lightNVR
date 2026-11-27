@@ -1520,6 +1520,7 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
         }
         memcpy(temp_config.streams, config->streams, bytes);
     }
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 
     // Use inih to parse the INI file through a locked descriptor
     config_ini_context_t context = {&temp_config, ini_present};
@@ -1550,16 +1551,15 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
 
     if (result < 0) {
         free(temp_config.streams);
-        pthread_mutex_unlock(&mp4_faststart_mutex);
         log_warn("Could not read config file %s", filename);
         return -1;
     } else if (result > 0) {
         free(temp_config.streams);
-        pthread_mutex_unlock(&mp4_faststart_mutex);
         log_warn("Error in config file %s at line %d", filename, result);
         return -1;
     }
 
+    pthread_mutex_lock(&mp4_faststart_mutex);
     free(config->streams);
     *config = temp_config;
     pthread_mutex_unlock(&mp4_faststart_mutex);
@@ -1654,6 +1654,17 @@ int load_stream_configs(config_t *config) {
     return loaded;
 }
 
+typedef struct {
+    const char *name;
+    int idx;
+} db_name_index_entry_t;
+
+static int db_name_index_cmp(const void *a, const void *b) {
+    const db_name_index_entry_t *ea = a;
+    const db_name_index_entry_t *eb = b;
+    return strcmp(ea->name, eb->name);
+}
+
 // Save stream configurations to database with improved timeout protection
 int save_stream_configs(config_t *config) {
     if (!config) return -1;
@@ -1727,17 +1738,7 @@ int save_stream_configs(config_t *config) {
 
     /* Database-owned identity belongs to each matching stream, regardless of
      * whether other streams were added, removed, or renamed. */
-    struct db_name_index_entry {
-        const char *name;
-        int idx;
-    };
-    int db_name_index_cmp(const void *a, const void *b) {
-        const struct db_name_index_entry *ea = (const struct db_name_index_entry *)a;
-        const struct db_name_index_entry *eb = (const struct db_name_index_entry *)b;
-        return strcmp(ea->name, eb->name);
-    }
-
-    struct db_name_index_entry *db_name_index = NULL;
+    db_name_index_entry_t *db_name_index = NULL;
     if (loaded > 0) {
         db_name_index = calloc((size_t)loaded, sizeof(*db_name_index));
         if (!db_name_index) {
@@ -1757,11 +1758,11 @@ int save_stream_configs(config_t *config) {
     for (int i = 0; i < max_streams; i++) {
         if (streams_snapshot[i].name[0] == '\0' || loaded <= 0) continue;
 
-        struct db_name_index_entry key = {
+        db_name_index_entry_t key = {
             .name = streams_snapshot[i].name,
             .idx = -1
         };
-        struct db_name_index_entry *found =
+        db_name_index_entry_t *found =
             bsearch(&key, db_name_index, (size_t)loaded, sizeof(*db_name_index), db_name_index_cmp);
         if (found) {
             int j = found->idx;
