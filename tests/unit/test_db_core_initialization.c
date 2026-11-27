@@ -19,6 +19,7 @@
 static char test_fixture_dir[] = "/tmp/lightnvr_db_core_initialization.XXXXXX";
 static char test_db_path[512];
 static char test_backup_dir[512];
+static char overlong_parent_dir[512];
 static int test_paths_initialized = 0;
 static unsigned char *wal_before_bytes;
 static unsigned char *wal_after_bytes;
@@ -148,6 +149,10 @@ void tearDown(void) {
     remove_backup_fixture("20260905T120100Z.sqlite3.tmp-journal");
     remove_backup_fixture("operator-notes.tmp");
     rmdir(TEST_BACKUP_DIR);
+    if (overlong_parent_dir[0] != '\0') {
+        rmdir(overlong_parent_dir);
+        overlong_parent_dir[0] = '\0';
+    }
 }
 
 static void create_readable_database(void) {
@@ -178,13 +183,26 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
     struct stat parent;
     TEST_ASSERT_EQUAL_INT(0, stat(test_fixture_dir, &parent));
     TEST_ASSERT_TRUE(S_ISDIR(parent.st_mode));
-    snprintf(rejected_path, sizeof(rejected_path), "%s", test_fixture_dir);
-    for (size_t i = 0; strlen(rejected_path) <= PATH_MAX; i++) {
-        size_t used = strlen(rejected_path);
-        int written = snprintf(rejected_path + used, sizeof(rejected_path) - used,
-                               "/segment%06zu", i);
-        TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(rejected_path) - used);
+
+    int written = snprintf(overlong_parent_dir, sizeof(overlong_parent_dir),
+                           "%s/existing_parent", test_fixture_dir);
+    TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(overlong_parent_dir));
+    written = snprintf(rejected_path, sizeof(rejected_path), "%s", overlong_parent_dir);
+    TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(rejected_path));
+    if (mkdir(overlong_parent_dir, 0700) != 0) {
+        TEST_ASSERT_EQUAL_INT(EEXIST, errno);
     }
+
+    size_t used = strlen(rejected_path);
+    while (used <= PATH_MAX) {
+        const size_t component_len = 200; /* Stay below NAME_MAX per component. */
+        TEST_ASSERT_TRUE(used + component_len + 2 < sizeof(rejected_path));
+        rejected_path[used++] = '/';
+        memset(rejected_path + used, 'a', component_len);
+        used += component_len;
+        rejected_path[used] = '\0';
+    }
+
     TEST_ASSERT_TRUE(strlen(rejected_path) > PATH_MAX);
 
     TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
