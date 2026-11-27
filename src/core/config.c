@@ -2669,7 +2669,9 @@ static bool config_copy_settings_only(config_t *dst, const config_t *src) {
         return false;
     }
 
+    pthread_mutex_lock(&mp4_faststart_mutex);
     *dst = *src;
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 
     // Saving settings does not serialize stream rows; avoid deep-copying them.
     dst->streams = NULL;
