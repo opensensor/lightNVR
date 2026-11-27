@@ -400,10 +400,17 @@ int remove_pid_file(int fd, const char *pid_file) {
     // with concurrent starters. Keep the inode in place and only release the lock.
     if (fd >= 0) {
         pthread_mutex_lock(&owned_pid_mutex);
-        if (fd == owned_pid_fd && owned_pid_process == getpid()) {
-            owned_pid_fd = -1;
-            owned_pid_process = 0;
+        if (fd != owned_pid_fd || owned_pid_process != getpid()) {
+            pthread_mutex_unlock(&owned_pid_mutex);
+            log_warn("PID file descriptor %d for %s is not owned (already released or replaced); skipping close",
+                     fd, pid_file);
+            log_info("Released PID file lock for %s (file left in place)", pid_file);
+            return 0;
         }
+
+        owned_pid_fd = -1;
+        owned_pid_process = 0;
+
         int close_result = close(fd);
         int close_error = errno;
         pthread_mutex_unlock(&owned_pid_mutex);
