@@ -68,11 +68,6 @@ unsafe extern "C" {
         __type: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
     unsafe fn close(__fd: ::core::ffi::c_int) -> ::core::ffi::c_int;
-    unsafe fn write(
-        __fd: ::core::ffi::c_int,
-        __buf: *const ::core::ffi::c_void,
-        __n: size_t,
-    ) -> ssize_t;
     unsafe fn sleep(__seconds: ::core::ffi::c_uint) -> ::core::ffi::c_uint;
     unsafe fn usleep(__useconds: __useconds_t) -> ::core::ffi::c_int;
     unsafe fn execv(
@@ -80,6 +75,7 @@ unsafe extern "C" {
         __argv: *const *mut ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
     unsafe fn _exit(__status: ::core::ffi::c_int) -> !;
+    unsafe fn sysconf(__name: ::core::ffi::c_int) -> ::core::ffi::c_long;
     unsafe fn getpid() -> __pid_t;
     unsafe fn getppid() -> __pid_t;
     unsafe fn setpgid(__pid: __pid_t, __pgid: __pid_t) -> ::core::ffi::c_int;
@@ -88,12 +84,7 @@ unsafe extern "C" {
         __from: *const ::core::ffi::c_char,
         __to: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
-    unsafe fn readlink(
-        __path: *const ::core::ffi::c_char,
-        __buf: *mut ::core::ffi::c_char,
-        __len: size_t,
-    ) -> ssize_t;
-    unsafe fn unlink(__name: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
+    unsafe fn syscall(__sysno: ::core::ffi::c_long, ...) -> ::core::ffi::c_long;
     unsafe fn lockf(
         __fd: ::core::ffi::c_int,
         __cmd: ::core::ffi::c_int,
@@ -129,7 +120,17 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
     unsafe fn prctl(__option: ::core::ffi::c_int, ...) -> ::core::ffi::c_int;
     unsafe fn time(__timer: *mut time_t) -> time_t;
+    unsafe fn nanosleep(
+        __requested_time: *const timespec,
+        __remaining: *mut timespec,
+    ) -> ::core::ffi::c_int;
     unsafe fn clock_gettime(__clock_id: clockid_t, __tp: *mut timespec) -> ::core::ffi::c_int;
+    unsafe fn clock_nanosleep(
+        __clock_id: clockid_t,
+        __flags: ::core::ffi::c_int,
+        __req: *const timespec,
+        __rem: *mut timespec,
+    ) -> ::core::ffi::c_int;
     unsafe fn pthread_create(
         __newthread: *mut pthread_t,
         __attr: *const pthread_attr_t,
@@ -143,6 +144,11 @@ unsafe extern "C" {
     unsafe fn pthread_attr_setdetachstate(
         __attr: *mut pthread_attr_t,
         __detachstate: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
+    unsafe fn poll(
+        __fds: *mut pollfd,
+        __nfds: nfds_t,
+        __timeout: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
     unsafe fn system_health_policy_build(
         settings: *const system_health_policy_settings_t,
@@ -239,7 +245,12 @@ unsafe extern "C" {
     unsafe fn init_stream_manager(max_streams: ::core::ffi::c_int) -> ::core::ffi::c_int;
     unsafe fn shutdown_stream_manager();
     unsafe fn stop_stream(handle: stream_handle_t) -> ::core::ffi::c_int;
-    unsafe fn get_stream_by_name(name: *const ::core::ffi::c_char) -> stream_handle_t;
+    unsafe fn get_stream_config(
+        handle: stream_handle_t,
+        config_0: *mut stream_config_t,
+    ) -> ::core::ffi::c_int;
+    unsafe fn get_stream_by_index(index: ::core::ffi::c_int) -> stream_handle_t;
+    unsafe fn get_stream_capacity() -> ::core::ffi::c_int;
     unsafe fn is_recording_scheduled(config_0: *const stream_config_t) -> bool;
     unsafe fn is_detection_recording_scheduled(config_0: *const stream_config_t) -> bool;
     unsafe fn init_stream_state_manager(max_streams: ::core::ffi::c_int) -> ::core::ffi::c_int;
@@ -392,6 +403,10 @@ unsafe extern "C" {
         __s2: *const ::core::ffi::c_char,
         __n: size_t,
     ) -> ::core::ffi::c_int;
+    unsafe fn strrchr(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
     unsafe fn strcspn(
         __s: *const ::core::ffi::c_char,
         __reject: *const ::core::ffi::c_char,
@@ -400,7 +415,6 @@ unsafe extern "C" {
         __haystack: *const ::core::ffi::c_char,
         __needle: *const ::core::ffi::c_char,
     ) -> *mut ::core::ffi::c_char;
-    unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
     unsafe fn strerror(__errnum: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
     unsafe fn strtol(
         __nptr: *const ::core::ffi::c_char,
@@ -436,9 +450,7 @@ pub type __blksize_t = ::core::ffi::c_long;
 pub type __blkcnt_t = ::core::ffi::c_long;
 pub type __syscall_slong_t = ::core::ffi::c_long;
 pub type __socklen_t = ::core::ffi::c_uint;
-pub type __sig_atomic_t = ::core::ffi::c_int;
 pub type pid_t = __pid_t;
-pub type ssize_t = isize;
 pub type clockid_t = __clockid_t;
 pub type time_t = __time_t;
 pub type int64_t = i64;
@@ -500,7 +512,6 @@ pub struct _IO_FILE {
 }
 pub type _IO_lock_t = ();
 pub type FILE = _IO_FILE;
-pub type sig_atomic_t = __sig_atomic_t;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub union sigval {
@@ -608,6 +619,228 @@ pub union C2Rust_Unnamed_9 {
     >,
 }
 pub type socklen_t = __socklen_t;
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct C2Rust_Unnamed_10(pub ::core::ffi::c_uint);
+impl C2Rust_Unnamed_10 {
+    pub const _SC_ARG_MAX: Self = Self(0);
+    pub const _SC_CHILD_MAX: Self = Self(1);
+    pub const _SC_CLK_TCK: Self = Self(2);
+    pub const _SC_NGROUPS_MAX: Self = Self(3);
+    pub const _SC_OPEN_MAX: Self = Self(4);
+    pub const _SC_STREAM_MAX: Self = Self(5);
+    pub const _SC_TZNAME_MAX: Self = Self(6);
+    pub const _SC_JOB_CONTROL: Self = Self(7);
+    pub const _SC_SAVED_IDS: Self = Self(8);
+    pub const _SC_REALTIME_SIGNALS: Self = Self(9);
+    pub const _SC_PRIORITY_SCHEDULING: Self = Self(10);
+    pub const _SC_TIMERS: Self = Self(11);
+    pub const _SC_ASYNCHRONOUS_IO: Self = Self(12);
+    pub const _SC_PRIORITIZED_IO: Self = Self(13);
+    pub const _SC_SYNCHRONIZED_IO: Self = Self(14);
+    pub const _SC_FSYNC: Self = Self(15);
+    pub const _SC_MAPPED_FILES: Self = Self(16);
+    pub const _SC_MEMLOCK: Self = Self(17);
+    pub const _SC_MEMLOCK_RANGE: Self = Self(18);
+    pub const _SC_MEMORY_PROTECTION: Self = Self(19);
+    pub const _SC_MESSAGE_PASSING: Self = Self(20);
+    pub const _SC_SEMAPHORES: Self = Self(21);
+    pub const _SC_SHARED_MEMORY_OBJECTS: Self = Self(22);
+    pub const _SC_AIO_LISTIO_MAX: Self = Self(23);
+    pub const _SC_AIO_MAX: Self = Self(24);
+    pub const _SC_AIO_PRIO_DELTA_MAX: Self = Self(25);
+    pub const _SC_DELAYTIMER_MAX: Self = Self(26);
+    pub const _SC_MQ_OPEN_MAX: Self = Self(27);
+    pub const _SC_MQ_PRIO_MAX: Self = Self(28);
+    pub const _SC_VERSION: Self = Self(29);
+    pub const _SC_PAGESIZE: Self = Self(30);
+    pub const _SC_RTSIG_MAX: Self = Self(31);
+    pub const _SC_SEM_NSEMS_MAX: Self = Self(32);
+    pub const _SC_SEM_VALUE_MAX: Self = Self(33);
+    pub const _SC_SIGQUEUE_MAX: Self = Self(34);
+    pub const _SC_TIMER_MAX: Self = Self(35);
+    pub const _SC_BC_BASE_MAX: Self = Self(36);
+    pub const _SC_BC_DIM_MAX: Self = Self(37);
+    pub const _SC_BC_SCALE_MAX: Self = Self(38);
+    pub const _SC_BC_STRING_MAX: Self = Self(39);
+    pub const _SC_COLL_WEIGHTS_MAX: Self = Self(40);
+    pub const _SC_EQUIV_CLASS_MAX: Self = Self(41);
+    pub const _SC_EXPR_NEST_MAX: Self = Self(42);
+    pub const _SC_LINE_MAX: Self = Self(43);
+    pub const _SC_RE_DUP_MAX: Self = Self(44);
+    pub const _SC_CHARCLASS_NAME_MAX: Self = Self(45);
+    pub const _SC_2_VERSION: Self = Self(46);
+    pub const _SC_2_C_BIND: Self = Self(47);
+    pub const _SC_2_C_DEV: Self = Self(48);
+    pub const _SC_2_FORT_DEV: Self = Self(49);
+    pub const _SC_2_FORT_RUN: Self = Self(50);
+    pub const _SC_2_SW_DEV: Self = Self(51);
+    pub const _SC_2_LOCALEDEF: Self = Self(52);
+    pub const _SC_PII: Self = Self(53);
+    pub const _SC_PII_XTI: Self = Self(54);
+    pub const _SC_PII_SOCKET: Self = Self(55);
+    pub const _SC_PII_INTERNET: Self = Self(56);
+    pub const _SC_PII_OSI: Self = Self(57);
+    pub const _SC_POLL: Self = Self(58);
+    pub const _SC_SELECT: Self = Self(59);
+    pub const _SC_UIO_MAXIOV: Self = Self(60);
+    pub const _SC_IOV_MAX: Self = Self(60);
+    pub const _SC_PII_INTERNET_STREAM: Self = Self(61);
+    pub const _SC_PII_INTERNET_DGRAM: Self = Self(62);
+    pub const _SC_PII_OSI_COTS: Self = Self(63);
+    pub const _SC_PII_OSI_CLTS: Self = Self(64);
+    pub const _SC_PII_OSI_M: Self = Self(65);
+    pub const _SC_T_IOV_MAX: Self = Self(66);
+    pub const _SC_THREADS: Self = Self(67);
+    pub const _SC_THREAD_SAFE_FUNCTIONS: Self = Self(68);
+    pub const _SC_GETGR_R_SIZE_MAX: Self = Self(69);
+    pub const _SC_GETPW_R_SIZE_MAX: Self = Self(70);
+    pub const _SC_LOGIN_NAME_MAX: Self = Self(71);
+    pub const _SC_TTY_NAME_MAX: Self = Self(72);
+    pub const _SC_THREAD_DESTRUCTOR_ITERATIONS: Self = Self(73);
+    pub const _SC_THREAD_KEYS_MAX: Self = Self(74);
+    pub const _SC_THREAD_STACK_MIN: Self = Self(75);
+    pub const _SC_THREAD_THREADS_MAX: Self = Self(76);
+    pub const _SC_THREAD_ATTR_STACKADDR: Self = Self(77);
+    pub const _SC_THREAD_ATTR_STACKSIZE: Self = Self(78);
+    pub const _SC_THREAD_PRIORITY_SCHEDULING: Self = Self(79);
+    pub const _SC_THREAD_PRIO_INHERIT: Self = Self(80);
+    pub const _SC_THREAD_PRIO_PROTECT: Self = Self(81);
+    pub const _SC_THREAD_PROCESS_SHARED: Self = Self(82);
+    pub const _SC_NPROCESSORS_CONF: Self = Self(83);
+    pub const _SC_NPROCESSORS_ONLN: Self = Self(84);
+    pub const _SC_PHYS_PAGES: Self = Self(85);
+    pub const _SC_AVPHYS_PAGES: Self = Self(86);
+    pub const _SC_ATEXIT_MAX: Self = Self(87);
+    pub const _SC_PASS_MAX: Self = Self(88);
+    pub const _SC_XOPEN_VERSION: Self = Self(89);
+    pub const _SC_XOPEN_XCU_VERSION: Self = Self(90);
+    pub const _SC_XOPEN_UNIX: Self = Self(91);
+    pub const _SC_XOPEN_CRYPT: Self = Self(92);
+    pub const _SC_XOPEN_ENH_I18N: Self = Self(93);
+    pub const _SC_XOPEN_SHM: Self = Self(94);
+    pub const _SC_2_CHAR_TERM: Self = Self(95);
+    pub const _SC_2_C_VERSION: Self = Self(96);
+    pub const _SC_2_UPE: Self = Self(97);
+    pub const _SC_XOPEN_XPG2: Self = Self(98);
+    pub const _SC_XOPEN_XPG3: Self = Self(99);
+    pub const _SC_XOPEN_XPG4: Self = Self(100);
+    pub const _SC_CHAR_BIT: Self = Self(101);
+    pub const _SC_CHAR_MAX: Self = Self(102);
+    pub const _SC_CHAR_MIN: Self = Self(103);
+    pub const _SC_INT_MAX: Self = Self(104);
+    pub const _SC_INT_MIN: Self = Self(105);
+    pub const _SC_LONG_BIT: Self = Self(106);
+    pub const _SC_WORD_BIT: Self = Self(107);
+    pub const _SC_MB_LEN_MAX: Self = Self(108);
+    pub const _SC_NZERO: Self = Self(109);
+    pub const _SC_SSIZE_MAX: Self = Self(110);
+    pub const _SC_SCHAR_MAX: Self = Self(111);
+    pub const _SC_SCHAR_MIN: Self = Self(112);
+    pub const _SC_SHRT_MAX: Self = Self(113);
+    pub const _SC_SHRT_MIN: Self = Self(114);
+    pub const _SC_UCHAR_MAX: Self = Self(115);
+    pub const _SC_UINT_MAX: Self = Self(116);
+    pub const _SC_ULONG_MAX: Self = Self(117);
+    pub const _SC_USHRT_MAX: Self = Self(118);
+    pub const _SC_NL_ARGMAX: Self = Self(119);
+    pub const _SC_NL_LANGMAX: Self = Self(120);
+    pub const _SC_NL_MSGMAX: Self = Self(121);
+    pub const _SC_NL_NMAX: Self = Self(122);
+    pub const _SC_NL_SETMAX: Self = Self(123);
+    pub const _SC_NL_TEXTMAX: Self = Self(124);
+    pub const _SC_XBS5_ILP32_OFF32: Self = Self(125);
+    pub const _SC_XBS5_ILP32_OFFBIG: Self = Self(126);
+    pub const _SC_XBS5_LP64_OFF64: Self = Self(127);
+    pub const _SC_XBS5_LPBIG_OFFBIG: Self = Self(128);
+    pub const _SC_XOPEN_LEGACY: Self = Self(129);
+    pub const _SC_XOPEN_REALTIME: Self = Self(130);
+    pub const _SC_XOPEN_REALTIME_THREADS: Self = Self(131);
+    pub const _SC_ADVISORY_INFO: Self = Self(132);
+    pub const _SC_BARRIERS: Self = Self(133);
+    pub const _SC_BASE: Self = Self(134);
+    pub const _SC_C_LANG_SUPPORT: Self = Self(135);
+    pub const _SC_C_LANG_SUPPORT_R: Self = Self(136);
+    pub const _SC_CLOCK_SELECTION: Self = Self(137);
+    pub const _SC_CPUTIME: Self = Self(138);
+    pub const _SC_THREAD_CPUTIME: Self = Self(139);
+    pub const _SC_DEVICE_IO: Self = Self(140);
+    pub const _SC_DEVICE_SPECIFIC: Self = Self(141);
+    pub const _SC_DEVICE_SPECIFIC_R: Self = Self(142);
+    pub const _SC_FD_MGMT: Self = Self(143);
+    pub const _SC_FIFO: Self = Self(144);
+    pub const _SC_PIPE: Self = Self(145);
+    pub const _SC_FILE_ATTRIBUTES: Self = Self(146);
+    pub const _SC_FILE_LOCKING: Self = Self(147);
+    pub const _SC_FILE_SYSTEM: Self = Self(148);
+    pub const _SC_MONOTONIC_CLOCK: Self = Self(149);
+    pub const _SC_MULTI_PROCESS: Self = Self(150);
+    pub const _SC_SINGLE_PROCESS: Self = Self(151);
+    pub const _SC_NETWORKING: Self = Self(152);
+    pub const _SC_READER_WRITER_LOCKS: Self = Self(153);
+    pub const _SC_SPIN_LOCKS: Self = Self(154);
+    pub const _SC_REGEXP: Self = Self(155);
+    pub const _SC_REGEX_VERSION: Self = Self(156);
+    pub const _SC_SHELL: Self = Self(157);
+    pub const _SC_SIGNALS: Self = Self(158);
+    pub const _SC_SPAWN: Self = Self(159);
+    pub const _SC_SPORADIC_SERVER: Self = Self(160);
+    pub const _SC_THREAD_SPORADIC_SERVER: Self = Self(161);
+    pub const _SC_SYSTEM_DATABASE: Self = Self(162);
+    pub const _SC_SYSTEM_DATABASE_R: Self = Self(163);
+    pub const _SC_TIMEOUTS: Self = Self(164);
+    pub const _SC_TYPED_MEMORY_OBJECTS: Self = Self(165);
+    pub const _SC_USER_GROUPS: Self = Self(166);
+    pub const _SC_USER_GROUPS_R: Self = Self(167);
+    pub const _SC_2_PBS: Self = Self(168);
+    pub const _SC_2_PBS_ACCOUNTING: Self = Self(169);
+    pub const _SC_2_PBS_LOCATE: Self = Self(170);
+    pub const _SC_2_PBS_MESSAGE: Self = Self(171);
+    pub const _SC_2_PBS_TRACK: Self = Self(172);
+    pub const _SC_SYMLOOP_MAX: Self = Self(173);
+    pub const _SC_STREAMS: Self = Self(174);
+    pub const _SC_2_PBS_CHECKPOINT: Self = Self(175);
+    pub const _SC_V6_ILP32_OFF32: Self = Self(176);
+    pub const _SC_V6_ILP32_OFFBIG: Self = Self(177);
+    pub const _SC_V6_LP64_OFF64: Self = Self(178);
+    pub const _SC_V6_LPBIG_OFFBIG: Self = Self(179);
+    pub const _SC_HOST_NAME_MAX: Self = Self(180);
+    pub const _SC_TRACE: Self = Self(181);
+    pub const _SC_TRACE_EVENT_FILTER: Self = Self(182);
+    pub const _SC_TRACE_INHERIT: Self = Self(183);
+    pub const _SC_TRACE_LOG: Self = Self(184);
+    pub const _SC_LEVEL1_ICACHE_SIZE: Self = Self(185);
+    pub const _SC_LEVEL1_ICACHE_ASSOC: Self = Self(186);
+    pub const _SC_LEVEL1_ICACHE_LINESIZE: Self = Self(187);
+    pub const _SC_LEVEL1_DCACHE_SIZE: Self = Self(188);
+    pub const _SC_LEVEL1_DCACHE_ASSOC: Self = Self(189);
+    pub const _SC_LEVEL1_DCACHE_LINESIZE: Self = Self(190);
+    pub const _SC_LEVEL2_CACHE_SIZE: Self = Self(191);
+    pub const _SC_LEVEL2_CACHE_ASSOC: Self = Self(192);
+    pub const _SC_LEVEL2_CACHE_LINESIZE: Self = Self(193);
+    pub const _SC_LEVEL3_CACHE_SIZE: Self = Self(194);
+    pub const _SC_LEVEL3_CACHE_ASSOC: Self = Self(195);
+    pub const _SC_LEVEL3_CACHE_LINESIZE: Self = Self(196);
+    pub const _SC_LEVEL4_CACHE_SIZE: Self = Self(197);
+    pub const _SC_LEVEL4_CACHE_ASSOC: Self = Self(198);
+    pub const _SC_LEVEL4_CACHE_LINESIZE: Self = Self(199);
+    pub const _SC_IPV6: Self = Self(235);
+    pub const _SC_RAW_SOCKETS: Self = Self(236);
+    pub const _SC_V7_ILP32_OFF32: Self = Self(237);
+    pub const _SC_V7_ILP32_OFFBIG: Self = Self(238);
+    pub const _SC_V7_LP64_OFF64: Self = Self(239);
+    pub const _SC_V7_LPBIG_OFFBIG: Self = Self(240);
+    pub const _SC_SS_REPL_MAX: Self = Self(241);
+    pub const _SC_TRACE_EVENT_NAME_MAX: Self = Self(242);
+    pub const _SC_TRACE_NAME_MAX: Self = Self(243);
+    pub const _SC_TRACE_SYS_MAX: Self = Self(244);
+    pub const _SC_TRACE_USER_EVENT_MAX: Self = Self(245);
+    pub const _SC_XOPEN_STREAMS: Self = Self(246);
+    pub const _SC_THREAD_ROBUST_PRIO_INHERIT: Self = Self(247);
+    pub const _SC_THREAD_ROBUST_PRIO_PROTECT: Self = Self(248);
+    pub const _SC_MINSIGSTKSZ: Self = Self(249);
+    pub const _SC_SIGSTKSZ: Self = Self(250);
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct stat {
@@ -671,11 +904,11 @@ pub type uint32_t = u32;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct in6_addr {
-    pub __in6_u: C2Rust_Unnamed_10,
+    pub __in6_u: C2Rust_Unnamed_11,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub union C2Rust_Unnamed_10 {
+pub union C2Rust_Unnamed_11 {
     pub __u6_addr8: [uint8_t; 16],
     pub __u6_addr16: [uint16_t; 8],
     pub __u6_addr32: [uint32_t; 4],
@@ -717,10 +950,18 @@ pub union __CONST_SOCKADDR_ARG {
 pub type uint64_t = u64;
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct C2Rust_Unnamed_11(pub ::core::ffi::c_uint);
-impl C2Rust_Unnamed_11 {
+pub struct C2Rust_Unnamed_12(pub ::core::ffi::c_uint);
+impl C2Rust_Unnamed_12 {
     pub const PTHREAD_CREATE_JOINABLE: Self = Self(0);
     pub const PTHREAD_CREATE_DETACHED: Self = Self(1);
+}
+pub type nfds_t = ::core::ffi::c_ulong;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct pollfd {
+    pub fd: ::core::ffi::c_int,
+    pub events: ::core::ffi::c_short,
+    pub revents: ::core::ffi::c_short,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -1139,8 +1380,8 @@ pub struct system_health_options_t {
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct C2Rust_Unnamed_12(pub ::core::ffi::c_uint);
-impl C2Rust_Unnamed_12 {
+pub struct C2Rust_Unnamed_13(pub ::core::ffi::c_uint);
+impl C2Rust_Unnamed_13 {
     pub const DB_INIT_DEFAULT: Self = Self(0);
     pub const DB_INIT_NO_CHECK: Self = Self(1);
     pub const DB_INIT_NO_MIGRATE: Self = Self(2);
@@ -1173,13 +1414,13 @@ pub struct http_server_config_t {
 pub struct http_server {
     pub config: http_server_config_t,
     pub running: bool,
-    pub handlers: *mut C2Rust_Unnamed_13,
+    pub handlers: *mut C2Rust_Unnamed_14,
     pub handler_count: ::core::ffi::c_int,
     pub handler_capacity: ::core::ffi::c_int,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct C2Rust_Unnamed_13 {
+pub struct C2Rust_Unnamed_14 {
     pub path: [::core::ffi::c_char; 256],
     pub method: [::core::ffi::c_char; 16],
     pub handler: request_handler_t,
@@ -1189,8 +1430,8 @@ pub type http_server_handle_t = *mut http_server_t;
 pub const EOF: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
 pub const SA_RESTART: ::core::ffi::c_int = 0x10000000 as ::core::ffi::c_int;
 pub const SIG_BLOCK: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const SIG_UNBLOCK: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const SIG_SETMASK: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
-pub const STDERR_FILENO: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const F_OK: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const F_TLOCK: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const O_RDWR: ::core::ffi::c_int = 0o2 as ::core::ffi::c_int;
@@ -1198,36 +1439,77 @@ pub const PF_INET: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const AF_INET: ::core::ffi::c_int = PF_INET;
 pub const PR_SET_THP_DISABLE: ::core::ffi::c_int = 41 as ::core::ffi::c_int;
 pub const CLOCK_MONOTONIC: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const TIMER_ABSTIME: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const SYSTEM_HEALTH_OVERRIDES_SETTING_KEY: [::core::ffi::c_char; 27] = unsafe {
     ::core::mem::transmute::<[u8; 27], [::core::ffi::c_char; 27]>(*b"health_condition_overrides\0")
 };
 pub const MAX_PATH_LENGTH: ::core::ffi::c_int = 512 as ::core::ffi::c_int;
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
-#[inline]
-unsafe extern "C" fn signal_safe_write(mut msg: *const ::core::ffi::c_char) {
-    if msg.is_null() {
-        return;
-    }
-    let mut saved_errno: ::core::ffi::c_int = *__errno_location();
-    let mut remaining: size_t = strlen(msg);
-    while remaining > 0 as size_t {
-        let mut written: ssize_t =
-            write(STDERR_FILENO, msg as *const ::core::ffi::c_void, remaining);
-        if written > 0 as ssize_t {
-            msg = msg.offset(written as isize);
-            remaining = remaining.wrapping_sub(written as size_t);
-        } else if !(written < 0 as ssize_t && *__errno_location() == EINTR) {
-            break;
-        }
-    }
-    *__errno_location() = saved_errno;
-}
 pub const OBS_EVIDENCE_DEFAULT_DRAIN_MS: ::core::ffi::c_int = 2000 as ::core::ffi::c_int;
 #[unsafe(no_mangle)]
 pub static mut running: bool = r#true != 0;
 #[unsafe(no_mangle)]
 pub static mut restart_requested: bool = r#false != 0;
+unsafe extern "C" fn is_process_alive_or_non_zombie(mut pid: pid_t) -> bool {
+    if kill(pid, 0 as ::core::ffi::c_int) != 0 as ::core::ffi::c_int {
+        return r#false != 0;
+    }
+    let mut stat_path: [::core::ffi::c_char; 64] = [0; 64];
+    snprintf(
+        &raw mut stat_path as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+        b"/proc/%ld/stat\0".as_ptr() as *const ::core::ffi::c_char,
+        pid as ::core::ffi::c_long,
+    );
+    let mut fp: *mut FILE = fopen(
+        &raw mut stat_path as *mut ::core::ffi::c_char,
+        b"r\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    if fp.is_null() {
+        return r#true != 0;
+    }
+    let mut buf: [::core::ffi::c_char; 512] = [0; 512];
+    if fgets(
+        &raw mut buf as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>() as ::core::ffi::c_int,
+        fp,
+    )
+    .is_null()
+    {
+        fclose(fp);
+        return r#true != 0;
+    }
+    fclose(fp);
+    let mut rp: *mut ::core::ffi::c_char = strrchr(
+        &raw mut buf as *mut ::core::ffi::c_char,
+        ')' as ::core::ffi::c_int,
+    );
+    if rp.is_null() || *rp.offset(1isize) as ::core::ffi::c_int != ' ' as ::core::ffi::c_int {
+        return r#true != 0;
+    }
+    let mut state: ::core::ffi::c_char = *rp.offset(2isize);
+    return state as ::core::ffi::c_int != 'Z' as ::core::ffi::c_int;
+}
+unsafe extern "C" fn open_pidfd_for_pid(mut pid: pid_t) -> ::core::ffi::c_int {
+    return syscall(
+        SYS_pidfd_open as ::core::ffi::c_long,
+        pid,
+        0 as ::core::ffi::c_int,
+    ) as ::core::ffi::c_int;
+}
+unsafe extern "C" fn send_signal_via_pidfd(
+    mut pidfd: ::core::ffi::c_int,
+    mut sig: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    return syscall(
+        SYS_pidfd_send_signal as ::core::ffi::c_long,
+        pidfd,
+        sig,
+        NULL,
+        0 as ::core::ffi::c_int,
+    ) as ::core::ffi::c_int;
+}
 static mut saved_argc: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 static mut saved_argv: *mut *mut ::core::ffi::c_char =
     ::core::ptr::null_mut::<*mut ::core::ffi::c_char>();
@@ -1376,31 +1658,14 @@ unsafe extern "C" fn signal_handler(mut sig: ::core::ffi::c_int) {
     if is_coordinator_destroyed() {
         _exit(0 as ::core::ffi::c_int);
     }
-    static mut shutdown_in_progress: sig_atomic_t = 0 as sig_atomic_t;
-    if ::core::ptr::read_volatile::<sig_atomic_t>(&raw const shutdown_in_progress) != 0 {
-        signal_safe_write(
-            b"[SIGNAL] Received signal during shutdown, forcing immediate exit\n\0".as_ptr()
-                as *const ::core::ffi::c_char,
-        );
+    static mut shutdown_in_progress: bool = r#false != 0;
+    if ::core::sync::atomic::AtomicBool::from_ptr(&raw mut shutdown_in_progress).swap(true, ::core::sync::atomic::Ordering::SeqCst) {
         _exit(1 as ::core::ffi::c_int);
     }
-    ::core::ptr::write_volatile(
-        &raw mut shutdown_in_progress,
-        1 as ::core::ffi::c_int as sig_atomic_t,
-    );
-    signal_safe_write(
-        b"[SIGNAL] Received shutdown signal, initiating shutdown...\n\0".as_ptr()
-            as *const ::core::ffi::c_char,
-    );
     running = r#false != 0;
     request_background_abort();
 }
-unsafe extern "C" fn alarm_handler(mut sig: ::core::ffi::c_int) {
-    signal_safe_write(
-        b"[SIGNAL] Stray SIGALRM caught at top level (harmless, ignored)\n\0".as_ptr()
-            as *const ::core::ffi::c_char,
-    );
-}
+unsafe extern "C" fn alarm_handler(mut sig: ::core::ffi::c_int) {}
 pub const SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS: ::core::ffi::c_int = 900 as ::core::ffi::c_int;
 unsafe extern "C" fn shutdown_watchdog_thread_func(
     mut arg: *mut ::core::ffi::c_void,
@@ -1424,14 +1689,6 @@ unsafe extern "C" fn shutdown_watchdog_thread_func(
             } else if now.tv_sec - shutdown_started_at.tv_sec
                 >= SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS as __time_t
             {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_ERROR,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Shutdown watchdog: graceful shutdown did not complete within %d seconds, force-killing LightNVR process\0"
-                        .as_ptr() as *const ::core::ffi::c_char,
-                    900 as ::core::ffi::c_int,
-                );
                 kill(getpid(), SIGKILL);
                 _exit(EXIT_FAILURE);
             }
@@ -1444,7 +1701,7 @@ unsafe extern "C" fn start_shutdown_watchdog_thread() {
     pthread_attr_init(&raw mut attr);
     pthread_attr_setdetachstate(
         &raw mut attr,
-        C2Rust_Unnamed_11::PTHREAD_CREATE_DETACHED.0 as ::core::ffi::c_int,
+        C2Rust_Unnamed_12::PTHREAD_CREATE_DETACHED.0 as ::core::ffi::c_int,
     );
     let mut rc: ::core::ffi::c_int = pthread_create(
         &raw mut thread,
@@ -1591,7 +1848,7 @@ unsafe extern "C" fn is_lightnvr_process(mut pid: pid_t) -> bool {
         b"r\0".as_ptr() as *const ::core::ffi::c_char,
     );
     if fp.is_null() {
-        return r#true != 0;
+        return r#false != 0;
     }
     let mut comm: [::core::ffi::c_char; 32] = [
         0 as ::core::ffi::c_char,
@@ -1635,7 +1892,7 @@ unsafe extern "C" fn is_lightnvr_process(mut pid: pid_t) -> bool {
     .is_null();
     fclose(fp);
     if !ok {
-        return r#true != 0;
+        return r#false != 0;
     }
     comm[strcspn(
         &raw mut comm as *mut ::core::ffi::c_char,
@@ -1676,9 +1933,9 @@ unsafe extern "C" fn check_and_kill_existing_instance(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Invalid PID file format\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Invalid PID file format; retaining path until the PID lock is acquired\0".as_ptr()
+                as *const ::core::ffi::c_char,
         );
-        unlink(pid_file);
         return 0 as ::core::ffi::c_int;
     }
     pid_buf[pid_len] = '\0' as ::core::ffi::c_char;
@@ -1708,23 +1965,33 @@ unsafe extern "C" fn check_and_kill_existing_instance(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Invalid PID file format\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Invalid PID file format; retaining path until the PID lock is acquired\0".as_ptr()
+                as *const ::core::ffi::c_char,
         );
-        unlink(pid_file);
         return 0 as ::core::ffi::c_int;
     }
     let mut existing_pid: pid_t = pid_val as pid_t;
+    if existing_pid == getpid() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"PID file references current process (PID %d); checking its lock during initialization\0"
+                .as_ptr() as *const ::core::ffi::c_char,
+            existing_pid,
+        );
+        return 0 as ::core::ffi::c_int;
+    }
     if kill(existing_pid, 0 as ::core::ffi::c_int) == 0 as ::core::ffi::c_int {
         if !is_lightnvr_process(existing_pid) {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_WARN,
                 LOG_COMPONENT,
                 _log_stream_name,
-                b"PID %d from stale PID file is not a LightNVR process (PID reuse after container restart); removing stale PID file\0"
+                b"PID %d from stale PID file is not a LightNVR process (PID reuse after container restart); checking PID lock during initialization\0"
                     .as_ptr() as *const ::core::ffi::c_char,
                 existing_pid,
             );
-            unlink(pid_file);
             return 0 as ::core::ffi::c_int;
         }
         _log_message_ctx(
@@ -1743,21 +2010,93 @@ unsafe extern "C" fn check_and_kill_existing_instance(
                 as *const ::core::ffi::c_char,
             existing_pid,
         );
-        if kill(existing_pid, SIGTERM) == 0 as ::core::ffi::c_int {
+        let mut pidfd: ::core::ffi::c_int = open_pidfd_for_pid(existing_pid);
+        let mut used_pidfd: bool = pidfd >= 0 as ::core::ffi::c_int;
+        if used_pidfd as ::core::ffi::c_int != 0 && !is_lightnvr_process(existing_pid) {
+            close(pidfd);
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Previous instance identity changed before SIGTERM\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+            );
+            return -1 as ::core::ffi::c_int;
+        }
+        let mut term_rc: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+        let mut term_error: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        if used_pidfd {
+            term_rc = send_signal_via_pidfd(pidfd, SIGTERM);
+            if term_rc != 0 as ::core::ffi::c_int {
+                term_error = *__errno_location();
+            }
+            if term_rc != 0 as ::core::ffi::c_int && term_error == ENOSYS {
+                close(pidfd);
+                pidfd = -1 as ::core::ffi::c_int;
+                used_pidfd = r#false != 0;
+            }
+        }
+        if !used_pidfd {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Cannot safely terminate previous instance without pidfd support; stop it through the service manager before starting LightNVR again\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
+            );
+            return -1 as ::core::ffi::c_int;
+        }
+        let mut process_already_exited: bool =
+            term_rc != 0 as ::core::ffi::c_int && term_error == ESRCH;
+        if process_already_exited {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_INFO,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Previous instance exited before SIGTERM could be delivered; waiting for PID file lock release\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
+            );
+        }
+        if term_rc == 0 as ::core::ffi::c_int || process_already_exited as ::core::ffi::c_int != 0 {
             let mut timeout: ::core::ffi::c_int =
                 SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30 as ::core::ffi::c_int;
+            let mut still_running: bool = r#true != 0;
             loop {
                 let c2rust_fresh0 = timeout;
                 timeout -= 1;
                 if !(c2rust_fresh0 > 0 as ::core::ffi::c_int
-                    && kill(existing_pid, 0 as ::core::ffi::c_int) == 0 as ::core::ffi::c_int)
+                    && still_running as ::core::ffi::c_int != 0
+                    && running as ::core::ffi::c_int != 0)
                 {
                     break;
                 }
-                sleep(1 as ::core::ffi::c_uint);
+                let mut pfd: pollfd = pollfd {
+                    fd: pidfd,
+                    events: POLLIN as ::core::ffi::c_short,
+                    revents: 0,
+                };
+                let mut prc: ::core::ffi::c_int =
+                    poll(&raw mut pfd, 1 as nfds_t, 1000 as ::core::ffi::c_int);
+                if prc > 0 as ::core::ffi::c_int
+                    && pfd.revents as ::core::ffi::c_int & (POLLIN | POLLHUP) != 0
+                {
+                    still_running = r#false != 0;
+                } else if prc == 0 as ::core::ffi::c_int {
+                    still_running = r#true != 0;
+                } else {
+                    still_running = is_process_alive_or_non_zombie(existing_pid);
+                    sleep(1 as ::core::ffi::c_uint);
+                }
+            }
+            if !running {
+                if pidfd >= 0 as ::core::ffi::c_int {
+                    close(pidfd);
+                }
+                return -1 as ::core::ffi::c_int;
             }
             if timeout <= 0 as ::core::ffi::c_int
-                && kill(existing_pid, 0 as ::core::ffi::c_int) == 0 as ::core::ffi::c_int
+                && still_running as ::core::ffi::c_int != 0
+                && running as ::core::ffi::c_int != 0
                 && is_lightnvr_process(existing_pid) as ::core::ffi::c_int != 0
             {
                 _log_message_ctx(
@@ -1767,14 +2106,18 @@ unsafe extern "C" fn check_and_kill_existing_instance(
                     b"Process didn't terminate gracefully within timeout, using SIGKILL\0".as_ptr()
                         as *const ::core::ffi::c_char,
                 );
-                kill(existing_pid, SIGKILL);
+                send_signal_via_pidfd(pidfd, SIGKILL);
                 sleep(1 as ::core::ffi::c_uint);
+            }
+            if pidfd >= 0 as ::core::ffi::c_int {
+                close(pidfd);
             }
             timeout = 5 as ::core::ffi::c_int;
             loop {
                 let c2rust_fresh1 = timeout;
                 timeout -= 1;
-                if c2rust_fresh1 <= 0 as ::core::ffi::c_int {
+                if !(c2rust_fresh1 > 0 as ::core::ffi::c_int && running as ::core::ffi::c_int != 0)
+                {
                     break;
                 }
                 let mut test_fd: ::core::ffi::c_int = open(pid_file, O_RDWR);
@@ -1799,57 +2142,57 @@ unsafe extern "C" fn check_and_kill_existing_instance(
                             b"Previous instance terminated and PID file lock released\0".as_ptr()
                                 as *const ::core::ffi::c_char,
                         );
-                        unlink(pid_file);
                         return 0 as ::core::ffi::c_int;
                     }
                     close(test_fd);
                 }
                 sleep(1 as ::core::ffi::c_uint);
             }
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_WARN,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"Previous instance may have terminated but PID file is still locked or inaccessible\0"
-                    .as_ptr() as *const ::core::ffi::c_char,
-            );
-            if unlink(pid_file) == 0 as ::core::ffi::c_int {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_INFO,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Removed potentially stale PID file\0".as_ptr() as *const ::core::ffi::c_char,
-                );
-                return 0 as ::core::ffi::c_int;
-            } else {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_ERROR,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Failed to remove PID file: %s\0".as_ptr() as *const ::core::ffi::c_char,
-                    strerror(*__errno_location()),
-                );
+            if !running {
                 return -1 as ::core::ffi::c_int;
             }
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Previous instance did not release PID file lock within timeout; refusing to remove PID file\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
+            );
+            return -1 as ::core::ffi::c_int;
         } else {
+            let mut signal_error: ::core::ffi::c_int = *__errno_location();
+            if used_pidfd {
+                close(pidfd);
+            }
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_ERROR,
                 LOG_COMPONENT,
                 _log_stream_name,
                 b"Failed to terminate previous instance: %s\0".as_ptr()
                     as *const ::core::ffi::c_char,
-                strerror(*__errno_location()),
+                strerror(signal_error),
             );
             return -1 as ::core::ffi::c_int;
         }
-    } else {
+    } else if *__errno_location() == ESRCH {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Removing stale PID file\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Stale PID file; checking its lock during initialization\0".as_ptr()
+                as *const ::core::ffi::c_char,
         );
-        unlink(pid_file);
+    } else {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Unable to verify existing instance for PID %ld: %s\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            existing_pid as ::core::ffi::c_long,
+            strerror(*__errno_location()),
+        );
+        return -1 as ::core::ffi::c_int;
     }
     return 0 as ::core::ffi::c_int;
 }
@@ -1859,7 +2202,6 @@ unsafe extern "C" fn daemonize(mut pid_file: *const ::core::ffi::c_char) -> ::co
         return -1 as ::core::ffi::c_int;
     }
     daemon_mode = r#true != 0;
-    running = r#true != 0;
     return fd;
 }
 unsafe extern "C" fn detect_container_mode() -> bool {
@@ -2834,7 +3176,7 @@ unsafe fn main_0(
         if config.db_path[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
             if init_database_ex(
                 &raw mut config.db_path as *mut ::core::ffi::c_char,
-                C2Rust_Unnamed_12::DB_INIT_READ_ONLY.0,
+                C2Rust_Unnamed_13::DB_INIT_READ_ONLY.0,
             ) == 0 as ::core::ffi::c_int
             {
                 db_initialized_for_generation = r#true != 0;
@@ -2906,7 +3248,7 @@ unsafe fn main_0(
         LOG_COMPONENT,
         _log_stream_name,
         b"LightNVR v%s starting up\0".as_ptr() as *const ::core::ffi::c_char,
-        b"0.48.2\0".as_ptr() as *const ::core::ffi::c_char,
+        b"0.49.0\0".as_ptr() as *const ::core::ffi::c_char,
     );
     if init_shutdown_coordinator() != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -2964,6 +3306,21 @@ unsafe fn main_0(
             return EXIT_FAILURE;
         }
     }
+    if curl_init_global() != 0 as ::core::ffi::c_int {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to initialize libcurl globally\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return EXIT_FAILURE;
+    }
+    _log_message_ctx(
+        log_level_t::LOG_LEVEL_INFO,
+        LOG_COMPONENT,
+        _log_stream_name,
+        b"libcurl initialized globally\0".as_ptr() as *const ::core::ffi::c_char,
+    );
     start_shutdown_watchdog_thread();
     container_mode = detect_container_mode();
     if container_mode {
@@ -2983,21 +3340,6 @@ unsafe fn main_0(
                 as *const ::core::ffi::c_char,
         );
     }
-    if curl_init_global() != 0 as ::core::ffi::c_int {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Failed to initialize libcurl globally\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        return EXIT_FAILURE;
-    }
-    _log_message_ctx(
-        log_level_t::LOG_LEVEL_INFO,
-        LOG_COMPONENT,
-        _log_stream_name,
-        b"libcurl initialized globally\0".as_ptr() as *const ::core::ffi::c_char,
-    );
     lightnvr_sentry_init();
     storage_startup_reclaim_if_full(
         &raw mut config.storage_path as *mut ::core::ffi::c_char,
@@ -3053,829 +3395,626 @@ unsafe fn main_0(
                     b"Failed to copy database-backed configuration\0".as_ptr()
                         as *const ::core::ffi::c_char,
                 );
-                return EXIT_FAILURE;
-            }
-            default_recording_root = if config.record_mp4_directly as ::core::ffi::c_int != 0
-                && config.mp4_storage_path[0usize] as ::core::ffi::c_int
-                    != '\0' as ::core::ffi::c_int
-            {
-                &raw mut config.mp4_storage_path as *mut ::core::ffi::c_char
             } else {
-                &raw mut config.storage_path as *mut ::core::ffi::c_char
-            };
-            default_storage_target_uuid = [0; 37];
-            if db_storage_target_bootstrap_default(
-                default_recording_root,
-                &raw mut default_storage_target_uuid as *mut ::core::ffi::c_char,
-            ) != 0 as ::core::ffi::c_int
-            {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_ERROR,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Failed to initialize the default storage target; continuing without storage target attribution\0"
-                        .as_ptr() as *const ::core::ffi::c_char,
-                );
-            }
-            if event_identity_init() != 0 as ::core::ffi::c_int {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_ERROR,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Failed to initialize persistent event identity\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                );
-            } else if mqtt_event_adapter_register(&raw mut g_config) != 0 as ::core::ffi::c_int {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_ERROR,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Failed to register MQTT event compatibility adapter\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                );
-            } else if event_bus_init(0 as size_t, 0 as size_t) != 0 as ::core::ffi::c_int {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_ERROR,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Failed to initialize asynchronous event bus\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                );
-            } else {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_INFO,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Asynchronous event pipeline initialized successfully\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                );
-            }
-            if init_storage_manager(
-                &raw mut config.storage_path as *mut ::core::ffi::c_char,
-                config.max_storage_size,
-            ) != 0 as ::core::ffi::c_int
-            {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_ERROR,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Failed to initialize storage manager\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                );
-            } else {
-                set_retention_days(config.retention_days);
-                storage_target_refresh_health_and_publish();
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_INFO,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Storage manager initialized\0".as_ptr() as *const ::core::ffi::c_char,
-                );
-                let mut observation_reconcile: observation_reconcile_result_t =
-                    observation_reconcile_result_t {
-                        tmp_files_deleted: 0,
-                        stale_files_deleted: 0,
-                        pending_interrupted: 0,
-                        ready_missing: 0,
-                        epoch_regenerated: false,
-                    };
-                if observation_retention_startup(
-                    &raw mut config.storage_path as *mut ::core::ffi::c_char,
-                    &raw mut observation_reconcile,
-                ) != 0 as ::core::ffi::c_int
+                default_recording_root = if config.record_mp4_directly as ::core::ffi::c_int != 0
+                    && config.mp4_storage_path[0usize] as ::core::ffi::c_int
+                        != '\0' as ::core::ffi::c_int
                 {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_WARN,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Observation evidence reconciliation incomplete; evidence eviction disabled\0"
-                            .as_ptr() as *const ::core::ffi::c_char,
-                    );
-                }
-                let mut evidence_config: observation_evidence_config_t =
-                    observation_evidence_config_t {
-                        storage_path: ::core::ptr::null::<::core::ffi::c_char>(),
-                        global_max_bytes: 0,
-                        global_max_items: 0,
-                        per_camera_max_items: 0,
-                        per_camera_max_bytes: 0,
-                    };
-                let mut queue_bytes: [::core::ffi::c_char; 32] = [
-                    0 as ::core::ffi::c_char,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                ];
-                evidence_config.storage_path =
-                    &raw mut config.storage_path as *mut ::core::ffi::c_char;
-                if db_get_system_setting(
-                    b"observation_global_queue_bytes\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut queue_bytes as *mut ::core::ffi::c_char,
-                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>() as ::core::ffi::c_int,
-                ) == 0 as ::core::ffi::c_int
-                    && queue_bytes[0usize] as ::core::ffi::c_int != 0
-                {
-                    let mut value: ::core::ffi::c_longlong = strtoll(
-                        &raw mut queue_bytes as *mut ::core::ffi::c_char,
-                        ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
-                        10 as ::core::ffi::c_int,
-                    );
-                    if value > 0 as ::core::ffi::c_longlong {
-                        evidence_config.global_max_bytes = value as int64_t;
-                    }
-                }
-                if observation_evidence_init(&raw mut evidence_config) != 0 as ::core::ffi::c_int {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_ERROR,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Failed to initialize observation evidence; evidence admission disabled\0"
-                            .as_ptr() as *const ::core::ffi::c_char,
-                    );
+                    &raw mut config.mp4_storage_path as *mut ::core::ffi::c_char
                 } else {
-                    observation_evidence_set_enabled_probe(
-                        Some(
-                            observation_evidence_stream_enabled_probe
-                                as unsafe extern "C" fn(
-                                    *const ::core::ffi::c_char,
-                                    *mut ::core::ffi::c_void,
-                                ) -> bool,
-                        ),
-                        NULL,
-                    );
-                }
-                if observation_relay_start(::core::ptr::null::<observation_relay_options_t>())
-                    != 0 as ::core::ffi::c_int
+                    &raw mut config.storage_path as *mut ::core::ffi::c_char
+                };
+                default_storage_target_uuid = [0; 37];
+                if db_storage_target_bootstrap_default(
+                    default_recording_root,
+                    &raw mut default_storage_target_uuid as *mut ::core::ffi::c_char,
+                ) != 0 as ::core::ffi::c_int
                 {
                     _log_message_ctx(
                         log_level_t::LOG_LEVEL_ERROR,
                         LOG_COMPONENT,
                         _log_stream_name,
-                        b"Failed to start observation publication relay; staged observation changes stay pending\0"
+                        b"Failed to initialize the default storage target; continuing without storage target attribution\0"
                             .as_ptr() as *const ::core::ffi::c_char,
                     );
                 }
-                health_overrides = ::core::ptr::null_mut::<::core::ffi::c_char>();
-                health_overrides_length = 0 as size_t;
-                health_overrides_result = db_get_system_setting_alloc(
-                    SYSTEM_HEALTH_OVERRIDES_SETTING_KEY.as_ptr(),
-                    &raw mut health_overrides,
-                    &raw mut health_overrides_length,
-                );
-                health_policy = system_health_policy_t {
-                    generation: 0,
-                    settings: system_health_policy_settings_t {
-                        enabled: false,
-                        profile: [0; 16],
-                        fast_interval_seconds: 0,
-                        normal_interval_seconds: 0,
-                        slow_interval_seconds: 0,
-                        device_interval_seconds: 0,
-                        write_probe_enabled: false,
-                        hardware_provider: [0; 16],
-                        presence_interval_seconds: 0,
-                        incident_retention_days: 0,
-                    },
-                    conditions: [system_health_condition_policy_t {
-                        condition:
-                            system_health_condition_t::SYSTEM_HEALTH_CONDITION_MEMORY_AVAILABLE_LOW,
-                        profile: system_health_profile_t::SYSTEM_HEALTH_PROFILE_BALANCED,
-                        enabled: false,
-                        overridden: false,
-                        direction:
-                            system_health_threshold_direction_t::SYSTEM_HEALTH_THRESHOLD_NONE,
-                        unit: system_health_unit_t::SYSTEM_HEALTH_UNIT_NONE,
-                        warning_threshold: 0.,
-                        critical_threshold: 0.,
-                        recovery_threshold: 0.,
-                        warning_for_seconds: 0,
-                        critical_for_seconds: 0,
-                        recovery_for_seconds: 0,
-                    }; 27],
-                };
-                health_policy_error = [0; 256];
-                if health_overrides_result < 0 as ::core::ffi::c_int
-                    || system_health_policy_build(
-                        &raw mut g_config.health,
-                        if health_overrides_result == 0 as ::core::ffi::c_int {
-                            health_overrides
-                        } else {
-                            ::core::ptr::null_mut::<::core::ffi::c_char>()
-                        },
-                        &raw mut health_policy,
-                        ::core::ptr::null_mut::<::core::ffi::c_char>(),
-                        0 as size_t,
-                        &raw mut health_policy_error as *mut ::core::ffi::c_char,
-                    ) != 0 as ::core::ffi::c_int
-                {
+                if event_identity_init() != 0 as ::core::ffi::c_int {
                     _log_message_ctx(
-                        log_level_t::LOG_LEVEL_WARN,
+                        log_level_t::LOG_LEVEL_ERROR,
                         LOG_COMPONENT,
                         _log_stream_name,
-                        b"Host health policy unavailable: %s\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                        if health_overrides_result < 0 as ::core::ffi::c_int {
-                            b"stored overrides could not be read\0".as_ptr()
-                                as *const ::core::ffi::c_char
-                        } else {
-                            &raw mut health_policy_error as *mut ::core::ffi::c_char
-                        },
-                    );
-                } else if system_health_policy_replace(
-                    &raw mut health_policy,
-                    &raw mut health_policy_error as *mut ::core::ffi::c_char,
-                ) != 0 as ::core::ffi::c_int
-                {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_WARN,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Host health policy could not be activated: %s\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                        &raw mut health_policy_error as *mut ::core::ffi::c_char,
-                    );
-                }
-                free(health_overrides as *mut ::core::ffi::c_void);
-                health_options = system_health_options_t {
-                    enabled: false,
-                    register_builtin_collectors: false,
-                    tier_interval_ms: [0; 4],
-                    collector_deadline_ms: [0; 4],
-                    proc_root: [0; 1024],
-                    sys_root: [0; 1024],
-                    cgroup_root: [0; 1024],
-                    root_path: [0; 1024],
-                    recording_path: [0; 1024],
-                    hardware_provider: [0; 16],
-                };
-                if system_health_options_from_policy(
-                    &raw mut g_config.health,
-                    default_recording_root,
-                    &raw mut health_options,
-                ) != 0 as ::core::ffi::c_int
-                    || system_health_init(&raw mut health_options) != 0 as ::core::ffi::c_int
-                {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_WARN,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Host health sampler could not be initialized\0".as_ptr()
+                        b"Failed to initialize persistent event identity\0".as_ptr()
                             as *const ::core::ffi::c_char,
                     );
-                }
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_INFO,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Starting recording sync thread...\0".as_ptr() as *const ::core::ffi::c_char,
-                );
-                if start_recording_sync_thread(60 as ::core::ffi::c_int) != 0 as ::core::ffi::c_int
+                } else if mqtt_event_adapter_register(&raw mut g_config) != 0 as ::core::ffi::c_int
                 {
                     _log_message_ctx(
-                        log_level_t::LOG_LEVEL_WARN,
+                        log_level_t::LOG_LEVEL_ERROR,
                         LOG_COMPONENT,
                         _log_stream_name,
-                        b"Failed to start recording sync thread, file sizes may not be accurate\0"
-                            .as_ptr() as *const ::core::ffi::c_char,
+                        b"Failed to register MQTT event compatibility adapter\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                    );
+                } else if event_bus_init(0 as size_t, 0 as size_t) != 0 as ::core::ffi::c_int {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Failed to initialize asynchronous event bus\0".as_ptr()
+                            as *const ::core::ffi::c_char,
                     );
                 } else {
                     _log_message_ctx(
                         log_level_t::LOG_LEVEL_INFO,
                         LOG_COMPONENT,
                         _log_stream_name,
-                        b"Recording sync thread started\0".as_ptr() as *const ::core::ffi::c_char,
+                        b"Asynchronous event pipeline initialized successfully\0".as_ptr()
+                            as *const ::core::ffi::c_char,
                     );
                 }
-                st = stat {
-                    st_dev: 0,
-                    st_ino: 0,
-                    st_nlink: 0,
-                    st_mode: 0,
-                    st_uid: 0,
-                    st_gid: 0,
-                    __pad0: 0,
-                    st_rdev: 0,
-                    st_size: 0,
-                    st_blksize: 0,
-                    st_blocks: 0,
-                    st_atim: timespec {
-                        tv_sec: 0,
-                        tv_nsec: 0,
-                    },
-                    st_mtim: timespec {
-                        tv_sec: 0,
-                        tv_nsec: 0,
-                    },
-                    st_ctim: timespec {
-                        tv_sec: 0,
-                        tv_nsec: 0,
-                    },
-                    __glibc_reserved: [0; 3],
-                };
-                if stat(
-                    &raw mut config.web_root as *mut ::core::ffi::c_char,
-                    &raw mut st,
+                if init_storage_manager(
+                    &raw mut config.storage_path as *mut ::core::ffi::c_char,
+                    config.max_storage_size,
                 ) != 0 as ::core::ffi::c_int
-                    || !(st.st_mode & __S_IFMT as __mode_t == 0o40000 as __mode_t)
                 {
                     _log_message_ctx(
                         log_level_t::LOG_LEVEL_ERROR,
                         LOG_COMPONENT,
                         _log_stream_name,
-                        b"Web root directory %s does not exist or is not a directory\0".as_ptr()
+                        b"Failed to initialize storage manager\0".as_ptr()
                             as *const ::core::ffi::c_char,
-                        &raw mut config.web_root as *mut ::core::ffi::c_char,
                     );
-                    if strncmp(
-                        &raw mut config.web_root as *mut ::core::ffi::c_char,
-                        b"/var/\0".as_ptr() as *const ::core::ffi::c_char,
-                        5 as size_t,
-                    ) == 0 as ::core::ffi::c_int
-                        || strncmp(
-                            &raw mut config.web_root as *mut ::core::ffi::c_char,
-                            b"/tmp/\0".as_ptr() as *const ::core::ffi::c_char,
-                            5 as size_t,
-                        ) == 0 as ::core::ffi::c_int
-                        || strncmp(
-                            &raw mut config.web_root as *mut ::core::ffi::c_char,
-                            b"/run/\0".as_ptr() as *const ::core::ffi::c_char,
-                            5 as size_t,
-                        ) == 0 as ::core::ffi::c_int
+                } else {
+                    set_retention_days(config.retention_days);
+                    storage_target_refresh_health_and_publish();
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_INFO,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Storage manager initialized\0".as_ptr() as *const ::core::ffi::c_char,
+                    );
+                    let mut observation_reconcile: observation_reconcile_result_t =
+                        observation_reconcile_result_t {
+                            tmp_files_deleted: 0,
+                            stale_files_deleted: 0,
+                            pending_interrupted: 0,
+                            ready_missing: 0,
+                            epoch_regenerated: false,
+                        };
+                    if observation_retention_startup(
+                        &raw mut config.storage_path as *mut ::core::ffi::c_char,
+                        &raw mut observation_reconcile,
+                    ) != 0 as ::core::ffi::c_int
                     {
-                        let mut storage_web_path: [::core::ffi::c_char; 512] = [0; 512];
-                        snprintf(
-                            &raw mut storage_web_path as *mut ::core::ffi::c_char,
-                            ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
-                            b"%s/web\0".as_ptr() as *const ::core::ffi::c_char,
-                            &raw mut config.storage_path as *mut ::core::ffi::c_char,
-                        );
                         _log_message_ctx(
                             log_level_t::LOG_LEVEL_WARN,
                             LOG_COMPONENT,
                             _log_stream_name,
-                            b"Web root is in system directory (%s), redirecting to storage path (%s)\0"
+                            b"Observation evidence reconciliation incomplete; evidence eviction disabled\0"
                                 .as_ptr() as *const ::core::ffi::c_char,
-                            &raw mut config.web_root as *mut ::core::ffi::c_char,
-                            &raw mut storage_web_path as *mut ::core::ffi::c_char,
                         );
-                        if mkdir_recursive(&raw mut storage_web_path as *mut ::core::ffi::c_char)
-                            != 0
+                    }
+                    let mut evidence_config: observation_evidence_config_t =
+                        observation_evidence_config_t {
+                            storage_path: ::core::ptr::null::<::core::ffi::c_char>(),
+                            global_max_bytes: 0,
+                            global_max_items: 0,
+                            per_camera_max_items: 0,
+                            per_camera_max_bytes: 0,
+                        };
+                    let mut queue_bytes: [::core::ffi::c_char; 32] = [
+                        0 as ::core::ffi::c_char,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ];
+                    evidence_config.storage_path =
+                        &raw mut config.storage_path as *mut ::core::ffi::c_char;
+                    if db_get_system_setting(
+                        b"observation_global_queue_bytes\0".as_ptr() as *const ::core::ffi::c_char,
+                        &raw mut queue_bytes as *mut ::core::ffi::c_char,
+                        ::core::mem::size_of::<[::core::ffi::c_char; 32]>() as ::core::ffi::c_int,
+                    ) == 0 as ::core::ffi::c_int
+                        && queue_bytes[0usize] as ::core::ffi::c_int != 0
+                    {
+                        let mut endptr: *mut ::core::ffi::c_char =
+                            ::core::ptr::null_mut::<::core::ffi::c_char>();
+                        *__errno_location() = 0 as ::core::ffi::c_int;
+                        let mut value: ::core::ffi::c_longlong = strtoll(
+                            &raw mut queue_bytes as *mut ::core::ffi::c_char,
+                            &raw mut endptr,
+                            10 as ::core::ffi::c_int,
+                        );
+                        if endptr == &raw mut queue_bytes as *mut ::core::ffi::c_char
+                            || *endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                            || *__errno_location() == ERANGE
+                            || value <= 0 as ::core::ffi::c_longlong
                         {
                             _log_message_ctx(
-                                log_level_t::LOG_LEVEL_ERROR,
+                                log_level_t::LOG_LEVEL_WARN,
                                 LOG_COMPONENT,
                                 _log_stream_name,
-                                b"Failed to create web root in storage path: %s\0".as_ptr()
-                                    as *const ::core::ffi::c_char,
-                                strerror(*__errno_location()),
+                                b"Invalid observation_global_queue_bytes value '%s'; using default\0"
+                                    .as_ptr() as *const ::core::ffi::c_char,
+                                &raw mut queue_bytes as *mut ::core::ffi::c_char,
                             );
-                            break '_cleanup;
                         } else {
-                            if ensure_path(&raw mut config.web_root as *mut ::core::ffi::c_char)
-                                != 0
-                            {
-                                _log_message_ctx(
-                                    log_level_t::LOG_LEVEL_WARN,
-                                    LOG_COMPONENT,
-                                    _log_stream_name,
-                                    b"Failed to create parent directory for web root symlink\0"
-                                        .as_ptr()
-                                        as *const ::core::ffi::c_char,
-                                );
-                            }
-                            if symlink(
-                                &raw mut storage_web_path as *mut ::core::ffi::c_char,
-                                &raw mut config.web_root as *mut ::core::ffi::c_char,
-                            ) != 0 as ::core::ffi::c_int
-                            {
-                                _log_message_ctx(
-                                    log_level_t::LOG_LEVEL_ERROR,
-                                    LOG_COMPONENT,
-                                    _log_stream_name,
-                                    b"Failed to create symlink from %s to %s: %s\0".as_ptr()
-                                        as *const ::core::ffi::c_char,
-                                    &raw mut config.web_root as *mut ::core::ffi::c_char,
-                                    &raw mut storage_web_path as *mut ::core::ffi::c_char,
-                                    strerror(*__errno_location()),
-                                );
-                                safe_strcpy(
-                                    &raw mut config.web_root as *mut ::core::ffi::c_char,
-                                    &raw mut storage_web_path as *mut ::core::ffi::c_char,
-                                    MAX_PATH_LENGTH as size_t,
-                                    0 as size_t,
-                                );
-                                _log_message_ctx(
-                                    log_level_t::LOG_LEVEL_WARN,
-                                    LOG_COMPONENT,
-                                    _log_stream_name,
-                                    b"Using storage path directly for web root: %s\0".as_ptr()
-                                        as *const ::core::ffi::c_char,
-                                    &raw mut config.web_root as *mut ::core::ffi::c_char,
-                                );
-                            } else {
-                                _log_message_ctx(
-                                    log_level_t::LOG_LEVEL_INFO,
-                                    LOG_COMPONENT,
-                                    _log_stream_name,
-                                    b"Created symlink from %s to %s\0".as_ptr()
-                                        as *const ::core::ffi::c_char,
-                                    &raw mut config.web_root as *mut ::core::ffi::c_char,
-                                    &raw mut storage_web_path as *mut ::core::ffi::c_char,
-                                );
-                            }
+                            evidence_config.global_max_bytes = value as int64_t;
                         }
-                    } else if mkdir_recursive(&raw mut config.web_root as *mut ::core::ffi::c_char)
-                        != 0
+                    }
+                    if observation_evidence_init(&raw mut evidence_config)
+                        != 0 as ::core::ffi::c_int
                     {
                         _log_message_ctx(
                             log_level_t::LOG_LEVEL_ERROR,
                             LOG_COMPONENT,
                             _log_stream_name,
-                            b"Failed to create web root directory\0".as_ptr()
+                            b"Failed to initialize observation evidence; evidence admission disabled\0"
+                                .as_ptr() as *const ::core::ffi::c_char,
+                        );
+                    } else {
+                        observation_evidence_set_enabled_probe(
+                            Some(
+                                observation_evidence_stream_enabled_probe
+                                    as unsafe extern "C" fn(
+                                        *const ::core::ffi::c_char,
+                                        *mut ::core::ffi::c_void,
+                                    )
+                                        -> bool,
+                            ),
+                            NULL,
+                        );
+                    }
+                    if observation_relay_start(::core::ptr::null::<observation_relay_options_t>())
+                        != 0 as ::core::ffi::c_int
+                    {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_ERROR,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Failed to start observation publication relay; staged observation changes stay pending\0"
+                                .as_ptr() as *const ::core::ffi::c_char,
+                        );
+                    }
+                    health_overrides = ::core::ptr::null_mut::<::core::ffi::c_char>();
+                    health_overrides_length = 0 as size_t;
+                    health_overrides_result = db_get_system_setting_alloc(
+                        SYSTEM_HEALTH_OVERRIDES_SETTING_KEY.as_ptr(),
+                        &raw mut health_overrides,
+                        &raw mut health_overrides_length,
+                    );
+                    health_policy = system_health_policy_t {
+                        generation: 0,
+                        settings: system_health_policy_settings_t {
+                            enabled: false,
+                            profile: [0; 16],
+                            fast_interval_seconds: 0,
+                            normal_interval_seconds: 0,
+                            slow_interval_seconds: 0,
+                            device_interval_seconds: 0,
+                            write_probe_enabled: false,
+                            hardware_provider: [0; 16],
+                            presence_interval_seconds: 0,
+                            incident_retention_days: 0,
+                        },
+                        conditions: [system_health_condition_policy_t {
+                            condition: system_health_condition_t::SYSTEM_HEALTH_CONDITION_MEMORY_AVAILABLE_LOW,
+                            profile: system_health_profile_t::SYSTEM_HEALTH_PROFILE_BALANCED,
+                            enabled: false,
+                            overridden: false,
+                            direction: system_health_threshold_direction_t::SYSTEM_HEALTH_THRESHOLD_NONE,
+                            unit: system_health_unit_t::SYSTEM_HEALTH_UNIT_NONE,
+                            warning_threshold: 0.,
+                            critical_threshold: 0.,
+                            recovery_threshold: 0.,
+                            warning_for_seconds: 0,
+                            critical_for_seconds: 0,
+                            recovery_for_seconds: 0,
+                        }; 27],
+                    };
+                    health_policy_error = [0; 256];
+                    if health_overrides_result < 0 as ::core::ffi::c_int
+                        || system_health_policy_build(
+                            &raw mut g_config.health,
+                            if health_overrides_result == 0 as ::core::ffi::c_int {
+                                health_overrides
+                            } else {
+                                ::core::ptr::null_mut::<::core::ffi::c_char>()
+                            },
+                            &raw mut health_policy,
+                            ::core::ptr::null_mut::<::core::ffi::c_char>(),
+                            0 as size_t,
+                            &raw mut health_policy_error as *mut ::core::ffi::c_char,
+                        ) != 0 as ::core::ffi::c_int
+                    {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Host health policy unavailable: %s\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                            if health_overrides_result < 0 as ::core::ffi::c_int {
+                                b"stored overrides could not be read\0".as_ptr()
+                                    as *const ::core::ffi::c_char
+                            } else {
+                                &raw mut health_policy_error as *mut ::core::ffi::c_char
+                            },
+                        );
+                    } else if system_health_policy_replace(
+                        &raw mut health_policy,
+                        &raw mut health_policy_error as *mut ::core::ffi::c_char,
+                    ) != 0 as ::core::ffi::c_int
+                    {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Host health policy could not be activated: %s\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                            &raw mut health_policy_error as *mut ::core::ffi::c_char,
+                        );
+                    }
+                    free(health_overrides as *mut ::core::ffi::c_void);
+                    health_options = system_health_options_t {
+                        enabled: false,
+                        register_builtin_collectors: false,
+                        tier_interval_ms: [0; 4],
+                        collector_deadline_ms: [0; 4],
+                        proc_root: [0; 1024],
+                        sys_root: [0; 1024],
+                        cgroup_root: [0; 1024],
+                        root_path: [0; 1024],
+                        recording_path: [0; 1024],
+                        hardware_provider: [0; 16],
+                    };
+                    if system_health_options_from_policy(
+                        &raw mut g_config.health,
+                        default_recording_root,
+                        &raw mut health_options,
+                    ) != 0 as ::core::ffi::c_int
+                        || system_health_init(&raw mut health_options) != 0 as ::core::ffi::c_int
+                    {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Host health sampler could not be initialized\0".as_ptr()
                                 as *const ::core::ffi::c_char,
                         );
-                        break '_cleanup;
+                    }
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_INFO,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Starting recording sync thread...\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                    );
+                    if start_recording_sync_thread(60 as ::core::ffi::c_int)
+                        != 0 as ::core::ffi::c_int
+                    {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Failed to start recording sync thread, file sizes may not be accurate\0"
+                                .as_ptr() as *const ::core::ffi::c_char,
+                        );
                     } else {
                         _log_message_ctx(
                             log_level_t::LOG_LEVEL_INFO,
                             LOG_COMPONENT,
                             _log_stream_name,
-                            b"Created web root directory: %s\0".as_ptr()
+                            b"Recording sync thread started\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                    }
+                    st = stat {
+                        st_dev: 0,
+                        st_ino: 0,
+                        st_nlink: 0,
+                        st_mode: 0,
+                        st_uid: 0,
+                        st_gid: 0,
+                        __pad0: 0,
+                        st_rdev: 0,
+                        st_size: 0,
+                        st_blksize: 0,
+                        st_blocks: 0,
+                        st_atim: timespec {
+                            tv_sec: 0,
+                            tv_nsec: 0,
+                        },
+                        st_mtim: timespec {
+                            tv_sec: 0,
+                            tv_nsec: 0,
+                        },
+                        st_ctim: timespec {
+                            tv_sec: 0,
+                            tv_nsec: 0,
+                        },
+                        __glibc_reserved: [0; 3],
+                    };
+                    if stat(
+                        &raw mut config.web_root as *mut ::core::ffi::c_char,
+                        &raw mut st,
+                    ) != 0 as ::core::ffi::c_int
+                        || !(st.st_mode & __S_IFMT as __mode_t == 0o40000 as __mode_t)
+                    {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_ERROR,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Web root directory %s does not exist or is not a directory\0".as_ptr()
                                 as *const ::core::ffi::c_char,
                             &raw mut config.web_root as *mut ::core::ffi::c_char,
                         );
-                    }
-                }
-                if system_health_evaluator_service_start() != 0 as ::core::ffi::c_int {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_WARN,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Host health evaluator could not be started\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                    );
-                }
-                if system_health_start() != 0 as ::core::ffi::c_int {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_WARN,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Host health sampler workers could not be started\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                    );
-                } else if g_config.health.enabled {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_INFO,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Host health sampler started\0".as_ptr() as *const ::core::ffi::c_char,
-                    );
-                }
-                if init_stream_state_manager(config.max_streams) != 0 as ::core::ffi::c_int {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_ERROR,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Failed to initialize stream state manager\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                    );
-                } else if init_stream_state_adapter() != 0 as ::core::ffi::c_int {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_ERROR,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Failed to initialize stream state adapter\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                    );
-                } else if init_stream_manager(config.max_streams) != 0 as ::core::ffi::c_int {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_ERROR,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Failed to initialize stream manager\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                    );
-                } else if metrics_init(config.max_streams) != 0 as ::core::ffi::c_int {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_ERROR,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Failed to initialize metrics subsystem\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                    );
-                } else {
-                    player_telemetry_init();
-                    if !config.go2rtc_enabled {
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_INFO,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"go2rtc is disabled in configuration. HLS will connect directly to camera streams.\0"
-                                .as_ptr() as *const ::core::ffi::c_char,
-                        );
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_INFO,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"WebRTC live view will not be available. Enable go2rtc in settings if needed.\0"
-                                .as_ptr() as *const ::core::ffi::c_char,
-                        );
-                    } else {
-                        go2rtc_process_validate_existing_override_on_upgrade();
-                        if !go2rtc_integration_full_start() {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_ERROR,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"Failed to start go2rtc integration.\0".as_ptr()
-                                    as *const ::core::ffi::c_char,
+                        if strncmp(
+                            &raw mut config.web_root as *mut ::core::ffi::c_char,
+                            b"/var/\0".as_ptr() as *const ::core::ffi::c_char,
+                            5 as size_t,
+                        ) == 0 as ::core::ffi::c_int
+                            || strncmp(
+                                &raw mut config.web_root as *mut ::core::ffi::c_char,
+                                b"/tmp/\0".as_ptr() as *const ::core::ffi::c_char,
+                                5 as size_t,
+                            ) == 0 as ::core::ffi::c_int
+                            || strncmp(
+                                &raw mut config.web_root as *mut ::core::ffi::c_char,
+                                b"/run/\0".as_ptr() as *const ::core::ffi::c_char,
+                                5 as size_t,
+                            ) == 0 as ::core::ffi::c_int
+                        {
+                            let mut storage_web_path: [::core::ffi::c_char; 512] = [0; 512];
+                            snprintf(
+                                &raw mut storage_web_path as *mut ::core::ffi::c_char,
+                                ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+                                b"%s/web\0".as_ptr() as *const ::core::ffi::c_char,
+                                &raw mut config.storage_path as *mut ::core::ffi::c_char,
                             );
                             _log_message_ctx(
-                                log_level_t::LOG_LEVEL_ERROR,
+                                log_level_t::LOG_LEVEL_WARN,
                                 LOG_COMPONENT,
                                 _log_stream_name,
-                                b"Ensure go2rtc is installed and accessible (scripts/install_go2rtc.sh).\0"
+                                b"Web root is in system directory (%s), redirecting to storage path (%s)\0"
                                     .as_ptr() as *const ::core::ffi::c_char,
+                                &raw mut config.web_root as *mut ::core::ffi::c_char,
+                                &raw mut storage_web_path as *mut ::core::ffi::c_char,
                             );
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_ERROR,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"LiveView and WebRTC streaming will not be available until go2rtc is properly configured.\0"
-                                    .as_ptr() as *const ::core::ffi::c_char,
-                            );
-                        }
-                    }
-                    init_transcoding_backend();
-                    init_timestamp_trackers();
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_INFO,
-                        LOG_COMPONENT,
-                        _log_stream_name,
-                        b"Timestamp trackers initialized\0".as_ptr() as *const ::core::ffi::c_char,
-                    );
-                    init_hls_streaming_backend();
-                    init_mp4_recording_backend();
-                    if init_detection_integration() != 0 as ::core::ffi::c_int {
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_ERROR,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"Failed to initialize detection system\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                        );
-                    } else {
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_INFO,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"Detection system initialized successfully\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                        );
-                    }
-                    init_detection_stream_system();
-                    if init_onvif_discovery() != 0 as ::core::ffi::c_int {
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_ERROR,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"Failed to initialize ONVIF discovery module\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                        );
-                    } else {
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_INFO,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"ONVIF discovery module initialized successfully\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                        );
-                        if config.onvif_discovery_enabled {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_INFO,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"Starting ONVIF discovery on network %s with interval %d seconds\0"
-                                    .as_ptr()
-                                    as *const ::core::ffi::c_char,
-                                &raw mut config.onvif_discovery_network as *mut ::core::ffi::c_char,
-                                config.onvif_discovery_interval,
-                            );
-                            if start_onvif_discovery(
-                                &raw mut config.onvif_discovery_network as *mut ::core::ffi::c_char,
-                                config.onvif_discovery_interval,
-                            ) != 0 as ::core::ffi::c_int
+                            if mkdir_recursive(
+                                &raw mut storage_web_path as *mut ::core::ffi::c_char,
+                            ) != 0
                             {
                                 _log_message_ctx(
                                     log_level_t::LOG_LEVEL_ERROR,
                                     LOG_COMPONENT,
                                     _log_stream_name,
-                                    b"Failed to start ONVIF discovery\0".as_ptr()
+                                    b"Failed to create web root in storage path: %s\0".as_ptr()
                                         as *const ::core::ffi::c_char,
+                                    strerror(*__errno_location()),
                                 );
+                                break '_cleanup;
                             } else {
-                                _log_message_ctx(
-                                    log_level_t::LOG_LEVEL_INFO,
-                                    LOG_COMPONENT,
-                                    _log_stream_name,
-                                    b"ONVIF discovery started successfully\0".as_ptr()
-                                        as *const ::core::ffi::c_char,
-                                );
-                            }
-                        }
-                    }
-                    if init_auth_system() != 0 as ::core::ffi::c_int {
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_ERROR,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"Failed to initialize authentication system\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                        );
-                    } else {
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_INFO,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"Authentication system initialized successfully\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                        );
-                        if batch_delete_progress_init() != 0 as ::core::ffi::c_int {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_ERROR,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"Failed to initialize batch delete progress tracking\0".as_ptr()
-                                    as *const ::core::ffi::c_char,
-                            );
-                        } else {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_INFO,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"Batch delete progress tracking initialized successfully\0"
-                                    .as_ptr()
-                                    as *const ::core::ffi::c_char,
-                            );
-                        }
-                        if mqtt_init(&raw mut config) != 0 as ::core::ffi::c_int {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_ERROR,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"Failed to initialize MQTT runtime\0".as_ptr()
-                                    as *const ::core::ffi::c_char,
-                            );
-                        } else {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_INFO,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"MQTT runtime initialized successfully\0".as_ptr()
-                                    as *const ::core::ffi::c_char,
-                            );
-                            if mqtt_delivery_worker_start() != 0 as ::core::ffi::c_int {
-                                _log_message_ctx(
-                                    log_level_t::LOG_LEVEL_ERROR,
-                                    LOG_COMPONENT,
-                                    _log_stream_name,
-                                    b"Failed to start durable MQTT delivery worker\0".as_ptr()
-                                        as *const ::core::ffi::c_char,
-                                );
-                            }
-                            if config.mqtt_enabled {
-                                if mqtt_connect() != 0 as ::core::ffi::c_int {
+                                if ensure_path(&raw mut config.web_root as *mut ::core::ffi::c_char)
+                                    != 0
+                                {
                                     _log_message_ctx(
                                         log_level_t::LOG_LEVEL_WARN,
                                         LOG_COMPONENT,
                                         _log_stream_name,
-                                        b"Failed to connect to MQTT broker, will retry automatically\0"
-                                            .as_ptr() as *const ::core::ffi::c_char,
+                                        b"Failed to create parent directory for web root symlink\0"
+                                            .as_ptr()
+                                            as *const ::core::ffi::c_char,
+                                    );
+                                }
+                                if symlink(
+                                    &raw mut storage_web_path as *mut ::core::ffi::c_char,
+                                    &raw mut config.web_root as *mut ::core::ffi::c_char,
+                                ) != 0 as ::core::ffi::c_int
+                                {
+                                    _log_message_ctx(
+                                        log_level_t::LOG_LEVEL_ERROR,
+                                        LOG_COMPONENT,
+                                        _log_stream_name,
+                                        b"Failed to create symlink from %s to %s: %s\0".as_ptr()
+                                            as *const ::core::ffi::c_char,
+                                        &raw mut config.web_root as *mut ::core::ffi::c_char,
+                                        &raw mut storage_web_path as *mut ::core::ffi::c_char,
+                                        strerror(*__errno_location()),
+                                    );
+                                    safe_strcpy(
+                                        &raw mut config.web_root as *mut ::core::ffi::c_char,
+                                        &raw mut storage_web_path as *mut ::core::ffi::c_char,
+                                        MAX_PATH_LENGTH as size_t,
+                                        0 as size_t,
+                                    );
+                                    _log_message_ctx(
+                                        log_level_t::LOG_LEVEL_WARN,
+                                        LOG_COMPONENT,
+                                        _log_stream_name,
+                                        b"Using storage path directly for web root: %s\0".as_ptr()
+                                            as *const ::core::ffi::c_char,
+                                        &raw mut config.web_root as *mut ::core::ffi::c_char,
                                     );
                                 } else {
                                     _log_message_ctx(
                                         log_level_t::LOG_LEVEL_INFO,
                                         LOG_COMPONENT,
                                         _log_stream_name,
-                                        b"Connected to MQTT broker\0".as_ptr()
+                                        b"Created symlink from %s to %s\0".as_ptr()
                                             as *const ::core::ffi::c_char,
+                                        &raw mut config.web_root as *mut ::core::ffi::c_char,
+                                        &raw mut storage_web_path as *mut ::core::ffi::c_char,
                                     );
                                 }
                             }
-                        }
-                        server_config = http_server_config_t {
-                            port: config.web_port,
-                            bind_ip: &raw mut config.web_bind_ip as *mut ::core::ffi::c_char,
-                            web_root: &raw mut config.web_root as *mut ::core::ffi::c_char,
-                            auth_enabled: config.web_auth_enabled,
-                            username: [0; 32],
-                            password: [0; 32],
-                            cors_enabled: r#true != 0,
-                            allowed_origins: [0; 256],
-                            allowed_methods: [0; 256],
-                            allowed_headers: [0; 256],
-                            ssl_enabled: config.web_ssl_enabled,
-                            cert_path: [0; 512],
-                            key_path: [0; 512],
-                            max_connections: 100 as ::core::ffi::c_int,
-                            connection_timeout: 30 as ::core::ffi::c_int,
-                            daemon_mode: daemon_mode,
-                            pid_file: [0; 512],
-                        };
-                        safe_strcpy(
-                            &raw mut server_config.cert_path as *mut ::core::ffi::c_char,
-                            &raw mut config.web_ssl_cert_path as *mut ::core::ffi::c_char,
-                            ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
-                            0 as size_t,
-                        );
-                        safe_strcpy(
-                            &raw mut server_config.key_path as *mut ::core::ffi::c_char,
-                            &raw mut config.web_ssl_key_path as *mut ::core::ffi::c_char,
-                            ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
-                            0 as size_t,
-                        );
-                        safe_strcpy(
-                            &raw mut server_config.allowed_origins as *mut ::core::ffi::c_char,
-                            b"*\0".as_ptr() as *const ::core::ffi::c_char,
-                            ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
-                            0 as size_t,
-                        );
-                        safe_strcpy(
-                            &raw mut server_config.allowed_methods as *mut ::core::ffi::c_char,
-                            b"GET, POST, PUT, DELETE, OPTIONS\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                            ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
-                            0 as size_t,
-                        );
-                        safe_strcpy(
-                            &raw mut server_config.allowed_headers as *mut ::core::ffi::c_char,
-                            b"Content-Type, Authorization\0".as_ptr() as *const ::core::ffi::c_char,
-                            ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
-                            0 as size_t,
-                        );
-                        if config.web_auth_enabled {
-                            safe_strcpy(
-                                &raw mut server_config.username as *mut ::core::ffi::c_char,
-                                &raw mut config.web_username as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
-                                0 as size_t,
-                            );
-                            safe_strcpy(
-                                &raw mut server_config.password as *mut ::core::ffi::c_char,
-                                &raw mut config.web_password as *mut ::core::ffi::c_char,
-                                ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
-                                0 as size_t,
-                            );
-                        }
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_INFO,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"Initializing web server on %s:%d (daemon_mode: %s)\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                            &raw mut config.web_bind_ip as *mut ::core::ffi::c_char,
-                            config.web_port,
-                            if daemon_mode as ::core::ffi::c_int != 0 {
-                                b"true\0".as_ptr() as *const ::core::ffi::c_char
-                            } else {
-                                b"false\0".as_ptr() as *const ::core::ffi::c_char
-                            },
-                        );
-                        http_server = libuv_server_init(&raw mut server_config);
-                        if http_server.is_null() {
+                        } else if mkdir_recursive(
+                            &raw mut config.web_root as *mut ::core::ffi::c_char,
+                        ) != 0
+                        {
                             _log_message_ctx(
                                 log_level_t::LOG_LEVEL_ERROR,
                                 LOG_COMPONENT,
                                 _log_stream_name,
-                                b"Failed to initialize libuv web server\0".as_ptr()
+                                b"Failed to create web root directory\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            );
+                            break '_cleanup;
+                        } else {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_INFO,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Created web root directory: %s\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                                &raw mut config.web_root as *mut ::core::ffi::c_char,
+                            );
+                        }
+                    }
+                    if system_health_evaluator_service_start() != 0 as ::core::ffi::c_int {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Host health evaluator could not be started\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                    }
+                    if system_health_start() != 0 as ::core::ffi::c_int {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Host health sampler workers could not be started\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                    } else if g_config.health.enabled {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_INFO,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Host health sampler started\0".as_ptr() as *const ::core::ffi::c_char,
+                        );
+                    }
+                    if init_stream_state_manager(config.max_streams) != 0 as ::core::ffi::c_int {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_ERROR,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Failed to initialize stream state manager\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                    } else if init_stream_state_adapter() != 0 as ::core::ffi::c_int {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_ERROR,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Failed to initialize stream state adapter\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                    } else if init_stream_manager(config.max_streams) != 0 as ::core::ffi::c_int {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_ERROR,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Failed to initialize stream manager\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                    } else if metrics_init(config.max_streams) != 0 as ::core::ffi::c_int {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_ERROR,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Failed to initialize metrics subsystem\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                    } else {
+                        player_telemetry_init();
+                        if !config.go2rtc_enabled {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_INFO,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"go2rtc is disabled in configuration. HLS will connect directly to camera streams.\0"
+                                    .as_ptr() as *const ::core::ffi::c_char,
+                            );
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_INFO,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"WebRTC live view will not be available. Enable go2rtc in settings if needed.\0"
+                                    .as_ptr() as *const ::core::ffi::c_char,
+                            );
+                        } else {
+                            go2rtc_process_validate_existing_override_on_upgrade();
+                            if !go2rtc_integration_full_start() {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_ERROR,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Failed to start go2rtc integration.\0".as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                );
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_ERROR,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Ensure go2rtc is installed and accessible (scripts/install_go2rtc.sh).\0"
+                                        .as_ptr() as *const ::core::ffi::c_char,
+                                );
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_ERROR,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"LiveView and WebRTC streaming will not be available until go2rtc is properly configured.\0"
+                                        .as_ptr() as *const ::core::ffi::c_char,
+                                );
+                            }
+                        }
+                        init_transcoding_backend();
+                        init_timestamp_trackers();
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_INFO,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Timestamp trackers initialized\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                        init_hls_streaming_backend();
+                        init_mp4_recording_backend();
+                        if init_detection_integration() != 0 as ::core::ffi::c_int {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_ERROR,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Failed to initialize detection system\0".as_ptr()
                                     as *const ::core::ffi::c_char,
                             );
                         } else {
@@ -3883,35 +4022,246 @@ unsafe fn main_0(
                                 log_level_t::LOG_LEVEL_INFO,
                                 LOG_COMPONENT,
                                 _log_stream_name,
-                                b"libuv web server initialized successfully\0".as_ptr()
+                                b"Detection system initialized successfully\0".as_ptr()
                                     as *const ::core::ffi::c_char,
                             );
-                            if register_all_libuv_handlers(http_server) != 0 as ::core::ffi::c_int {
+                        }
+                        init_detection_stream_system();
+                        if init_onvif_discovery() != 0 as ::core::ffi::c_int {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_ERROR,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Failed to initialize ONVIF discovery module\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            );
+                        } else {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_INFO,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"ONVIF discovery module initialized successfully\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            );
+                            if config.onvif_discovery_enabled {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_INFO,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Starting ONVIF discovery on network %s with interval %d seconds\0"
+                                        .as_ptr() as *const ::core::ffi::c_char,
+                                    &raw mut config.onvif_discovery_network
+                                        as *mut ::core::ffi::c_char,
+                                    config.onvif_discovery_interval,
+                                );
+                                if start_onvif_discovery(
+                                    &raw mut config.onvif_discovery_network
+                                        as *mut ::core::ffi::c_char,
+                                    config.onvif_discovery_interval,
+                                ) != 0 as ::core::ffi::c_int
+                                {
+                                    _log_message_ctx(
+                                        log_level_t::LOG_LEVEL_ERROR,
+                                        LOG_COMPONENT,
+                                        _log_stream_name,
+                                        b"Failed to start ONVIF discovery\0".as_ptr()
+                                            as *const ::core::ffi::c_char,
+                                    );
+                                } else {
+                                    _log_message_ctx(
+                                        log_level_t::LOG_LEVEL_INFO,
+                                        LOG_COMPONENT,
+                                        _log_stream_name,
+                                        b"ONVIF discovery started successfully\0".as_ptr()
+                                            as *const ::core::ffi::c_char,
+                                    );
+                                }
+                            }
+                        }
+                        if init_auth_system() != 0 as ::core::ffi::c_int {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_ERROR,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Failed to initialize authentication system\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            );
+                        } else {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_INFO,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Authentication system initialized successfully\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            );
+                            if batch_delete_progress_init() != 0 as ::core::ffi::c_int {
                                 _log_message_ctx(
                                     log_level_t::LOG_LEVEL_ERROR,
                                     LOG_COMPONENT,
                                     _log_stream_name,
-                                    b"Failed to register API handlers\0".as_ptr()
+                                    b"Failed to initialize batch delete progress tracking\0"
+                                        .as_ptr()
                                         as *const ::core::ffi::c_char,
                                 );
-                                http_server_destroy(http_server);
-                                http_server = ::core::ptr::null_mut::<http_server_t>();
                             } else {
                                 _log_message_ctx(
                                     log_level_t::LOG_LEVEL_INFO,
                                     LOG_COMPONENT,
                                     _log_stream_name,
-                                    b"API handlers registered successfully\0".as_ptr()
+                                    b"Batch delete progress tracking initialized successfully\0"
+                                        .as_ptr()
                                         as *const ::core::ffi::c_char,
                                 );
-                                if register_static_file_handler(http_server)
+                            }
+                            if mqtt_init(&raw mut config) != 0 as ::core::ffi::c_int {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_ERROR,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Failed to initialize MQTT runtime\0".as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                );
+                            } else {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_INFO,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"MQTT runtime initialized successfully\0".as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                );
+                                if mqtt_delivery_worker_start() != 0 as ::core::ffi::c_int {
+                                    _log_message_ctx(
+                                        log_level_t::LOG_LEVEL_ERROR,
+                                        LOG_COMPONENT,
+                                        _log_stream_name,
+                                        b"Failed to start durable MQTT delivery worker\0".as_ptr()
+                                            as *const ::core::ffi::c_char,
+                                    );
+                                }
+                                if config.mqtt_enabled {
+                                    if mqtt_connect() != 0 as ::core::ffi::c_int {
+                                        _log_message_ctx(
+                                            log_level_t::LOG_LEVEL_WARN,
+                                            LOG_COMPONENT,
+                                            _log_stream_name,
+                                            b"Failed to connect to MQTT broker, will retry automatically\0"
+                                                .as_ptr() as *const ::core::ffi::c_char,
+                                        );
+                                    } else {
+                                        _log_message_ctx(
+                                            log_level_t::LOG_LEVEL_INFO,
+                                            LOG_COMPONENT,
+                                            _log_stream_name,
+                                            b"Connected to MQTT broker\0".as_ptr()
+                                                as *const ::core::ffi::c_char,
+                                        );
+                                    }
+                                }
+                            }
+                            server_config = http_server_config_t {
+                                port: config.web_port,
+                                bind_ip: &raw mut config.web_bind_ip as *mut ::core::ffi::c_char,
+                                web_root: &raw mut config.web_root as *mut ::core::ffi::c_char,
+                                auth_enabled: config.web_auth_enabled,
+                                username: [0; 32],
+                                password: [0; 32],
+                                cors_enabled: r#false != 0,
+                                allowed_origins: [0; 256],
+                                allowed_methods: [0; 256],
+                                allowed_headers: [0; 256],
+                                ssl_enabled: config.web_ssl_enabled,
+                                cert_path: [0; 512],
+                                key_path: [0; 512],
+                                max_connections: 100 as ::core::ffi::c_int,
+                                connection_timeout: 30 as ::core::ffi::c_int,
+                                daemon_mode: daemon_mode,
+                                pid_file: [0; 512],
+                            };
+                            safe_strcpy(
+                                &raw mut server_config.cert_path as *mut ::core::ffi::c_char,
+                                &raw mut config.web_ssl_cert_path as *mut ::core::ffi::c_char,
+                                ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+                                0 as size_t,
+                            );
+                            safe_strcpy(
+                                &raw mut server_config.key_path as *mut ::core::ffi::c_char,
+                                &raw mut config.web_ssl_key_path as *mut ::core::ffi::c_char,
+                                ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+                                0 as size_t,
+                            );
+                            safe_strcpy(
+                                &raw mut server_config.allowed_origins as *mut ::core::ffi::c_char,
+                                b"\0".as_ptr() as *const ::core::ffi::c_char,
+                                ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+                                0 as size_t,
+                            );
+                            safe_strcpy(
+                                &raw mut server_config.allowed_methods as *mut ::core::ffi::c_char,
+                                b"GET, POST, PUT, DELETE, OPTIONS\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                                ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+                                0 as size_t,
+                            );
+                            safe_strcpy(
+                                &raw mut server_config.allowed_headers as *mut ::core::ffi::c_char,
+                                b"Content-Type, Authorization\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                                ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+                                0 as size_t,
+                            );
+                            if config.web_auth_enabled {
+                                safe_strcpy(
+                                    &raw mut server_config.username as *mut ::core::ffi::c_char,
+                                    &raw mut config.web_username as *mut ::core::ffi::c_char,
+                                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+                                    0 as size_t,
+                                );
+                                safe_strcpy(
+                                    &raw mut server_config.password as *mut ::core::ffi::c_char,
+                                    &raw mut config.web_password as *mut ::core::ffi::c_char,
+                                    ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+                                    0 as size_t,
+                                );
+                            }
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_INFO,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Initializing web server on %s:%d (daemon_mode: %s)\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                                &raw mut config.web_bind_ip as *mut ::core::ffi::c_char,
+                                config.web_port,
+                                if daemon_mode as ::core::ffi::c_int != 0 {
+                                    b"true\0".as_ptr() as *const ::core::ffi::c_char
+                                } else {
+                                    b"false\0".as_ptr() as *const ::core::ffi::c_char
+                                },
+                            );
+                            http_server = libuv_server_init(&raw mut server_config);
+                            if http_server.is_null() {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_ERROR,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Failed to initialize libuv web server\0".as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                );
+                            } else {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_INFO,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"libuv web server initialized successfully\0".as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                );
+                                if register_all_libuv_handlers(http_server)
                                     != 0 as ::core::ffi::c_int
                                 {
                                     _log_message_ctx(
                                         log_level_t::LOG_LEVEL_ERROR,
                                         LOG_COMPONENT,
                                         _log_stream_name,
-                                        b"Failed to register static file handler\0".as_ptr()
+                                        b"Failed to register API handlers\0".as_ptr()
                                             as *const ::core::ffi::c_char,
                                     );
                                     http_server_destroy(http_server);
@@ -3921,25 +4271,18 @@ unsafe fn main_0(
                                         log_level_t::LOG_LEVEL_INFO,
                                         LOG_COMPONENT,
                                         _log_stream_name,
-                                        b"Static file handler registered successfully\0".as_ptr()
+                                        b"API handlers registered successfully\0".as_ptr()
                                             as *const ::core::ffi::c_char,
                                     );
-                                    _log_message_ctx(
-                                        log_level_t::LOG_LEVEL_INFO,
-                                        LOG_COMPONENT,
-                                        _log_stream_name,
-                                        b"Starting web server...\0".as_ptr()
-                                            as *const ::core::ffi::c_char,
-                                    );
-                                    if http_server_start(http_server) != 0 as ::core::ffi::c_int {
+                                    if register_static_file_handler(http_server)
+                                        != 0 as ::core::ffi::c_int
+                                    {
                                         _log_message_ctx(
                                             log_level_t::LOG_LEVEL_ERROR,
                                             LOG_COMPONENT,
                                             _log_stream_name,
-                                            b"Failed to start libuv web server on %s:%d\0".as_ptr()
+                                            b"Failed to register static file handler\0".as_ptr()
                                                 as *const ::core::ffi::c_char,
-                                            &raw mut config.web_bind_ip as *mut ::core::ffi::c_char,
-                                            config.web_port,
                                         );
                                         http_server_destroy(http_server);
                                         http_server = ::core::ptr::null_mut::<http_server_t>();
@@ -3948,608 +4291,676 @@ unsafe fn main_0(
                                             log_level_t::LOG_LEVEL_INFO,
                                             LOG_COMPONENT,
                                             _log_stream_name,
-                                            b"libuv web server started successfully on %s:%d\0"
+                                            b"Static file handler registered successfully\0"
                                                 .as_ptr()
                                                 as *const ::core::ffi::c_char,
-                                            &raw mut config.web_bind_ip as *mut ::core::ffi::c_char,
-                                            config.web_port,
                                         );
-                                        init_health_check_system();
-                                        start_health_check_thread();
                                         _log_message_ctx(
                                             log_level_t::LOG_LEVEL_INFO,
                                             LOG_COMPONENT,
                                             _log_stream_name,
-                                            b"Web server health check system started\0".as_ptr()
+                                            b"Starting web server...\0".as_ptr()
                                                 as *const ::core::ffi::c_char,
                                         );
-                                        if daemon_mode {
+                                        if http_server_start(http_server) != 0 as ::core::ffi::c_int
+                                        {
+                                            _log_message_ctx(
+                                                log_level_t::LOG_LEVEL_ERROR,
+                                                LOG_COMPONENT,
+                                                _log_stream_name,
+                                                b"Failed to start libuv web server on %s:%d\0"
+                                                    .as_ptr()
+                                                    as *const ::core::ffi::c_char,
+                                                &raw mut config.web_bind_ip
+                                                    as *mut ::core::ffi::c_char,
+                                                config.web_port,
+                                            );
+                                            http_server_destroy(http_server);
+                                            http_server = ::core::ptr::null_mut::<http_server_t>();
+                                        } else {
                                             _log_message_ctx(
                                                 log_level_t::LOG_LEVEL_INFO,
                                                 LOG_COMPONENT,
                                                 _log_stream_name,
-                                                b"Daemon mode: Verifying port %d is accessible...\0"
+                                                b"libuv web server started successfully on %s:%d\0"
                                                     .as_ptr()
                                                     as *const ::core::ffi::c_char,
+                                                &raw mut config.web_bind_ip
+                                                    as *mut ::core::ffi::c_char,
                                                 config.web_port,
                                             );
-                                            sleep(1 as ::core::ffi::c_uint);
-                                            let mut test_socket: ::core::ffi::c_int = socket(
-                                                AF_INET,
-                                                __socket_type::SOCK_STREAM.0 as ::core::ffi::c_int,
-                                                0 as ::core::ffi::c_int,
+                                            init_health_check_system();
+                                            start_health_check_thread();
+                                            _log_message_ctx(
+                                                log_level_t::LOG_LEVEL_INFO,
+                                                LOG_COMPONENT,
+                                                _log_stream_name,
+                                                b"Web server health check system started\0".as_ptr()
+                                                    as *const ::core::ffi::c_char,
                                             );
-                                            if test_socket >= 0 as ::core::ffi::c_int {
-                                                let mut addr: sockaddr_in = sockaddr_in {
-                                                    sin_family: 0,
-                                                    sin_port: 0,
-                                                    sin_addr: in_addr { s_addr: 0 },
-                                                    sin_zero: [0; 8],
-                                                };
-                                                memset(
-                                                    &raw mut addr as *mut ::core::ffi::c_void,
+                                            if daemon_mode {
+                                                _log_message_ctx(
+                                                    log_level_t::LOG_LEVEL_INFO,
+                                                    LOG_COMPONENT,
+                                                    _log_stream_name,
+                                                    b"Daemon mode: Verifying port %d is accessible...\0"
+                                                        .as_ptr() as *const ::core::ffi::c_char,
+                                                    config.web_port,
+                                                );
+                                                sleep(1 as ::core::ffi::c_uint);
+                                                let mut test_socket: ::core::ffi::c_int = socket(
+                                                    AF_INET,
+                                                    __socket_type::SOCK_STREAM.0
+                                                        as ::core::ffi::c_int,
                                                     0 as ::core::ffi::c_int,
-                                                    ::core::mem::size_of::<sockaddr_in>(),
                                                 );
-                                                addr.sin_family = AF_INET as sa_family_t;
-                                                addr.sin_addr.s_addr = __bswap_32(
-                                                    0x7f000001 as ::core::ffi::c_int as __uint32_t,
-                                                )
-                                                    as in_addr_t;
-                                                addr.sin_port =
-                                                    __bswap_16(config.web_port as __uint16_t)
-                                                        as in_port_t;
-                                                if connect(
-                                                    test_socket,
-                                                    __CONST_SOCKADDR_ARG {
-                                                        __sockaddr__: &raw mut addr
-                                                            as *mut sockaddr,
-                                                    },
-                                                    ::core::mem::size_of::<sockaddr_in>()
-                                                        as socklen_t,
-                                                ) == 0 as ::core::ffi::c_int
-                                                {
-                                                    _log_message_ctx(
-                                                        log_level_t::LOG_LEVEL_INFO,
-                                                        LOG_COMPONENT,
-                                                        _log_stream_name,
-                                                        b"Port %d verification successful - server is accessible\0"
-                                                            .as_ptr() as *const ::core::ffi::c_char,
-                                                        config.web_port,
-                                                    );
-                                                } else {
-                                                    _log_message_ctx(
-                                                        log_level_t::LOG_LEVEL_WARN,
-                                                        LOG_COMPONENT,
-                                                        _log_stream_name,
-                                                        b"Port %d verification failed - server may not be accessible: %s\0"
-                                                            .as_ptr() as *const ::core::ffi::c_char,
-                                                        config.web_port,
-                                                        strerror(*__errno_location()),
-                                                    );
-                                                }
-                                                close(test_socket);
-                                            }
-                                        }
-                                        let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-                                        while i_0 < g_config.max_streams {
-                                            if (*config.streams.offset(i_0 as isize)).name[0usize]
-                                                as ::core::ffi::c_int
-                                                != '\0' as ::core::ffi::c_int
-                                                && (*config.streams.offset(i_0 as isize)).enabled
-                                                    as ::core::ffi::c_int
-                                                    != 0
-                                                && (*config.streams.offset(i_0 as isize))
-                                                    .detection_based_recording
-                                                    as ::core::ffi::c_int
-                                                    != 0
-                                                && is_detection_recording_scheduled(
-                                                    config.streams.offset(i_0 as isize),
-                                                )
-                                                    as ::core::ffi::c_int
-                                                    != 0
-                                            {
-                                                let mut model_path: [::core::ffi::c_char; 512] =
-                                                    [0; 512];
-                                                let mut is_api_based: bool = strcmp(
-                                                    &raw mut (*config.streams.offset(i_0 as isize))
-                                                        .detection_model
-                                                        as *mut ::core::ffi::c_char,
-                                                    b"api-detection\0".as_ptr()
-                                                        as *const ::core::ffi::c_char,
-                                                ) == 0
-                                                    as ::core::ffi::c_int
-                                                    || strcmp(
-                                                        &raw mut (*config
-                                                            .streams
-                                                            .offset(i_0 as isize))
-                                                        .detection_model
-                                                            as *mut ::core::ffi::c_char,
-                                                        b"motion\0".as_ptr()
-                                                            as *const ::core::ffi::c_char,
-                                                    ) == 0 as ::core::ffi::c_int
-                                                    || strcmp(
-                                                        &raw mut (*config
-                                                            .streams
-                                                            .offset(i_0 as isize))
-                                                        .detection_model
-                                                            as *mut ::core::ffi::c_char,
-                                                        b"onvif\0".as_ptr()
-                                                            as *const ::core::ffi::c_char,
-                                                    ) == 0 as ::core::ffi::c_int
-                                                    || strncmp(
-                                                        &raw mut (*config
-                                                            .streams
-                                                            .offset(i_0 as isize))
-                                                        .detection_model
-                                                            as *mut ::core::ffi::c_char,
-                                                        b"http://\0".as_ptr()
-                                                            as *const ::core::ffi::c_char,
-                                                        7 as size_t,
-                                                    ) == 0 as ::core::ffi::c_int
-                                                    || strncmp(
-                                                        &raw mut (*config
-                                                            .streams
-                                                            .offset(i_0 as isize))
-                                                        .detection_model
-                                                            as *mut ::core::ffi::c_char,
-                                                        b"https://\0".as_ptr()
-                                                            as *const ::core::ffi::c_char,
-                                                        8 as size_t,
-                                                    ) == 0 as ::core::ffi::c_int;
-                                                if (*config.streams.offset(i_0 as isize))
-                                                    .detection_model[0usize]
-                                                    as ::core::ffi::c_int
-                                                    == '\0' as ::core::ffi::c_int
-                                                {
-                                                    model_path[0usize] =
-                                                        '\0' as ::core::ffi::c_char;
-                                                    _log_message_ctx(
-                                                        log_level_t::LOG_LEVEL_INFO,
-                                                        LOG_COMPONENT,
-                                                        _log_stream_name,
-                                                        b"No local detection model configured for stream %s; external triggers remain available\0"
-                                                            .as_ptr() as *const ::core::ffi::c_char,
-                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                            as *mut ::core::ffi::c_char,
-                                                    );
-                                                } else if is_api_based {
-                                                    safe_strcpy(
-                                                        &raw mut model_path
-                                                            as *mut ::core::ffi::c_char,
-                                                        &raw mut (*config
-                                                            .streams
-                                                            .offset(i_0 as isize))
-                                                        .detection_model
-                                                            as *mut ::core::ffi::c_char,
-                                                        MAX_PATH_LENGTH as size_t,
-                                                        0 as size_t,
-                                                    );
-                                                    _log_message_ctx(
-                                                        log_level_t::LOG_LEVEL_INFO,
-                                                        LOG_COMPONENT,
-                                                        _log_stream_name,
-                                                        b"Using built-in/API detection for stream %s: %s\0".as_ptr()
-                                                            as *const ::core::ffi::c_char,
-                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                            as *mut ::core::ffi::c_char,
-                                                        &raw mut model_path as *mut ::core::ffi::c_char,
-                                                    );
-                                                } else if (*config.streams.offset(i_0 as isize))
-                                                    .detection_model[0usize]
-                                                    as ::core::ffi::c_int
-                                                    != '/' as ::core::ffi::c_int
-                                                {
-                                                    let mut models_dir: *const ::core::ffi::c_char =
-                                                        if config.models_path[0usize]
-                                                            as ::core::ffi::c_int
-                                                            != '\0' as ::core::ffi::c_int
-                                                        {
-                                                            &raw mut config.models_path
-                                                                as *mut ::core::ffi::c_char
-                                                        } else {
-                                                            b"/etc/lightnvr/models\0".as_ptr()
-                                                                as *const ::core::ffi::c_char
-                                                        };
-                                                    snprintf(
-                                                        &raw mut model_path
-                                                            as *mut ::core::ffi::c_char,
-                                                        ::core::mem::size_of::<
-                                                            [::core::ffi::c_char; 512],
-                                                        >(
-                                                        ),
-                                                        b"%s/%s\0".as_ptr()
-                                                            as *const ::core::ffi::c_char,
-                                                        models_dir,
-                                                        &raw mut (*config
-                                                            .streams
-                                                            .offset(i_0 as isize))
-                                                        .detection_model
-                                                            as *mut ::core::ffi::c_char,
-                                                    );
-                                                    let mut model_file: *mut FILE = fopen(
-                                                        &raw mut model_path
-                                                            as *mut ::core::ffi::c_char,
-                                                        b"r\0".as_ptr()
-                                                            as *const ::core::ffi::c_char,
-                                                    );
-                                                    if !model_file.is_null() {
-                                                        fclose(model_file);
-                                                        _log_message_ctx(
-                                                            log_level_t::LOG_LEVEL_INFO,
-                                                            LOG_COMPONENT,
-                                                            _log_stream_name,
-                                                            b"Detection model found: %s\0".as_ptr()
-                                                                as *const ::core::ffi::c_char,
-                                                            &raw mut model_path
-                                                                as *mut ::core::ffi::c_char,
-                                                        );
-                                                    } else {
-                                                        _log_message_ctx(
-                                                            log_level_t::LOG_LEVEL_ERROR,
-                                                            LOG_COMPONENT,
-                                                            _log_stream_name,
-                                                            b"Detection model not found: %s\0"
-                                                                .as_ptr()
-                                                                as *const ::core::ffi::c_char,
-                                                            &raw mut model_path
-                                                                as *mut ::core::ffi::c_char,
-                                                        );
-                                                        _log_message_ctx(
-                                                            log_level_t::LOG_LEVEL_ERROR,
-                                                            LOG_COMPONENT,
-                                                            _log_stream_name,
-                                                            b"Detection will not work properly!\0"
-                                                                .as_ptr()
-                                                                as *const ::core::ffi::c_char,
-                                                        );
-                                                        if mkdir_recursive(models_dir) != 0 {
-                                                            _log_message_ctx(
-                                                                log_level_t::LOG_LEVEL_ERROR,
-                                                                LOG_COMPONENT,
-                                                                _log_stream_name,
-                                                                b"Failed to create models directory: %s\0".as_ptr()
-                                                                    as *const ::core::ffi::c_char,
-                                                                strerror(*__errno_location()),
-                                                            );
-                                                        } else {
-                                                            _log_message_ctx(
-                                                                log_level_t::LOG_LEVEL_INFO,
-                                                                LOG_COMPONENT,
-                                                                _log_stream_name,
-                                                                b"Created models directory: %s\0"
-                                                                    .as_ptr()
-                                                                    as *const ::core::ffi::c_char,
-                                                                models_dir,
-                                                            );
-                                                        }
-                                                    }
-                                                } else {
-                                                    safe_strcpy(
-                                                        &raw mut model_path
-                                                            as *mut ::core::ffi::c_char,
-                                                        &raw mut (*config
-                                                            .streams
-                                                            .offset(i_0 as isize))
-                                                        .detection_model
-                                                            as *mut ::core::ffi::c_char,
-                                                        MAX_PATH_LENGTH as size_t,
-                                                        0 as size_t,
-                                                    );
-                                                    let mut model_file_0: *mut FILE = fopen(
-                                                        &raw mut model_path
-                                                            as *mut ::core::ffi::c_char,
-                                                        b"r\0".as_ptr()
-                                                            as *const ::core::ffi::c_char,
-                                                    );
-                                                    if !model_file_0.is_null() {
-                                                        fclose(model_file_0);
-                                                        _log_message_ctx(
-                                                            log_level_t::LOG_LEVEL_INFO,
-                                                            LOG_COMPONENT,
-                                                            _log_stream_name,
-                                                            b"Detection model found: %s\0".as_ptr()
-                                                                as *const ::core::ffi::c_char,
-                                                            &raw mut model_path
-                                                                as *mut ::core::ffi::c_char,
-                                                        );
-                                                    } else {
-                                                        _log_message_ctx(
-                                                            log_level_t::LOG_LEVEL_ERROR,
-                                                            LOG_COMPONENT,
-                                                            _log_stream_name,
-                                                            b"Detection model not found: %s\0"
-                                                                .as_ptr()
-                                                                as *const ::core::ffi::c_char,
-                                                            &raw mut model_path
-                                                                as *mut ::core::ffi::c_char,
-                                                        );
-                                                    }
-                                                }
-                                                _log_message_ctx(
-                                                    log_level_t::LOG_LEVEL_INFO,
-                                                    LOG_COMPONENT,
-                                                    _log_stream_name,
-                                                    b"Starting detection-based recording for stream %s with model %s\0"
-                                                        .as_ptr() as *const ::core::ffi::c_char,
-                                                    &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                        as *mut ::core::ffi::c_char,
-                                                    &raw mut model_path as *mut ::core::ffi::c_char,
-                                                );
-                                                _log_message_ctx(
-                                                    log_level_t::LOG_LEVEL_INFO,
-                                                    LOG_COMPONENT,
-                                                    _log_stream_name,
-                                                    b"Starting detection stream reader for stream %s with model %s\0"
-                                                        .as_ptr() as *const ::core::ffi::c_char,
-                                                    &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                        as *mut ::core::ffi::c_char,
-                                                    &raw mut model_path as *mut ::core::ffi::c_char,
-                                                );
-                                                let mut detection_interval: ::core::ffi::c_int =
-                                                    if (*config.streams.offset(i_0 as isize))
-                                                        .detection_interval
-                                                        > 0 as ::core::ffi::c_int
-                                                    {
-                                                        (*config.streams.offset(i_0 as isize))
-                                                            .detection_interval
-                                                    } else {
-                                                        10 as ::core::ffi::c_int
+                                                if test_socket >= 0 as ::core::ffi::c_int {
+                                                    let mut addr: sockaddr_in = sockaddr_in {
+                                                        sin_family: 0,
+                                                        sin_port: 0,
+                                                        sin_addr: in_addr { s_addr: 0 },
+                                                        sin_zero: [0; 8],
                                                     };
-                                                let mut result: ::core::ffi::c_int =
-                                                    start_detection_stream_reader(
-                                                        &raw mut (*config
-                                                            .streams
-                                                            .offset(i_0 as isize))
-                                                        .name
-                                                            as *mut ::core::ffi::c_char,
-                                                        detection_interval,
+                                                    memset(
+                                                        &raw mut addr as *mut ::core::ffi::c_void,
+                                                        0 as ::core::ffi::c_int,
+                                                        ::core::mem::size_of::<sockaddr_in>(),
                                                     );
-                                                if result == 0 as ::core::ffi::c_int {
-                                                    _log_message_ctx(
-                                                        log_level_t::LOG_LEVEL_INFO,
-                                                        LOG_COMPONENT,
-                                                        _log_stream_name,
-                                                        b"Successfully started detection stream reader for stream %s\0"
-                                                            .as_ptr() as *const ::core::ffi::c_char,
-                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                            as *mut ::core::ffi::c_char,
-                                                    );
-                                                    if is_detection_stream_reader_running(
-                                                        &raw mut (*config
-                                                            .streams
-                                                            .offset(i_0 as isize))
-                                                        .name
-                                                            as *mut ::core::ffi::c_char,
-                                                    ) != 0
+                                                    addr.sin_family = AF_INET as sa_family_t;
+                                                    addr.sin_addr.s_addr = __bswap_32(
+                                                        0x7f000001 as ::core::ffi::c_int
+                                                            as __uint32_t,
+                                                    )
+                                                        as in_addr_t;
+                                                    addr.sin_port =
+                                                        __bswap_16(config.web_port as __uint16_t)
+                                                            as in_port_t;
+                                                    if connect(
+                                                        test_socket,
+                                                        __CONST_SOCKADDR_ARG {
+                                                            __sockaddr__: &raw mut addr
+                                                                as *mut sockaddr,
+                                                        },
+                                                        ::core::mem::size_of::<sockaddr_in>()
+                                                            as socklen_t,
+                                                    ) == 0 as ::core::ffi::c_int
                                                     {
                                                         _log_message_ctx(
                                                             log_level_t::LOG_LEVEL_INFO,
                                                             LOG_COMPONENT,
                                                             _log_stream_name,
-                                                            b"Confirmed detection stream reader is running for %s\0"
+                                                            b"Port %d verification successful - server is accessible\0"
                                                                 .as_ptr() as *const ::core::ffi::c_char,
-                                                            &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                                as *mut ::core::ffi::c_char,
+                                                            config.web_port,
                                                         );
                                                     } else {
                                                         _log_message_ctx(
                                                             log_level_t::LOG_LEVEL_WARN,
                                                             LOG_COMPONENT,
                                                             _log_stream_name,
-                                                            b"Detection stream reader reported as not running for %s despite successful start\0"
+                                                            b"Port %d verification failed - server may not be accessible: %s\0"
                                                                 .as_ptr() as *const ::core::ffi::c_char,
-                                                            &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                                as *mut ::core::ffi::c_char,
+                                                            config.web_port,
+                                                            strerror(*__errno_location()),
                                                         );
                                                     }
-                                                } else {
-                                                    _log_message_ctx(
-                                                        log_level_t::LOG_LEVEL_ERROR,
-                                                        LOG_COMPONENT,
-                                                        _log_stream_name,
-                                                        b"Failed to start detection stream reader for stream %s: error code %d\0"
-                                                            .as_ptr() as *const ::core::ffi::c_char,
-                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                            as *mut ::core::ffi::c_char,
-                                                        result,
-                                                    );
+                                                    close(test_socket);
                                                 }
-                                                let mut annotation_only: bool =
-                                                    (*config.streams.offset(i_0 as isize)).record;
+                                            }
+                                            if !::core::sync::atomic::AtomicBool::from_ptr(&raw mut running).load(::core::sync::atomic::Ordering::SeqCst) || ::core::sync::atomic::AtomicBool::from_ptr(&raw mut restart_requested).load(::core::sync::atomic::Ordering::SeqCst)
+                                                as ::core::ffi::c_int
+                                                != 0
+                                            {
                                                 _log_message_ctx(
                                                     log_level_t::LOG_LEVEL_INFO,
                                                     LOG_COMPONENT,
                                                     _log_stream_name,
-                                                    b"Directly starting unified detection thread for stream %s with model %s (annotation_only=%s)\0"
+                                                    b"Shutdown/restart requested before detection stream startup; aborting startup loop\0"
                                                         .as_ptr() as *const ::core::ffi::c_char,
-                                                    &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                        as *mut ::core::ffi::c_char,
-                                                    &raw mut model_path as *mut ::core::ffi::c_char,
-                                                    if annotation_only as ::core::ffi::c_int != 0 {
-                                                        b"true\0".as_ptr() as *const ::core::ffi::c_char
-                                                    } else {
-                                                        b"false\0".as_ptr() as *const ::core::ffi::c_char
-                                                    },
                                                 );
-                                                if start_unified_detection_thread(
-                                                    &raw mut (*config.streams.offset(i_0 as isize))
-                                                        .name
-                                                        as *mut ::core::ffi::c_char,
-                                                    &raw mut model_path as *mut ::core::ffi::c_char,
-                                                    (*config.streams.offset(i_0 as isize))
-                                                        .detection_threshold,
-                                                    (*config.streams.offset(i_0 as isize))
-                                                        .pre_detection_buffer,
-                                                    (*config.streams.offset(i_0 as isize))
-                                                        .post_detection_buffer,
-                                                    annotation_only,
-                                                ) != 0 as ::core::ffi::c_int
-                                                {
-                                                    _log_message_ctx(
-                                                        log_level_t::LOG_LEVEL_WARN,
-                                                        LOG_COMPONENT,
-                                                        _log_stream_name,
-                                                        b"Failed to start unified detection thread for stream %s\0"
-                                                            .as_ptr() as *const ::core::ffi::c_char,
-                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                            as *mut ::core::ffi::c_char,
-                                                    );
-                                                } else {
+                                                exit_code = EXIT_SUCCESS;
+                                            } else {
+                                                let mut i_0: ::core::ffi::c_int =
+                                                    0 as ::core::ffi::c_int;
+                                                while i_0 < g_config.max_streams {
+                                                    if !::core::sync::atomic::AtomicBool::from_ptr(&raw mut running).load(::core::sync::atomic::Ordering::SeqCst) || ::core::sync::atomic::AtomicBool::from_ptr(&raw mut restart_requested).load(::core::sync::atomic::Ordering::SeqCst)
+                                                        as ::core::ffi::c_int
+                                                        != 0
+                                                    {
+                                                        _log_message_ctx(
+                                                            log_level_t::LOG_LEVEL_INFO,
+                                                            LOG_COMPONENT,
+                                                            _log_stream_name,
+                                                            b"Shutdown/restart requested during detection stream startup; aborting remaining stream startup\0"
+                                                                .as_ptr() as *const ::core::ffi::c_char,
+                                                        );
+                                                        exit_code = EXIT_SUCCESS;
+                                                        break '_cleanup;
+                                                    } else {
+                                                        's_1460: {
+                                                            if (*config
+                                                                .streams
+                                                                .offset(i_0 as isize))
+                                                            .name[0usize]
+                                                                as ::core::ffi::c_int
+                                                                != '\0' as ::core::ffi::c_int
+                                                                && (*config
+                                                                    .streams
+                                                                    .offset(i_0 as isize))
+                                                                .enabled
+                                                                    as ::core::ffi::c_int
+                                                                    != 0
+                                                                && (*config
+                                                                    .streams
+                                                                    .offset(i_0 as isize))
+                                                                .detection_based_recording
+                                                                    as ::core::ffi::c_int
+                                                                    != 0
+                                                                && is_detection_recording_scheduled(
+                                                                    config
+                                                                        .streams
+                                                                        .offset(i_0 as isize),
+                                                                )
+                                                                    as ::core::ffi::c_int
+                                                                    != 0
+                                                            {
+                                                                let mut model_path: [::core::ffi::c_char; 512] = [0; 512];
+                                                                let mut is_api_based: bool = strcmp(
+                                                                    &raw mut (*config.streams.offset(i_0 as isize))
+                                                                        .detection_model as *mut ::core::ffi::c_char,
+                                                                    b"api-detection\0".as_ptr() as *const ::core::ffi::c_char,
+                                                                ) == 0 as ::core::ffi::c_int
+                                                                    || strcmp(
+                                                                        &raw mut (*config.streams.offset(i_0 as isize))
+                                                                            .detection_model as *mut ::core::ffi::c_char,
+                                                                        b"motion\0".as_ptr() as *const ::core::ffi::c_char,
+                                                                    ) == 0 as ::core::ffi::c_int
+                                                                    || strcmp(
+                                                                        &raw mut (*config.streams.offset(i_0 as isize))
+                                                                            .detection_model as *mut ::core::ffi::c_char,
+                                                                        b"onvif\0".as_ptr() as *const ::core::ffi::c_char,
+                                                                    ) == 0 as ::core::ffi::c_int
+                                                                    || strncmp(
+                                                                        &raw mut (*config.streams.offset(i_0 as isize))
+                                                                            .detection_model as *mut ::core::ffi::c_char,
+                                                                        b"http://\0".as_ptr() as *const ::core::ffi::c_char,
+                                                                        7 as size_t,
+                                                                    ) == 0 as ::core::ffi::c_int
+                                                                    || strncmp(
+                                                                        &raw mut (*config.streams.offset(i_0 as isize))
+                                                                            .detection_model as *mut ::core::ffi::c_char,
+                                                                        b"https://\0".as_ptr() as *const ::core::ffi::c_char,
+                                                                        8 as size_t,
+                                                                    ) == 0 as ::core::ffi::c_int;
+                                                                if (*config
+                                                                    .streams
+                                                                    .offset(i_0 as isize))
+                                                                .detection_model[0usize]
+                                                                    as ::core::ffi::c_int
+                                                                    == '\0' as ::core::ffi::c_int
+                                                                {
+                                                                    model_path[0usize] =
+                                                                        '\0' as ::core::ffi::c_char;
+                                                                    _log_message_ctx(
+                                                                        log_level_t::LOG_LEVEL_INFO,
+                                                                        LOG_COMPONENT,
+                                                                        _log_stream_name,
+                                                                        b"No local detection model configured for stream %s; external triggers remain available\0"
+                                                                            .as_ptr() as *const ::core::ffi::c_char,
+                                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                            as *mut ::core::ffi::c_char,
+                                                                    );
+                                                                } else if is_api_based {
+                                                                    safe_strcpy(
+                                                                        &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                        &raw mut (*config.streams.offset(i_0 as isize))
+                                                                            .detection_model as *mut ::core::ffi::c_char,
+                                                                        MAX_PATH_LENGTH as size_t,
+                                                                        0 as size_t,
+                                                                    );
+                                                                    _log_message_ctx(
+                                                                        log_level_t::LOG_LEVEL_INFO,
+                                                                        LOG_COMPONENT,
+                                                                        _log_stream_name,
+                                                                        b"Using built-in/API detection for stream %s: %s\0".as_ptr()
+                                                                            as *const ::core::ffi::c_char,
+                                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                            as *mut ::core::ffi::c_char,
+                                                                        &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                    );
+                                                                } else if (*config
+                                                                    .streams
+                                                                    .offset(i_0 as isize))
+                                                                .detection_model[0usize]
+                                                                    as ::core::ffi::c_int
+                                                                    != '/' as ::core::ffi::c_int
+                                                                {
+                                                                    let mut models_dir: *const ::core::ffi::c_char = if config
+                                                                        .models_path[0usize] as ::core::ffi::c_int
+                                                                        != '\0' as ::core::ffi::c_int
+                                                                    {
+                                                                        &raw mut config.models_path as *mut ::core::ffi::c_char
+                                                                    } else {
+                                                                        b"/etc/lightnvr/models\0".as_ptr()
+                                                                            as *const ::core::ffi::c_char
+                                                                    };
+                                                                    let mut model_path_len: ::core::ffi::c_int = snprintf(
+                                                                        &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+                                                                        b"%s/%s\0".as_ptr() as *const ::core::ffi::c_char,
+                                                                        models_dir,
+                                                                        &raw mut (*config.streams.offset(i_0 as isize))
+                                                                            .detection_model as *mut ::core::ffi::c_char,
+                                                                    );
+                                                                    if model_path_len < 0 as ::core::ffi::c_int
+                                                                        || model_path_len as size_t
+                                                                            >= ::core::mem::size_of::<[::core::ffi::c_char; 512]>()
+                                                                    {
+                                                                        _log_message_ctx(
+                                                                            log_level_t::LOG_LEVEL_ERROR,
+                                                                            LOG_COMPONENT,
+                                                                            _log_stream_name,
+                                                                            b"Detection model path too long for stream %s (models_dir='%s', model='%s'); skipping detection startup for this stream\0"
+                                                                                .as_ptr() as *const ::core::ffi::c_char,
+                                                                            &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                                as *mut ::core::ffi::c_char,
+                                                                            models_dir,
+                                                                            &raw mut (*config.streams.offset(i_0 as isize))
+                                                                                .detection_model as *mut ::core::ffi::c_char,
+                                                                        );
+                                                                        break 's_1460;
+                                                                    } else {
+                                                                        let mut model_file: *mut FILE = fopen(
+                                                                            &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                            b"r\0".as_ptr() as *const ::core::ffi::c_char,
+                                                                        );
+                                                                        if !model_file.is_null() {
+                                                                            fclose(model_file);
+                                                                            _log_message_ctx(
+                                                                                log_level_t::LOG_LEVEL_INFO,
+                                                                                LOG_COMPONENT,
+                                                                                _log_stream_name,
+                                                                                b"Detection model found: %s\0".as_ptr()
+                                                                                    as *const ::core::ffi::c_char,
+                                                                                &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                            );
+                                                                        } else {
+                                                                            _log_message_ctx(
+                                                                                log_level_t::LOG_LEVEL_ERROR,
+                                                                                LOG_COMPONENT,
+                                                                                _log_stream_name,
+                                                                                b"Detection model not found: %s\0".as_ptr()
+                                                                                    as *const ::core::ffi::c_char,
+                                                                                &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                            );
+                                                                            _log_message_ctx(
+                                                                                log_level_t::LOG_LEVEL_ERROR,
+                                                                                LOG_COMPONENT,
+                                                                                _log_stream_name,
+                                                                                b"Detection will not work properly!\0".as_ptr()
+                                                                                    as *const ::core::ffi::c_char,
+                                                                            );
+                                                                            if mkdir_recursive(models_dir) != 0 {
+                                                                                _log_message_ctx(
+                                                                                    log_level_t::LOG_LEVEL_ERROR,
+                                                                                    LOG_COMPONENT,
+                                                                                    _log_stream_name,
+                                                                                    b"Failed to create models directory: %s\0".as_ptr()
+                                                                                        as *const ::core::ffi::c_char,
+                                                                                    strerror(*__errno_location()),
+                                                                                );
+                                                                            } else {
+                                                                                _log_message_ctx(
+                                                                                    log_level_t::LOG_LEVEL_INFO,
+                                                                                    LOG_COMPONENT,
+                                                                                    _log_stream_name,
+                                                                                    b"Created models directory: %s\0".as_ptr()
+                                                                                        as *const ::core::ffi::c_char,
+                                                                                    models_dir,
+                                                                                );
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                } else {
+                                                                    safe_strcpy(
+                                                                        &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                        &raw mut (*config.streams.offset(i_0 as isize))
+                                                                            .detection_model as *mut ::core::ffi::c_char,
+                                                                        MAX_PATH_LENGTH as size_t,
+                                                                        0 as size_t,
+                                                                    );
+                                                                    let mut model_file_0: *mut FILE = fopen(
+                                                                        &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                        b"r\0".as_ptr() as *const ::core::ffi::c_char,
+                                                                    );
+                                                                    if !model_file_0.is_null() {
+                                                                        fclose(model_file_0);
+                                                                        _log_message_ctx(
+                                                                            log_level_t::LOG_LEVEL_INFO,
+                                                                            LOG_COMPONENT,
+                                                                            _log_stream_name,
+                                                                            b"Detection model found: %s\0".as_ptr()
+                                                                                as *const ::core::ffi::c_char,
+                                                                            &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                        );
+                                                                    } else {
+                                                                        _log_message_ctx(
+                                                                            log_level_t::LOG_LEVEL_ERROR,
+                                                                            LOG_COMPONENT,
+                                                                            _log_stream_name,
+                                                                            b"Detection model not found: %s\0".as_ptr()
+                                                                                as *const ::core::ffi::c_char,
+                                                                            &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                        );
+                                                                    }
+                                                                }
+                                                                _log_message_ctx(
+                                                                    log_level_t::LOG_LEVEL_INFO,
+                                                                    LOG_COMPONENT,
+                                                                    _log_stream_name,
+                                                                    b"Starting detection-based recording for stream %s with model %s\0"
+                                                                        .as_ptr() as *const ::core::ffi::c_char,
+                                                                    &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                        as *mut ::core::ffi::c_char,
+                                                                    &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                );
+                                                                _log_message_ctx(
+                                                                    log_level_t::LOG_LEVEL_INFO,
+                                                                    LOG_COMPONENT,
+                                                                    _log_stream_name,
+                                                                    b"Starting detection stream reader for stream %s with model %s\0"
+                                                                        .as_ptr() as *const ::core::ffi::c_char,
+                                                                    &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                        as *mut ::core::ffi::c_char,
+                                                                    &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                );
+                                                                let mut detection_interval: ::core::ffi::c_int = if (*config
+                                                                    .streams
+                                                                    .offset(i_0 as isize))
+                                                                    .detection_interval > 0 as ::core::ffi::c_int
+                                                                {
+                                                                    (*config.streams.offset(i_0 as isize)).detection_interval
+                                                                } else {
+                                                                    10 as ::core::ffi::c_int
+                                                                };
+                                                                let mut result: ::core::ffi::c_int = start_detection_stream_reader(
+                                                                    &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                        as *mut ::core::ffi::c_char,
+                                                                    detection_interval,
+                                                                );
+                                                                if result == 0 as ::core::ffi::c_int
+                                                                {
+                                                                    _log_message_ctx(
+                                                                        log_level_t::LOG_LEVEL_INFO,
+                                                                        LOG_COMPONENT,
+                                                                        _log_stream_name,
+                                                                        b"Successfully started detection stream reader for stream %s\0"
+                                                                            .as_ptr() as *const ::core::ffi::c_char,
+                                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                            as *mut ::core::ffi::c_char,
+                                                                    );
+                                                                    if is_detection_stream_reader_running(
+                                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                            as *mut ::core::ffi::c_char,
+                                                                    ) != 0
+                                                                    {
+                                                                        _log_message_ctx(
+                                                                            log_level_t::LOG_LEVEL_INFO,
+                                                                            LOG_COMPONENT,
+                                                                            _log_stream_name,
+                                                                            b"Confirmed detection stream reader is running for %s\0"
+                                                                                .as_ptr() as *const ::core::ffi::c_char,
+                                                                            &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                                as *mut ::core::ffi::c_char,
+                                                                        );
+                                                                    } else {
+                                                                        _log_message_ctx(
+                                                                            log_level_t::LOG_LEVEL_WARN,
+                                                                            LOG_COMPONENT,
+                                                                            _log_stream_name,
+                                                                            b"Detection stream reader reported as not running for %s despite successful start\0"
+                                                                                .as_ptr() as *const ::core::ffi::c_char,
+                                                                            &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                                as *mut ::core::ffi::c_char,
+                                                                        );
+                                                                    }
+                                                                } else {
+                                                                    _log_message_ctx(
+                                                                        log_level_t::LOG_LEVEL_ERROR,
+                                                                        LOG_COMPONENT,
+                                                                        _log_stream_name,
+                                                                        b"Failed to start detection stream reader for stream %s: error code %d\0"
+                                                                            .as_ptr() as *const ::core::ffi::c_char,
+                                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                            as *mut ::core::ffi::c_char,
+                                                                        result,
+                                                                    );
+                                                                }
+                                                                let mut annotation_only: bool = (*config
+                                                                    .streams
+                                                                    .offset(i_0 as isize))
+                                                                    .record as ::core::ffi::c_int != 0
+                                                                    && get_recording_state(
+                                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                            as *mut ::core::ffi::c_char,
+                                                                    ) == 1 as ::core::ffi::c_int;
+                                                                _log_message_ctx(
+                                                                    log_level_t::LOG_LEVEL_INFO,
+                                                                    LOG_COMPONENT,
+                                                                    _log_stream_name,
+                                                                    b"Directly starting unified detection thread for stream %s with model %s (annotation_only=%s)\0"
+                                                                        .as_ptr() as *const ::core::ffi::c_char,
+                                                                    &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                        as *mut ::core::ffi::c_char,
+                                                                    &raw mut model_path as *mut ::core::ffi::c_char,
+                                                                    if annotation_only as ::core::ffi::c_int != 0 {
+                                                                        b"true\0".as_ptr() as *const ::core::ffi::c_char
+                                                                    } else {
+                                                                        b"false\0".as_ptr() as *const ::core::ffi::c_char
+                                                                    },
+                                                                );
+                                                                if start_unified_detection_thread(
+                                                                    &raw mut (*config
+                                                                        .streams
+                                                                        .offset(i_0 as isize))
+                                                                    .name
+                                                                        as *mut ::core::ffi::c_char,
+                                                                    &raw mut model_path
+                                                                        as *mut ::core::ffi::c_char,
+                                                                    (*config
+                                                                        .streams
+                                                                        .offset(i_0 as isize))
+                                                                    .detection_threshold,
+                                                                    (*config
+                                                                        .streams
+                                                                        .offset(i_0 as isize))
+                                                                    .pre_detection_buffer,
+                                                                    (*config
+                                                                        .streams
+                                                                        .offset(i_0 as isize))
+                                                                    .post_detection_buffer,
+                                                                    annotation_only,
+                                                                ) != 0 as ::core::ffi::c_int
+                                                                {
+                                                                    _log_message_ctx(
+                                                                        log_level_t::LOG_LEVEL_WARN,
+                                                                        LOG_COMPONENT,
+                                                                        _log_stream_name,
+                                                                        b"Failed to start unified detection thread for stream %s\0"
+                                                                            .as_ptr() as *const ::core::ffi::c_char,
+                                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                            as *mut ::core::ffi::c_char,
+                                                                    );
+                                                                } else {
+                                                                    _log_message_ctx(
+                                                                        log_level_t::LOG_LEVEL_INFO,
+                                                                        LOG_COMPONENT,
+                                                                        _log_stream_name,
+                                                                        b"Successfully started unified detection thread for stream %s\0"
+                                                                            .as_ptr() as *const ::core::ffi::c_char,
+                                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
+                                                                            as *mut ::core::ffi::c_char,
+                                                                    );
+                                                                }
+                                                            }
+                                                        }
+                                                        i_0 += 1;
+                                                    }
+                                                }
+                                                if config.go2rtc_enabled {
                                                     _log_message_ctx(
                                                         log_level_t::LOG_LEVEL_INFO,
                                                         LOG_COMPONENT,
                                                         _log_stream_name,
-                                                        b"Successfully started unified detection thread for stream %s\0"
+                                                        b"Waiting 5 seconds for go2rtc to settle before starting recordings...\0"
                                                             .as_ptr() as *const ::core::ffi::c_char,
-                                                        &raw mut (*config.streams.offset(i_0 as isize)).name
-                                                            as *mut ::core::ffi::c_char,
                                                     );
+                                                    sleep(5 as ::core::ffi::c_uint);
                                                 }
-                                            }
-                                            i_0 += 1;
-                                        }
-                                        if config.go2rtc_enabled {
-                                            _log_message_ctx(
-                                                log_level_t::LOG_LEVEL_INFO,
-                                                LOG_COMPONENT,
-                                                _log_stream_name,
-                                                b"Waiting 5 seconds for go2rtc to settle before starting recordings...\0"
-                                                    .as_ptr() as *const ::core::ffi::c_char,
-                                            );
-                                            sleep(5 as ::core::ffi::c_uint);
-                                        }
-                                        check_and_ensure_services();
-                                        _log_message_ctx(
-                                            log_level_t::LOG_LEVEL_INFO,
-                                            LOG_COMPONENT,
-                                            _log_stream_name,
-                                            b"LightNVR initialized successfully\0".as_ptr()
-                                                as *const ::core::ffi::c_char,
-                                        );
-                                        service_check_init_time =
-                                            time(::core::ptr::null_mut::<time_t>());
-                                        while running {
-                                            static mut last_log_time: time_t = 0 as time_t;
-                                            static mut last_status_time: time_t = 0 as time_t;
-                                            static mut last_ffmpeg_leak_check_time: time_t =
-                                                0 as time_t;
-                                            static mut last_service_check_time: time_t =
-                                                0 as time_t;
-                                            static mut last_db_backup_check_time: time_t =
-                                                0 as time_t;
-                                            static mut last_audit_summary_flush_time: time_t =
-                                                0 as time_t;
-                                            let mut now: time_t =
-                                                time(::core::ptr::null_mut::<time_t>());
-                                            if last_service_check_time == 0 as time_t {
-                                                last_service_check_time = service_check_init_time;
-                                            }
-                                            if now - last_log_time > 60 as time_t {
+                                                check_and_ensure_services();
                                                 _log_message_ctx(
-                                                    log_level_t::LOG_LEVEL_DEBUG,
+                                                    log_level_t::LOG_LEVEL_INFO,
                                                     LOG_COMPONENT,
                                                     _log_stream_name,
-                                                    b"Daemon is still running... (running=%d, restart_requested=%d)\0"
+                                                    b"LightNVR initialized successfully\0".as_ptr()
+                                                        as *const ::core::ffi::c_char,
+                                                );
+                                                service_check_init_time =
+                                                    time(::core::ptr::null_mut::<time_t>());
+                                                while running {
+                                                    static mut last_log_time: time_t = 0 as time_t;
+                                                    static mut last_status_time: time_t =
+                                                        0 as time_t;
+                                                    static mut last_ffmpeg_leak_check_time: time_t =
+                                                        0 as time_t;
+                                                    static mut last_service_check_time: time_t =
+                                                        0 as time_t;
+                                                    static mut last_db_backup_check_time: time_t =
+                                                        0 as time_t;
+                                                    static mut last_audit_summary_flush_time:
+                                                        time_t = 0 as time_t;
+                                                    let mut now: time_t =
+                                                        time(::core::ptr::null_mut::<time_t>());
+                                                    if last_service_check_time == 0 as time_t {
+                                                        last_service_check_time =
+                                                            service_check_init_time;
+                                                    }
+                                                    if now - last_log_time > 60 as time_t {
+                                                        _log_message_ctx(
+                                                            log_level_t::LOG_LEVEL_DEBUG,
+                                                            LOG_COMPONENT,
+                                                            _log_stream_name,
+                                                            b"Daemon is still running... (running=%d, restart_requested=%d)\0"
+                                                                .as_ptr() as *const ::core::ffi::c_char,
+                                                            running as ::core::ffi::c_int,
+                                                            restart_requested as ::core::ffi::c_int,
+                                                        );
+                                                        last_log_time = now;
+                                                    }
+                                                    if now - last_status_time > 300 as time_t {
+                                                        print_detection_stream_status();
+                                                        last_status_time = now;
+                                                    }
+                                                    if now - last_ffmpeg_leak_check_time
+                                                        > 600 as time_t
+                                                    {
+                                                        _log_message_ctx(
+                                                            log_level_t::LOG_LEVEL_INFO,
+                                                            LOG_COMPONENT,
+                                                            _log_stream_name,
+                                                            b"Checking for FFmpeg memory leaks...\0"
+                                                                .as_ptr()
+                                                                as *const ::core::ffi::c_char,
+                                                        );
+                                                        let mut allocation_count: ::core::ffi::c_int = ffmpeg_get_allocation_count();
+                                                        _log_message_ctx(
+                                                            log_level_t::LOG_LEVEL_INFO,
+                                                            LOG_COMPONENT,
+                                                            _log_stream_name,
+                                                            b"Current FFmpeg allocations: %d\0"
+                                                                .as_ptr()
+                                                                as *const ::core::ffi::c_char,
+                                                            allocation_count,
+                                                        );
+                                                        if allocation_count
+                                                            > 100 as ::core::ffi::c_int
+                                                        {
+                                                            _log_message_ctx(
+                                                                log_level_t::LOG_LEVEL_WARN,
+                                                                LOG_COMPONENT,
+                                                                _log_stream_name,
+                                                                b"Potential FFmpeg memory leak detected: %d allocations\0"
+                                                                    .as_ptr() as *const ::core::ffi::c_char,
+                                                                allocation_count,
+                                                            );
+                                                            ffmpeg_dump_allocations();
+                                                        }
+                                                        last_ffmpeg_leak_check_time = now;
+                                                    }
+                                                    if now - last_service_check_time > 30 as time_t
+                                                    {
+                                                        check_and_ensure_services();
+                                                        last_service_check_time = now;
+                                                    }
+                                                    if now - last_audit_summary_flush_time
+                                                        > 60 as time_t
+                                                    {
+                                                        audit_log_flush_summaries(r#true != 0);
+                                                        last_audit_summary_flush_time = now;
+                                                    }
+                                                    if now - last_db_backup_check_time
+                                                        > 60 as time_t
+                                                    {
+                                                        if maybe_run_scheduled_database_backup()
+                                                            < 0 as ::core::ffi::c_int
+                                                        {
+                                                            _log_message_ctx(
+                                                                log_level_t::LOG_LEVEL_WARN,
+                                                                LOG_COMPONENT,
+                                                                _log_stream_name,
+                                                                b"Scheduled database backup could not be started\0".as_ptr()
+                                                                    as *const ::core::ffi::c_char,
+                                                            );
+                                                        }
+                                                        last_db_backup_check_time = now;
+                                                    }
+                                                    if restart_requested {
+                                                        _log_message_ctx(
+                                                            log_level_t::LOG_LEVEL_INFO,
+                                                            LOG_COMPONENT,
+                                                            _log_stream_name,
+                                                            b"Main loop detected restart_requested=true, running=%d - exiting loop immediately\0"
+                                                                .as_ptr() as *const ::core::ffi::c_char,
+                                                            running as ::core::ffi::c_int,
+                                                        );
+                                                        break;
+                                                    } else {
+                                                        let mut i_1: ::core::ffi::c_int =
+                                                            0 as ::core::ffi::c_int;
+                                                        while i_1 < 10 as ::core::ffi::c_int
+                                                            && running as ::core::ffi::c_int != 0
+                                                        {
+                                                            usleep(
+                                                                100000 as ::core::ffi::c_int
+                                                                    as __useconds_t,
+                                                            );
+                                                            i_1 += 1;
+                                                        }
+                                                    }
+                                                }
+                                                _log_message_ctx(
+                                                    log_level_t::LOG_LEVEL_INFO,
+                                                    LOG_COMPONENT,
+                                                    _log_stream_name,
+                                                    b"Shutting down LightNVR... (running=%d, restart_requested=%d)\0"
                                                         .as_ptr() as *const ::core::ffi::c_char,
                                                     running as ::core::ffi::c_int,
                                                     restart_requested as ::core::ffi::c_int,
                                                 );
-                                                last_log_time = now;
-                                            }
-                                            if now - last_status_time > 300 as time_t {
-                                                print_detection_stream_status();
-                                                last_status_time = now;
-                                            }
-                                            if now - last_ffmpeg_leak_check_time > 600 as time_t {
-                                                _log_message_ctx(
-                                                    log_level_t::LOG_LEVEL_INFO,
-                                                    LOG_COMPONENT,
-                                                    _log_stream_name,
-                                                    b"Checking for FFmpeg memory leaks...\0"
-                                                        .as_ptr()
-                                                        as *const ::core::ffi::c_char,
-                                                );
-                                                let mut allocation_count: ::core::ffi::c_int =
-                                                    ffmpeg_get_allocation_count();
-                                                _log_message_ctx(
-                                                    log_level_t::LOG_LEVEL_INFO,
-                                                    LOG_COMPONENT,
-                                                    _log_stream_name,
-                                                    b"Current FFmpeg allocations: %d\0".as_ptr()
-                                                        as *const ::core::ffi::c_char,
-                                                    allocation_count,
-                                                );
-                                                if allocation_count > 100 as ::core::ffi::c_int {
-                                                    _log_message_ctx(
-                                                        log_level_t::LOG_LEVEL_WARN,
-                                                        LOG_COMPONENT,
-                                                        _log_stream_name,
-                                                        b"Potential FFmpeg memory leak detected: %d allocations\0"
-                                                            .as_ptr() as *const ::core::ffi::c_char,
-                                                        allocation_count,
-                                                    );
-                                                    ffmpeg_dump_allocations();
-                                                }
-                                                last_ffmpeg_leak_check_time = now;
-                                            }
-                                            if now - last_service_check_time > 30 as time_t {
-                                                check_and_ensure_services();
-                                                last_service_check_time = now;
-                                            }
-                                            if now - last_audit_summary_flush_time > 60 as time_t {
-                                                audit_log_flush_summaries(r#true != 0);
-                                                last_audit_summary_flush_time = now;
-                                            }
-                                            if now - last_db_backup_check_time > 60 as time_t {
-                                                if maybe_run_scheduled_database_backup()
-                                                    < 0 as ::core::ffi::c_int
-                                                {
-                                                    _log_message_ctx(
-                                                        log_level_t::LOG_LEVEL_WARN,
-                                                        LOG_COMPONENT,
-                                                        _log_stream_name,
-                                                        b"Scheduled database backup could not be started\0".as_ptr()
-                                                            as *const ::core::ffi::c_char,
-                                                    );
-                                                }
-                                                last_db_backup_check_time = now;
-                                            }
-                                            if restart_requested {
-                                                _log_message_ctx(
-                                                    log_level_t::LOG_LEVEL_INFO,
-                                                    LOG_COMPONENT,
-                                                    _log_stream_name,
-                                                    b"Main loop detected restart_requested=true, running=%d - exiting loop immediately\0"
-                                                        .as_ptr() as *const ::core::ffi::c_char,
-                                                    running as ::core::ffi::c_int,
-                                                );
-                                                break;
-                                            } else {
-                                                let mut i_1: ::core::ffi::c_int =
-                                                    0 as ::core::ffi::c_int;
-                                                while i_1 < 10 as ::core::ffi::c_int
-                                                    && running as ::core::ffi::c_int != 0
-                                                {
-                                                    usleep(
-                                                        100000 as ::core::ffi::c_int
-                                                            as __useconds_t,
-                                                    );
-                                                    i_1 += 1;
-                                                }
+                                                initiate_shutdown();
+                                                exit_code = EXIT_SUCCESS;
                                             }
                                         }
-                                        _log_message_ctx(
-                                            log_level_t::LOG_LEVEL_INFO,
-                                            LOG_COMPONENT,
-                                            _log_stream_name,
-                                            b"Shutting down LightNVR... (running=%d, restart_requested=%d)\0"
-                                                .as_ptr() as *const ::core::ffi::c_char,
-                                            running as ::core::ffi::c_int,
-                                            restart_requested as ::core::ffi::c_int,
-                                        );
-                                        initiate_shutdown();
-                                        exit_code = EXIT_SUCCESS;
                                     }
                                 }
                             }
@@ -4572,6 +4983,13 @@ unsafe fn main_0(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
         _log_stream_name,
+        b"Stopping health check system...\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    cleanup_health_check_system();
+    _log_message_ctx(
+        log_level_t::LOG_LEVEL_INFO,
+        LOG_COMPONENT,
+        _log_stream_name,
         b"Stopping web server to prevent requests during shutdown...\0".as_ptr()
             as *const ::core::ffi::c_char,
     );
@@ -4580,13 +4998,6 @@ unsafe fn main_0(
         http_server_destroy(http_server);
         http_server = ::core::ptr::null_mut::<http_server_t>();
     }
-    _log_message_ctx(
-        log_level_t::LOG_LEVEL_INFO,
-        LOG_COMPONENT,
-        _log_stream_name,
-        b"Stopping health check system...\0".as_ptr() as *const ::core::ffi::c_char,
-    );
-    cleanup_health_check_system();
     let mut block_mask: sigset_t = __sigset_t { __val: [0; 16] };
     let mut old_mask: sigset_t = __sigset_t { __val: [0; 16] };
     sigfillset(&raw mut block_mask);
@@ -4594,9 +5005,53 @@ unsafe fn main_0(
     sigdelset(&raw mut block_mask, SIGALRM);
     sigdelset(&raw mut block_mask, SIGKILL);
     pthread_sigmask(SIG_BLOCK, &raw mut block_mask, &raw mut old_mask);
+    let mut expected_parent_pid: pid_t = getpid();
+    let mut watchdog_parent_pidfd: ::core::ffi::c_int = open_pidfd_for_pid(expected_parent_pid);
+    let mut watchdog_max_fd: ::core::ffi::c_long =
+        sysconf(C2Rust_Unnamed_10::_SC_OPEN_MAX.0 as ::core::ffi::c_int);
+    if watchdog_max_fd < 0 as ::core::ffi::c_long {
+        watchdog_max_fd = 1024 as ::core::ffi::c_long;
+    }
     let mut cleanup_pid: pid_t = fork();
     if cleanup_pid == 0 as ::core::ffi::c_int {
         setpgid(0 as __pid_t, 0 as __pid_t);
+        let mut close_range_failed: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+        if watchdog_parent_pidfd >= 3 as ::core::ffi::c_int {
+            let mut lower_closed: bool = watchdog_parent_pidfd == 3 as ::core::ffi::c_int
+                || syscall(
+                    SYS_close_range as ::core::ffi::c_long,
+                    3 as ::core::ffi::c_uint,
+                    (watchdog_parent_pidfd as ::core::ffi::c_uint)
+                        .wrapping_sub(1 as ::core::ffi::c_uint),
+                    0 as ::core::ffi::c_uint,
+                ) == 0 as ::core::ffi::c_long;
+            let mut upper_closed: bool = syscall(
+                SYS_close_range as ::core::ffi::c_long,
+                (watchdog_parent_pidfd as ::core::ffi::c_uint)
+                    .wrapping_add(1 as ::core::ffi::c_uint),
+                !(0 as ::core::ffi::c_uint),
+                0 as ::core::ffi::c_uint,
+            ) == 0 as ::core::ffi::c_long;
+            close_range_failed = !(lower_closed as ::core::ffi::c_int != 0
+                && upper_closed as ::core::ffi::c_int != 0)
+                as ::core::ffi::c_int;
+        } else {
+            close_range_failed = (syscall(
+                SYS_close_range as ::core::ffi::c_long,
+                3 as ::core::ffi::c_uint,
+                !(0 as ::core::ffi::c_uint),
+                0 as ::core::ffi::c_uint,
+            ) != 0 as ::core::ffi::c_long) as ::core::ffi::c_int;
+        }
+        if close_range_failed != 0 {
+            let mut fd: ::core::ffi::c_long = 3 as ::core::ffi::c_long;
+            while fd < watchdog_max_fd {
+                if fd != watchdog_parent_pidfd as ::core::ffi::c_long {
+                    close(fd as ::core::ffi::c_int);
+                }
+                fd += 1;
+            }
+        }
         let mut sa_default: sigaction = sigaction {
             __sigaction_handler: C2Rust_Unnamed_9 { sa_handler: None },
             sa_mask: __sigset_t { __val: [0; 16] },
@@ -4629,6 +5084,11 @@ unsafe fn main_0(
             &raw mut sa_default,
             ::core::ptr::null_mut::<sigaction>(),
         );
+        sigaction(
+            SIGHUP,
+            &raw mut sa_default,
+            ::core::ptr::null_mut::<sigaction>(),
+        );
         let mut empty_mask: sigset_t = __sigset_t { __val: [0; 16] };
         sigemptyset(&raw mut empty_mask);
         sigprocmask(
@@ -4636,44 +5096,88 @@ unsafe fn main_0(
             &raw mut empty_mask,
             ::core::ptr::null_mut::<sigset_t>(),
         );
-        let mut parent_pid: pid_t = getppid();
-        sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS as ::core::ffi::c_uint);
-        if getppid() != parent_pid {
-            _exit(EXIT_SUCCESS);
+        let mut parent_pid: pid_t = expected_parent_pid;
+        let mut watchdog_deadline: timespec = timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        if clock_gettime(CLOCK_MONOTONIC, &raw mut watchdog_deadline) == 0 as ::core::ffi::c_int {
+            watchdog_deadline.tv_sec += SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS as __time_t;
+            let mut sleep_result: ::core::ffi::c_int = 0;
+            loop {
+                sleep_result = clock_nanosleep(
+                    CLOCK_MONOTONIC,
+                    TIMER_ABSTIME,
+                    &raw mut watchdog_deadline,
+                    ::core::ptr::null_mut::<timespec>(),
+                );
+                if sleep_result != EINTR {
+                    break;
+                }
+            }
+        } else {
+            let mut remaining: ::core::ffi::c_uint =
+                SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS as ::core::ffi::c_uint;
+            while remaining > 0 as ::core::ffi::c_uint {
+                remaining = sleep(remaining);
+            }
         }
-        kill(parent_pid, SIGUSR1);
-        sleep(15 as ::core::ffi::c_uint);
-        if getppid() != parent_pid {
-            _exit(EXIT_SUCCESS);
+        if watchdog_parent_pidfd >= 0 as ::core::ffi::c_int {
+            send_signal_via_pidfd(watchdog_parent_pidfd, SIGKILL);
+            close(watchdog_parent_pidfd);
         }
-        kill(parent_pid, SIGKILL);
         if restart_requested {
             if container_mode {
                 _exit(EXIT_SUCCESS);
             } else if !saved_argv.is_null() {
-                usleep(2000000 as ::core::ffi::c_int as __useconds_t);
+                let mut initial_delay: timespec = timespec {
+                    tv_sec: 2 as __time_t,
+                    tv_nsec: 0 as __syscall_slong_t,
+                };
+                while nanosleep(&raw mut initial_delay, &raw mut initial_delay)
+                    == -1 as ::core::ffi::c_int
+                    && *__errno_location() == EINTR
+                {}
+                let mut parent_exited: bool = getppid() != parent_pid;
                 let mut i_2: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-                while i_2 < 10 as ::core::ffi::c_int {
-                    if kill(parent_pid, 0 as ::core::ffi::c_int) != 0 as ::core::ffi::c_int {
+                while i_2 < 10 as ::core::ffi::c_int && !parent_exited {
+                    if getppid() != parent_pid {
+                        parent_exited = r#true != 0;
                         break;
+                    } else {
+                        let mut poll_delay: timespec = timespec {
+                            tv_sec: 0 as __time_t,
+                            tv_nsec: 500000000 as __syscall_slong_t,
+                        };
+                        while nanosleep(&raw mut poll_delay, &raw mut poll_delay)
+                            == -1 as ::core::ffi::c_int
+                            && *__errno_location() == EINTR
+                        {}
+                        i_2 += 1;
                     }
-                    usleep(500000 as ::core::ffi::c_int as __useconds_t);
-                    i_2 += 1;
                 }
-                let mut exe_path: [::core::ffi::c_char; 512] = [0; 512];
-                let mut len: ssize_t = readlink(
-                    b"/proc/self/exe\0".as_ptr() as *const ::core::ffi::c_char,
-                    &raw mut exe_path as *mut ::core::ffi::c_char,
-                    ::core::mem::size_of::<[::core::ffi::c_char; 512]>().wrapping_sub(1 as size_t),
-                );
-                if len > 0 as ssize_t {
-                    exe_path[len as usize] = '\0' as ::core::ffi::c_char;
-                    execv(&raw mut exe_path as *mut ::core::ffi::c_char, saved_argv);
+                if parent_exited {
+                    execv(
+                        b"/proc/self/exe\0".as_ptr() as *const ::core::ffi::c_char,
+                        saved_argv,
+                    );
                 }
             }
         }
         _exit(EXIT_FAILURE);
-    } else if cleanup_pid > 0 as ::core::ffi::c_int {
+    } else {
+        if watchdog_parent_pidfd >= 0 as ::core::ffi::c_int {
+            close(watchdog_parent_pidfd);
+        }
+        if cleanup_pid < 0 as ::core::ffi::c_int {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Failed to create watchdog process for cleanup timeout\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+            );
+        }
         let mut sa_usr1: sigaction = sigaction {
             __sigaction_handler: C2Rust_Unnamed_9 { sa_handler: None },
             sa_mask: __sigset_t { __val: [0; 16] },
@@ -4730,9 +5234,6 @@ unsafe fn main_0(
                 && (*config.streams.offset(i_3 as isize)).detection_based_recording
                     as ::core::ffi::c_int
                     != 0
-                && (*config.streams.offset(i_3 as isize)).detection_model[0usize]
-                    as ::core::ffi::c_int
-                    != '\0' as ::core::ffi::c_int
             {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_INFO,
@@ -4764,26 +5265,123 @@ unsafe fn main_0(
             i_3 += 1;
         }
         usleep(500000 as ::core::ffi::c_int as __useconds_t);
+        let mut stream_capacity: ::core::ffi::c_int = get_stream_capacity();
         let mut i_4: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-        while i_4 < g_config.max_streams {
-            if (*config.streams.offset(i_4 as isize)).name[0usize] as ::core::ffi::c_int
-                != '\0' as ::core::ffi::c_int
-            {
-                let mut stream: stream_handle_t = get_stream_by_name(
-                    &raw mut (*config.streams.offset(i_4 as isize)).name
-                        as *mut ::core::ffi::c_char,
-                );
-                if !stream.is_null() {
+        while i_4 < stream_capacity {
+            let mut stream: stream_handle_t = get_stream_by_index(i_4);
+            if !stream.is_null() {
+                let mut runtime_config: stream_config_t = stream_config_t {
+                    camera_uuid: [
+                        0 as ::core::ffi::c_char,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ],
+                    location_uuid: [0; 37],
+                    name: [0; 256],
+                    url: [0; 512],
+                    enabled: false,
+                    width: 0,
+                    height: 0,
+                    fps: 0,
+                    codec: [0; 16],
+                    priority: 0,
+                    record: false,
+                    segment_duration: 0,
+                    detection_based_recording: false,
+                    detection_model: [0; 512],
+                    detection_interval: 0,
+                    detection_threshold: 0.,
+                    pre_detection_buffer: 0,
+                    post_detection_buffer: 0,
+                    detection_api_url: [0; 512],
+                    detection_object_filter: [0; 16],
+                    detection_object_filter_list: [0; 256],
+                    streaming_enabled: false,
+                    protocol: stream_protocol_t::STREAM_PROTOCOL_TCP,
+                    record_audio: false,
+                    audio_voice_enhancement: false,
+                    onvif_username: [0; 64],
+                    onvif_password: [0; 64],
+                    onvif_profile: [0; 64],
+                    onvif_port: 0,
+                    onvif_discovery_enabled: false,
+                    is_onvif: false,
+                    backchannel_enabled: false,
+                    retention_days: 0,
+                    detection_retention_days: 0,
+                    max_storage_mb: 0,
+                    tier_critical_multiplier: 0.,
+                    tier_important_multiplier: 0.,
+                    tier_ephemeral_multiplier: 0.,
+                    storage_priority: 0,
+                    ptz_enabled: false,
+                    ptz_max_x: 0,
+                    ptz_max_y: 0,
+                    ptz_max_z: 0,
+                    ptz_has_home: false,
+                    record_on_schedule: false,
+                    recording_schedule: [0; 168],
+                    detection_record_on_schedule: false,
+                    detection_recording_schedule: [0; 168],
+                    tags: [0; 256],
+                    admin_url: [0; 512],
+                    privacy_mode: false,
+                    motion_trigger_source: [0; 256],
+                    go2rtc_source_override: [0; 8192],
+                    sub_stream_url: [0; 512],
+                    detection_url: [0; 512],
+                    publish_url: [0; 512],
+                    playback_transport: [0; 24],
+                    eptz_config: [0; 1024],
+                    observation_evidence_enabled: false,
+                    observation_labels: [0; 512],
+                    observation_max_age_days: 0,
+                    observation_max_bytes: 0,
+                };
+                if get_stream_config(stream, &raw mut runtime_config) == 0 as ::core::ffi::c_int {
                     _log_message_ctx(
                         log_level_t::LOG_LEVEL_INFO,
                         LOG_COMPONENT,
                         _log_stream_name,
                         b"Stopping stream: %s\0".as_ptr() as *const ::core::ffi::c_char,
-                        &raw mut (*config.streams.offset(i_4 as isize)).name
-                            as *mut ::core::ffi::c_char,
+                        &raw mut runtime_config.name as *mut ::core::ffi::c_char,
                     );
-                    stop_stream(stream);
                 }
+                stop_stream(stream);
             }
             i_4 += 1;
         }
@@ -4941,16 +5539,7 @@ unsafe fn main_0(
             b"Shutting down recording sync thread...\0".as_ptr() as *const ::core::ffi::c_char,
         );
         stop_recording_sync_thread();
-        ::core::intrinsics::atomic_fence::<{ ::core::intrinsics::AtomicOrdering::SeqCst }>();
         audit_log_shutdown_summaries();
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Ensuring all database operations are complete...\0".as_ptr()
-                as *const ::core::ffi::c_char,
-        );
-        ::core::intrinsics::atomic_fence::<{ ::core::intrinsics::AtomicOrdering::SeqCst }>();
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
             LOG_COMPONENT,
@@ -5048,138 +5637,14 @@ unsafe fn main_0(
         );
         lightnvr_sentry_shutdown();
         curl_cleanup_global();
-        kill(cleanup_pid, SIGKILL);
-        waitpid(
-            cleanup_pid,
-            ::core::ptr::null_mut::<::core::ffi::c_int>(),
-            0 as ::core::ffi::c_int,
-        );
-        pthread_sigmask(
-            SIG_SETMASK,
-            &raw mut old_mask,
-            ::core::ptr::null_mut::<__sigset_t>(),
-        );
-    } else {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Failed to create watchdog process for cleanup timeout\0".as_ptr()
-                as *const ::core::ffi::c_char,
-        );
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Shutting down host health and telemetry...\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        system_health_shutdown();
-        system_health_evaluator_service_shutdown(r#true != 0);
-        metrics_shutdown();
-        player_telemetry_shutdown();
-        let mut i_7: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-        while i_7 < g_config.max_streams {
-            if (*config.streams.offset(i_7 as isize)).name[0usize] as ::core::ffi::c_int
-                != '\0' as ::core::ffi::c_int
-            {
-                let mut stream_0: stream_handle_t = get_stream_by_name(
-                    &raw mut (*config.streams.offset(i_7 as isize)).name
-                        as *mut ::core::ffi::c_char,
-                );
-                if !stream_0.is_null() {
-                    stop_stream(stream_0);
-                }
-            }
-            i_7 += 1;
-        }
-        usleep(200000 as ::core::ffi::c_int as __useconds_t);
-        close_all_mp4_writers();
-        shutdown_detection_stream_system();
-        cleanup_mp4_recording_backend();
-        cleanup_hls_streaming_backend();
-        cleanup_transcoding_backend();
-        observation_relay_stop();
-        observation_evidence_shutdown(OBS_EVIDENCE_DEFAULT_DRAIN_MS);
-        event_bus_shutdown(r#true != 0);
-        mqtt_event_adapter_unregister();
-        event_identity_shutdown();
-        mqtt_delivery_worker_shutdown();
-        mqtt_cleanup();
-        batch_delete_progress_cleanup();
-        shutdown_stream_manager();
-        shutdown_stream_state_adapter();
-        shutdown_stream_state_manager();
-        shutdown_storage_manager();
-        audit_log_shutdown_summaries();
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Ensuring all database operations are complete...\0".as_ptr()
-                as *const ::core::ffi::c_char,
-        );
-        ::core::intrinsics::atomic_fence::<{ ::core::intrinsics::AtomicOrdering::SeqCst }>();
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Freeing schema cache...\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        free_schema_cache();
-        usleep(100000 as ::core::ffi::c_int as __useconds_t);
-        if db_scheduled_backup_in_flight() {
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_INFO,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"Waiting up to %d s for the in-flight scheduled database backup to abort...\0"
-                    .as_ptr() as *const ::core::ffi::c_char,
-                60 as ::core::ffi::c_int * 1000 as ::core::ffi::c_int / 1000 as ::core::ffi::c_int,
+        if cleanup_pid > 0 as ::core::ffi::c_int {
+            kill(cleanup_pid, SIGKILL);
+            waitpid(
+                cleanup_pid,
+                ::core::ptr::null_mut::<::core::ffi::c_int>(),
+                0 as ::core::ffi::c_int,
             );
-            if !db_scheduled_backup_wait_idle(DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS) {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_WARN,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Scheduled database backup worker did not stop within %d s, continuing shutdown\0"
-                        .as_ptr() as *const ::core::ffi::c_char,
-                    60 as ::core::ffi::c_int * 1000 as ::core::ffi::c_int
-                        / 1000 as ::core::ffi::c_int,
-                );
-            }
         }
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Stopping recording sync thread...\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        stop_recording_sync_thread();
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Shutting down database...\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        shutdown_database();
-        usleep(100000 as ::core::ffi::c_int as __useconds_t);
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Performing final SQLite memory cleanup...\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        sqlite3_release_memory(INT_MAX);
-        sqlite3_shutdown();
-        shutdown_coordinator_cleanup();
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Cleaning up libcurl globally...\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        lightnvr_sentry_shutdown();
-        curl_cleanup_global();
         pthread_sigmask(
             SIG_SETMASK,
             &raw mut old_mask,
@@ -5195,15 +5660,16 @@ unsafe fn main_0(
     );
     if restart_requested {
         if container_mode {
+            let RESTART_EXIT_CODE: ::core::ffi::c_int = 75 as ::core::ffi::c_int;
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_INFO,
                 LOG_COMPONENT,
                 _log_stream_name,
-                b"Restart requested in container mode - exiting cleanly for orchestrator restart\0"
+                b"Restart requested in container mode - exiting with restart code for orchestrator restart\0"
                     .as_ptr() as *const ::core::ffi::c_char,
             );
             shutdown_logger();
-            return EXIT_SUCCESS;
+            return RESTART_EXIT_CODE;
         } else if !saved_argv.is_null() {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_INFO,
@@ -5213,29 +5679,34 @@ unsafe fn main_0(
                     as *const ::core::ffi::c_char,
             );
             shutdown_logger();
-            let mut exe_path_0: [::core::ffi::c_char; 512] = [0; 512];
-            let mut len_0: ssize_t = readlink(
-                b"/proc/self/exe\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut exe_path_0 as *mut ::core::ffi::c_char,
-                ::core::mem::size_of::<[::core::ffi::c_char; 512]>().wrapping_sub(1 as size_t),
-            );
-            if len_0 > 0 as ssize_t {
-                exe_path_0[len_0 as usize] = '\0' as ::core::ffi::c_char;
-                usleep(500000 as ::core::ffi::c_int as __useconds_t);
-                execv(&raw mut exe_path_0 as *mut ::core::ffi::c_char, saved_argv);
-                fprintf(
-                    stderr,
-                    b"Failed to restart: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                    strerror(*__errno_location()),
-                );
-            } else {
-                fprintf(
-                    stderr,
-                    b"Failed to get executable path for restart: %s\n\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                    strerror(*__errno_location()),
-                );
+            usleep(500000 as ::core::ffi::c_int as __useconds_t);
+            let mut restart_unblock_set: sigset_t = __sigset_t { __val: [0; 16] };
+            if sigemptyset(&raw mut restart_unblock_set) == 0 as ::core::ffi::c_int {
+                sigaddset(&raw mut restart_unblock_set, SIGINT);
+                sigaddset(&raw mut restart_unblock_set, SIGTERM);
+                sigaddset(&raw mut restart_unblock_set, SIGHUP);
+                if pthread_sigmask(
+                    SIG_UNBLOCK,
+                    &raw mut restart_unblock_set,
+                    ::core::ptr::null_mut::<__sigset_t>(),
+                ) != 0 as ::core::ffi::c_int
+                {
+                    fprintf(
+                        stderr,
+                        b"Warning: failed to unblock restart signals before exec\n\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                    );
+                }
             }
+            execv(
+                b"/proc/self/exe\0".as_ptr() as *const ::core::ffi::c_char,
+                saved_argv,
+            );
+            fprintf(
+                stderr,
+                b"Failed to restart: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
+                strerror(*__errno_location()),
+            );
             return EXIT_FAILURE;
         }
     }
@@ -5350,6 +5821,23 @@ unsafe extern "C" fn check_and_ensure_services() {
                             recordings_started,
                         );
                         sleep(3 as ::core::ffi::c_uint);
+                        if !::core::sync::atomic::AtomicBool::from_ptr(&raw mut running).load(::core::sync::atomic::Ordering::SeqCst)
+                            || ::core::sync::atomic::AtomicBool::from_ptr(&raw mut restart_requested).load(::core::sync::atomic::Ordering::SeqCst)
+                                as ::core::ffi::c_int
+                                != 0
+                            || is_background_abort_requested() as ::core::ffi::c_int != 0
+                        {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_INFO,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Abort requested during stagger wait; ending service check before stream: %s\0"
+                                    .as_ptr() as *const ::core::ffi::c_char,
+                                &raw mut (*(*current_config).streams.offset(i as isize))
+                                    .name as *mut ::core::ffi::c_char,
+                            );
+                            return;
+                        }
                     }
                     _log_message_ctx(
                         log_level_t::LOG_LEVEL_INFO,
@@ -5412,61 +5900,133 @@ unsafe extern "C" fn check_and_ensure_services() {
                 );
             }
         }
-        if (*(*current_config).streams.offset(i as isize)).name[0usize] as ::core::ffi::c_int
-            != '\0' as ::core::ffi::c_int
-            && (*(*current_config).streams.offset(i as isize)).enabled as ::core::ffi::c_int != 0
-            && (*(*current_config).streams.offset(i as isize)).detection_based_recording
-                as ::core::ffi::c_int
-                != 0
-            && is_detection_recording_scheduled((*current_config).streams.offset(i as isize))
-                as ::core::ffi::c_int
-                != 0
-        {
-            let mut annotation_only: bool = (*(*current_config).streams.offset(i as isize)).record;
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_INFO,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"Ensuring detection-based recording is active for stream: %s (annotation_only=%s)\0"
-                    .as_ptr() as *const ::core::ffi::c_char,
-                &raw mut (*(*current_config).streams.offset(i as isize)).name
-                    as *mut ::core::ffi::c_char,
-                if annotation_only as ::core::ffi::c_int != 0 {
-                    b"true\0".as_ptr() as *const ::core::ffi::c_char
-                } else {
-                    b"false\0".as_ptr() as *const ::core::ffi::c_char
-                },
-            );
-            if start_unified_detection_thread(
-                &raw mut (*(*current_config).streams.offset(i as isize)).name
-                    as *mut ::core::ffi::c_char,
-                &raw mut (*(*current_config).streams.offset(i as isize)).detection_model
-                    as *mut ::core::ffi::c_char,
-                (*(*current_config).streams.offset(i as isize)).detection_threshold,
-                (*(*current_config).streams.offset(i as isize)).pre_detection_buffer,
-                (*(*current_config).streams.offset(i as isize)).post_detection_buffer,
-                annotation_only,
-            ) != 0 as ::core::ffi::c_int
+        's_37: {
+            if (*(*current_config).streams.offset(i as isize)).name[0usize] as ::core::ffi::c_int
+                != '\0' as ::core::ffi::c_int
+                && (*(*current_config).streams.offset(i as isize)).enabled as ::core::ffi::c_int
+                    != 0
+                && (*(*current_config).streams.offset(i as isize)).detection_based_recording
+                    as ::core::ffi::c_int
+                    != 0
+                && is_detection_recording_scheduled((*current_config).streams.offset(i as isize))
+                    as ::core::ffi::c_int
+                    != 0
             {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_WARN,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Failed to start detection-based recording for stream: %s\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                    &raw mut (*(*current_config).streams.offset(i as isize)).name
-                        as *mut ::core::ffi::c_char,
-                );
-            } else {
+                let mut annotation_only: bool = (*(*current_config).streams.offset(i as isize))
+                    .record as ::core::ffi::c_int
+                    != 0
+                    && get_recording_state(
+                        &raw mut (*(*current_config).streams.offset(i as isize)).name
+                            as *mut ::core::ffi::c_char,
+                    ) == 1 as ::core::ffi::c_int;
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_INFO,
                     LOG_COMPONENT,
                     _log_stream_name,
-                    b"Successfully started detection-based recording for stream: %s\0".as_ptr()
-                        as *const ::core::ffi::c_char,
+                    b"Ensuring detection-based recording is active for stream: %s (annotation_only=%s)\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
                     &raw mut (*(*current_config).streams.offset(i as isize)).name
                         as *mut ::core::ffi::c_char,
+                    if annotation_only as ::core::ffi::c_int != 0 {
+                        b"true\0".as_ptr() as *const ::core::ffi::c_char
+                    } else {
+                        b"false\0".as_ptr() as *const ::core::ffi::c_char
+                    },
                 );
+                let mut resolved_detection_model: [::core::ffi::c_char; 512] = [0; 512];
+                let mut detection_model_path: *const ::core::ffi::c_char =
+                    &raw mut (*(*current_config).streams.offset(i as isize)).detection_model
+                        as *mut ::core::ffi::c_char;
+                if *detection_model_path.offset(0isize) as ::core::ffi::c_int
+                    != '\0' as ::core::ffi::c_int
+                    && *detection_model_path.offset(0isize) as ::core::ffi::c_int
+                        != '/' as ::core::ffi::c_int
+                    && strcmp(
+                        detection_model_path,
+                        b"motion\0".as_ptr() as *const ::core::ffi::c_char,
+                    ) != 0 as ::core::ffi::c_int
+                    && strcmp(
+                        detection_model_path,
+                        b"onvif\0".as_ptr() as *const ::core::ffi::c_char,
+                    ) != 0 as ::core::ffi::c_int
+                    && strcmp(
+                        detection_model_path,
+                        b"api-detection\0".as_ptr() as *const ::core::ffi::c_char,
+                    ) != 0 as ::core::ffi::c_int
+                    && strncmp(
+                        detection_model_path,
+                        b"http://\0".as_ptr() as *const ::core::ffi::c_char,
+                        7 as size_t,
+                    ) != 0 as ::core::ffi::c_int
+                    && strncmp(
+                        detection_model_path,
+                        b"https://\0".as_ptr() as *const ::core::ffi::c_char,
+                        8 as size_t,
+                    ) != 0 as ::core::ffi::c_int
+                {
+                    let mut base_models_path: *const ::core::ffi::c_char =
+                        if (*current_config).models_path[0usize] as ::core::ffi::c_int
+                            != '\0' as ::core::ffi::c_int
+                        {
+                            &raw const (*current_config).models_path as *const ::core::ffi::c_char
+                        } else {
+                            b"/etc/lightnvr/models\0".as_ptr() as *const ::core::ffi::c_char
+                        };
+                    let mut n: ::core::ffi::c_int = snprintf(
+                        &raw mut resolved_detection_model as *mut ::core::ffi::c_char,
+                        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+                        b"%s/%s\0".as_ptr() as *const ::core::ffi::c_char,
+                        base_models_path,
+                        detection_model_path,
+                    );
+                    if n < 0 as ::core::ffi::c_int
+                        || n as size_t >= ::core::mem::size_of::<[::core::ffi::c_char; 512]>()
+                    {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Detection model path too long for stream: %s\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                            &raw mut (*(*current_config).streams.offset(i as isize)).name
+                                as *mut ::core::ffi::c_char,
+                        );
+                        break 's_37;
+                    } else {
+                        detection_model_path =
+                            &raw mut resolved_detection_model as *mut ::core::ffi::c_char;
+                    }
+                }
+                if start_unified_detection_thread(
+                    &raw mut (*(*current_config).streams.offset(i as isize)).name
+                        as *mut ::core::ffi::c_char,
+                    detection_model_path,
+                    (*(*current_config).streams.offset(i as isize)).detection_threshold,
+                    (*(*current_config).streams.offset(i as isize)).pre_detection_buffer,
+                    (*(*current_config).streams.offset(i as isize)).post_detection_buffer,
+                    annotation_only,
+                ) != 0 as ::core::ffi::c_int
+                {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Failed to start detection-based recording for stream: %s\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        &raw mut (*(*current_config).streams.offset(i as isize)).name
+                            as *mut ::core::ffi::c_char,
+                    );
+                } else {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_INFO,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Successfully started detection-based recording for stream: %s\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        &raw mut (*(*current_config).streams.offset(i as isize)).name
+                            as *mut ::core::ffi::c_char,
+                    );
+                }
             }
         }
         i += 1;
@@ -5486,12 +6046,22 @@ pub const SIGALRM: ::core::ffi::c_int = 14 as ::core::ffi::c_int;
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
+pub const ENOSYS: ::core::ffi::c_int = 38 as ::core::ffi::c_int;
 pub const ENOENT: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
+pub const ESRCH: ::core::ffi::c_int = 3 as ::core::ffi::c_int;
 pub const EINTR: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
 pub const ERANGE: ::core::ffi::c_int = 34 as ::core::ffi::c_int;
+pub const __NR_pidfd_send_signal: ::core::ffi::c_int = 424 as ::core::ffi::c_int;
+pub const __NR_pidfd_open: ::core::ffi::c_int = 434 as ::core::ffi::c_int;
+pub const __NR_close_range: ::core::ffi::c_int = 436 as ::core::ffi::c_int;
+pub const SYS_close_range: ::core::ffi::c_int = __NR_close_range;
+pub const SYS_pidfd_open: ::core::ffi::c_int = __NR_pidfd_open;
+pub const SYS_pidfd_send_signal: ::core::ffi::c_int = __NR_pidfd_send_signal;
 pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
+pub const POLLIN: ::core::ffi::c_int = 0x1 as ::core::ffi::c_int;
+pub const POLLHUP: ::core::ffi::c_int = 0x10 as ::core::ffi::c_int;
 pub const LIGHTNVR_VERSION_STRING: [::core::ffi::c_char; 7] =
-    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.48.2\0") };
+    unsafe { ::core::mem::transmute::<[u8; 7], [::core::ffi::c_char; 7]>(*b"0.49.0\0") };
 pub const LIGHTNVR_BUILD_DATE: [::core::ffi::c_char; 27] = unsafe {
     ::core::mem::transmute::<[u8; 27], [::core::ffi::c_char; 27]>(*crate::build_info::LIGHTNVR_BUILD_DATE)
 };
@@ -5510,6 +6080,7 @@ unsafe extern "C" fn __bswap_32(mut __bsx: __uint32_t) -> __uint32_t {
         | (__bsx & 0xff00 as __uint32_t) << 8 as ::core::ffi::c_int
         | (__bsx & 0xff as __uint32_t) << 24 as ::core::ffi::c_int;
 }
+pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
 pub const __INT_MAX__: ::core::ffi::c_int = 2147483647 as ::core::ffi::c_int;
 pub fn main() {
     let mut args_strings: Vec<Vec<u8>> = ::std::env::args()

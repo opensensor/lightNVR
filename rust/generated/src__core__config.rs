@@ -81,8 +81,8 @@ unsafe extern "C" {
     unsafe fn __ctype_toupper_loc() -> *mut *const __int32_t;
     unsafe fn pthread_mutex_lock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_unlock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
-    unsafe fn ini_parse(
-        filename: *const ::core::ffi::c_char,
+    unsafe fn ini_parse_file(
+        file: *mut FILE,
         handler: ini_handler,
         user: *mut ::core::ffi::c_void,
     ) -> ::core::ffi::c_int;
@@ -102,16 +102,11 @@ unsafe extern "C" {
     );
     unsafe fn mkdir_recursive(path: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     unsafe fn ensure_path(path: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
-    unsafe fn chmod_parent(path: *const ::core::ffi::c_char, mode: mode_t) -> ::core::ffi::c_int;
     unsafe fn begin_transaction() -> ::core::ffi::c_int;
     unsafe fn commit_transaction() -> ::core::ffi::c_int;
     unsafe fn rollback_transaction() -> ::core::ffi::c_int;
     unsafe fn add_stream_config(stream: *const stream_config_t) -> uint64_t;
     unsafe fn delete_stream_config(name: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
-    unsafe fn get_stream_config_by_name(
-        name: *const ::core::ffi::c_char,
-        stream: *mut stream_config_t,
-    ) -> ::core::ffi::c_int;
     unsafe fn get_all_stream_configs(
         streams: *mut stream_config_t,
         max_count: ::core::ffi::c_int,
@@ -133,6 +128,11 @@ unsafe extern "C" {
         __c: ::core::ffi::c_int,
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
+    unsafe fn memcmp(
+        __s1: *const ::core::ffi::c_void,
+        __s2: *const ::core::ffi::c_void,
+        __n: size_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn strcmp(
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
@@ -150,6 +150,10 @@ unsafe extern "C" {
         __s: *const ::core::ffi::c_char,
         __c: ::core::ffi::c_int,
     ) -> *mut ::core::ffi::c_char;
+    unsafe fn strspn(
+        __s: *const ::core::ffi::c_char,
+        __accept: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_ulong;
     unsafe fn strstr(
         __haystack: *const ::core::ffi::c_char,
         __needle: *const ::core::ffi::c_char,
@@ -180,11 +184,20 @@ unsafe extern "C" {
     unsafe fn realloc(__ptr: *mut ::core::ffi::c_void, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
     unsafe fn getenv(__name: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
-    unsafe fn mkstemp(__template: *mut ::core::ffi::c_char) -> ::core::ffi::c_int;
+    unsafe fn mkostemp(
+        __template: *mut ::core::ffi::c_char,
+        __flags: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
     unsafe fn realpath(
         __name: *const ::core::ffi::c_char,
         __resolved: *mut ::core::ffi::c_char,
     ) -> *mut ::core::ffi::c_char;
+    unsafe fn qsort(
+        __base: *mut ::core::ffi::c_void,
+        __nmemb: size_t,
+        __size: size_t,
+        __compar: __compar_fn_t,
+    );
 }
 pub type size_t = usize;
 pub type __int32_t = i32;
@@ -202,7 +215,6 @@ pub type __time_t = ::core::ffi::c_long;
 pub type __blksize_t = ::core::ffi::c_long;
 pub type __blkcnt_t = ::core::ffi::c_long;
 pub type __syscall_slong_t = ::core::ffi::c_long;
-pub type mode_t = __mode_t;
 pub type off_t = __off_t;
 pub type ssize_t = isize;
 pub type int64_t = i64;
@@ -238,6 +250,12 @@ pub union pthread_mutex_t {
     pub __size: [::core::ffi::c_char; 40],
     pub __align: ::core::ffi::c_long,
 }
+pub type __compar_fn_t = Option<
+    unsafe extern "C" fn(
+        *const ::core::ffi::c_void,
+        *const ::core::ffi::c_void,
+    ) -> ::core::ffi::c_int,
+>;
 #[derive(Copy, Clone, ::c2rust_bitfields::BitfieldStruct)]
 #[repr(C)]
 pub struct _IO_FILE {
@@ -827,6 +845,19 @@ pub struct config_ini_context_t {
     pub config: *mut config_t,
     pub ini_present: *mut bool,
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed_2 {
+    pub name: *const ::core::ffi::c_char,
+    pub value: *const ::core::ffi::c_char,
+    pub capacity: size_t,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct db_name_index_entry_t {
+    pub name: *const ::core::ffi::c_char,
+    pub idx: ::core::ffi::c_int,
+}
 pub const R_OK: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
 pub const W_OK: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const F_SETLK64: ::core::ffi::c_int = 6 as ::core::ffi::c_int;
@@ -845,6 +876,8 @@ pub const F_SETLKW: ::core::ffi::c_int = F_SETLKW64;
 pub const O_DIRECTORY: ::core::ffi::c_int = __O_DIRECTORY;
 pub const O_NOFOLLOW: ::core::ffi::c_int = __O_NOFOLLOW;
 pub const O_CLOEXEC: ::core::ffi::c_int = __O_CLOEXEC;
+pub const F_DUPFD_CLOEXEC: ::core::ffi::c_int = 1030 as ::core::ffi::c_int;
+pub const F_RDLCK: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const F_WRLCK: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const F_UNLCK: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const SEEK_SET: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -1028,13 +1061,47 @@ pub static mut g_config: config_t = config_t {
         delegate: [0; 16],
     },
 };
+static mut config_load_mutex: pthread_mutex_t = pthread_mutex_t {
+    __data: __pthread_mutex_s {
+        __lock: 0 as ::core::ffi::c_int,
+        __count: 0 as ::core::ffi::c_uint,
+        __owner: 0 as ::core::ffi::c_int,
+        __nusers: 0 as ::core::ffi::c_uint,
+        __kind: C2Rust_Unnamed_1::PTHREAD_MUTEX_TIMED_NP.0 as ::core::ffi::c_int,
+        __spins: 0 as ::core::ffi::c_short,
+        __glibc_reserved: 0 as ::core::ffi::c_short,
+        __list: __pthread_internal_list {
+            __prev: ::core::ptr::null_mut::<__pthread_internal_list>(),
+            __next: ::core::ptr::null_mut::<__pthread_internal_list>(),
+        },
+    },
+};
+static mut stream_save_mutex: pthread_mutex_t = pthread_mutex_t {
+    __data: __pthread_mutex_s {
+        __lock: 0 as ::core::ffi::c_int,
+        __count: 0 as ::core::ffi::c_uint,
+        __owner: 0 as ::core::ffi::c_int,
+        __nusers: 0 as ::core::ffi::c_uint,
+        __kind: C2Rust_Unnamed_1::PTHREAD_MUTEX_TIMED_NP.0 as ::core::ffi::c_int,
+        __spins: 0 as ::core::ffi::c_short,
+        __glibc_reserved: 0 as ::core::ffi::c_short,
+        __list: __pthread_internal_list {
+            __prev: ::core::ptr::null_mut::<__pthread_internal_list>(),
+            __next: ::core::ptr::null_mut::<__pthread_internal_list>(),
+        },
+    },
+};
 unsafe extern "C" fn contains_unsupported_ini_credential_chars(
     mut value: *const ::core::ffi::c_char,
+    mut capacity: size_t,
 ) -> bool {
-    if value.is_null() {
-        return r#false != 0;
+    if value.is_null() || capacity == 0 as size_t {
+        return r#true != 0;
     }
-    let mut len: size_t = strlen(value);
+    let mut len: size_t = strnlen(value, capacity);
+    if len == capacity {
+        return r#true != 0;
+    }
     if len > 0 as size_t {
         if *(*__ctype_b_loc())
             .offset(*value.offset(0isize) as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
@@ -1054,7 +1121,7 @@ unsafe extern "C" fn contains_unsupported_ini_credential_chars(
         }
     }
     let mut p: *const ::core::ffi::c_uchar = value as *const ::core::ffi::c_uchar;
-    while *p as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+    while p < (value as *const ::core::ffi::c_uchar).offset(len as isize) {
         if *p as ::core::ffi::c_int == '\n' as ::core::ffi::c_int
             || *p as ::core::ffi::c_int == '\r' as ::core::ffi::c_int
             || *p as ::core::ffi::c_int == ';' as ::core::ffi::c_int
@@ -1066,7 +1133,58 @@ unsafe extern "C" fn contains_unsupported_ini_credential_chars(
     }
     return r#false != 0;
 }
+unsafe extern "C" fn stream_name_hash(
+    mut name: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_ulong {
+    let mut s: *const ::core::ffi::c_uchar = name as *const ::core::ffi::c_uchar;
+    let mut h: ::core::ffi::c_ulong = 5381 as ::core::ffi::c_ulong;
+    while *s != 0 {
+        let c2rust_fresh0 = s;
+        s = s.offset(1);
+        h = (h << 5 as ::core::ffi::c_int)
+            .wrapping_add(h)
+            .wrapping_add(*c2rust_fresh0 as ::core::ffi::c_ulong);
+    }
+    return h;
+}
+unsafe extern "C" fn stream_name_index_slot(
+    mut streams: *const stream_config_t,
+    mut name_index_slots: *const ::core::ffi::c_int,
+    mut name_index_size: ::core::ffi::c_int,
+    mut name: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    let mut slot: ::core::ffi::c_int = (stream_name_hash(name)
+        & (name_index_size - 1 as ::core::ffi::c_int) as ::core::ffi::c_ulong)
+        as ::core::ffi::c_int;
+    while *name_index_slots.offset(slot as isize) != -1 as ::core::ffi::c_int {
+        let mut idx: ::core::ffi::c_int = *name_index_slots.offset(slot as isize);
+        if strcmp(
+            &raw const (*streams.offset(idx as isize)).name as *const ::core::ffi::c_char,
+            name,
+        ) == 0 as ::core::ffi::c_int
+        {
+            break;
+        }
+        slot = slot + 1 as ::core::ffi::c_int & name_index_size - 1 as ::core::ffi::c_int;
+    }
+    return slot;
+}
 static mut mp4_faststart_mutex: pthread_mutex_t = pthread_mutex_t {
+    __data: __pthread_mutex_s {
+        __lock: 0 as ::core::ffi::c_int,
+        __count: 0 as ::core::ffi::c_uint,
+        __owner: 0 as ::core::ffi::c_int,
+        __nusers: 0 as ::core::ffi::c_uint,
+        __kind: C2Rust_Unnamed_1::PTHREAD_MUTEX_TIMED_NP.0 as ::core::ffi::c_int,
+        __spins: 0 as ::core::ffi::c_short,
+        __glibc_reserved: 0 as ::core::ffi::c_short,
+        __list: __pthread_internal_list {
+            __prev: ::core::ptr::null_mut::<__pthread_internal_list>(),
+            __next: ::core::ptr::null_mut::<__pthread_internal_list>(),
+        },
+    },
+};
+static mut config_in_place_mutex: pthread_mutex_t = pthread_mutex_t {
     __data: __pthread_mutex_s {
         __lock: 0 as ::core::ffi::c_int,
         __count: 0 as ::core::ffi::c_uint,
@@ -1727,6 +1845,24 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t, mut ini_pres
                                     env_value,
                                     *int_ptr,
                                 );
+                            } else if strcmp(
+                                (*mapping).env_name,
+                                b"GO2RTC_WEBRTC_LISTEN_PORT\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            ) == 0 as ::core::ffi::c_int
+                                && (new_value_0 < 0 as ::core::ffi::c_int
+                                    || new_value_0 > 65535 as ::core::ffi::c_int)
+                            {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_WARN,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Invalid go2rtc WebRTC listen port for %s: '%s'; must be between 0 and 65535; keeping existing value %d\0"
+                                        .as_ptr() as *const ::core::ffi::c_char,
+                                    &raw mut env_name as *mut ::core::ffi::c_char,
+                                    env_value,
+                                    *int_ptr,
+                                );
                             } else {
                                 *int_ptr = new_value_0;
                                 _log_message_ctx(
@@ -1745,8 +1881,7 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t, mut ini_pres
                     config_field_type_t::CONFIG_TYPE_STRING => {
                         let mut str_ptr: *mut ::core::ffi::c_char =
                             field_ptr as *mut ::core::ffi::c_char;
-                        safe_strcpy(str_ptr, env_value, (*mapping).size, 0 as size_t);
-                        if !strstr(
+                        let mut is_sensitive: bool = !strstr(
                             (*mapping).env_name,
                             b"PASSWORD\0".as_ptr() as *const ::core::ffi::c_char,
                         )
@@ -1756,25 +1891,58 @@ unsafe extern "C" fn apply_env_overrides(mut config: *mut config_t, mut ini_pres
                                 b"SECRET\0".as_ptr() as *const ::core::ffi::c_char,
                             )
                             .is_null()
-                        {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_INFO,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"Applied env override: %s=*** (string, masked)\0".as_ptr()
-                                    as *const ::core::ffi::c_char,
-                                &raw mut env_name as *mut ::core::ffi::c_char,
-                            );
+                            || !strstr(
+                                (*mapping).env_name,
+                                b"ICE_SERVERS\0".as_ptr() as *const ::core::ffi::c_char,
+                            )
+                            .is_null();
+                        let mut env_len: size_t = strnlen(env_value, (*mapping).size);
+                        if env_len >= (*mapping).size {
+                            if is_sensitive {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_WARN,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Oversized value for %s rejected: exceeds max length %zu\0"
+                                        .as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                    &raw mut env_name as *mut ::core::ffi::c_char,
+                                    (*mapping).size.wrapping_sub(1 as size_t),
+                                );
+                            } else {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_WARN,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Oversized value for %s rejected: '%s' exceeds max length %zu\0"
+                                        .as_ptr() as *const ::core::ffi::c_char,
+                                    &raw mut env_name as *mut ::core::ffi::c_char,
+                                    env_value,
+                                    (*mapping).size.wrapping_sub(1 as size_t),
+                                );
+                            }
                         } else {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_INFO,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"Applied env override: %s=%s (string)\0".as_ptr()
-                                    as *const ::core::ffi::c_char,
-                                &raw mut env_name as *mut ::core::ffi::c_char,
-                                env_value,
-                            );
+                            safe_strcpy(str_ptr, env_value, (*mapping).size, 0 as size_t);
+                            if is_sensitive {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_INFO,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Applied env override: %s=*** (string, masked)\0".as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                    &raw mut env_name as *mut ::core::ffi::c_char,
+                                );
+                            } else {
+                                _log_message_ctx(
+                                    log_level_t::LOG_LEVEL_INFO,
+                                    LOG_COMPONENT,
+                                    _log_stream_name,
+                                    b"Applied env override: %s=%s (string)\0".as_ptr()
+                                        as *const ::core::ffi::c_char,
+                                    &raw mut env_name as *mut ::core::ffi::c_char,
+                                    env_value,
+                                );
+                            }
                         }
                     }
                     _ => {}
@@ -1818,11 +1986,15 @@ unsafe extern "C" fn init_stream_config_defaults(mut stream: *mut stream_config_
 pub unsafe extern "C" fn config_reset_stream_slots(
     mut config: *mut config_t,
 ) -> ::core::ffi::c_int {
-    if config.is_null()
-        || (*config).streams.is_null()
+    if config.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
+    if (*config).streams.is_null()
         || (*config).max_streams <= 0 as ::core::ffi::c_int
         || (*config).max_streams > MAX_STREAMS
     {
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -1830,6 +2002,7 @@ pub unsafe extern "C" fn config_reset_stream_slots(
         init_stream_config_defaults((*config).streams.offset(i as isize));
         i += 1;
     }
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
     return 0 as ::core::ffi::c_int;
 }
 #[unsafe(no_mangle)]
@@ -1837,6 +2010,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     if config.is_null() {
         return;
     }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
     if !(*config).streams.is_null() {
         free((*config).streams as *mut ::core::ffi::c_void);
         (*config).streams = ::core::ptr::null_mut::<stream_config_t>();
@@ -1859,6 +2033,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
             b"load_default_config: failed to allocate streams array\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
         return;
     }
     let mut sc_cores: ::core::ffi::c_long =
@@ -1877,6 +2052,9 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
         num_cores = INT_MAX;
     } else {
         num_cores = sc_cores as ::core::ffi::c_int;
+    }
+    if num_cores > 64 as ::core::ffi::c_int {
+        num_cores = 64 as ::core::ffi::c_int;
     }
     (*config).web_thread_pool_size = if num_cores > 0 as ::core::ffi::c_int {
         num_cores * 2 as ::core::ffi::c_int
@@ -1920,7 +2098,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     (*config).max_storage_size = 0 as uint64_t;
     (*config).retention_days = 30 as ::core::ffi::c_int;
     (*config).auto_delete_oldest = r#true != 0;
-    config_set_mp4_faststart(config, r#true != 0);
+    (*config).mp4_faststart = r#true != 0;
     (*config).storage_min_free_pct = 10 as ::core::ffi::c_int;
     (*config).storage_pressure_warning_pct = 20.0f64;
     (*config).storage_pressure_critical_pct = 10.0f64;
@@ -2141,6 +2319,7 @@ pub unsafe extern "C" fn load_default_config(mut config: *mut config_t) {
     );
     (*config).mqtt_ha_snapshot_interval = 30 as ::core::ffi::c_int;
     system_health_policy_settings_defaults(&raw mut (*config).health);
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
 }
 unsafe extern "C" fn ensure_directories(mut config: *const config_t) -> ::core::ffi::c_int {
     if mkdir_recursive(&raw const (*config).storage_path as *const ::core::ffi::c_char)
@@ -2235,20 +2414,6 @@ unsafe extern "C" fn ensure_directories(mut config: *const config_t) -> ::core::
             &raw const (*config).log_file as *const ::core::ffi::c_char,
             strerror(*__errno_location()),
         );
-        if chmod_parent(
-            &raw const (*config).log_file as *const ::core::ffi::c_char,
-            0o755 as mode_t,
-        ) != 0
-        {
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_WARN,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"Failed to change log directory permissions: %s\0".as_ptr()
-                    as *const ::core::ffi::c_char,
-                strerror(*__errno_location()),
-            );
-        }
     } else {
         close(cfg_log_fd);
     }
@@ -2279,12 +2444,12 @@ pub unsafe extern "C" fn validate_config(mut config: *mut config_t) -> ::core::f
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
             _log_stream_name,
-            b"auth_absolute_timeout_hours (%d) is less than auth_timeout_hours (%d); clamping to the idle timeout\0"
+            b"auth_absolute_timeout_hours (%d) is less than auth_timeout_hours (%d); clamping idle timeout to the absolute timeout\0"
                 .as_ptr() as *const ::core::ffi::c_char,
             (*config).auth_absolute_timeout_hours,
             (*config).auth_timeout_hours,
         );
-        (*config).auth_absolute_timeout_hours = (*config).auth_timeout_hours;
+        (*config).auth_timeout_hours = (*config).auth_absolute_timeout_hours;
     }
     if strlen(&raw mut (*config).storage_path as *mut ::core::ffi::c_char) == 0 as size_t {
         _log_message_ctx(
@@ -2459,7 +2624,9 @@ pub unsafe extern "C" fn config_set_detection_grace_period(
     if seconds > 60 as ::core::ffi::c_int {
         seconds = 60 as ::core::ffi::c_int;
     }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
     (*config).detection_grace_period = seconds;
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn config_set_detection_engine_threads(
@@ -2472,7 +2639,9 @@ pub unsafe extern "C" fn config_set_detection_engine_threads(
     if threads > 16 as ::core::ffi::c_int {
         threads = 16 as ::core::ffi::c_int;
     }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
     (*config).detection_engine.num_threads = threads;
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn config_set_detection_engine_delegate(
@@ -2491,12 +2660,14 @@ pub unsafe extern "C" fn config_set_detection_engine_delegate(
     {
         return r#false != 0;
     }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
     safe_strcpy(
         &raw mut (*config).detection_engine.delegate as *mut ::core::ffi::c_char,
         delegate,
         ::core::mem::size_of::<[::core::ffi::c_char; 16]>(),
         0 as size_t,
     );
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
     return r#true != 0;
 }
 unsafe extern "C" fn mark_ini_option(
@@ -2675,11 +2846,19 @@ unsafe extern "C" fn config_ini_handler(
             b"syslog_enabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).syslog_enabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for general.syslog_enabled: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).syslog_enabled = parsed_bool;
         } else if strcmp(
             name,
             b"syslog_ident\0".as_ptr() as *const ::core::ffi::c_char,
@@ -2696,8 +2875,9 @@ unsafe extern "C" fn config_ini_handler(
             b"syslog_facility\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            if *(*__ctype_b_loc()).offset(*value.offset(0isize) as ::core::ffi::c_int as isize)
-                as ::core::ffi::c_int
+            if *(*__ctype_b_loc()).offset(
+                *value.offset(0isize) as ::core::ffi::c_uchar as ::core::ffi::c_int as isize
+            ) as ::core::ffi::c_int
                 & C2Rust_Unnamed_0::_ISdigit.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
                     as ::core::ffi::c_int
                 != 0
@@ -2764,14 +2944,14 @@ unsafe extern "C" fn config_ini_handler(
     } else if strcmp(section, b"health\0".as_ptr() as *const ::core::ffi::c_char)
         == 0 as ::core::ffi::c_int
     {
-        let mut parsed_bool: bool = false;
+        let mut parsed_bool_0: bool = false;
         if strcmp(name, b"enabled\0".as_ptr() as *const ::core::ffi::c_char)
             == 0 as ::core::ffi::c_int
         {
-            if !parse_bool_strict(value, &raw mut parsed_bool) {
+            if !parse_bool_strict(value, &raw mut parsed_bool_0) {
                 return 0 as ::core::ffi::c_int;
             }
-            (*config).health.enabled = parsed_bool;
+            (*config).health.enabled = parsed_bool_0;
         } else if strcmp(name, b"profile\0".as_ptr() as *const ::core::ffi::c_char)
             == 0 as ::core::ffi::c_int
         {
@@ -2814,10 +2994,10 @@ unsafe extern "C" fn config_ini_handler(
             b"write_probe_enabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            if !parse_bool_strict(value, &raw mut parsed_bool) {
+            if !parse_bool_strict(value, &raw mut parsed_bool_0) {
                 return 0 as ::core::ffi::c_int;
             }
-            (*config).health.write_probe_enabled = parsed_bool;
+            (*config).health.write_probe_enabled = parsed_bool_0;
         } else if strcmp(
             name,
             b"hardware_provider\0".as_ptr() as *const ::core::ffi::c_char,
@@ -2869,11 +3049,42 @@ unsafe extern "C" fn config_ini_handler(
         } else if strcmp(name, b"max_size\0".as_ptr() as *const ::core::ffi::c_char)
             == 0 as ::core::ffi::c_int
         {
-            (*config).max_storage_size = strtoull(
-                value,
-                ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
-                10 as ::core::ffi::c_int,
-            ) as uint64_t;
+            let mut endptr: *mut ::core::ffi::c_char =
+                ::core::ptr::null_mut::<::core::ffi::c_char>();
+            *__errno_location() = 0 as ::core::ffi::c_int;
+            if *value.offset(0isize) as ::core::ffi::c_int == '\0' as ::core::ffi::c_int
+                || strspn(
+                    value,
+                    b"0123456789\0".as_ptr() as *const ::core::ffi::c_char,
+                ) as size_t
+                    != strlen(value)
+            {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Ignoring invalid max_size '%s'\0".as_ptr() as *const ::core::ffi::c_char,
+                    value,
+                );
+            } else {
+                let mut parsed: ::core::ffi::c_ulonglong =
+                    strtoull(value, &raw mut endptr, 10 as ::core::ffi::c_int);
+                if *__errno_location() == ERANGE
+                    || endptr == value as *mut ::core::ffi::c_char
+                    || *endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Ignoring out-of-range max_size '%s'\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        value,
+                    );
+                } else {
+                    (*config).max_storage_size = parsed as uint64_t;
+                }
+            }
         } else if strcmp(
             name,
             b"retention_days\0".as_ptr() as *const ::core::ffi::c_char,
@@ -2913,41 +3124,6 @@ unsafe extern "C" fn config_ini_handler(
             b"pressure_warning_pct\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            let mut endptr: *mut ::core::ffi::c_char =
-                ::core::ptr::null_mut::<::core::ffi::c_char>();
-            *__errno_location() = 0 as ::core::ffi::c_int;
-            let mut parsed: ::core::ffi::c_double = strtod(value, &raw mut endptr);
-            while !endptr.is_null()
-                && *(*__ctype_b_loc())
-                    .offset(*endptr as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
-                    as ::core::ffi::c_int
-                    & C2Rust_Unnamed_0::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
-                        as ::core::ffi::c_int
-                    != 0
-            {
-                endptr = endptr.offset(1);
-            }
-            if endptr == value as *mut ::core::ffi::c_char
-                || !endptr.is_null() && *endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
-                || *__errno_location() == ERANGE
-                || parsed.is_finite() as ::core::ffi::c_int == 0
-            {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_WARN,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Ignoring invalid pressure_warning_pct '%s'\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                    value,
-                );
-            } else {
-                (*config).storage_pressure_warning_pct = parsed;
-            }
-        } else if strcmp(
-            name,
-            b"pressure_critical_pct\0".as_ptr() as *const ::core::ffi::c_char,
-        ) == 0 as ::core::ffi::c_int
-        {
             let mut endptr_0: *mut ::core::ffi::c_char =
                 ::core::ptr::null_mut::<::core::ffi::c_char>();
             *__errno_location() = 0 as ::core::ffi::c_int;
@@ -2972,16 +3148,16 @@ unsafe extern "C" fn config_ini_handler(
                     log_level_t::LOG_LEVEL_WARN,
                     LOG_COMPONENT,
                     _log_stream_name,
-                    b"Ignoring invalid pressure_critical_pct '%s'\0".as_ptr()
+                    b"Ignoring invalid pressure_warning_pct '%s'\0".as_ptr()
                         as *const ::core::ffi::c_char,
                     value,
                 );
             } else {
-                (*config).storage_pressure_critical_pct = parsed_0;
+                (*config).storage_pressure_warning_pct = parsed_0;
             }
         } else if strcmp(
             name,
-            b"pressure_emergency_pct\0".as_ptr() as *const ::core::ffi::c_char,
+            b"pressure_critical_pct\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
             let mut endptr_1: *mut ::core::ffi::c_char =
@@ -3008,12 +3184,48 @@ unsafe extern "C" fn config_ini_handler(
                     log_level_t::LOG_LEVEL_WARN,
                     LOG_COMPONENT,
                     _log_stream_name,
+                    b"Ignoring invalid pressure_critical_pct '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+            } else {
+                (*config).storage_pressure_critical_pct = parsed_1;
+            }
+        } else if strcmp(
+            name,
+            b"pressure_emergency_pct\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            let mut endptr_2: *mut ::core::ffi::c_char =
+                ::core::ptr::null_mut::<::core::ffi::c_char>();
+            *__errno_location() = 0 as ::core::ffi::c_int;
+            let mut parsed_2: ::core::ffi::c_double = strtod(value, &raw mut endptr_2);
+            while !endptr_2.is_null()
+                && *(*__ctype_b_loc())
+                    .offset(*endptr_2 as ::core::ffi::c_uchar as ::core::ffi::c_int as isize)
+                    as ::core::ffi::c_int
+                    & C2Rust_Unnamed_0::_ISspace.0 as ::core::ffi::c_int as ::core::ffi::c_ushort
+                        as ::core::ffi::c_int
+                    != 0
+            {
+                endptr_2 = endptr_2.offset(1);
+            }
+            if endptr_2 == value as *mut ::core::ffi::c_char
+                || !endptr_2.is_null()
+                    && *endptr_2 as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                || *__errno_location() == ERANGE
+                || parsed_2.is_finite() as ::core::ffi::c_int == 0
+            {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
                     b"Ignoring invalid pressure_emergency_pct '%s'\0".as_ptr()
                         as *const ::core::ffi::c_char,
                     value,
                 );
             } else {
-                (*config).storage_pressure_emergency_pct = parsed_1;
+                (*config).storage_pressure_emergency_pct = parsed_2;
             }
         } else if strcmp(
             name,
@@ -3359,11 +3571,19 @@ unsafe extern "C" fn config_ini_handler(
             b"ssl_enabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).web_ssl_enabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_1: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_1) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for web.ssl_enabled: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).web_ssl_enabled = parsed_bool_1;
         } else if strcmp(
             name,
             b"ssl_cert_path\0".as_ptr() as *const ::core::ffi::c_char,
@@ -3391,8 +3611,8 @@ unsafe extern "C" fn config_ini_handler(
             b"auth_enabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            let mut parsed_bool_0: bool = r#false != 0;
-            if !parse_bool_strict(value, &raw mut parsed_bool_0) {
+            let mut parsed_bool_2: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_2) {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
                     LOG_COMPONENT,
@@ -3403,7 +3623,7 @@ unsafe extern "C" fn config_ini_handler(
                 );
                 return 0 as ::core::ffi::c_int;
             }
-            (*config).web_auth_enabled = parsed_bool_0;
+            (*config).web_auth_enabled = parsed_bool_2;
         } else if strcmp(name, b"username\0".as_ptr() as *const ::core::ffi::c_char)
             == 0 as ::core::ffi::c_int
         {
@@ -3427,8 +3647,8 @@ unsafe extern "C" fn config_ini_handler(
             b"audio_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            let mut parsed_bool_1: bool = r#false != 0;
-            if !parse_bool_strict(value, &raw mut parsed_bool_1) {
+            let mut parsed_bool_3: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_3) {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
                     LOG_COMPONENT,
@@ -3439,14 +3659,14 @@ unsafe extern "C" fn config_ini_handler(
                 );
                 return 0 as ::core::ffi::c_int;
             }
-            (*config).audio_disabled = parsed_bool_1;
+            (*config).audio_disabled = parsed_bool_3;
         } else if strcmp(
             name,
             b"auto_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            let mut parsed_bool_2: bool = r#false != 0;
-            if !parse_bool_strict(value, &raw mut parsed_bool_2) {
+            let mut parsed_bool_4: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_4) {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
                     LOG_COMPONENT,
@@ -3457,14 +3677,14 @@ unsafe extern "C" fn config_ini_handler(
                 );
                 return 0 as ::core::ffi::c_int;
             }
-            (*config).auto_disabled = parsed_bool_2;
+            (*config).auto_disabled = parsed_bool_4;
         } else if strcmp(
             name,
             b"webrtc_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            let mut parsed_bool_3: bool = r#false != 0;
-            if !parse_bool_strict(value, &raw mut parsed_bool_3) {
+            let mut parsed_bool_5: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_5) {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
                     LOG_COMPONENT,
@@ -3475,14 +3695,14 @@ unsafe extern "C" fn config_ini_handler(
                 );
                 return 0 as ::core::ffi::c_int;
             }
-            (*config).webrtc_disabled = parsed_bool_3;
+            (*config).webrtc_disabled = parsed_bool_5;
         } else if strcmp(
             name,
             b"hls_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            let mut parsed_bool_4: bool = r#false != 0;
-            if !parse_bool_strict(value, &raw mut parsed_bool_4) {
+            let mut parsed_bool_6: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_6) {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
                     LOG_COMPONENT,
@@ -3493,14 +3713,14 @@ unsafe extern "C" fn config_ini_handler(
                 );
                 return 0 as ::core::ffi::c_int;
             }
-            (*config).hls_disabled = parsed_bool_4;
+            (*config).hls_disabled = parsed_bool_6;
         } else if strcmp(
             name,
             b"mse_disabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            let mut parsed_bool_5: bool = r#false != 0;
-            if !parse_bool_strict(value, &raw mut parsed_bool_5) {
+            let mut parsed_bool_7: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_7) {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
                     LOG_COMPONENT,
@@ -3511,7 +3731,7 @@ unsafe extern "C" fn config_ini_handler(
                 );
                 return 0 as ::core::ffi::c_int;
             }
-            (*config).mse_disabled = parsed_bool_5;
+            (*config).mse_disabled = parsed_bool_7;
         } else if strcmp(
             name,
             b"default_playback_transport\0".as_ptr() as *const ::core::ffi::c_char,
@@ -3596,21 +3816,37 @@ unsafe extern "C" fn config_ini_handler(
             b"force_mfa_on_login\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).force_mfa_on_login =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_8: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_8) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for web.force_mfa_on_login: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).force_mfa_on_login = parsed_bool_8;
         } else if strcmp(
             name,
             b"login_rate_limit_enabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).login_rate_limit_enabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_9: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_9) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid boolean value for web.login_rate_limit_enabled: '%s'\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).login_rate_limit_enabled = parsed_bool_9;
         } else if strcmp(
             name,
             b"login_rate_limit_max_attempts\0".as_ptr() as *const ::core::ffi::c_char,
@@ -3769,6 +4005,7 @@ unsafe extern "C" fn config_ini_handler(
                         new_max,
                         (*config).max_streams,
                     );
+                    return 0 as ::core::ffi::c_int;
                 }
             }
         }
@@ -4081,11 +4318,43 @@ unsafe extern "C" fn config_ini_handler(
         } else if strcmp(name, b"swap_size\0".as_ptr() as *const ::core::ffi::c_char)
             == 0 as ::core::ffi::c_int
         {
-            (*config).swap_size = strtoull(
-                value,
-                ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
-                10 as ::core::ffi::c_int,
-            ) as uint64_t;
+            let mut endptr_3: *mut ::core::ffi::c_char =
+                ::core::ptr::null_mut::<::core::ffi::c_char>();
+            *__errno_location() = 0 as ::core::ffi::c_int;
+            if *value.offset(0isize) as ::core::ffi::c_int == '\0' as ::core::ffi::c_int
+                || strspn(
+                    value,
+                    b"0123456789\0".as_ptr() as *const ::core::ffi::c_char,
+                ) as size_t
+                    != strlen(value)
+            {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid swap_size '%s': expected a non-negative integer. Keeping previous value.\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
+                    value,
+                );
+            } else {
+                let mut parsed_3: ::core::ffi::c_ulonglong =
+                    strtoull(value, &raw mut endptr_3, 10 as ::core::ffi::c_int);
+                if *__errno_location() == ERANGE
+                    || endptr_3 == value as *mut ::core::ffi::c_char
+                    || *endptr_3 as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Invalid swap_size '%s': expected a non-negative integer in range. Keeping previous value.\0"
+                            .as_ptr() as *const ::core::ffi::c_char,
+                        value,
+                    );
+                } else {
+                    (*config).swap_size = parsed_3 as uint64_t;
+                }
+            }
         }
     } else if strcmp(
         section,
@@ -4148,11 +4417,35 @@ unsafe extern "C" fn config_ini_handler(
         } else if strcmp(name, b"api_port\0".as_ptr() as *const ::core::ffi::c_char)
             == 0 as ::core::ffi::c_int
         {
-            (*config).go2rtc_api_port = safe_atoi(value, 0 as ::core::ffi::c_int);
+            let mut port: ::core::ffi::c_int = safe_atoi(value, -1 as ::core::ffi::c_int);
+            if port < 0 as ::core::ffi::c_int || port > 65535 as ::core::ffi::c_int {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid go2rtc api_port: %d (expected 0-65535)\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    port,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).go2rtc_api_port = port;
         } else if strcmp(name, b"rtsp_port\0".as_ptr() as *const ::core::ffi::c_char)
             == 0 as ::core::ffi::c_int
         {
-            (*config).go2rtc_rtsp_port = safe_atoi(value, 0 as ::core::ffi::c_int);
+            let mut port_0: ::core::ffi::c_int = safe_atoi(value, -1 as ::core::ffi::c_int);
+            if port_0 < 0 as ::core::ffi::c_int || port_0 > 65535 as ::core::ffi::c_int {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid go2rtc rtsp_port: %d (expected 0-65535)\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    port_0,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).go2rtc_rtsp_port = port_0;
         } else if strcmp(
             name,
             b"webrtc_port\0".as_ptr() as *const ::core::ffi::c_char,
@@ -4162,27 +4455,55 @@ unsafe extern "C" fn config_ini_handler(
                 b"webrtc_listen_port\0".as_ptr() as *const ::core::ffi::c_char,
             ) == 0 as ::core::ffi::c_int
         {
-            (*config).go2rtc_webrtc_listen_port = safe_atoi(value, 0 as ::core::ffi::c_int);
+            let mut port_1: ::core::ffi::c_int = safe_atoi(value, -1 as ::core::ffi::c_int);
+            if port_1 < 0 as ::core::ffi::c_int || port_1 > 65535 as ::core::ffi::c_int {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid go2rtc webrtc_listen_port: %d (expected 0-65535)\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    port_1,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).go2rtc_webrtc_listen_port = port_1;
         } else if strcmp(
             name,
             b"webrtc_enabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).go2rtc_webrtc_enabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_10: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_10) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid go2rtc webrtc_enabled value: '%s' (expected true/false/1/0/yes/no/on/off)\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).go2rtc_webrtc_enabled = parsed_bool_10;
         } else if strcmp(
             name,
             b"stun_enabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).go2rtc_stun_enabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut parsed_bool_11: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut parsed_bool_11) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid go2rtc stun_enabled value: '%s' (expected true/false/1/0/yes/no/on/off)\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
+                    value,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).go2rtc_stun_enabled = parsed_bool_11;
         } else if strcmp(
             name,
             b"stun_server\0".as_ptr() as *const ::core::ffi::c_char,
@@ -4282,6 +4603,19 @@ unsafe extern "C" fn config_ini_handler(
             b"turn_username\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
+            if contains_unsupported_ini_credential_chars(
+                value,
+                ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+            ) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid go2rtc.turn_username in INI: unsupported characters or value too long\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
             safe_strcpy(
                 &raw mut (*config).turn_username as *mut ::core::ffi::c_char,
                 value,
@@ -4293,6 +4627,19 @@ unsafe extern "C" fn config_ini_handler(
             b"turn_password\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
+            if contains_unsupported_ini_credential_chars(
+                value,
+                ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+            ) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid go2rtc.turn_password in INI: unsupported characters or value too long\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
+                );
+                return 0 as ::core::ffi::c_int;
+            }
             safe_strcpy(
                 &raw mut (*config).turn_password as *mut ::core::ffi::c_char,
                 value,
@@ -4413,11 +4760,23 @@ unsafe extern "C" fn config_ini_handler(
             b"tls_enabled\0".as_ptr() as *const ::core::ffi::c_char,
         ) == 0 as ::core::ffi::c_int
         {
-            (*config).mqtt_tls_enabled =
-                strcmp(value, b"true\0".as_ptr() as *const ::core::ffi::c_char)
-                    == 0 as ::core::ffi::c_int
-                    || strcmp(value, b"1\0".as_ptr() as *const ::core::ffi::c_char)
-                        == 0 as ::core::ffi::c_int;
+            let mut tls_enabled: bool = r#false != 0;
+            if !parse_bool_strict(value, &raw mut tls_enabled) {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Invalid mqtt.tls_enabled value '%s' (expected true/false, yes/no, on/off, 1/0)\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
+                    if !value.is_null() {
+                        value
+                    } else {
+                        b"(null)\0".as_ptr() as *const ::core::ffi::c_char
+                    },
+                );
+                return 0 as ::core::ffi::c_int;
+            }
+            (*config).mqtt_tls_enabled = tls_enabled;
         } else if strcmp(name, b"keepalive\0".as_ptr() as *const ::core::ffi::c_char)
             == 0 as ::core::ffi::c_int
         {
@@ -4490,6 +4849,7 @@ unsafe extern "C" fn load_config_from_file(
     mut config: *mut config_t,
     mut ini_present: *mut bool,
 ) -> ::core::ffi::c_int {
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
     let mut temp_config: config_t = *config;
     temp_config.streams = ::core::ptr::null_mut::<stream_config_t>();
     if !(*config).streams.is_null() && (*config).max_streams > 0 as ::core::ffi::c_int {
@@ -4497,6 +4857,7 @@ unsafe extern "C" fn load_config_from_file(
             .wrapping_mul(::core::mem::size_of::<stream_config_t>());
         temp_config.streams = malloc(bytes) as *mut stream_config_t;
         if temp_config.streams.is_null() {
+            pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_ERROR,
                 LOG_COMPONENT,
@@ -4513,23 +4874,86 @@ unsafe extern "C" fn load_config_from_file(
             bytes,
         );
     }
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
     let mut context: config_ini_context_t = config_ini_context_t {
         config: &raw mut temp_config,
         ini_present: ini_present,
     };
-    let mut result: ::core::ffi::c_int = ini_parse(
-        filename,
-        Some(
-            config_ini_handler
-                as unsafe extern "C" fn(
-                    *mut ::core::ffi::c_void,
-                    *const ::core::ffi::c_char,
-                    *const ::core::ffi::c_char,
-                    *const ::core::ffi::c_char,
-                ) -> ::core::ffi::c_int,
-        ),
-        &raw mut context as *mut ::core::ffi::c_void,
+    let mut result: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut cfg_fd: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut cfg_file: *mut FILE = ::core::ptr::null_mut::<FILE>();
+    let mut rdlock: flock = flock {
+        l_type: 0,
+        l_whence: 0,
+        l_start: 0,
+        l_len: 0,
+        l_pid: 0,
+    };
+    let mut st: stat = stat {
+        st_dev: 0,
+        st_ino: 0,
+        st_nlink: 0,
+        st_mode: 0,
+        st_uid: 0,
+        st_gid: 0,
+        __pad0: 0,
+        st_rdev: 0,
+        st_size: 0,
+        st_blksize: 0,
+        st_blocks: 0,
+        st_atim: timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        st_mtim: timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        st_ctim: timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        __glibc_reserved: [0; 3],
+    };
+    memset(
+        &raw mut rdlock as *mut ::core::ffi::c_void,
+        0 as ::core::ffi::c_int,
+        ::core::mem::size_of::<flock>(),
     );
+    rdlock.l_type = F_RDLCK as ::core::ffi::c_short;
+    rdlock.l_whence = SEEK_SET as ::core::ffi::c_short;
+    rdlock.l_start = 0 as __off_t;
+    rdlock.l_len = 0 as __off_t;
+    pthread_mutex_lock(&raw mut config_in_place_mutex);
+    cfg_fd = open(filename, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    if cfg_fd >= 0 as ::core::ffi::c_int
+        && fstat(cfg_fd, &raw mut st) == 0 as ::core::ffi::c_int
+        && st.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t
+        && fcntl(cfg_fd, F_SETLKW, &raw mut rdlock) == 0 as ::core::ffi::c_int
+    {
+        cfg_file = fdopen(cfg_fd, b"r\0".as_ptr() as *const ::core::ffi::c_char);
+        if !cfg_file.is_null() {
+            result = ini_parse_file(
+                cfg_file,
+                Some(
+                    config_ini_handler
+                        as unsafe extern "C" fn(
+                            *mut ::core::ffi::c_void,
+                            *const ::core::ffi::c_char,
+                            *const ::core::ffi::c_char,
+                            *const ::core::ffi::c_char,
+                        ) -> ::core::ffi::c_int,
+                ),
+                &raw mut context as *mut ::core::ffi::c_void,
+            );
+        }
+    }
+    if !cfg_file.is_null() {
+        fclose(cfg_file);
+    } else if cfg_fd >= 0 as ::core::ffi::c_int {
+        close(cfg_fd);
+    }
+    pthread_mutex_unlock(&raw mut config_in_place_mutex);
     if result < 0 as ::core::ffi::c_int {
         free(temp_config.streams as *mut ::core::ffi::c_void);
         _log_message_ctx(
@@ -4552,28 +4976,40 @@ unsafe extern "C" fn load_config_from_file(
         );
         return -1 as ::core::ffi::c_int;
     }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
     free((*config).streams as *mut ::core::ffi::c_void);
     *config = temp_config;
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
     return 0 as ::core::ffi::c_int;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn load_stream_configs(mut config: *mut config_t) -> ::core::ffi::c_int {
-    if config.is_null() || (*config).streams.is_null() {
+    if config.is_null() {
         return -1 as ::core::ffi::c_int;
     }
-    if (*config).max_streams <= 0 as ::core::ffi::c_int || (*config).max_streams > MAX_STREAMS {
+    pthread_mutex_lock(&raw mut stream_save_mutex);
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
+    let mut initial_streams: *mut stream_config_t = (*config).streams;
+    let mut initial_max_streams: ::core::ffi::c_int = (*config).max_streams;
+    if initial_streams.is_null()
+        || initial_max_streams <= 0 as ::core::ffi::c_int
+        || initial_max_streams > MAX_STREAMS
+    {
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
             _log_stream_name,
             b"load_stream_configs: invalid max_streams value (%d)\0".as_ptr()
                 as *const ::core::ffi::c_char,
-            (*config).max_streams,
+            initial_max_streams,
         );
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
-    let mut max_streams: size_t = (*config).max_streams as size_t;
+    let mut max_streams: size_t = initial_max_streams as size_t;
     if max_streams > (SIZE_MAX as usize).wrapping_div(::core::mem::size_of::<stream_config_t>()) {
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
@@ -4581,13 +5017,30 @@ pub unsafe extern "C" fn load_stream_configs(mut config: *mut config_t) -> ::cor
             b"load_stream_configs: max_streams causes size overflow\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
-    let mut i: size_t = 0 as size_t;
-    while i < max_streams {
-        init_stream_config_defaults((*config).streams.offset(i as isize));
-        i = i.wrapping_add(1);
+    let mut snapshot_bytes: size_t =
+        max_streams.wrapping_mul(::core::mem::size_of::<stream_config_t>());
+    let mut initial_snapshot: *mut stream_config_t = malloc(snapshot_bytes) as *mut stream_config_t;
+    if initial_snapshot.is_null() {
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"load_stream_configs: out of memory allocating stream snapshot\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
+        return -1 as ::core::ffi::c_int;
     }
+    memcpy(
+        initial_snapshot as *mut ::core::ffi::c_void,
+        initial_streams as *const ::core::ffi::c_void,
+        snapshot_bytes,
+    );
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
     let mut count: ::core::ffi::c_int = count_stream_configs();
     if count < 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -4597,15 +5050,39 @@ pub unsafe extern "C" fn load_stream_configs(mut config: *mut config_t) -> ::cor
             b"Failed to count stream configurations in database\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
+        free(initial_snapshot as *mut ::core::ffi::c_void);
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
     if count == 0 as ::core::ffi::c_int {
+        pthread_mutex_lock(&raw mut mp4_faststart_mutex);
+        if (*config).streams != initial_streams
+            || (*config).max_streams != initial_max_streams
+            || memcmp(
+                (*config).streams as *const ::core::ffi::c_void,
+                initial_snapshot as *const ::core::ffi::c_void,
+                snapshot_bytes,
+            ) != 0 as ::core::ffi::c_int
+        {
+            pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+            free(initial_snapshot as *mut ::core::ffi::c_void);
+            pthread_mutex_unlock(&raw mut stream_save_mutex);
+            return -1 as ::core::ffi::c_int;
+        }
+        let mut i: size_t = 0 as size_t;
+        while i < max_streams {
+            init_stream_config_defaults((*config).streams.offset(i as isize));
+            i = i.wrapping_add(1);
+        }
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+        free(initial_snapshot as *mut ::core::ffi::c_void);
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
             LOG_COMPONENT,
             _log_stream_name,
             b"No stream configurations found in database\0".as_ptr() as *const ::core::ffi::c_char,
         );
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return 0 as ::core::ffi::c_int;
     }
     let mut load_capacity: size_t = if (count as size_t) < max_streams {
@@ -4635,6 +5112,8 @@ pub unsafe extern "C" fn load_stream_configs(mut config: *mut config_t) -> ::cor
                 as *const ::core::ffi::c_char,
             load_capacity,
         );
+        free(initial_snapshot as *mut ::core::ffi::c_void);
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut loaded: ::core::ffi::c_int =
@@ -4648,18 +5127,42 @@ pub unsafe extern "C" fn load_stream_configs(mut config: *mut config_t) -> ::cor
                 as *const ::core::ffi::c_char,
         );
         free(db_streams as *mut ::core::ffi::c_void);
+        free(initial_snapshot as *mut ::core::ffi::c_void);
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
-    let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while i_0 < loaded {
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
+    if (*config).streams != initial_streams
+        || (*config).max_streams != initial_max_streams
+        || memcmp(
+            (*config).streams as *const ::core::ffi::c_void,
+            initial_snapshot as *const ::core::ffi::c_void,
+            snapshot_bytes,
+        ) != 0 as ::core::ffi::c_int
+    {
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+        free(db_streams as *mut ::core::ffi::c_void);
+        free(initial_snapshot as *mut ::core::ffi::c_void);
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut i_0: size_t = 0 as size_t;
+    while i_0 < max_streams {
+        init_stream_config_defaults((*config).streams.offset(i_0 as isize));
+        i_0 = i_0.wrapping_add(1);
+    }
+    let mut i_1: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_1 < loaded {
         memcpy(
-            (*config).streams.offset(i_0 as isize) as *mut ::core::ffi::c_void,
-            db_streams.offset(i_0 as isize) as *const ::core::ffi::c_void,
+            (*config).streams.offset(i_1 as isize) as *mut ::core::ffi::c_void,
+            db_streams.offset(i_1 as isize) as *const ::core::ffi::c_void,
             ::core::mem::size_of::<stream_config_t>(),
         );
-        i_0 += 1;
+        i_1 += 1;
     }
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
     free(db_streams as *mut ::core::ffi::c_void);
+    free(initial_snapshot as *mut ::core::ffi::c_void);
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
@@ -4667,17 +5170,54 @@ pub unsafe extern "C" fn load_stream_configs(mut config: *mut config_t) -> ::cor
         b"Loaded %d stream configurations from database\0".as_ptr() as *const ::core::ffi::c_char,
         loaded,
     );
+    pthread_mutex_unlock(&raw mut stream_save_mutex);
     return loaded;
+}
+unsafe extern "C" fn db_name_index_cmp(
+    mut a: *const ::core::ffi::c_void,
+    mut b: *const ::core::ffi::c_void,
+) -> ::core::ffi::c_int {
+    let mut ea: *const db_name_index_entry_t = a as *const db_name_index_entry_t;
+    let mut eb: *const db_name_index_entry_t = b as *const db_name_index_entry_t;
+    return strcmp((*ea).name, (*eb).name);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::core::ffi::c_int {
-    if config.is_null()
-        || (*config).streams.is_null()
-        || (*config).max_streams <= 0 as ::core::ffi::c_int
-        || (*config).max_streams > MAX_STREAMS
-    {
+    if config.is_null() {
         return -1 as ::core::ffi::c_int;
     }
+    pthread_mutex_lock(&raw mut stream_save_mutex);
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
+    let mut max_streams: ::core::ffi::c_int = (*config).max_streams;
+    let mut initial_streams: *mut stream_config_t = (*config).streams;
+    if initial_streams.is_null()
+        || max_streams <= 0 as ::core::ffi::c_int
+        || max_streams > MAX_STREAMS
+    {
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut streams_snapshot: *mut stream_config_t =
+        malloc((max_streams as size_t).wrapping_mul(::core::mem::size_of::<stream_config_t>()))
+            as *mut stream_config_t;
+    if streams_snapshot.is_null() {
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to allocate stream snapshot\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
+        return -1 as ::core::ffi::c_int;
+    }
+    memcpy(
+        streams_snapshot as *mut ::core::ffi::c_void,
+        initial_streams as *const ::core::ffi::c_void,
+        (max_streams as size_t).wrapping_mul(::core::mem::size_of::<stream_config_t>()),
+    );
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
     let mut saved: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     if begin_transaction() != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -4687,6 +5227,8 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
             b"Failed to begin transaction for saving stream configurations\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
+        free(streams_snapshot as *mut ::core::ffi::c_void);
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut count: ::core::ffi::c_int = count_stream_configs();
@@ -4698,10 +5240,12 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
             b"Failed to count stream configurations in database\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
+        free(streams_snapshot as *mut ::core::ffi::c_void);
         rollback_transaction();
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
-    if count > (*config).max_streams {
+    if count > max_streams {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
@@ -4709,13 +5253,15 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
             b"Cannot replace stream configurations: database has %d streams, exceeds max_streams=%d\0"
                 .as_ptr() as *const ::core::ffi::c_char,
             count,
-            (*config).max_streams,
+            max_streams,
         );
+        free(streams_snapshot as *mut ::core::ffi::c_void);
         rollback_transaction();
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut db_streams: *mut stream_config_t = calloc(
-        (*config).max_streams as size_t,
+        max_streams as size_t,
         ::core::mem::size_of::<stream_config_t>(),
     ) as *mut stream_config_t;
     if db_streams.is_null() {
@@ -4725,12 +5271,14 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
             _log_stream_name,
             b"save_stream_configs: out of memory\0".as_ptr() as *const ::core::ffi::c_char,
         );
+        free(streams_snapshot as *mut ::core::ffi::c_void);
         rollback_transaction();
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut loaded: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     if count > 0 as ::core::ffi::c_int {
-        loaded = get_all_stream_configs(db_streams, (*config).max_streams);
+        loaded = get_all_stream_configs(db_streams, max_streams);
         if loaded < 0 as ::core::ffi::c_int {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_ERROR,
@@ -4740,49 +5288,101 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
                     as *const ::core::ffi::c_char,
             );
             free(db_streams as *mut ::core::ffi::c_void);
+            free(streams_snapshot as *mut ::core::ffi::c_void);
             rollback_transaction();
+            pthread_mutex_unlock(&raw mut stream_save_mutex);
             return -1 as ::core::ffi::c_int;
         }
     }
+    let mut db_name_index: *mut db_name_index_entry_t =
+        ::core::ptr::null_mut::<db_name_index_entry_t>();
+    if loaded > 0 as ::core::ffi::c_int {
+        db_name_index = calloc(
+            loaded as size_t,
+            ::core::mem::size_of::<db_name_index_entry_t>(),
+        ) as *mut db_name_index_entry_t;
+        if db_name_index.is_null() {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"save_stream_configs: out of memory\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            free(db_streams as *mut ::core::ffi::c_void);
+            free(streams_snapshot as *mut ::core::ffi::c_void);
+            rollback_transaction();
+            pthread_mutex_unlock(&raw mut stream_save_mutex);
+            return -1 as ::core::ffi::c_int;
+        }
+        let mut j: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while j < loaded {
+            (*db_name_index.offset(j as isize)).name =
+                &raw mut (*db_streams.offset(j as isize)).name as *mut ::core::ffi::c_char;
+            (*db_name_index.offset(j as isize)).idx = j;
+            j += 1;
+        }
+        qsort(
+            db_name_index as *mut ::core::ffi::c_void,
+            loaded as size_t,
+            ::core::mem::size_of::<db_name_index_entry_t>(),
+            Some(
+                db_name_index_cmp
+                    as unsafe extern "C" fn(
+                        *const ::core::ffi::c_void,
+                        *const ::core::ffi::c_void,
+                    ) -> ::core::ffi::c_int,
+            ),
+        );
+    }
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while i < (*config).max_streams {
-        if (*(*config).streams.offset(i as isize)).name[0usize] as ::core::ffi::c_int
-            != '\0' as ::core::ffi::c_int
+    while i < max_streams {
+        if !((*streams_snapshot.offset(i as isize)).name[0usize] as ::core::ffi::c_int
+            == '\0' as ::core::ffi::c_int
+            || loaded <= 0 as ::core::ffi::c_int)
         {
-            let mut j: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-            while j < loaded {
-                if strcmp(
-                    &raw mut (*(*config).streams.offset(i as isize)).name
+            let mut key: db_name_index_entry_t = db_name_index_entry_t {
+                name: &raw mut (*streams_snapshot.offset(i as isize)).name
+                    as *mut ::core::ffi::c_char,
+                idx: -1 as ::core::ffi::c_int,
+            };
+            let mut found: *mut db_name_index_entry_t = bsearch(
+                &raw mut key as *const ::core::ffi::c_void,
+                db_name_index as *const ::core::ffi::c_void,
+                loaded as size_t,
+                ::core::mem::size_of::<db_name_index_entry_t>(),
+                Some(
+                    db_name_index_cmp
+                        as unsafe extern "C" fn(
+                            *const ::core::ffi::c_void,
+                            *const ::core::ffi::c_void,
+                        ) -> ::core::ffi::c_int,
+                ),
+            ) as *mut db_name_index_entry_t;
+            if !found.is_null() {
+                let mut j_0: ::core::ffi::c_int = (*found).idx;
+                safe_strcpy(
+                    &raw mut (*streams_snapshot.offset(i as isize)).camera_uuid
                         as *mut ::core::ffi::c_char,
-                    &raw mut (*db_streams.offset(j as isize)).name as *mut ::core::ffi::c_char,
-                ) == 0 as ::core::ffi::c_int
-                {
-                    safe_strcpy(
-                        &raw mut (*(*config).streams.offset(i as isize)).camera_uuid
-                            as *mut ::core::ffi::c_char,
-                        &raw mut (*db_streams.offset(j as isize)).camera_uuid
-                            as *mut ::core::ffi::c_char,
-                        ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
-                        0 as size_t,
-                    );
-                    safe_strcpy(
-                        &raw mut (*(*config).streams.offset(i as isize)).location_uuid
-                            as *mut ::core::ffi::c_char,
-                        &raw mut (*db_streams.offset(j as isize)).location_uuid
-                            as *mut ::core::ffi::c_char,
-                        ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
-                        0 as size_t,
-                    );
-                    break;
-                } else {
-                    j += 1;
-                }
+                    &raw mut (*db_streams.offset(j_0 as isize)).camera_uuid
+                        as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
+                    0 as size_t,
+                );
+                safe_strcpy(
+                    &raw mut (*streams_snapshot.offset(i as isize)).location_uuid
+                        as *mut ::core::ffi::c_char,
+                    &raw mut (*db_streams.offset(j_0 as isize)).location_uuid
+                        as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
+                    0 as size_t,
+                );
             }
         }
         i += 1;
     }
-    if loaded > (*config).max_streams {
-        loaded = (*config).max_streams;
+    free(db_name_index as *mut ::core::ffi::c_void);
+    if loaded > max_streams {
+        loaded = max_streams;
     }
     let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i_0 < loaded {
@@ -4799,26 +5399,28 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
                 &raw mut (*db_streams.offset(i_0 as isize)).name as *mut ::core::ffi::c_char,
             );
             free(db_streams as *mut ::core::ffi::c_void);
+            free(streams_snapshot as *mut ::core::ffi::c_void);
             rollback_transaction();
+            pthread_mutex_unlock(&raw mut stream_save_mutex);
             return -1 as ::core::ffi::c_int;
         }
         i_0 += 1;
     }
     free(db_streams as *mut ::core::ffi::c_void);
     let mut i_1: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while i_1 < (*config).max_streams {
+    while i_1 < max_streams {
         if strlen(
-            &raw mut (*(*config).streams.offset(i_1 as isize)).name as *mut ::core::ffi::c_char,
+            &raw mut (*streams_snapshot.offset(i_1 as isize)).name as *mut ::core::ffi::c_char,
         ) > 0 as size_t
         {
             let mut stream_name: [::core::ffi::c_char; 256] = [0; 256];
             safe_strcpy(
                 &raw mut stream_name as *mut ::core::ffi::c_char,
-                &raw mut (*(*config).streams.offset(i_1 as isize)).name as *mut ::core::ffi::c_char,
+                &raw mut (*streams_snapshot.offset(i_1 as isize)).name as *mut ::core::ffi::c_char,
                 ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
                 0 as size_t,
             );
-            let mut result: uint64_t = add_stream_config((*config).streams.offset(i_1 as isize));
+            let mut result: uint64_t = add_stream_config(streams_snapshot.offset(i_1 as isize));
             if result == 0 as uint64_t {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
@@ -4828,28 +5430,158 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
                         as *const ::core::ffi::c_char,
                     &raw mut stream_name as *mut ::core::ffi::c_char,
                 );
+                free(streams_snapshot as *mut ::core::ffi::c_void);
                 rollback_transaction();
+                pthread_mutex_unlock(&raw mut stream_save_mutex);
                 return -1 as ::core::ffi::c_int;
             }
-            if get_stream_config_by_name(
-                &raw mut stream_name as *mut ::core::ffi::c_char,
-                (*config).streams.offset(i_1 as isize),
-            ) != 0 as ::core::ffi::c_int
-            {
+            saved += 1;
+        }
+        i_1 += 1;
+    }
+    let mut reloaded_streams: *mut stream_config_t = calloc(
+        max_streams as size_t,
+        ::core::mem::size_of::<stream_config_t>(),
+    ) as *mut stream_config_t;
+    if reloaded_streams.is_null() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to allocate stream identity reload buffer\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        free(streams_snapshot as *mut ::core::ffi::c_void);
+        rollback_transaction();
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut reloaded_count: ::core::ffi::c_int =
+        get_all_stream_configs(reloaded_streams, max_streams);
+    if reloaded_count < 0 as ::core::ffi::c_int {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to reload stream configurations after save\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        free(reloaded_streams as *mut ::core::ffi::c_void);
+        free(streams_snapshot as *mut ::core::ffi::c_void);
+        rollback_transaction();
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut name_index_size: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+    while name_index_size < reloaded_count * 2 as ::core::ffi::c_int {
+        name_index_size <<= 1 as ::core::ffi::c_int;
+    }
+    let mut name_index_slots: *mut ::core::ffi::c_int = malloc(
+        (name_index_size as size_t).wrapping_mul(::core::mem::size_of::<::core::ffi::c_int>()),
+    ) as *mut ::core::ffi::c_int;
+    if name_index_slots.is_null() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to allocate stream identity name index\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        free(reloaded_streams as *mut ::core::ffi::c_void);
+        free(streams_snapshot as *mut ::core::ffi::c_void);
+        rollback_transaction();
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut i_2: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_2 < name_index_size {
+        *name_index_slots.offset(i_2 as isize) = -1 as ::core::ffi::c_int;
+        i_2 += 1;
+    }
+    let mut j_1: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while j_1 < reloaded_count {
+        let mut slot: ::core::ffi::c_int = stream_name_index_slot(
+            reloaded_streams,
+            name_index_slots,
+            name_index_size,
+            &raw mut (*reloaded_streams.offset(j_1 as isize)).name as *mut ::core::ffi::c_char,
+        );
+        if *name_index_slots.offset(slot as isize) == -1 as ::core::ffi::c_int {
+            *name_index_slots.offset(slot as isize) = j_1;
+        }
+        j_1 += 1;
+    }
+    let mut i_3: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_3 < max_streams {
+        if strlen(
+            &raw mut (*streams_snapshot.offset(i_3 as isize)).name as *mut ::core::ffi::c_char,
+        ) != 0 as size_t
+        {
+            let mut slot_0: ::core::ffi::c_int = stream_name_index_slot(
+                reloaded_streams,
+                name_index_slots,
+                name_index_size,
+                &raw mut (*streams_snapshot.offset(i_3 as isize)).name as *mut ::core::ffi::c_char,
+            );
+            let mut found_0: bool = r#false != 0;
+            if *name_index_slots.offset(slot_0 as isize) != -1 as ::core::ffi::c_int {
+                let mut idx: ::core::ffi::c_int = *name_index_slots.offset(slot_0 as isize);
+                if strcmp(
+                    &raw mut (*streams_snapshot.offset(i_3 as isize)).name
+                        as *mut ::core::ffi::c_char,
+                    &raw mut (*reloaded_streams.offset(idx as isize)).name
+                        as *mut ::core::ffi::c_char,
+                ) == 0 as ::core::ffi::c_int
+                {
+                    *streams_snapshot.offset(i_3 as isize) = *reloaded_streams.offset(idx as isize);
+                    found_0 = r#true != 0;
+                }
+            }
+            if !found_0 {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
                     LOG_COMPONENT,
                     _log_stream_name,
                     b"Failed to reload stable identity for stream: %s\0".as_ptr()
                         as *const ::core::ffi::c_char,
-                    &raw mut stream_name as *mut ::core::ffi::c_char,
+                    &raw mut (*streams_snapshot.offset(i_3 as isize)).name
+                        as *mut ::core::ffi::c_char,
                 );
+                free(name_index_slots as *mut ::core::ffi::c_void);
+                free(reloaded_streams as *mut ::core::ffi::c_void);
+                free(streams_snapshot as *mut ::core::ffi::c_void);
                 rollback_transaction();
+                pthread_mutex_unlock(&raw mut stream_save_mutex);
                 return -1 as ::core::ffi::c_int;
             }
-            saved += 1;
         }
-        i_1 += 1;
+        i_3 += 1;
+    }
+    free(name_index_slots as *mut ::core::ffi::c_void);
+    free(reloaded_streams as *mut ::core::ffi::c_void);
+    let mut table_size: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+    while table_size < max_streams * 2 as ::core::ffi::c_int {
+        table_size <<= 1 as ::core::ffi::c_int;
+    }
+    let mut hash_slots: *mut ::core::ffi::c_int =
+        malloc((table_size as size_t).wrapping_mul(::core::mem::size_of::<::core::ffi::c_int>()))
+            as *mut ::core::ffi::c_int;
+    if hash_slots.is_null() {
+        free(streams_snapshot as *mut ::core::ffi::c_void);
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to allocate stream identity index\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        rollback_transaction();
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut i_4: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_4 < table_size {
+        *hash_slots.offset(i_4 as isize) = -1 as ::core::ffi::c_int;
+        i_4 += 1;
     }
     if commit_transaction() != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -4859,9 +5591,84 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
             b"Failed to commit transaction for saving stream configurations\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
+        free(hash_slots as *mut ::core::ffi::c_void);
+        free(streams_snapshot as *mut ::core::ffi::c_void);
         rollback_transaction();
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
         return -1 as ::core::ffi::c_int;
     }
+    let mut i_5: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i_5 < max_streams {
+        if (*streams_snapshot.offset(i_5 as isize)).name[0usize] as ::core::ffi::c_int
+            != '\0' as ::core::ffi::c_int
+        {
+            let mut slot_1: ::core::ffi::c_int = stream_name_index_slot(
+                streams_snapshot,
+                hash_slots,
+                table_size,
+                &raw mut (*streams_snapshot.offset(i_5 as isize)).name as *mut ::core::ffi::c_char,
+            );
+            if slot_1 >= 0 as ::core::ffi::c_int
+                && *hash_slots.offset(slot_1 as isize) == -1 as ::core::ffi::c_int
+            {
+                *hash_slots.offset(slot_1 as isize) = i_5;
+            }
+        }
+        i_5 += 1;
+    }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
+    if (*config).streams != initial_streams || (*config).max_streams != max_streams {
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+        free(hash_slots as *mut ::core::ffi::c_void);
+        free(streams_snapshot as *mut ::core::ffi::c_void);
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Stream destination changed after database save; stable identities will reload later\0"
+                .as_ptr() as *const ::core::ffi::c_char,
+        );
+        pthread_mutex_unlock(&raw mut stream_save_mutex);
+        return saved;
+    }
+    let mut j_2: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while j_2 < max_streams {
+        if (*(*config).streams.offset(j_2 as isize)).name[0usize] as ::core::ffi::c_int
+            != '\0' as ::core::ffi::c_int
+        {
+            let mut slot_2: ::core::ffi::c_int = stream_name_index_slot(
+                streams_snapshot,
+                hash_slots,
+                table_size,
+                &raw mut (*(*config).streams.offset(j_2 as isize)).name as *mut ::core::ffi::c_char,
+            );
+            if slot_2 >= 0 as ::core::ffi::c_int
+                && *hash_slots.offset(slot_2 as isize) != -1 as ::core::ffi::c_int
+            {
+                let mut idx_0: ::core::ffi::c_int = *hash_slots.offset(slot_2 as isize);
+                safe_strcpy(
+                    &raw mut (*(*config).streams.offset(j_2 as isize)).camera_uuid
+                        as *mut ::core::ffi::c_char,
+                    &raw mut (*streams_snapshot.offset(idx_0 as isize)).camera_uuid
+                        as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
+                    0 as size_t,
+                );
+                safe_strcpy(
+                    &raw mut (*(*config).streams.offset(j_2 as isize)).location_uuid
+                        as *mut ::core::ffi::c_char,
+                    &raw mut (*streams_snapshot.offset(idx_0 as isize)).location_uuid
+                        as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
+                    0 as size_t,
+                );
+            }
+        }
+        j_2 += 1;
+    }
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+    free(hash_slots as *mut ::core::ffi::c_void);
+    free(streams_snapshot as *mut ::core::ffi::c_void);
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
@@ -4869,6 +5676,7 @@ pub unsafe extern "C" fn save_stream_configs(mut config: *mut config_t) -> ::cor
         b"Saved %d stream configurations to database\0".as_ptr() as *const ::core::ffi::c_char,
         saved,
     );
+    pthread_mutex_unlock(&raw mut stream_save_mutex);
     return saved;
 }
 static mut g_custom_config_path: [::core::ffi::c_char; 512] = [
@@ -5914,15 +6722,32 @@ pub unsafe extern "C" fn set_custom_config_path(mut path: *const ::core::ffi::c_
         );
         return;
     }
-    if !strstr(path, b"/../\0".as_ptr() as *const ::core::ffi::c_char).is_null()
-        || !strstr(path, b"/..\0".as_ptr() as *const ::core::ffi::c_char).is_null()
-        || strncmp(
-            path,
-            b"../\0".as_ptr() as *const ::core::ffi::c_char,
-            3 as size_t,
-        ) == 0 as ::core::ffi::c_int
-        || strcmp(path, b"..\0".as_ptr() as *const ::core::ffi::c_char) == 0 as ::core::ffi::c_int
-    {
+    let mut has_parent_component: bool = r#false != 0;
+    let mut component_start: *const ::core::ffi::c_char = path;
+    let mut p: *const ::core::ffi::c_char = path;
+    loop {
+        if *p as ::core::ffi::c_int == '/' as ::core::ffi::c_int
+            || *p as ::core::ffi::c_int == '\0' as ::core::ffi::c_int
+        {
+            let mut comp_len: size_t = p.offset_from(component_start) as size_t;
+            if comp_len == 2 as size_t
+                && *component_start.offset(0isize) as ::core::ffi::c_int
+                    == '.' as ::core::ffi::c_int
+                && *component_start.offset(1isize) as ::core::ffi::c_int
+                    == '.' as ::core::ffi::c_int
+            {
+                has_parent_component = r#true != 0;
+                break;
+            } else {
+                if *p as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
+                    break;
+                }
+                component_start = p.offset(1 as ::core::ffi::c_int as isize);
+            }
+        }
+        p = p.offset(1);
+    }
+    if has_parent_component {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
@@ -5933,6 +6758,7 @@ pub unsafe extern "C" fn set_custom_config_path(mut path: *const ::core::ffi::c_
         );
         return;
     }
+    pthread_mutex_lock(&raw mut config_load_mutex);
     safe_strcpy(
         &raw mut g_custom_config_path as *mut ::core::ffi::c_char,
         path,
@@ -5946,45 +6772,77 @@ pub unsafe extern "C" fn set_custom_config_path(mut path: *const ::core::ffi::c_
         b"Custom config path set to: %s\0".as_ptr() as *const ::core::ffi::c_char,
         &raw mut g_custom_config_path as *mut ::core::ffi::c_char,
     );
+    pthread_mutex_unlock(&raw mut config_load_mutex);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_custom_config_path() -> *const ::core::ffi::c_char {
-    return if g_custom_config_path[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
-        &raw mut g_custom_config_path as *mut ::core::ffi::c_char
+    #[thread_local]
+    static mut snapshot: [::core::ffi::c_char; 512] = [0; 512];
+    pthread_mutex_lock(&raw mut config_load_mutex);
+    safe_strcpy(
+        &raw mut snapshot as *mut ::core::ffi::c_char,
+        &raw mut g_custom_config_path as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        0 as size_t,
+    );
+    pthread_mutex_unlock(&raw mut config_load_mutex);
+    return if snapshot[0usize] as ::core::ffi::c_int != 0 {
+        &raw mut snapshot as *mut ::core::ffi::c_char
     } else {
         ::core::ptr::null_mut::<::core::ffi::c_char>()
     };
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_loaded_config_path() -> *const ::core::ffi::c_char {
-    return if g_loaded_config_path[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
-        &raw mut g_loaded_config_path as *mut ::core::ffi::c_char
+    #[thread_local]
+    static mut snapshot: [::core::ffi::c_char; 512] = [0; 512];
+    pthread_mutex_lock(&raw mut config_load_mutex);
+    safe_strcpy(
+        &raw mut snapshot as *mut ::core::ffi::c_char,
+        &raw mut g_loaded_config_path as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        0 as size_t,
+    );
+    pthread_mutex_unlock(&raw mut config_load_mutex);
+    return if snapshot[0usize] as ::core::ffi::c_int != 0 {
+        &raw mut snapshot as *mut ::core::ffi::c_char
     } else {
         ::core::ptr::null_mut::<::core::ffi::c_char>()
     };
 }
 unsafe extern "C" fn set_loaded_config_path(mut path: *const ::core::ffi::c_char) {
-    if !path.is_null() && *path.offset(0isize) as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
-        safe_strcpy(
-            &raw mut g_loaded_config_path as *mut ::core::ffi::c_char,
-            path,
-            MAX_PATH_LENGTH as size_t,
-            0 as size_t,
-        );
+    if path.is_null() || *path.offset(0isize) as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
+        return;
+    }
+    let mut len: size_t = strnlen(path, MAX_PATH_LENGTH as size_t);
+    if len >= MAX_PATH_LENGTH as size_t {
         _log_message_ctx(
-            log_level_t::LOG_LEVEL_INFO,
+            log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Loaded config path set to: %s\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw mut g_loaded_config_path as *mut ::core::ffi::c_char,
+            b"Loaded config path too long, ignoring\0".as_ptr() as *const ::core::ffi::c_char,
         );
+        return;
     }
+    safe_strcpy(
+        &raw mut g_loaded_config_path as *mut ::core::ffi::c_char,
+        path,
+        MAX_PATH_LENGTH as size_t,
+        0 as size_t,
+    );
+    _log_message_ctx(
+        log_level_t::LOG_LEVEL_INFO,
+        LOG_COMPONENT,
+        _log_stream_name,
+        b"Loaded config path set to: %s\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw mut g_loaded_config_path as *mut ::core::ffi::c_char,
+    );
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::c_int {
+unsafe extern "C" fn load_config_into(mut config: *mut config_t) -> ::core::ffi::c_int {
     if config.is_null() {
         return -1 as ::core::ffi::c_int;
     }
+    g_loaded_config_path[0usize] = '\0' as ::core::ffi::c_char;
     let mut ini_present: [bool; 32] = [
         r#false != 0,
         false,
@@ -6020,6 +6878,16 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
         false,
     ];
     load_default_config(config);
+    if (*config).streams.is_null() || (*config).max_streams <= 0 as ::core::ffi::c_int {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to initialize default stream configuration\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
     let mut loaded: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     if g_custom_config_path[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
         if access(
@@ -6088,8 +6956,23 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
         let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
         while !config_paths[i as usize].is_null() && loaded == 0 {
             if access(config_paths[i as usize], R_OK) == 0 as ::core::ffi::c_int {
-                if load_config_from_file(
+                let mut resolved_default_path: [::core::ffi::c_char; 4096] = [0; 4096];
+                let mut canon_default_path: *const ::core::ffi::c_char = realpath(
                     config_paths[i as usize],
+                    &raw mut resolved_default_path as *mut ::core::ffi::c_char,
+                );
+                if canon_default_path.is_null() {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Failed to resolve config path '%s': %s\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        config_paths[i as usize],
+                        strerror(*__errno_location()),
+                    );
+                } else if load_config_from_file(
+                    canon_default_path,
                     config,
                     &raw mut ini_present as *mut bool,
                 ) == 0 as ::core::ffi::c_int
@@ -6099,9 +6982,9 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
                         LOG_COMPONENT,
                         _log_stream_name,
                         b"Loaded configuration from %s\0".as_ptr() as *const ::core::ffi::c_char,
-                        config_paths[i as usize],
+                        canon_default_path,
                     );
-                    set_loaded_config_path(config_paths[i as usize]);
+                    set_loaded_config_path(canon_default_path);
                     loaded = 1 as ::core::ffi::c_int;
                     break;
                 } else {
@@ -6111,13 +6994,12 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
                         _log_stream_name,
                         b"Failed to load configuration from %s\0".as_ptr()
                             as *const ::core::ffi::c_char,
-                        config_paths[i as usize],
+                        canon_default_path,
                     );
                     return -1 as ::core::ffi::c_int;
                 }
-            } else {
-                i += 1;
             }
+            i += 1;
         }
     }
     if loaded == 0 {
@@ -6128,8 +7010,9 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
             b"No configuration file found, using defaults\0".as_ptr() as *const ::core::ffi::c_char,
         );
     }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
     apply_env_overrides(config, &raw mut ini_present as *mut bool);
-    if strlen(&raw mut (*config).web_root as *mut ::core::ffi::c_char) == 0 as size_t {
+    if (*config).web_root[0usize] as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
         safe_strcpy(
             &raw mut (*config).web_root as *mut ::core::ffi::c_char,
             b"/var/www/lightnvr\0".as_ptr() as *const ::core::ffi::c_char,
@@ -6137,6 +7020,17 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
             0 as size_t,
         );
     }
+    if validate_config(config) != 0 as ::core::ffi::c_int {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Invalid configuration\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+        return -1 as ::core::ffi::c_int;
+    }
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
@@ -6185,15 +7079,6 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
             &raw mut (*config).web_root as *mut ::core::ffi::c_char,
         );
     }
-    if validate_config(config) != 0 as ::core::ffi::c_int {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Invalid configuration\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        return -1 as ::core::ffi::c_int;
-    }
     if ensure_directories(config) != 0 as ::core::ffi::c_int {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
@@ -6204,6 +7089,888 @@ pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::
         return -1 as ::core::ffi::c_int;
     }
     return 0 as ::core::ffi::c_int;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn load_config(mut config: *mut config_t) -> ::core::ffi::c_int {
+    if config.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    pthread_mutex_lock(&raw mut config_load_mutex);
+    let mut original: config_t = config_t {
+        pid_file: [0; 512],
+        log_file: [0; 512],
+        log_level: 0,
+        syslog_enabled: false,
+        syslog_ident: [0; 64],
+        syslog_facility: 0,
+        storage_path: [0; 512],
+        storage_path_hls: [0; 512],
+        max_storage_size: 0,
+        retention_days: 0,
+        auto_delete_oldest: false,
+        mp4_faststart: false,
+        storage_min_free_pct: 0,
+        storage_pressure_warning_pct: 0.,
+        storage_pressure_critical_pct: 0.,
+        storage_pressure_emergency_pct: 0.,
+        generate_thumbnails: false,
+        thumbnails_per_recording: 0,
+        record_mp4_directly: false,
+        mp4_storage_path: [0; 512],
+        mp4_directory_format: [0; 32],
+        mp4_segment_duration: 0,
+        mp4_retention_days: 0,
+        models_path: [0; 512],
+        api_detection_url: [0; 512],
+        api_detection_backend: [0; 32],
+        api_detection_format: [0; 32],
+        api_detection_detector_name: [0; 64],
+        default_detection_threshold: 0,
+        default_pre_detection_buffer: 0,
+        default_post_detection_buffer: 0,
+        default_playback_transport: [0; 24],
+        detection_grace_period: 0,
+        db_path: [0; 512],
+        db_backup_interval_minutes: 0,
+        db_backup_retention_count: 0,
+        db_post_backup_script: [0; 512],
+        db_startup_check: 0,
+        db_backup_verify: 0,
+        web_thread_pool_size: 0,
+        web_port: 0,
+        web_bind_ip: [0; 32],
+        web_root: [0; 512],
+        web_ssl_enabled: false,
+        web_ssl_cert_path: [0; 512],
+        web_ssl_key_path: [0; 512],
+        web_auth_enabled: false,
+        web_username: [0; 32],
+        web_password: [0; 32],
+        audio_disabled: false,
+        auto_disabled: false,
+        webrtc_disabled: false,
+        hls_disabled: false,
+        mse_disabled: false,
+        auth_timeout_hours: 0,
+        auth_absolute_timeout_hours: 0,
+        trusted_device_days: 0,
+        trusted_proxy_cidrs: [0; 1024],
+        demo_mode: false,
+        force_mfa_on_login: false,
+        login_rate_limit_enabled: false,
+        login_rate_limit_max_attempts: 0,
+        login_rate_limit_window_seconds: 0,
+        web_compression_enabled: false,
+        web_use_minified_assets: false,
+        web_cache_max_age_html: 0,
+        web_cache_max_age_css: 0,
+        web_cache_max_age_js: 0,
+        web_cache_max_age_images: 0,
+        web_cache_max_age_fonts: 0,
+        web_cache_max_age_default: 0,
+        onvif_discovery_enabled: false,
+        onvif_discovery_interval: 0,
+        onvif_discovery_network: [0; 64],
+        max_streams: 0,
+        streams: ::core::ptr::null_mut::<stream_config_t>(),
+        buffer_size: 0,
+        use_swap: false,
+        swap_file: [0; 512],
+        swap_size: 0,
+        memory_constrained: false,
+        hw_accel_enabled: false,
+        hw_accel_device: [0; 32],
+        go2rtc_enabled: false,
+        go2rtc_binary_path: [0; 512],
+        go2rtc_config_dir: [0; 512],
+        go2rtc_api_port: 0,
+        go2rtc_rtsp_port: 0,
+        go2rtc_force_native_hls: false,
+        go2rtc_proxy_max_inflight: 0,
+        go2rtc_webrtc_enabled: false,
+        go2rtc_webrtc_listen_port: 0,
+        go2rtc_stun_enabled: false,
+        go2rtc_stun_server: [0; 256],
+        go2rtc_external_ip: [0; 256],
+        go2rtc_ice_servers: [0; 512],
+        webrtc_connection_timeout_ms: 0,
+        webrtc_ice_recovery_timeout_ms: 0,
+        turn_enabled: false,
+        turn_server_url: [0; 256],
+        turn_username: [0; 64],
+        turn_password: [0; 64],
+        mqtt_enabled: false,
+        mqtt_broker_host: [0; 256],
+        mqtt_broker_port: 0,
+        mqtt_username: [0; 64],
+        mqtt_password: [0; 128],
+        mqtt_client_id: [0; 64],
+        mqtt_topic_prefix: [0; 128],
+        mqtt_tls_enabled: false,
+        mqtt_keepalive: 0,
+        mqtt_qos: 0,
+        mqtt_retain: false,
+        mqtt_ha_discovery: false,
+        mqtt_ha_discovery_prefix: [0; 128],
+        mqtt_ha_snapshot_interval: 0,
+        health: system_health_policy_settings_t {
+            enabled: false,
+            profile: [0; 16],
+            fast_interval_seconds: 0,
+            normal_interval_seconds: 0,
+            slow_interval_seconds: 0,
+            device_interval_seconds: 0,
+            write_probe_enabled: false,
+            hardware_provider: [0; 16],
+            presence_interval_seconds: 0,
+            incident_retention_days: 0,
+        },
+        detection_engine: detection_engine_config_t {
+            enabled: false,
+            num_threads: 0,
+            delegate: [0; 16],
+        },
+    };
+    let mut original_streams: *mut stream_config_t = ::core::ptr::null_mut::<stream_config_t>();
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
+    memcpy(
+        &raw mut original as *mut ::core::ffi::c_void,
+        config as *const ::core::ffi::c_void,
+        ::core::mem::size_of::<config_t>(),
+    );
+    if !(*config).streams.is_null() {
+        if (*config).max_streams <= 0 as ::core::ffi::c_int
+            || (*config).max_streams > MAX_STREAMS
+            || (*config).max_streams as size_t
+                > (SIZE_MAX as usize).wrapping_div(::core::mem::size_of::<stream_config_t>())
+        {
+            pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+            pthread_mutex_unlock(&raw mut config_load_mutex);
+            return -1 as ::core::ffi::c_int;
+        }
+        let mut bytes: size_t = ((*config).max_streams as size_t)
+            .wrapping_mul(::core::mem::size_of::<stream_config_t>());
+        original_streams = malloc(bytes) as *mut stream_config_t;
+        if original_streams.is_null() {
+            pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+            pthread_mutex_unlock(&raw mut config_load_mutex);
+            return -1 as ::core::ffi::c_int;
+        }
+        memcpy(
+            original_streams as *mut ::core::ffi::c_void,
+            (*config).streams as *const ::core::ffi::c_void,
+            bytes,
+        );
+    }
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+    let mut previous_loaded_path: [::core::ffi::c_char; 512] = [0; 512];
+    safe_strcpy(
+        &raw mut previous_loaded_path as *mut ::core::ffi::c_char,
+        &raw mut g_loaded_config_path as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        0 as size_t,
+    );
+    let mut next_config: config_t = config_t {
+        pid_file: [
+            0 as ::core::ffi::c_char,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ],
+        log_file: [0; 512],
+        log_level: 0,
+        syslog_enabled: false,
+        syslog_ident: [0; 64],
+        syslog_facility: 0,
+        storage_path: [0; 512],
+        storage_path_hls: [0; 512],
+        max_storage_size: 0,
+        retention_days: 0,
+        auto_delete_oldest: false,
+        mp4_faststart: false,
+        storage_min_free_pct: 0,
+        storage_pressure_warning_pct: 0.,
+        storage_pressure_critical_pct: 0.,
+        storage_pressure_emergency_pct: 0.,
+        generate_thumbnails: false,
+        thumbnails_per_recording: 0,
+        record_mp4_directly: false,
+        mp4_storage_path: [0; 512],
+        mp4_directory_format: [0; 32],
+        mp4_segment_duration: 0,
+        mp4_retention_days: 0,
+        models_path: [0; 512],
+        api_detection_url: [0; 512],
+        api_detection_backend: [0; 32],
+        api_detection_format: [0; 32],
+        api_detection_detector_name: [0; 64],
+        default_detection_threshold: 0,
+        default_pre_detection_buffer: 0,
+        default_post_detection_buffer: 0,
+        default_playback_transport: [0; 24],
+        detection_grace_period: 0,
+        db_path: [0; 512],
+        db_backup_interval_minutes: 0,
+        db_backup_retention_count: 0,
+        db_post_backup_script: [0; 512],
+        db_startup_check: 0,
+        db_backup_verify: 0,
+        web_thread_pool_size: 0,
+        web_port: 0,
+        web_bind_ip: [0; 32],
+        web_root: [0; 512],
+        web_ssl_enabled: false,
+        web_ssl_cert_path: [0; 512],
+        web_ssl_key_path: [0; 512],
+        web_auth_enabled: false,
+        web_username: [0; 32],
+        web_password: [0; 32],
+        audio_disabled: false,
+        auto_disabled: false,
+        webrtc_disabled: false,
+        hls_disabled: false,
+        mse_disabled: false,
+        auth_timeout_hours: 0,
+        auth_absolute_timeout_hours: 0,
+        trusted_device_days: 0,
+        trusted_proxy_cidrs: [0; 1024],
+        demo_mode: false,
+        force_mfa_on_login: false,
+        login_rate_limit_enabled: false,
+        login_rate_limit_max_attempts: 0,
+        login_rate_limit_window_seconds: 0,
+        web_compression_enabled: false,
+        web_use_minified_assets: false,
+        web_cache_max_age_html: 0,
+        web_cache_max_age_css: 0,
+        web_cache_max_age_js: 0,
+        web_cache_max_age_images: 0,
+        web_cache_max_age_fonts: 0,
+        web_cache_max_age_default: 0,
+        onvif_discovery_enabled: false,
+        onvif_discovery_interval: 0,
+        onvif_discovery_network: [0; 64],
+        max_streams: 0,
+        streams: ::core::ptr::null_mut::<stream_config_t>(),
+        buffer_size: 0,
+        use_swap: false,
+        swap_file: [0; 512],
+        swap_size: 0,
+        memory_constrained: false,
+        hw_accel_enabled: false,
+        hw_accel_device: [0; 32],
+        go2rtc_enabled: false,
+        go2rtc_binary_path: [0; 512],
+        go2rtc_config_dir: [0; 512],
+        go2rtc_api_port: 0,
+        go2rtc_rtsp_port: 0,
+        go2rtc_force_native_hls: false,
+        go2rtc_proxy_max_inflight: 0,
+        go2rtc_webrtc_enabled: false,
+        go2rtc_webrtc_listen_port: 0,
+        go2rtc_stun_enabled: false,
+        go2rtc_stun_server: [0; 256],
+        go2rtc_external_ip: [0; 256],
+        go2rtc_ice_servers: [0; 512],
+        webrtc_connection_timeout_ms: 0,
+        webrtc_ice_recovery_timeout_ms: 0,
+        turn_enabled: false,
+        turn_server_url: [0; 256],
+        turn_username: [0; 64],
+        turn_password: [0; 64],
+        mqtt_enabled: false,
+        mqtt_broker_host: [0; 256],
+        mqtt_broker_port: 0,
+        mqtt_username: [0; 64],
+        mqtt_password: [0; 128],
+        mqtt_client_id: [0; 64],
+        mqtt_topic_prefix: [0; 128],
+        mqtt_tls_enabled: false,
+        mqtt_keepalive: 0,
+        mqtt_qos: 0,
+        mqtt_retain: false,
+        mqtt_ha_discovery: false,
+        mqtt_ha_discovery_prefix: [0; 128],
+        mqtt_ha_snapshot_interval: 0,
+        health: system_health_policy_settings_t {
+            enabled: false,
+            profile: [0; 16],
+            fast_interval_seconds: 0,
+            normal_interval_seconds: 0,
+            slow_interval_seconds: 0,
+            device_interval_seconds: 0,
+            write_probe_enabled: false,
+            hardware_provider: [0; 16],
+            presence_interval_seconds: 0,
+            incident_retention_days: 0,
+        },
+        detection_engine: detection_engine_config_t {
+            enabled: false,
+            num_threads: 0,
+            delegate: [0; 16],
+        },
+    };
+    let mut result: ::core::ffi::c_int = load_config_into(&raw mut next_config);
+    if result == 0 as ::core::ffi::c_int {
+        pthread_mutex_lock(&raw mut mp4_faststart_mutex);
+        let mut changed: bool = memcmp(
+            config as *const ::core::ffi::c_void,
+            &raw mut original as *const ::core::ffi::c_void,
+            ::core::mem::size_of::<config_t>(),
+        ) != 0 as ::core::ffi::c_int;
+        if !changed && !original_streams.is_null() {
+            changed = memcmp(
+                (*config).streams as *const ::core::ffi::c_void,
+                original_streams as *const ::core::ffi::c_void,
+                (original.max_streams as size_t)
+                    .wrapping_mul(::core::mem::size_of::<stream_config_t>()),
+            ) != 0 as ::core::ffi::c_int;
+        }
+        if !changed {
+            if !(*config).streams.is_null()
+                && !next_config.streams.is_null()
+                && (*config).max_streams == next_config.max_streams
+            {
+                let mut preserved_streams: *mut stream_config_t = (*config).streams;
+                memcpy(
+                    preserved_streams as *mut ::core::ffi::c_void,
+                    next_config.streams as *const ::core::ffi::c_void,
+                    (next_config.max_streams as size_t)
+                        .wrapping_mul(::core::mem::size_of::<stream_config_t>()),
+                );
+                *config = next_config;
+                (*config).streams = preserved_streams;
+            } else {
+                let mut old_streams: *mut stream_config_t = (*config).streams;
+                *config = next_config;
+                next_config.streams = ::core::ptr::null_mut::<stream_config_t>();
+                free(old_streams as *mut ::core::ffi::c_void);
+            }
+        } else {
+            result = -1 as ::core::ffi::c_int;
+        }
+        pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+    }
+    if result != 0 as ::core::ffi::c_int {
+        safe_strcpy(
+            &raw mut g_loaded_config_path as *mut ::core::ffi::c_char,
+            &raw mut previous_loaded_path as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+            0 as size_t,
+        );
+    }
+    free(next_config.streams as *mut ::core::ffi::c_void);
+    free(original_streams as *mut ::core::ffi::c_void);
+    pthread_mutex_unlock(&raw mut config_load_mutex);
+    return result;
 }
 unsafe extern "C" fn copy_config_fd(
     mut source_fd: ::core::ffi::c_int,
@@ -6251,22 +8018,15 @@ unsafe extern "C" fn copy_config_fd(
     }
     return fsync(destination_fd);
 }
-static mut config_in_place_mutex: pthread_mutex_t = pthread_mutex_t {
-    __data: __pthread_mutex_s {
-        __lock: 0 as ::core::ffi::c_int,
-        __count: 0 as ::core::ffi::c_uint,
-        __owner: 0 as ::core::ffi::c_int,
-        __nusers: 0 as ::core::ffi::c_uint,
-        __kind: C2Rust_Unnamed_1::PTHREAD_MUTEX_TIMED_NP.0 as ::core::ffi::c_int,
-        __spins: 0 as ::core::ffi::c_short,
-        __glibc_reserved: 0 as ::core::ffi::c_short,
-        __list: __pthread_internal_list {
-            __prev: ::core::ptr::null_mut::<__pthread_internal_list>(),
-            __next: ::core::ptr::null_mut::<__pthread_internal_list>(),
-        },
-    },
-};
-unsafe extern "C" fn publish_config_in_place(
+unsafe extern "C" fn close_original_config_fd(mut fd: ::core::ffi::c_int) {
+    if fd < 0 as ::core::ffi::c_int {
+        return;
+    }
+    pthread_mutex_lock(&raw mut config_in_place_mutex);
+    close(fd);
+    pthread_mutex_unlock(&raw mut config_in_place_mutex);
+}
+unsafe extern "C" fn publish_config_in_place_locked(
     mut dir_fd: ::core::ffi::c_int,
     mut filename: *const ::core::ffi::c_char,
     mut original_stat: *const stat,
@@ -6276,7 +8036,6 @@ unsafe extern "C" fn publish_config_in_place(
     if original_fd < 0 as ::core::ffi::c_int || original_stat.is_null() {
         return -1 as ::core::ffi::c_int;
     }
-    pthread_mutex_lock(&raw mut config_in_place_mutex);
     let mut lock: flock = flock {
         l_type: F_WRLCK as ::core::ffi::c_short,
         l_whence: SEEK_SET as ::core::ffi::c_short,
@@ -6285,11 +8044,13 @@ unsafe extern "C" fn publish_config_in_place(
         l_pid: 0,
     };
     if fcntl(original_fd, F_SETLKW, &raw mut lock) != 0 as ::core::ffi::c_int {
-        pthread_mutex_unlock(&raw mut config_in_place_mutex);
         return -1 as ::core::ffi::c_int;
     }
-    let mut read_fd: ::core::ffi::c_int =
-        openat(dir_fd, filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    let mut read_fd: ::core::ffi::c_int = openat(
+        dir_fd,
+        filename,
+        O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
+    );
     let mut current: stat = stat {
         st_dev: 0,
         st_ino: 0,
@@ -6318,6 +8079,7 @@ unsafe extern "C" fn publish_config_in_place(
     };
     if read_fd < 0 as ::core::ffi::c_int
         || fstat(read_fd, &raw mut current) != 0 as ::core::ffi::c_int
+        || !(current.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t)
         || current.st_dev != (*original_stat).st_dev
         || current.st_ino != (*original_stat).st_ino
         || current.st_nlink != 1 as __nlink_t
@@ -6327,7 +8089,6 @@ unsafe extern "C" fn publish_config_in_place(
         }
         lock.l_type = F_UNLCK as ::core::ffi::c_short;
         fcntl(original_fd, F_SETLK, &raw mut lock);
-        pthread_mutex_unlock(&raw mut config_in_place_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut backup_path: [::core::ffi::c_char; 35] = ::core::mem::transmute::<
@@ -6335,12 +8096,11 @@ unsafe extern "C" fn publish_config_in_place(
         [::core::ffi::c_char; 35],
     >(*b"/tmp/lightnvr-config-backup-XXXXXX\0");
     let mut backup_fd: ::core::ffi::c_int =
-        mkstemp(&raw mut backup_path as *mut ::core::ffi::c_char);
+        mkostemp(&raw mut backup_path as *mut ::core::ffi::c_char, O_CLOEXEC);
     if backup_fd < 0 as ::core::ffi::c_int {
         close(read_fd);
         lock.l_type = F_UNLCK as ::core::ffi::c_short;
         fcntl(original_fd, F_SETLK, &raw mut lock);
-        pthread_mutex_unlock(&raw mut config_in_place_mutex);
         return -1 as ::core::ffi::c_int;
     }
     let mut result: ::core::ffi::c_int = copy_config_fd(read_fd, backup_fd);
@@ -6350,7 +8110,6 @@ unsafe extern "C" fn publish_config_in_place(
         unlink(&raw mut backup_path as *mut ::core::ffi::c_char);
         lock.l_type = F_UNLCK as ::core::ffi::c_short;
         fcntl(original_fd, F_SETLK, &raw mut lock);
-        pthread_mutex_unlock(&raw mut config_in_place_mutex);
         return -1 as ::core::ffi::c_int;
     }
     result = copy_config_fd(staged_fd, original_fd);
@@ -6368,7 +8127,6 @@ unsafe extern "C" fn publish_config_in_place(
             close(backup_fd);
             lock.l_type = F_UNLCK as ::core::ffi::c_short;
             fcntl(original_fd, F_SETLK, &raw mut lock);
-            pthread_mutex_unlock(&raw mut config_in_place_mutex);
             return -1 as ::core::ffi::c_int;
         }
     }
@@ -6377,11 +8135,9 @@ unsafe extern "C" fn publish_config_in_place(
     unlink(&raw mut backup_path as *mut ::core::ffi::c_char);
     lock.l_type = F_UNLCK as ::core::ffi::c_short;
     fcntl(original_fd, F_SETLK, &raw mut lock);
-    pthread_mutex_unlock(&raw mut config_in_place_mutex);
     return result;
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn save_config(
+unsafe extern "C" fn save_config_snapshot(
     mut config: *const config_t,
     mut path: *const ::core::ffi::c_char,
 ) -> ::core::ffi::c_int {
@@ -6396,40 +8152,310 @@ pub unsafe extern "C" fn save_config(
         );
         return -1 as ::core::ffi::c_int;
     }
-    if contains_unsupported_ini_credential_chars(
-        &raw const (*config).turn_username as *const ::core::ffi::c_char,
-    ) as ::core::ffi::c_int
-        != 0
-        || contains_unsupported_ini_credential_chars(
-            &raw const (*config).turn_password as *const ::core::ffi::c_char,
-        ) as ::core::ffi::c_int
-            != 0
-        || contains_unsupported_ini_credential_chars(
-            &raw const (*config).mqtt_username as *const ::core::ffi::c_char,
-        ) as ::core::ffi::c_int
-            != 0
-        || contains_unsupported_ini_credential_chars(
-            &raw const (*config).mqtt_password as *const ::core::ffi::c_char,
-        ) as ::core::ffi::c_int
-            != 0
+    let mut validated_fields: [C2Rust_Unnamed_2; 41] = [
+        C2Rust_Unnamed_2 {
+            name: b"turn_username\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).turn_username as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"turn_password\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).turn_password as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"mqtt_username\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).mqtt_username as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"mqtt_password\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).mqtt_password as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"mqtt_client_id\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).mqtt_client_id as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"mqtt_topic_prefix\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).mqtt_topic_prefix as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"mqtt_broker_host\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).mqtt_broker_host as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"turn_server_url\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).turn_server_url as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"mqtt_ha_discovery_prefix\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).mqtt_ha_discovery_prefix as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"db_post_backup_script\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).db_post_backup_script as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"web_username\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).web_username as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"api_detection_detector_name\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).api_detection_detector_name as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"health.profile\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).health.profile as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 16]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"health.hardware_provider\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).health.hardware_provider as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 16]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"api_detection_backend\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).api_detection_backend as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"api_detection_format\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).api_detection_format as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"detection_engine.delegate\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).detection_engine.delegate as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 16]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"mp4_directory_format\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).mp4_directory_format as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"default_playback_transport\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).default_playback_transport as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 24]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"pid_file\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).pid_file as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"log_file\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).log_file as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"syslog_ident\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).syslog_ident as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"storage_path\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).storage_path as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"storage_path_hls\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).storage_path_hls as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"mp4_storage_path\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).mp4_storage_path as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"swap_file\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).swap_file as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"hw_accel_device\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).hw_accel_device as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"db_path\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).db_path as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"web_root\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).web_root as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"web_bind_ip\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).web_bind_ip as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"web_ssl_cert_path\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).web_ssl_cert_path as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"web_ssl_key_path\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).web_ssl_key_path as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"models_path\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).models_path as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"trusted_proxy_cidrs\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).trusted_proxy_cidrs as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"api_detection_url\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).api_detection_url as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"go2rtc_config_dir\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).go2rtc_config_dir as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"go2rtc_binary_path\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).go2rtc_binary_path as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"go2rtc_stun_server\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).go2rtc_stun_server as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"go2rtc_external_ip\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).go2rtc_external_ip as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"go2rtc_ice_servers\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).go2rtc_ice_servers as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
+        },
+        C2Rust_Unnamed_2 {
+            name: b"onvif_discovery_network\0".as_ptr() as *const ::core::ffi::c_char,
+            value: &raw const (*config).onvif_discovery_network as *const ::core::ffi::c_char,
+            capacity: ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+        },
+    ];
+    let mut i: size_t = 0 as size_t;
+    while i < ::core::mem::size_of::<[C2Rust_Unnamed_2; 41]>()
+        .wrapping_div(::core::mem::size_of::<C2Rust_Unnamed_2>())
     {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Credential contains unsupported INI characters or boundary whitespace; refusing to save\0"
-                .as_ptr() as *const ::core::ffi::c_char,
-        );
-        return -1 as ::core::ffi::c_int;
-    }
-    let mut save_path: *const ::core::ffi::c_char = path;
-    if save_path.is_null()
-        || *save_path.offset(0isize) as ::core::ffi::c_int == '\0' as ::core::ffi::c_int
-    {
-        save_path = get_loaded_config_path();
-        if save_path.is_null() {
-            save_path = get_custom_config_path();
+        if contains_unsupported_ini_credential_chars(
+            validated_fields[i].value,
+            validated_fields[i].capacity,
+        ) {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Configuration field '%s' contains unsupported INI characters or boundary whitespace; refusing to save\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
+                validated_fields[i].name,
+            );
+            return -1 as ::core::ffi::c_int;
         }
+        i = i.wrapping_add(1);
+    }
+    let mut save_path_buf: [::core::ffi::c_char; 4096] = [0; 4096];
+    let mut save_path: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    if !path.is_null() && *path.offset(0isize) as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+        if snprintf(
+            &raw mut save_path_buf as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 4096]>(),
+            b"%s\0".as_ptr() as *const ::core::ffi::c_char,
+            path,
+        ) >= ::core::mem::size_of::<[::core::ffi::c_char; 4096]>() as ::core::ffi::c_int
+        {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Specified save path is too long\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            return -1 as ::core::ffi::c_int;
+        }
+        save_path = &raw mut save_path_buf as *mut ::core::ffi::c_char;
+    } else {
+        pthread_mutex_lock(&raw mut config_load_mutex);
+        let mut loaded_path: *const ::core::ffi::c_char =
+            if g_loaded_config_path[0usize] as ::core::ffi::c_int != 0 {
+                &raw mut g_loaded_config_path as *mut ::core::ffi::c_char
+            } else {
+                ::core::ptr::null_mut::<::core::ffi::c_char>()
+            };
+        if !loaded_path.is_null()
+            && *loaded_path.offset(0isize) as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+        {
+            if snprintf(
+                &raw mut save_path_buf as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 4096]>(),
+                b"%s\0".as_ptr() as *const ::core::ffi::c_char,
+                loaded_path,
+            ) >= ::core::mem::size_of::<[::core::ffi::c_char; 4096]>() as ::core::ffi::c_int
+            {
+                pthread_mutex_unlock(&raw mut config_load_mutex);
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Loaded config path is too long\0".as_ptr() as *const ::core::ffi::c_char,
+                );
+                return -1 as ::core::ffi::c_int;
+            }
+            save_path = &raw mut save_path_buf as *mut ::core::ffi::c_char;
+        } else {
+            let mut custom_path: *const ::core::ffi::c_char =
+                if g_custom_config_path[0usize] as ::core::ffi::c_int != 0 {
+                    &raw mut g_custom_config_path as *mut ::core::ffi::c_char
+                } else {
+                    ::core::ptr::null_mut::<::core::ffi::c_char>()
+                };
+            if !custom_path.is_null()
+                && *custom_path.offset(0isize) as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+            {
+                if snprintf(
+                    &raw mut save_path_buf as *mut ::core::ffi::c_char,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 4096]>(),
+                    b"%s\0".as_ptr() as *const ::core::ffi::c_char,
+                    custom_path,
+                ) >= ::core::mem::size_of::<[::core::ffi::c_char; 4096]>() as ::core::ffi::c_int
+                {
+                    pthread_mutex_unlock(&raw mut config_load_mutex);
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Custom config path is too long\0".as_ptr() as *const ::core::ffi::c_char,
+                    );
+                    return -1 as ::core::ffi::c_int;
+                }
+                save_path = &raw mut save_path_buf as *mut ::core::ffi::c_char;
+            }
+        }
+        pthread_mutex_unlock(&raw mut config_load_mutex);
         if save_path.is_null() {
             static mut defaults: [*const ::core::ffi::c_char; 4] = [
                 b"./lightnvr.ini\0".as_ptr() as *const ::core::ffi::c_char,
@@ -6437,10 +8463,10 @@ pub unsafe extern "C" fn save_config(
                 b"./config/lightnvr.ini\0".as_ptr() as *const ::core::ffi::c_char,
                 ::core::ptr::null::<::core::ffi::c_char>(),
             ];
-            let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-            while !defaults[i as usize].is_null() {
-                if access(defaults[i as usize], W_OK) == 0 as ::core::ffi::c_int {
-                    save_path = defaults[i as usize];
+            let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+            while !defaults[i_0 as usize].is_null() {
+                if access(defaults[i_0 as usize], W_OK) == 0 as ::core::ffi::c_int {
+                    save_path = defaults[i_0 as usize];
                     _log_message_ctx(
                         log_level_t::LOG_LEVEL_INFO,
                         LOG_COMPONENT,
@@ -6451,7 +8477,7 @@ pub unsafe extern "C" fn save_config(
                     );
                     break;
                 } else {
-                    i += 1;
+                    i_0 += 1;
                 }
             }
         }
@@ -6724,14 +8750,29 @@ pub unsafe extern "C" fn save_config(
             b".ini\0".as_ptr() as *const ::core::ffi::c_char,
         ) != 0 as ::core::ffi::c_int
     {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Config filename must end with .ini: '%s'\0".as_ptr() as *const ::core::ffi::c_char,
-            fname,
-        );
-        return -1 as ::core::ffi::c_int;
+        pthread_mutex_lock(&raw mut config_load_mutex);
+        let mut tracked_path: bool = g_loaded_config_path[0usize] as ::core::ffi::c_int != 0
+            && strcmp(
+                save_path,
+                &raw mut g_loaded_config_path as *mut ::core::ffi::c_char,
+            ) == 0 as ::core::ffi::c_int
+            || g_custom_config_path[0usize] as ::core::ffi::c_int != 0
+                && strcmp(
+                    save_path,
+                    &raw mut g_custom_config_path as *mut ::core::ffi::c_char,
+                ) == 0 as ::core::ffi::c_int;
+        pthread_mutex_unlock(&raw mut config_load_mutex);
+        if !tracked_path {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Config filename must end with .ini or match the tracked config path: '%s'\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
+                fname,
+            );
+            return -1 as ::core::ffi::c_int;
+        }
     }
     let mut n: ::core::ffi::c_int = snprintf(
         &raw mut canonical_save_path as *mut ::core::ffi::c_char,
@@ -6788,20 +8829,9 @@ pub unsafe extern "C" fn save_config(
     let mut original_fd: ::core::ffi::c_int = openat(
         dir_fd,
         &raw mut validated_filename as *mut ::core::ffi::c_char,
-        O_WRONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
+        O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
     );
     let mut target_exists: bool = original_fd >= 0 as ::core::ffi::c_int;
-    if !target_exists && *__errno_location() != ENOENT {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Could not open config file for writing: %s\0".as_ptr() as *const ::core::ffi::c_char,
-            strerror(*__errno_location()),
-        );
-        close(dir_fd);
-        return -1 as ::core::ffi::c_int;
-    }
     let mut config_stat: stat = stat {
         st_dev: 0 as __dev_t,
         st_ino: 0,
@@ -6828,7 +8858,58 @@ pub unsafe extern "C" fn save_config(
         },
         __glibc_reserved: [0; 3],
     };
-    if target_exists {
+    if !target_exists {
+        if *__errno_location() != ENOENT {
+            if *__errno_location() == EACCES || *__errno_location() == EPERM {
+                if fstatat(
+                    dir_fd,
+                    &raw mut validated_filename as *mut ::core::ffi::c_char,
+                    &raw mut config_stat,
+                    AT_SYMLINK_NOFOLLOW,
+                ) != 0 as ::core::ffi::c_int
+                {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Could not stat config file for inspection: %s\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        strerror(*__errno_location()),
+                    );
+                    close(dir_fd);
+                    return -1 as ::core::ffi::c_int;
+                }
+                if !(config_stat.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t)
+                    || config_stat.st_nlink != 1 as __nlink_t
+                {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Config save target must be a regular file with one link: %s\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        &raw mut canonical_save_path as *mut ::core::ffi::c_char,
+                    );
+                    close(dir_fd);
+                    return -1 as ::core::ffi::c_int;
+                }
+                target_exists = r#true != 0;
+                original_fd = -1 as ::core::ffi::c_int;
+            } else {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Could not open config file for inspection: %s\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    strerror(*__errno_location()),
+                );
+                close(dir_fd);
+                return -1 as ::core::ffi::c_int;
+            }
+        }
+    }
+    if target_exists as ::core::ffi::c_int != 0 && original_fd >= 0 as ::core::ffi::c_int {
         if fstat(original_fd, &raw mut config_stat) != 0 as ::core::ffi::c_int
             || !(config_stat.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t)
             || config_stat.st_nlink != 1 as __nlink_t
@@ -6841,25 +8922,91 @@ pub unsafe extern "C" fn save_config(
                     as *const ::core::ffi::c_char,
                 &raw mut canonical_save_path as *mut ::core::ffi::c_char,
             );
-            close(original_fd);
+            close_original_config_fd(original_fd);
             close(dir_fd);
             return -1 as ::core::ffi::c_int;
         }
-        if fchmod(original_fd, 0o600 as __mode_t) != 0 as ::core::ffi::c_int {
-            if *__errno_location() != EPERM {
+        close_original_config_fd(original_fd);
+        original_fd = openat(
+            dir_fd,
+            &raw mut validated_filename as *mut ::core::ffi::c_char,
+            O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
+        );
+        if original_fd >= 0 as ::core::ffi::c_int {
+            let mut reopened_stat: stat = stat {
+                st_dev: 0,
+                st_ino: 0,
+                st_nlink: 0,
+                st_mode: 0,
+                st_uid: 0,
+                st_gid: 0,
+                __pad0: 0,
+                st_rdev: 0,
+                st_size: 0,
+                st_blksize: 0,
+                st_blocks: 0,
+                st_atim: timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                st_mtim: timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                st_ctim: timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                __glibc_reserved: [0; 3],
+            };
+            if fstat(original_fd, &raw mut reopened_stat) != 0 as ::core::ffi::c_int
+                || !(reopened_stat.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t)
+                || reopened_stat.st_nlink != 1 as __nlink_t
+                || reopened_stat.st_dev != config_stat.st_dev
+                || reopened_stat.st_ino != config_stat.st_ino
+            {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_ERROR,
                     LOG_COMPONENT,
                     _log_stream_name,
-                    b"Could not restrict config file: %s\0".as_ptr() as *const ::core::ffi::c_char,
-                    strerror(*__errno_location()),
+                    b"Config save target changed before reopening: %s\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    &raw mut canonical_save_path as *mut ::core::ffi::c_char,
                 );
-                close(original_fd);
+                close_original_config_fd(original_fd);
                 close(dir_fd);
                 return -1 as ::core::ffi::c_int;
             }
-            close(original_fd);
+            if fchmod(original_fd, 0o600 as __mode_t) != 0 as ::core::ffi::c_int {
+                if *__errno_location() != EPERM {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Could not restrict config file: %s\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        strerror(*__errno_location()),
+                    );
+                    close_original_config_fd(original_fd);
+                    close(dir_fd);
+                    return -1 as ::core::ffi::c_int;
+                }
+                close_original_config_fd(original_fd);
+                original_fd = -1 as ::core::ffi::c_int;
+            }
+        } else if *__errno_location() == EACCES || *__errno_location() == EPERM {
             original_fd = -1 as ::core::ffi::c_int;
+        } else {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Could not open config file for writing: %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                strerror(*__errno_location()),
+            );
+            close(dir_fd);
+            return -1 as ::core::ffi::c_int;
         }
     }
     let mut replacement_name: [::core::ffi::c_char; 96] = [
@@ -6994,7 +9141,10 @@ pub unsafe extern "C" fn save_config(
         && original_fd >= 0 as ::core::ffi::c_int
         && (*__errno_location() == EACCES || *__errno_location() == EROFS)
     {
-        config_fd = mkstemp(&raw mut external_staging_path as *mut ::core::ffi::c_char);
+        config_fd = mkostemp(
+            &raw mut external_staging_path as *mut ::core::ffi::c_char,
+            O_CLOEXEC,
+        );
         if config_fd >= 0 as ::core::ffi::c_int {
             external_staging = r#true != 0;
         }
@@ -7008,9 +9158,7 @@ pub unsafe extern "C" fn save_config(
                 as *const ::core::ffi::c_char,
             strerror(*__errno_location()),
         );
-        if original_fd >= 0 as ::core::ffi::c_int {
-            close(original_fd);
-        }
+        close_original_config_fd(original_fd);
         close(dir_fd);
         return -1 as ::core::ffi::c_int;
     }
@@ -7032,9 +9180,7 @@ pub unsafe extern "C" fn save_config(
                 0 as ::core::ffi::c_int,
             );
         }
-        if original_fd >= 0 as ::core::ffi::c_int {
-            close(original_fd);
-        }
+        close_original_config_fd(original_fd);
         close(dir_fd);
         return -1 as ::core::ffi::c_int;
     }
@@ -7059,9 +9205,7 @@ pub unsafe extern "C" fn save_config(
                 0 as ::core::ffi::c_int,
             );
         }
-        if original_fd >= 0 as ::core::ffi::c_int {
-            close(original_fd);
-        }
+        close_original_config_fd(original_fd);
         close(dir_fd);
         return -1 as ::core::ffi::c_int;
     }
@@ -7103,8 +9247,7 @@ pub unsafe extern "C" fn save_config(
         b"syslog_ident = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
         &raw const (*config).syslog_ident as *const ::core::ffi::c_char,
     );
-    let mut facility_name: *const ::core::ffi::c_char =
-        b"LOG_USER\0".as_ptr() as *const ::core::ffi::c_char;
+    let mut facility_name: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
     match (*config).syslog_facility {
         LOG_USER => {
             facility_name = b"LOG_USER\0".as_ptr() as *const ::core::ffi::c_char;
@@ -7138,12 +9281,21 @@ pub unsafe extern "C" fn save_config(
         }
         _ => {}
     }
-    fprintf(
-        file,
-        b"syslog_facility = %s  ; Syslog facility for system logging\n\n\0".as_ptr()
-            as *const ::core::ffi::c_char,
-        facility_name,
-    );
+    if !facility_name.is_null() {
+        fprintf(
+            file,
+            b"syslog_facility = %s  ; Syslog facility for system logging\n\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            facility_name,
+        );
+    } else {
+        fprintf(
+            file,
+            b"syslog_facility = %d  ; Syslog facility for system logging\n\n\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            (*config).syslog_facility,
+        );
+    }
     fprintf(file, b"[health]\n\0".as_ptr() as *const ::core::ffi::c_char);
     fprintf(
         file,
@@ -7474,8 +9626,11 @@ pub unsafe extern "C" fn save_config(
     );
     fprintf(
         file,
-        b"post_backup_script = %s  ; Optional absolute path to executable hook\n\n\0".as_ptr()
-            as *const ::core::ffi::c_char,
+        b"; Optional absolute path to executable hook\n\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    fprintf(
+        file,
+        b"post_backup_script = %s\n\n\0".as_ptr() as *const ::core::ffi::c_char,
         &raw const (*config).db_post_backup_script as *const ::core::ffi::c_char,
     );
     fprintf(file, b"[web]\n\0".as_ptr() as *const ::core::ffi::c_char);
@@ -7560,14 +9715,20 @@ pub unsafe extern "C" fn save_config(
     );
     fprintf(
         file,
-        b"ssl_cert_path = %s  ; PEM certificate chain, leaf first\n\0".as_ptr()
-            as *const ::core::ffi::c_char,
+        b"; PEM certificate chain, leaf first\n\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    fprintf(
+        file,
+        b"ssl_cert_path = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
         &raw const (*config).web_ssl_cert_path as *const ::core::ffi::c_char,
     );
     fprintf(
         file,
-        b"ssl_key_path = %s  ; PEM private key (unencrypted)\n\0".as_ptr()
-            as *const ::core::ffi::c_char,
+        b"; PEM private key (unencrypted)\n\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    fprintf(
+        file,
+        b"ssl_key_path = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
         &raw const (*config).web_ssl_key_path as *const ::core::ffi::c_char,
     );
     fprintf(
@@ -7660,8 +9821,12 @@ pub unsafe extern "C" fn save_config(
     );
     fprintf(
         file,
-        b"trusted_proxy_cidrs = %s  ; Trusted reverse-proxy CIDRs for X-Forwarded-For (blank disables trust)\n\0"
-            .as_ptr() as *const ::core::ffi::c_char,
+        b"; Trusted reverse-proxy CIDRs for X-Forwarded-For (blank disables trust)\n\0".as_ptr()
+            as *const ::core::ffi::c_char,
+    );
+    fprintf(
+        file,
+        b"trusted_proxy_cidrs = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
         &raw const (*config).trusted_proxy_cidrs as *const ::core::ffi::c_char,
     );
     fprintf(
@@ -7820,20 +9985,16 @@ pub unsafe extern "C" fn save_config(
         b"stun_server = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
         &raw const (*config).go2rtc_stun_server as *const ::core::ffi::c_char,
     );
-    if (*config).go2rtc_external_ip[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
-        fprintf(
-            file,
-            b"external_ip = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw const (*config).go2rtc_external_ip as *const ::core::ffi::c_char,
-        );
-    }
-    if (*config).go2rtc_ice_servers[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
-        fprintf(
-            file,
-            b"ice_servers = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw const (*config).go2rtc_ice_servers as *const ::core::ffi::c_char,
-        );
-    }
+    fprintf(
+        file,
+        b"external_ip = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw const (*config).go2rtc_external_ip as *const ::core::ffi::c_char,
+    );
+    fprintf(
+        file,
+        b"ice_servers = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw const (*config).go2rtc_ice_servers as *const ::core::ffi::c_char,
+    );
     fprintf(
         file,
         b"webrtc_connection_timeout_ms = %d\n\0".as_ptr() as *const ::core::ffi::c_char,
@@ -7867,20 +10028,16 @@ pub unsafe extern "C" fn save_config(
             b"false\0".as_ptr() as *const ::core::ffi::c_char
         },
     );
-    if (*config).turn_server_url[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
-        fprintf(
-            file,
-            b"turn_server_url = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw const (*config).turn_server_url as *const ::core::ffi::c_char,
-        );
-    }
-    if (*config).turn_username[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
-        fprintf(
-            file,
-            b"turn_username = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw const (*config).turn_username as *const ::core::ffi::c_char,
-        );
-    }
+    fprintf(
+        file,
+        b"turn_server_url = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw const (*config).turn_server_url as *const ::core::ffi::c_char,
+    );
+    fprintf(
+        file,
+        b"turn_username = %s\n\0".as_ptr() as *const ::core::ffi::c_char,
+        &raw const (*config).turn_username as *const ::core::ffi::c_char,
+    );
     if (*config).turn_password[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
         fprintf(
             file,
@@ -8012,113 +10169,111 @@ pub unsafe extern "C" fn save_config(
     if fflush(file) != 0 as ::core::ffi::c_int || fsync(fileno(file)) != 0 as ::core::ffi::c_int {
         write_failed = 1 as ::core::ffi::c_int;
     }
+    let mut staged_fd: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    if write_failed == 0 {
+        staged_fd = fcntl(fileno(file), F_DUPFD_CLOEXEC, 0 as ::core::ffi::c_int);
+        if staged_fd < 0 as ::core::ffi::c_int {
+            write_failed = 1 as ::core::ffi::c_int;
+        }
+    }
     if fclose(file) != 0 as ::core::ffi::c_int {
         write_failed = 1 as ::core::ffi::c_int;
     }
     if write_failed == 0 {
-        let mut current: stat = stat {
-            st_dev: 0,
-            st_ino: 0,
-            st_nlink: 0,
-            st_mode: 0,
-            st_uid: 0,
-            st_gid: 0,
-            __pad0: 0,
-            st_rdev: 0,
-            st_size: 0,
-            st_blksize: 0,
-            st_blocks: 0,
-            st_atim: timespec {
-                tv_sec: 0,
-                tv_nsec: 0,
-            },
-            st_mtim: timespec {
-                tv_sec: 0,
-                tv_nsec: 0,
-            },
-            st_ctim: timespec {
-                tv_sec: 0,
-                tv_nsec: 0,
-            },
-            __glibc_reserved: [0; 3],
-        };
-        let mut stat_result: ::core::ffi::c_int = fstatat(
-            dir_fd,
-            &raw mut validated_filename as *mut ::core::ffi::c_char,
-            &raw mut current,
-            AT_SYMLINK_NOFOLLOW,
-        );
-        let mut unchanged: bool = if target_exists as ::core::ffi::c_int != 0 {
-            (stat_result == 0 as ::core::ffi::c_int
-                && current.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t
-                && current.st_nlink == 1 as __nlink_t
-                && current.st_dev == config_stat.st_dev
-                && current.st_ino == config_stat.st_ino) as ::core::ffi::c_int
-        } else {
-            (stat_result != 0 as ::core::ffi::c_int && *__errno_location() == ENOENT)
-                as ::core::ffi::c_int
-        } != 0;
-        if !unchanged {
+        if pthread_mutex_lock(&raw mut config_in_place_mutex) != 0 as ::core::ffi::c_int {
             write_failed = 1 as ::core::ffi::c_int;
-        } else if external_staging {
-            let mut staged_fd: ::core::ffi::c_int = open(
-                &raw mut external_staging_path as *mut ::core::ffi::c_char,
-                O_RDONLY | O_CLOEXEC,
+        } else {
+            let mut current: stat = stat {
+                st_dev: 0,
+                st_ino: 0,
+                st_nlink: 0,
+                st_mode: 0,
+                st_uid: 0,
+                st_gid: 0,
+                __pad0: 0,
+                st_rdev: 0,
+                st_size: 0,
+                st_blksize: 0,
+                st_blocks: 0,
+                st_atim: timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                st_mtim: timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                st_ctim: timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                __glibc_reserved: [0; 3],
+            };
+            let mut stat_result: ::core::ffi::c_int = fstatat(
+                dir_fd,
+                &raw mut validated_filename as *mut ::core::ffi::c_char,
+                &raw mut current,
+                AT_SYMLINK_NOFOLLOW,
             );
-            if staged_fd < 0 as ::core::ffi::c_int
-                || publish_config_in_place(
+            let mut unchanged: bool = if target_exists as ::core::ffi::c_int != 0 {
+                (stat_result == 0 as ::core::ffi::c_int
+                    && current.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t
+                    && current.st_nlink == 1 as __nlink_t
+                    && current.st_dev == config_stat.st_dev
+                    && current.st_ino == config_stat.st_ino) as ::core::ffi::c_int
+            } else {
+                (stat_result != 0 as ::core::ffi::c_int && *__errno_location() == ENOENT)
+                    as ::core::ffi::c_int
+            } != 0;
+            if !unchanged {
+                write_failed = 1 as ::core::ffi::c_int;
+            } else if external_staging {
+                if publish_config_in_place_locked(
                     dir_fd,
                     &raw mut validated_filename as *mut ::core::ffi::c_char,
                     &raw mut config_stat,
                     original_fd,
                     staged_fd,
                 ) != 0 as ::core::ffi::c_int
+                {
+                    write_failed = 1 as ::core::ffi::c_int;
+                }
+            } else if renameat(
+                dir_fd,
+                &raw mut replacement_name as *mut ::core::ffi::c_char,
+                dir_fd,
+                &raw mut validated_filename as *mut ::core::ffi::c_char,
+            ) != 0 as ::core::ffi::c_int
             {
-                write_failed = 1 as ::core::ffi::c_int;
-            }
-            if staged_fd >= 0 as ::core::ffi::c_int {
-                close(staged_fd);
-            }
-        } else if renameat(
-            dir_fd,
-            &raw mut replacement_name as *mut ::core::ffi::c_char,
-            dir_fd,
-            &raw mut validated_filename as *mut ::core::ffi::c_char,
-        ) != 0 as ::core::ffi::c_int
-        {
-            if *__errno_location() == EBUSY && original_fd >= 0 as ::core::ffi::c_int {
-                let mut staged_fd_0: ::core::ffi::c_int = openat(
-                    dir_fd,
-                    &raw mut replacement_name as *mut ::core::ffi::c_char,
-                    O_RDONLY | O_CLOEXEC,
-                );
-                if staged_fd_0 < 0 as ::core::ffi::c_int
-                    || publish_config_in_place(
+                if *__errno_location() == EBUSY && original_fd >= 0 as ::core::ffi::c_int {
+                    if publish_config_in_place_locked(
                         dir_fd,
                         &raw mut validated_filename as *mut ::core::ffi::c_char,
                         &raw mut config_stat,
                         original_fd,
-                        staged_fd_0,
+                        staged_fd,
                     ) != 0 as ::core::ffi::c_int
-                {
+                    {
+                        write_failed = 1 as ::core::ffi::c_int;
+                    }
+                } else {
                     write_failed = 1 as ::core::ffi::c_int;
                 }
-                if staged_fd_0 >= 0 as ::core::ffi::c_int {
-                    close(staged_fd_0);
-                }
-            } else {
-                write_failed = 1 as ::core::ffi::c_int;
+            } else if fsync(dir_fd) != 0 as ::core::ffi::c_int {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Could not sync config directory after replacement: %s\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    strerror(*__errno_location()),
+                );
             }
-        } else if fsync(dir_fd) != 0 as ::core::ffi::c_int {
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_WARN,
-                LOG_COMPONENT,
-                _log_stream_name,
-                b"Could not sync config directory after replacement: %s\0".as_ptr()
-                    as *const ::core::ffi::c_char,
-                strerror(*__errno_location()),
-            );
+            pthread_mutex_unlock(&raw mut config_in_place_mutex);
         }
+    }
+    if staged_fd >= 0 as ::core::ffi::c_int {
+        close(staged_fd);
     }
     if external_staging {
         unlink(&raw mut external_staging_path as *mut ::core::ffi::c_char);
@@ -8129,9 +10284,7 @@ pub unsafe extern "C" fn save_config(
             0 as ::core::ffi::c_int,
         );
     }
-    if original_fd >= 0 as ::core::ffi::c_int {
-        close(original_fd);
-    }
+    close_original_config_fd(original_fd);
     close(dir_fd);
     if write_failed != 0 {
         _log_message_ctx(
@@ -8145,47 +10298,1386 @@ pub unsafe extern "C" fn save_config(
     }
     return 0 as ::core::ffi::c_int;
 }
+unsafe extern "C" fn config_copy_settings_only(
+    mut dst: *mut config_t,
+    mut src: *const config_t,
+) -> bool {
+    if dst.is_null() || src.is_null() {
+        return r#false != 0;
+    }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
+    *dst = *src;
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
+    (*dst).streams = ::core::ptr::null_mut::<stream_config_t>();
+    return r#true != 0;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn save_config(
+    mut config: *const config_t,
+    mut path: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    if config.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut snapshot: config_t = config_t {
+        pid_file: [
+            0 as ::core::ffi::c_char,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ],
+        log_file: [0; 512],
+        log_level: 0,
+        syslog_enabled: false,
+        syslog_ident: [0; 64],
+        syslog_facility: 0,
+        storage_path: [0; 512],
+        storage_path_hls: [0; 512],
+        max_storage_size: 0,
+        retention_days: 0,
+        auto_delete_oldest: false,
+        mp4_faststart: false,
+        storage_min_free_pct: 0,
+        storage_pressure_warning_pct: 0.,
+        storage_pressure_critical_pct: 0.,
+        storage_pressure_emergency_pct: 0.,
+        generate_thumbnails: false,
+        thumbnails_per_recording: 0,
+        record_mp4_directly: false,
+        mp4_storage_path: [0; 512],
+        mp4_directory_format: [0; 32],
+        mp4_segment_duration: 0,
+        mp4_retention_days: 0,
+        models_path: [0; 512],
+        api_detection_url: [0; 512],
+        api_detection_backend: [0; 32],
+        api_detection_format: [0; 32],
+        api_detection_detector_name: [0; 64],
+        default_detection_threshold: 0,
+        default_pre_detection_buffer: 0,
+        default_post_detection_buffer: 0,
+        default_playback_transport: [0; 24],
+        detection_grace_period: 0,
+        db_path: [0; 512],
+        db_backup_interval_minutes: 0,
+        db_backup_retention_count: 0,
+        db_post_backup_script: [0; 512],
+        db_startup_check: 0,
+        db_backup_verify: 0,
+        web_thread_pool_size: 0,
+        web_port: 0,
+        web_bind_ip: [0; 32],
+        web_root: [0; 512],
+        web_ssl_enabled: false,
+        web_ssl_cert_path: [0; 512],
+        web_ssl_key_path: [0; 512],
+        web_auth_enabled: false,
+        web_username: [0; 32],
+        web_password: [0; 32],
+        audio_disabled: false,
+        auto_disabled: false,
+        webrtc_disabled: false,
+        hls_disabled: false,
+        mse_disabled: false,
+        auth_timeout_hours: 0,
+        auth_absolute_timeout_hours: 0,
+        trusted_device_days: 0,
+        trusted_proxy_cidrs: [0; 1024],
+        demo_mode: false,
+        force_mfa_on_login: false,
+        login_rate_limit_enabled: false,
+        login_rate_limit_max_attempts: 0,
+        login_rate_limit_window_seconds: 0,
+        web_compression_enabled: false,
+        web_use_minified_assets: false,
+        web_cache_max_age_html: 0,
+        web_cache_max_age_css: 0,
+        web_cache_max_age_js: 0,
+        web_cache_max_age_images: 0,
+        web_cache_max_age_fonts: 0,
+        web_cache_max_age_default: 0,
+        onvif_discovery_enabled: false,
+        onvif_discovery_interval: 0,
+        onvif_discovery_network: [0; 64],
+        max_streams: 0,
+        streams: ::core::ptr::null_mut::<stream_config_t>(),
+        buffer_size: 0,
+        use_swap: false,
+        swap_file: [0; 512],
+        swap_size: 0,
+        memory_constrained: false,
+        hw_accel_enabled: false,
+        hw_accel_device: [0; 32],
+        go2rtc_enabled: false,
+        go2rtc_binary_path: [0; 512],
+        go2rtc_config_dir: [0; 512],
+        go2rtc_api_port: 0,
+        go2rtc_rtsp_port: 0,
+        go2rtc_force_native_hls: false,
+        go2rtc_proxy_max_inflight: 0,
+        go2rtc_webrtc_enabled: false,
+        go2rtc_webrtc_listen_port: 0,
+        go2rtc_stun_enabled: false,
+        go2rtc_stun_server: [0; 256],
+        go2rtc_external_ip: [0; 256],
+        go2rtc_ice_servers: [0; 512],
+        webrtc_connection_timeout_ms: 0,
+        webrtc_ice_recovery_timeout_ms: 0,
+        turn_enabled: false,
+        turn_server_url: [0; 256],
+        turn_username: [0; 64],
+        turn_password: [0; 64],
+        mqtt_enabled: false,
+        mqtt_broker_host: [0; 256],
+        mqtt_broker_port: 0,
+        mqtt_username: [0; 64],
+        mqtt_password: [0; 128],
+        mqtt_client_id: [0; 64],
+        mqtt_topic_prefix: [0; 128],
+        mqtt_tls_enabled: false,
+        mqtt_keepalive: 0,
+        mqtt_qos: 0,
+        mqtt_retain: false,
+        mqtt_ha_discovery: false,
+        mqtt_ha_discovery_prefix: [0; 128],
+        mqtt_ha_snapshot_interval: 0,
+        health: system_health_policy_settings_t {
+            enabled: false,
+            profile: [0; 16],
+            fast_interval_seconds: 0,
+            normal_interval_seconds: 0,
+            slow_interval_seconds: 0,
+            device_interval_seconds: 0,
+            write_probe_enabled: false,
+            hardware_provider: [0; 16],
+            presence_interval_seconds: 0,
+            incident_retention_days: 0,
+        },
+        detection_engine: detection_engine_config_t {
+            enabled: false,
+            num_threads: 0,
+            delegate: [0; 16],
+        },
+    };
+    if !config_copy_settings_only(&raw mut snapshot, config) {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Could not create config snapshot for saving\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut result: ::core::ffi::c_int = save_config_snapshot(&raw mut snapshot, path);
+    return result;
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     if config.is_null() {
+        return;
+    }
+    let mut snapshot: config_t = config_t {
+        pid_file: [
+            0 as ::core::ffi::c_char,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ],
+        log_file: [0; 512],
+        log_level: 0,
+        syslog_enabled: false,
+        syslog_ident: [0; 64],
+        syslog_facility: 0,
+        storage_path: [0; 512],
+        storage_path_hls: [0; 512],
+        max_storage_size: 0,
+        retention_days: 0,
+        auto_delete_oldest: false,
+        mp4_faststart: false,
+        storage_min_free_pct: 0,
+        storage_pressure_warning_pct: 0.,
+        storage_pressure_critical_pct: 0.,
+        storage_pressure_emergency_pct: 0.,
+        generate_thumbnails: false,
+        thumbnails_per_recording: 0,
+        record_mp4_directly: false,
+        mp4_storage_path: [0; 512],
+        mp4_directory_format: [0; 32],
+        mp4_segment_duration: 0,
+        mp4_retention_days: 0,
+        models_path: [0; 512],
+        api_detection_url: [0; 512],
+        api_detection_backend: [0; 32],
+        api_detection_format: [0; 32],
+        api_detection_detector_name: [0; 64],
+        default_detection_threshold: 0,
+        default_pre_detection_buffer: 0,
+        default_post_detection_buffer: 0,
+        default_playback_transport: [0; 24],
+        detection_grace_period: 0,
+        db_path: [0; 512],
+        db_backup_interval_minutes: 0,
+        db_backup_retention_count: 0,
+        db_post_backup_script: [0; 512],
+        db_startup_check: 0,
+        db_backup_verify: 0,
+        web_thread_pool_size: 0,
+        web_port: 0,
+        web_bind_ip: [0; 32],
+        web_root: [0; 512],
+        web_ssl_enabled: false,
+        web_ssl_cert_path: [0; 512],
+        web_ssl_key_path: [0; 512],
+        web_auth_enabled: false,
+        web_username: [0; 32],
+        web_password: [0; 32],
+        audio_disabled: false,
+        auto_disabled: false,
+        webrtc_disabled: false,
+        hls_disabled: false,
+        mse_disabled: false,
+        auth_timeout_hours: 0,
+        auth_absolute_timeout_hours: 0,
+        trusted_device_days: 0,
+        trusted_proxy_cidrs: [0; 1024],
+        demo_mode: false,
+        force_mfa_on_login: false,
+        login_rate_limit_enabled: false,
+        login_rate_limit_max_attempts: 0,
+        login_rate_limit_window_seconds: 0,
+        web_compression_enabled: false,
+        web_use_minified_assets: false,
+        web_cache_max_age_html: 0,
+        web_cache_max_age_css: 0,
+        web_cache_max_age_js: 0,
+        web_cache_max_age_images: 0,
+        web_cache_max_age_fonts: 0,
+        web_cache_max_age_default: 0,
+        onvif_discovery_enabled: false,
+        onvif_discovery_interval: 0,
+        onvif_discovery_network: [0; 64],
+        max_streams: 0,
+        streams: ::core::ptr::null_mut::<stream_config_t>(),
+        buffer_size: 0,
+        use_swap: false,
+        swap_file: [0; 512],
+        swap_size: 0,
+        memory_constrained: false,
+        hw_accel_enabled: false,
+        hw_accel_device: [0; 32],
+        go2rtc_enabled: false,
+        go2rtc_binary_path: [0; 512],
+        go2rtc_config_dir: [0; 512],
+        go2rtc_api_port: 0,
+        go2rtc_rtsp_port: 0,
+        go2rtc_force_native_hls: false,
+        go2rtc_proxy_max_inflight: 0,
+        go2rtc_webrtc_enabled: false,
+        go2rtc_webrtc_listen_port: 0,
+        go2rtc_stun_enabled: false,
+        go2rtc_stun_server: [0; 256],
+        go2rtc_external_ip: [0; 256],
+        go2rtc_ice_servers: [0; 512],
+        webrtc_connection_timeout_ms: 0,
+        webrtc_ice_recovery_timeout_ms: 0,
+        turn_enabled: false,
+        turn_server_url: [0; 256],
+        turn_username: [0; 64],
+        turn_password: [0; 64],
+        mqtt_enabled: false,
+        mqtt_broker_host: [0; 256],
+        mqtt_broker_port: 0,
+        mqtt_username: [0; 64],
+        mqtt_password: [0; 128],
+        mqtt_client_id: [0; 64],
+        mqtt_topic_prefix: [0; 128],
+        mqtt_tls_enabled: false,
+        mqtt_keepalive: 0,
+        mqtt_qos: 0,
+        mqtt_retain: false,
+        mqtt_ha_discovery: false,
+        mqtt_ha_discovery_prefix: [0; 128],
+        mqtt_ha_snapshot_interval: 0,
+        health: system_health_policy_settings_t {
+            enabled: false,
+            profile: [0; 16],
+            fast_interval_seconds: 0,
+            normal_interval_seconds: 0,
+            slow_interval_seconds: 0,
+            device_interval_seconds: 0,
+            write_probe_enabled: false,
+            hardware_provider: [0; 16],
+            presence_interval_seconds: 0,
+            incident_retention_days: 0,
+        },
+        detection_engine: detection_engine_config_t {
+            enabled: false,
+            num_threads: 0,
+            delegate: [0; 16],
+        },
+    };
+    if !config_copy(&raw mut snapshot, config) {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Could not create config snapshot for printing\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
         return;
     }
     printf(b"LightNVR Configuration:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(b"  General Settings:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    PID File: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).pid_file as *const ::core::ffi::c_char,
+        &raw mut snapshot.pid_file as *mut ::core::ffi::c_char,
     );
     printf(
         b"    Log File: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).log_file as *const ::core::ffi::c_char,
+        &raw mut snapshot.log_file as *mut ::core::ffi::c_char,
     );
     printf(
         b"    Log Level: %d\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).log_level,
+        snapshot.log_level,
     );
     printf(b"  Storage Settings:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    Storage Path: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).storage_path as *const ::core::ffi::c_char,
+        &raw mut snapshot.storage_path as *mut ::core::ffi::c_char,
     );
-    if (*config).storage_path_hls[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+    if snapshot.storage_path_hls[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
         printf(
             b"    HLS Storage Path: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw const (*config).storage_path_hls as *const ::core::ffi::c_char,
+            &raw mut snapshot.storage_path_hls as *mut ::core::ffi::c_char,
         );
     }
     printf(
         b"    Max Storage Size: %llu bytes\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).max_storage_size as ::core::ffi::c_ulonglong,
+        snapshot.max_storage_size as ::core::ffi::c_ulonglong,
     );
     printf(
         b"    Retention Days: %d\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).retention_days,
+        snapshot.retention_days,
     );
     printf(
         b"    Auto Delete Oldest: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).auto_delete_oldest as ::core::ffi::c_int != 0 {
+        if snapshot.auto_delete_oldest as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8193,7 +11685,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    MP4 Faststart: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if config_get_mp4_faststart(config) as ::core::ffi::c_int != 0 {
+        if config_get_mp4_faststart(&raw mut snapshot) as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8202,7 +11694,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     printf(b"  Health Settings:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    Enabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).health.enabled as ::core::ffi::c_int != 0 {
+        if snapshot.health.enabled as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8210,43 +11702,47 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Profile: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).health.profile as *const ::core::ffi::c_char,
+        &raw mut snapshot.health.profile as *mut ::core::ffi::c_char,
     );
     printf(
         b"    Sampling intervals: %u/%u/%u/%u seconds\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).health.fast_interval_seconds,
-        (*config).health.normal_interval_seconds,
-        (*config).health.slow_interval_seconds,
-        (*config).health.device_interval_seconds,
+        snapshot.health.fast_interval_seconds,
+        snapshot.health.normal_interval_seconds,
+        snapshot.health.slow_interval_seconds,
+        snapshot.health.device_interval_seconds,
     );
     printf(b"  Models Settings:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    Models Path: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).models_path as *const ::core::ffi::c_char,
+        &raw mut snapshot.models_path as *mut ::core::ffi::c_char,
     );
     printf(b"  API Detection Settings:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    API URL: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).api_detection_url as *const ::core::ffi::c_char,
+        if snapshot.api_detection_url[0usize] as ::core::ffi::c_int != 0 {
+            b"(configured)\0".as_ptr() as *const ::core::ffi::c_char
+        } else {
+            b"(not configured)\0".as_ptr() as *const ::core::ffi::c_char
+        },
     );
     printf(b"  Database Settings:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    Database Path: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).db_path as *const ::core::ffi::c_char,
+        &raw mut snapshot.db_path as *mut ::core::ffi::c_char,
     );
     printf(
         b"    Backup Interval: %d minutes\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).db_backup_interval_minutes,
+        snapshot.db_backup_interval_minutes,
     );
     printf(
         b"    Backup Retention Count: %d\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).db_backup_retention_count,
+        snapshot.db_backup_retention_count,
     );
     printf(
         b"    Startup Check: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).db_startup_check == DB_STARTUP_CHECK_OFF {
+        if snapshot.db_startup_check == DB_STARTUP_CHECK_OFF {
             b"off\0".as_ptr() as *const ::core::ffi::c_char
-        } else if (*config).db_startup_check == DB_STARTUP_CHECK_FULL {
+        } else if snapshot.db_startup_check == DB_STARTUP_CHECK_FULL {
             b"full\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"quick\0".as_ptr() as *const ::core::ffi::c_char
@@ -8254,9 +11750,9 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Backup Verification: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).db_backup_verify == DB_BACKUP_VERIFY_OFF {
+        if snapshot.db_backup_verify == DB_BACKUP_VERIFY_OFF {
             b"off\0".as_ptr() as *const ::core::ffi::c_char
-        } else if (*config).db_backup_verify == DB_BACKUP_VERIFY_QUICK {
+        } else if snapshot.db_backup_verify == DB_BACKUP_VERIFY_QUICK {
             b"quick\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"full\0".as_ptr() as *const ::core::ffi::c_char
@@ -8264,8 +11760,8 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Post-backup Script: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).db_post_backup_script[0usize] as ::core::ffi::c_int != 0 {
-            &raw const (*config).db_post_backup_script as *const ::core::ffi::c_char
+        if snapshot.db_post_backup_script[0usize] as ::core::ffi::c_int != 0 {
+            &raw mut snapshot.db_post_backup_script as *mut ::core::ffi::c_char
         } else {
             b"(disabled)\0".as_ptr() as *const ::core::ffi::c_char
         },
@@ -8273,19 +11769,19 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     printf(b"  Web Server Settings:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    Web Port: %d\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).web_port,
+        snapshot.web_port,
     );
     printf(
         b"    Web Bind Address: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).web_bind_ip as *const ::core::ffi::c_char,
+        &raw mut snapshot.web_bind_ip as *mut ::core::ffi::c_char,
     );
     printf(
         b"    Web Root: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).web_root as *const ::core::ffi::c_char,
+        &raw mut snapshot.web_root as *mut ::core::ffi::c_char,
     );
     printf(
         b"    Web Auth Enabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).web_auth_enabled as ::core::ffi::c_int != 0 {
+        if snapshot.web_auth_enabled as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8293,7 +11789,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Web Username: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).web_username as *const ::core::ffi::c_char,
+        &raw mut snapshot.web_username as *mut ::core::ffi::c_char,
     );
     printf(
         b"    Web Password: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
@@ -8301,7 +11797,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Audio Disabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).audio_disabled as ::core::ffi::c_int != 0 {
+        if snapshot.audio_disabled as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8309,7 +11805,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Auto Disabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).auto_disabled as ::core::ffi::c_int != 0 {
+        if snapshot.auto_disabled as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8317,7 +11813,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    WebRTC Disabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).webrtc_disabled as ::core::ffi::c_int != 0 {
+        if snapshot.webrtc_disabled as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8325,7 +11821,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    HLS Disabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).hls_disabled as ::core::ffi::c_int != 0 {
+        if snapshot.hls_disabled as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8333,7 +11829,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    MSE Disabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).mse_disabled as ::core::ffi::c_int != 0 {
+        if snapshot.mse_disabled as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8341,19 +11837,19 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Auth Idle Timeout: %d hours\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).auth_timeout_hours,
+        snapshot.auth_timeout_hours,
     );
     printf(
         b"    Auth Absolute Timeout: %d hours\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).auth_absolute_timeout_hours,
+        snapshot.auth_absolute_timeout_hours,
     );
     printf(
         b"    Trusted Device Lifetime: %d days\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).trusted_device_days,
+        snapshot.trusted_device_days,
     );
     printf(
         b"    Demo Mode: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).demo_mode as ::core::ffi::c_int != 0 {
+        if snapshot.demo_mode as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8361,7 +11857,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Force MFA on Login: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).force_mfa_on_login as ::core::ffi::c_int != 0 {
+        if snapshot.force_mfa_on_login as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8369,7 +11865,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Login Rate Limit: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).login_rate_limit_enabled as ::core::ffi::c_int != 0 {
+        if snapshot.login_rate_limit_enabled as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8377,31 +11873,31 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Login Rate Limit Max Attempts: %d\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).login_rate_limit_max_attempts,
+        snapshot.login_rate_limit_max_attempts,
     );
     printf(
         b"    Login Rate Limit Window: %d seconds\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).login_rate_limit_window_seconds,
+        snapshot.login_rate_limit_window_seconds,
     );
     printf(b"  Stream Settings:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    Max Streams: %d (runtime) / %d (compile-time ceiling)\n\0".as_ptr()
             as *const ::core::ffi::c_char,
-        (*config).max_streams,
+        snapshot.max_streams,
         MAX_STREAMS,
     );
     printf(
         b"  Web Thread Pool Size: %d\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).web_thread_pool_size,
+        snapshot.web_thread_pool_size,
     );
     printf(b"  Memory Optimization:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    Buffer Size: %d KB\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).buffer_size,
+        snapshot.buffer_size,
     );
     printf(
         b"    Use Swap: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).use_swap as ::core::ffi::c_int != 0 {
+        if snapshot.use_swap as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8409,16 +11905,16 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    Swap File: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).swap_file as *const ::core::ffi::c_char,
+        &raw mut snapshot.swap_file as *mut ::core::ffi::c_char,
     );
     printf(
         b"    Swap Size: %llu bytes\n\0".as_ptr() as *const ::core::ffi::c_char,
-        (*config).swap_size as ::core::ffi::c_ulonglong,
+        snapshot.swap_size as ::core::ffi::c_ulonglong,
     );
     printf(b"  Hardware Acceleration:\n\0".as_ptr() as *const ::core::ffi::c_char);
     printf(
         b"    HW Accel Enabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        if (*config).hw_accel_enabled as ::core::ffi::c_int != 0 {
+        if snapshot.hw_accel_enabled as ::core::ffi::c_int != 0 {
             b"true\0".as_ptr() as *const ::core::ffi::c_char
         } else {
             b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8426,12 +11922,12 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
     );
     printf(
         b"    HW Accel Device: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-        &raw const (*config).hw_accel_device as *const ::core::ffi::c_char,
+        &raw mut snapshot.hw_accel_device as *mut ::core::ffi::c_char,
     );
     printf(b"  Stream Configurations:\n\0".as_ptr() as *const ::core::ffi::c_char);
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while i < (*config).max_streams {
-        if strlen(&raw mut (*(*config).streams.offset(i as isize)).name as *mut ::core::ffi::c_char)
+    while !snapshot.streams.is_null() && i < snapshot.max_streams {
+        if strlen(&raw mut (*snapshot.streams.offset(i as isize)).name as *mut ::core::ffi::c_char)
             > 0 as size_t
         {
             printf(
@@ -8440,11 +11936,11 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
             );
             printf(
                 b"      Name: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut (*(*config).streams.offset(i as isize)).name as *mut ::core::ffi::c_char,
+                &raw mut (*snapshot.streams.offset(i as isize)).name as *mut ::core::ffi::c_char,
             );
             printf(
                 b"      URL: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                if (*(*config).streams.offset(i as isize)).url[0usize] as ::core::ffi::c_int != 0 {
+                if (*snapshot.streams.offset(i as isize)).url[0usize] as ::core::ffi::c_int != 0 {
                     b"[redacted]\0".as_ptr() as *const ::core::ffi::c_char
                 } else {
                     b"(empty)\0".as_ptr() as *const ::core::ffi::c_char
@@ -8452,7 +11948,7 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
             );
             printf(
                 b"      Enabled: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                if (*(*config).streams.offset(i as isize)).enabled as ::core::ffi::c_int != 0 {
+                if (*snapshot.streams.offset(i as isize)).enabled as ::core::ffi::c_int != 0 {
                     b"true\0".as_ptr() as *const ::core::ffi::c_char
                 } else {
                     b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8460,24 +11956,24 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
             );
             printf(
                 b"      Resolution: %dx%d\n\0".as_ptr() as *const ::core::ffi::c_char,
-                (*(*config).streams.offset(i as isize)).width,
-                (*(*config).streams.offset(i as isize)).height,
+                (*snapshot.streams.offset(i as isize)).width,
+                (*snapshot.streams.offset(i as isize)).height,
             );
             printf(
                 b"      FPS: %d\n\0".as_ptr() as *const ::core::ffi::c_char,
-                (*(*config).streams.offset(i as isize)).fps,
+                (*snapshot.streams.offset(i as isize)).fps,
             );
             printf(
                 b"      Codec: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                &raw mut (*(*config).streams.offset(i as isize)).codec as *mut ::core::ffi::c_char,
+                &raw mut (*snapshot.streams.offset(i as isize)).codec as *mut ::core::ffi::c_char,
             );
             printf(
                 b"      Priority: %d\n\0".as_ptr() as *const ::core::ffi::c_char,
-                (*(*config).streams.offset(i as isize)).priority,
+                (*snapshot.streams.offset(i as isize)).priority,
             );
             printf(
                 b"      Record: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                if (*(*config).streams.offset(i as isize)).record as ::core::ffi::c_int != 0 {
+                if (*snapshot.streams.offset(i as isize)).record as ::core::ffi::c_int != 0 {
                     b"true\0".as_ptr() as *const ::core::ffi::c_char
                 } else {
                     b"false\0".as_ptr() as *const ::core::ffi::c_char
@@ -8485,11 +11981,11 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
             );
             printf(
                 b"      Segment Duration: %d seconds\n\0".as_ptr() as *const ::core::ffi::c_char,
-                (*(*config).streams.offset(i as isize)).segment_duration,
+                (*snapshot.streams.offset(i as isize)).segment_duration,
             );
             printf(
                 b"      Detection-based Recording: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                if (*(*config).streams.offset(i as isize)).detection_based_recording
+                if (*snapshot.streams.offset(i as isize)).detection_based_recording
                     as ::core::ffi::c_int
                     != 0
                 {
@@ -8500,20 +11996,20 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
             );
             printf(
                 b"      Record Audio: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                if (*(*config).streams.offset(i as isize)).record_audio as ::core::ffi::c_int != 0 {
+                if (*snapshot.streams.offset(i as isize)).record_audio as ::core::ffi::c_int != 0 {
                     b"true\0".as_ptr() as *const ::core::ffi::c_char
                 } else {
                     b"false\0".as_ptr() as *const ::core::ffi::c_char
                 },
             );
-            if (*(*config).streams.offset(i as isize)).detection_based_recording {
+            if (*snapshot.streams.offset(i as isize)).detection_based_recording {
                 printf(
                     b"      Detection Model: %s\n\0".as_ptr() as *const ::core::ffi::c_char,
-                    if (*(*config).streams.offset(i as isize)).detection_model[0usize]
+                    if (*snapshot.streams.offset(i as isize)).detection_model[0usize]
                         as ::core::ffi::c_int
                         != 0
                     {
-                        &raw mut (*(*config).streams.offset(i as isize)).detection_model
+                        &raw mut (*snapshot.streams.offset(i as isize)).detection_model
                             as *mut ::core::ffi::c_char
                     } else {
                         b"None\0".as_ptr() as *const ::core::ffi::c_char
@@ -8522,27 +12018,28 @@ pub unsafe extern "C" fn print_config(mut config: *const config_t) {
                 printf(
                     b"      Detection Interval: %d seconds\n\0".as_ptr()
                         as *const ::core::ffi::c_char,
-                    (*(*config).streams.offset(i as isize)).detection_interval,
+                    (*snapshot.streams.offset(i as isize)).detection_interval,
                 );
                 printf(
                     b"      Detection Threshold: %.2f\n\0".as_ptr() as *const ::core::ffi::c_char,
-                    (*(*config).streams.offset(i as isize)).detection_threshold
+                    (*snapshot.streams.offset(i as isize)).detection_threshold
                         as ::core::ffi::c_double,
                 );
                 printf(
                     b"      Pre-detection Buffer: %d seconds\n\0".as_ptr()
                         as *const ::core::ffi::c_char,
-                    (*(*config).streams.offset(i as isize)).pre_detection_buffer,
+                    (*snapshot.streams.offset(i as isize)).pre_detection_buffer,
                 );
                 printf(
                     b"      Post-detection Buffer: %d seconds\n\0".as_ptr()
                         as *const ::core::ffi::c_char,
-                    (*(*config).streams.offset(i as isize)).post_detection_buffer,
+                    (*snapshot.streams.offset(i as isize)).post_detection_buffer,
                 );
             }
         }
         i += 1;
     }
+    free(snapshot.streams as *mut ::core::ffi::c_void);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn api_detection_format_name(
@@ -8629,17 +12126,20 @@ pub unsafe extern "C" fn config_set_api_detection_format(
     if config.is_null() || !api_detection_format_parse(name, &raw mut format) {
         return r#false != 0;
     }
+    pthread_mutex_lock(&raw mut mp4_faststart_mutex);
     safe_strcpy(
         &raw mut (*config).api_detection_format as *mut ::core::ffi::c_char,
         api_detection_format_name(format),
         ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
         0 as size_t,
     );
+    pthread_mutex_unlock(&raw mut mp4_faststart_mutex);
     return r#true != 0;
 }
-pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
-pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
+pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL_0 as *const ::core::ffi::c_char;
+pub const _log_stream_name: *const ::core::ffi::c_char = NULL_0 as *const ::core::ffi::c_char;
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
+pub const NULL_0: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const __O_CLOEXEC: ::core::ffi::c_int = 0o2000000 as ::core::ffi::c_int;
 pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
 pub const EPERM: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
@@ -8654,6 +12154,34 @@ pub const INT_MAX: ::core::ffi::c_int = __INT_MAX__;
 pub const INT_MIN: ::core::ffi::c_int = -__INT_MAX__ - 1 as ::core::ffi::c_int;
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+#[inline]
+unsafe extern "C" fn bsearch(
+    mut __key: *const ::core::ffi::c_void,
+    mut __base: *const ::core::ffi::c_void,
+    mut __nmemb: size_t,
+    mut __size: size_t,
+    mut __compar: __compar_fn_t,
+) -> *mut ::core::ffi::c_void {
+    let mut __p: *const ::core::ffi::c_void = ::core::ptr::null::<::core::ffi::c_void>();
+    let mut __comparison: ::core::ffi::c_int = 0;
+    while __nmemb != 0 {
+        __p = (__base as *const ::core::ffi::c_char)
+            .offset((__nmemb >> 1 as ::core::ffi::c_int).wrapping_mul(__size) as isize)
+            as *const ::core::ffi::c_void;
+        __comparison = Some(__compar.expect("non-null function pointer"))
+            .expect("non-null function pointer")(__key, __p);
+        if __comparison == 0 as ::core::ffi::c_int {
+            return __p as *mut ::core::ffi::c_void;
+        }
+        if __comparison > 0 as ::core::ffi::c_int {
+            __base = (__p as *const ::core::ffi::c_char).offset(__size as isize)
+                as *const ::core::ffi::c_void;
+            __nmemb = __nmemb.wrapping_sub(1);
+        }
+        __nmemb >>= 1 as ::core::ffi::c_int;
+    }
+    return NULL;
+}
 pub const GO2RTC_BINARY_PATH_RAW: [::core::ffi::c_char; 22] = unsafe {
     ::core::mem::transmute::<[u8; 22], [::core::ffi::c_char; 22]>(*b"/usr/local/bin/go2rtc\0")
 };
