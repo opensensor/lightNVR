@@ -2650,9 +2650,20 @@ static int save_config_snapshot(const config_t *config, const char *path) {
             return -1;
         }
 
-        /* Do not enforce a filename extension here: loading may accept a
-         * trusted custom config path with a non-.ini suffix, and saving back
-         * to that tracked path must remain possible. */
+        /* Explicit new destinations must use the config extension. A path
+         * already selected by the loader or CLI may have another suffix. */
+        size_t fname_len = strlen(fname);
+        if (fname_len < 4 || strcmp(fname + fname_len - 4, ".ini") != 0) {
+            pthread_mutex_lock(&config_load_mutex);
+            bool tracked_path =
+                (g_loaded_config_path[0] && strcmp(save_path, g_loaded_config_path) == 0) ||
+                (g_custom_config_path[0] && strcmp(save_path, g_custom_config_path) == 0);
+            pthread_mutex_unlock(&config_load_mutex);
+            if (!tracked_path) {
+                log_error("Config filename must end with .ini or match the tracked config path: '%s'", fname);
+                return -1;
+            }
+        }
 
         int n = snprintf(canonical_save_path, sizeof(canonical_save_path),
                          "%s/%s", resolved_dir, fname);
