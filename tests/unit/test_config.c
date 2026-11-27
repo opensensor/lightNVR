@@ -298,7 +298,24 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         _exit(lock_result < 0 && (lock_error == EACCES || lock_error == EAGAIN) ? 0 : 4);
     }
     int status = 0;
-    TEST_ASSERT_EQUAL_INT(child, waitpid(child, &status, 0));
+    const int wait_step_us = 10000;       /* 10 ms */
+    const int wait_timeout_us = 2000000;  /* 2 s */
+    int waited_us = 0;
+    pid_t waited = -1;
+    while (waited_us < wait_timeout_us) {
+        waited = waitpid(child, &status, WNOHANG);
+        if (waited == child) {
+            break;
+        }
+        TEST_ASSERT_NOT_EQUAL_INT_MESSAGE(-1, waited, "waitpid failed while polling child");
+        usleep((useconds_t)wait_step_us);
+        waited_us += wait_step_us;
+    }
+    if (waited != child) {
+        (void)kill(child, SIGKILL);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(child, waitpid(child, &status, 0), "Timed out waiting for child and failed to reap it");
+        TEST_FAIL_MESSAGE("Timed out waiting for child process");
+    }
     TEST_ASSERT_TRUE(WIFEXITED(status));
     TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
 
