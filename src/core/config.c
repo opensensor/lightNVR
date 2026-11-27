@@ -1507,8 +1507,10 @@ static int config_ini_handler(void* user, const char* section, const char* name,
 // Load configuration from file using inih
 static int load_config_from_file(const char *filename, config_t *config, bool *ini_present) {
     // Parsing may resize streams, so the temporary copy needs its own array.
+    unsigned long snapshot_config_version = 0;
     pthread_mutex_lock(&mp4_faststart_mutex);
     config_t temp_config = *config;
+    snapshot_config_version = config->config_version;
     temp_config.streams = NULL;
     if (config->streams && config->max_streams > 0) {
         size_t bytes = (size_t)config->max_streams * sizeof(stream_config_t);
@@ -1560,8 +1562,15 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
     }
 
     pthread_mutex_lock(&mp4_faststart_mutex);
+    if (config->config_version != snapshot_config_version) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        free(temp_config.streams);
+        log_warn("Config changed during reload of %s; refusing to overwrite newer in-memory updates", filename);
+        return -1;
+    }
     free(config->streams);
     *config = temp_config;
+    config->config_version++;
     pthread_mutex_unlock(&mp4_faststart_mutex);
     return 0;
 }
