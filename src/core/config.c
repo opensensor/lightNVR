@@ -2303,9 +2303,10 @@ int load_config(config_t *config) {
                 *config = next_config;
                 config->streams = preserved_streams;
             } else {
-                free(config->streams);
+                stream_config_t *old_streams = config->streams;
                 *config = next_config;
                 next_config.streams = NULL;
+                free(old_streams);
             }
         } else {
             result = -1;
