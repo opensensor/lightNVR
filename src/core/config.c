@@ -2445,12 +2445,32 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     int original_fd = openat(dir_fd, validated_filename,
                              O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     bool target_exists = original_fd >= 0;
-    if (!target_exists && errno != ENOENT) {
-        log_error("Could not open config file for inspection: %s", strerror(errno));
-        close(dir_fd);
-        return -1;
-    }
     struct stat config_stat = {0};
+    if (!target_exists) {
+        if (errno == ENOENT) {
+            /* Target does not yet exist; creation path below will handle it. */
+        } else if (errno == EACCES || errno == EPERM) {
+            /* Cannot open for inspection (for example legacy root-owned 0600), but
+             * we may still be allowed to replace the directory entry atomically.
+             * Validate metadata without following symlinks. */
+            if (fstatat(dir_fd, validated_filename, &config_stat, AT_SYMLINK_NOFOLLOW) != 0) {
+                log_error("Could not stat config file for inspection: %s", strerror(errno));
+                close(dir_fd);
+                return -1;
+            }
+            if (!S_ISREG(config_stat.st_mode) || config_stat.st_nlink != 1) {
+                log_error("Config save target must be a regular file with one link: %s", canonical_save_path);
+                close(dir_fd);
+                return -1;
+            }
+            target_exists = true;
+            original_fd = -1;
+        } else {
+            log_error("Could not open config file for inspection: %s", strerror(errno));
+            close(dir_fd);
+            return -1;
+        }
+    }
     if (target_exists) {
         if (fstat(original_fd, &config_stat) != 0 ||
             !S_ISREG(config_stat.st_mode) || config_stat.st_nlink != 1) {
