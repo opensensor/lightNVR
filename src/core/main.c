@@ -1733,9 +1733,11 @@ cleanup:
 
                 // Wait for the parent to terminate before re-exec. Do not
                 // probe a numeric PID after this child has been reparented.
-                for (int i = 0; i < 10; i++) {
+                bool parent_exited = (getppid() != parent_pid);
+                for (int i = 0; i < 10 && !parent_exited; i++) {
                     if (getppid() != parent_pid) {
                         // Parent is gone
+                        parent_exited = true;
                         break;
                     }
                     struct timespec poll_delay = {0, 500000000L};  // 500ms
@@ -1744,14 +1746,16 @@ cleanup:
                     }
                 }
 
-                // Get the executable path
-                char exe_path[MAX_PATH_LENGTH];
-                ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-                if (len > 0) {
-                    exe_path[len] = '\0';
+                if (parent_exited) {
+                    // Get the executable path
+                    char exe_path[MAX_PATH_LENGTH];
+                    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+                    if (len > 0) {
+                        exe_path[len] = '\0';
 
-                    // Re-exec the program with the same arguments
-                    execv(exe_path, saved_argv);
+                        // Re-exec the program with the same arguments
+                        execv(exe_path, saved_argv);
+                    }
                 }
             }
         }
