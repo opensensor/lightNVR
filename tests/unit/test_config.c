@@ -2072,37 +2072,48 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     snprintf(cfg.pid_file, sizeof(cfg.pid_file), "/tmp/lightnvr.pid\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
     snprintf(cfg.pid_file, sizeof(cfg.pid_file), "/tmp/lightnvr.pid");
+    load_default_config(&cfg);
     snprintf(cfg.api_detection_url, sizeof(cfg.api_detection_url), "http://example/#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.api_detection_url[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.go2rtc_config_dir, sizeof(cfg.go2rtc_config_dir), "/etc/lightnvr\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    snprintf(cfg.go2rtc_config_dir, sizeof(cfg.go2rtc_config_dir), "/etc/lightnvr");
+
+    load_default_config(&cfg);
     snprintf(cfg.go2rtc_stun_server, sizeof(cfg.go2rtc_stun_server), "stun.example#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.go2rtc_stun_server[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.go2rtc_ice_servers, sizeof(cfg.go2rtc_ice_servers), "stun:example\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.go2rtc_ice_servers[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.onvif_discovery_network, sizeof(cfg.onvif_discovery_network),
              "192.168.1.0/24\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    snprintf(cfg.onvif_discovery_network, sizeof(cfg.onvif_discovery_network), "auto");
+
+    load_default_config(&cfg);
     snprintf(cfg.mp4_storage_path, sizeof(cfg.mp4_storage_path), "/tmp/recordings\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.mp4_storage_path[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.swap_file, sizeof(cfg.swap_file), "/tmp/swap#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.swap_file[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.hw_accel_device, sizeof(cfg.hw_accel_device), "/dev/video0\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.hw_accel_device[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.web_bind_ip, sizeof(cfg.web_bind_ip), "127.0.0.1\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.web_bind_ip[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.web_ssl_cert_path, sizeof(cfg.web_ssl_cert_path), "/tmp/cert.pem#bad");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.web_ssl_cert_path[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.web_ssl_key_path, sizeof(cfg.web_ssl_key_path), "/tmp/key.pem\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
