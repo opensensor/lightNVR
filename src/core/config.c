@@ -1783,6 +1783,7 @@ int save_stream_configs(config_t *config) {
         log_error("Failed to count stream configurations in database");
         free(streams_snapshot);
         rollback_transaction();
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     
@@ -1793,6 +1794,7 @@ int save_stream_configs(config_t *config) {
                   count, max_streams);
         free(streams_snapshot);
         rollback_transaction();
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1801,6 +1803,7 @@ int save_stream_configs(config_t *config) {
         log_error("save_stream_configs: out of memory");
         free(streams_snapshot);
         rollback_transaction();
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1812,6 +1815,7 @@ int save_stream_configs(config_t *config) {
             free(db_streams);
             free(streams_snapshot);
             rollback_transaction();
+            pthread_mutex_unlock(&stream_save_mutex);
             return -1;
         }
     }
@@ -1826,6 +1830,7 @@ int save_stream_configs(config_t *config) {
             free(db_streams);
             free(streams_snapshot);
             rollback_transaction();
+            pthread_mutex_unlock(&stream_save_mutex);
             return -1;
         }
         for (int j = 0; j < loaded; j++) {
@@ -1866,6 +1871,7 @@ int save_stream_configs(config_t *config) {
             free(db_streams);
             free(streams_snapshot);
             rollback_transaction();
+            pthread_mutex_unlock(&stream_save_mutex);
             return -1;
         }
     }
@@ -1882,6 +1888,7 @@ int save_stream_configs(config_t *config) {
                 log_error("Failed to add stream configuration: %s", stream_name);
                 free(streams_snapshot);
                 rollback_transaction();
+                pthread_mutex_unlock(&stream_save_mutex);
                 return -1;
             }
             saved++;
@@ -1894,6 +1901,7 @@ int save_stream_configs(config_t *config) {
         log_error("Failed to allocate stream identity reload buffer");
         free(streams_snapshot);
         rollback_transaction();
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     int reloaded_count = get_all_stream_configs(reloaded_streams, max_streams);
@@ -1902,6 +1910,7 @@ int save_stream_configs(config_t *config) {
         free(reloaded_streams);
         free(streams_snapshot);
         rollback_transaction();
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1913,6 +1922,7 @@ int save_stream_configs(config_t *config) {
         free(reloaded_streams);
         free(streams_snapshot);
         rollback_transaction();
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     for (int i = 0; i < name_index_size; i++) name_index_slots[i] = -1;
@@ -1958,6 +1968,7 @@ int save_stream_configs(config_t *config) {
             free(reloaded_streams);
             free(streams_snapshot);
             rollback_transaction();
+            pthread_mutex_unlock(&stream_save_mutex);
             return -1;
         }
     }
@@ -1971,6 +1982,7 @@ int save_stream_configs(config_t *config) {
         free(streams_snapshot);
         log_error("Failed to allocate stream identity index");
         rollback_transaction();
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     for (int i = 0; i < table_size; i++) hash_slots[i] = -1;
@@ -1982,6 +1994,7 @@ int save_stream_configs(config_t *config) {
         free(hash_slots);
         free(streams_snapshot);
         rollback_transaction();
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -2007,6 +2020,7 @@ int save_stream_configs(config_t *config) {
         free(hash_slots);
         free(streams_snapshot);
         log_warn("Stream destination changed after database save; stable identities will reload later");
+        pthread_mutex_unlock(&stream_save_mutex);
         return saved;
     }
     for (int j = 0; j < max_streams; j++) {
@@ -2035,6 +2049,7 @@ int save_stream_configs(config_t *config) {
     free(hash_slots);
     free(streams_snapshot);
     log_info("Saved %d stream configurations to database", saved);
+    pthread_mutex_unlock(&stream_save_mutex);
     return saved;
 }
 
@@ -2266,10 +2281,18 @@ int load_config(config_t *config) {
                              (size_t)original.max_streams * sizeof(*original_streams)) != 0;
         }
         if (!changed) {
-            stream_config_t *preserved_streams = config->streams;
-            *config = next_config;
-            config->streams = preserved_streams;
-        } else {
+            if (config->streams && next_config.streams &&
+                config->max_streams == next_config.max_streams) {
+                stream_config_t *preserved_streams = config->streams;
+                memcpy(preserved_streams, next_config.streams,
+                       (size_t)next_config.max_streams * sizeof(*preserved_streams));
+                *config = next_config;
+                config->streams = preserved_streams;
+            } else {
+                free(config->streams);
+                *config = next_config;
+                next_config.streams = NULL;
+            }
         } else {
             result = -1;
         }
