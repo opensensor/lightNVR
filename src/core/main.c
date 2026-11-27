@@ -515,29 +515,22 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
             bool still_running = true;
             while (timeout-- > 0 && still_running && running) {
-                if (used_pidfd) {
-                    struct pollfd pfd = { .fd = pidfd, .events = POLLIN };
-                    int prc = poll(&pfd, 1, 1000);
-                    if (prc > 0 && (pfd.revents & (POLLIN | POLLHUP))) {
-                        // pidfd became readable: the original process exited.
-                        still_running = false;
-                    } else if (prc == 0) {
-                        still_running = true; // 1s tick elapsed
-                    } else {
-                        // On poll failure, fall back to a process-state check.
-                        still_running = is_process_alive_or_non_zombie(existing_pid);
-                        sleep(1);
-                    }
+                struct pollfd pfd = { .fd = pidfd, .events = POLLIN };
+                int prc = poll(&pfd, 1, 1000);
+                if (prc > 0 && (pfd.revents & (POLLIN | POLLHUP))) {
+                    // pidfd became readable: the original process exited.
+                    still_running = false;
+                } else if (prc == 0) {
+                    still_running = true; // 1s tick elapsed
                 } else {
+                    // On poll failure, fall back to a process-state check.
                     still_running = is_process_alive_or_non_zombie(existing_pid);
-                    if (still_running) {
-                        sleep(1);
-                    }
+                    sleep(1);
                 }
             }
 
             if (!running) {
-                if (used_pidfd && pidfd >= 0) {
+                if (pidfd >= 0) {
                     close(pidfd);
                 }
                 return -1;
@@ -547,15 +540,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             if (timeout <= 0 && still_running && running &&
                 is_lightnvr_process(existing_pid)) {
                 log_warn("Process didn't terminate gracefully within timeout, using SIGKILL");
-                if (used_pidfd) {
-                    (void)send_signal_via_pidfd(pidfd, SIGKILL);
-                } else {
-                    kill(existing_pid, SIGKILL);
-                }
+                (void)send_signal_via_pidfd(pidfd, SIGKILL);
                 sleep(1);  // Give it a moment
             }
 
-            if (used_pidfd) {
+            if (pidfd >= 0) {
                 close(pidfd);
             }
 
