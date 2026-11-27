@@ -49,10 +49,10 @@ static void owned_pid_atfork_parent(void) {
 }
 
 static void owned_pid_atfork_child(void) {
-    pthread_mutex_destroy(&owned_pid_mutex);
-    pthread_mutex_init(&owned_pid_mutex, NULL);
+    if (owned_pid_fd >= 0) close(owned_pid_fd);
     owned_pid_fd = -1;
     owned_pid_process = 0;
+    pthread_mutex_unlock(&owned_pid_mutex);
 }
 
 static void register_owned_pid_atfork(void) {
@@ -132,9 +132,6 @@ int init_daemon(const char *pid_file) {
         log_error("Failed to create startup status pipe: %s", strerror(errno));
         return -1;
     }
-
-    // Ensure mutex state is coordinated across fork in multithreaded contexts.
-    (void)pthread_once(&owned_pid_atfork_once, register_owned_pid_atfork);
 
     // Fork the process
     pid_t pid = fork();
@@ -320,6 +317,8 @@ static void daemon_signal_handler(int sig) {
 
 // Write PID file
 int write_pid_file(const char *pid_file) {
+    // Register before acquiring the lock so any later fork resets child ownership.
+    (void)pthread_once(&owned_pid_atfork_once, register_owned_pid_atfork);
     pthread_mutex_lock(&owned_pid_mutex);
     if (owned_pid_fd >= 0 && owned_pid_process == getpid()) {
         log_error("PID file already owned by this process");
@@ -427,8 +426,7 @@ int remove_pid_file(int fd, const char *pid_file) {
             pthread_mutex_unlock(&owned_pid_mutex);
             log_warn("PID file descriptor %d for %s is not owned (already released or replaced); skipping close",
                      fd, pid_file);
-            log_info("Released PID file lock for %s (file left in place)", pid_file);
-            return 0;
+            return -1;
         }
 
         owned_pid_fd = -1;
