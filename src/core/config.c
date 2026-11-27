@@ -2079,36 +2079,22 @@ void set_custom_config_path(const char *path) {
     pthread_mutex_unlock(&config_load_mutex);
 }
 
-// Function to get the custom config path
-// Copies into caller-owned buffer under lock; returns true if a path is set.
-bool get_custom_config_path(char *out, size_t out_size) {
-    if (!out || out_size == 0) return false;
-
+// Return a thread-local snapshot so callers never observe a concurrent update.
+const char* get_custom_config_path(void) {
+    static _Thread_local char snapshot[MAX_PATH_LENGTH];
     pthread_mutex_lock(&config_load_mutex);
-    if (g_custom_config_path[0] == '\0') {
-        pthread_mutex_unlock(&config_load_mutex);
-        return false;
-    }
-
-    safe_strcpy(out, g_custom_config_path, out_size, 0);
+    safe_strcpy(snapshot, g_custom_config_path, sizeof(snapshot), 0);
     pthread_mutex_unlock(&config_load_mutex);
-    return true;
+    return snapshot[0] ? snapshot : NULL;
 }
 
-// Function to get the actual loaded config path
-// Copies into caller-owned buffer under lock; returns true if a path is set.
-bool get_loaded_config_path(char *out, size_t out_size) {
-    if (!out || out_size == 0) return false;
-
+// Return a thread-local snapshot so callers never observe a concurrent reload.
+const char* get_loaded_config_path(void) {
+    static _Thread_local char snapshot[MAX_PATH_LENGTH];
     pthread_mutex_lock(&config_load_mutex);
-    if (g_loaded_config_path[0] == '\0') {
-        pthread_mutex_unlock(&config_load_mutex);
-        return false;
-    }
-
-    safe_strcpy(out, g_loaded_config_path, out_size, 0);
+    safe_strcpy(snapshot, g_loaded_config_path, sizeof(snapshot), 0);
     pthread_mutex_unlock(&config_load_mutex);
-    return true;
+    return snapshot[0] ? snapshot : NULL;
 }
 
 // Function to set the loaded config path
@@ -2485,7 +2471,7 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         save_path = save_path_buf;
     } else {
         pthread_mutex_lock(&config_load_mutex);
-        const char *loaded_path = get_loaded_config_path();
+        const char *loaded_path = g_loaded_config_path[0] ? g_loaded_config_path : NULL;
         if (loaded_path && loaded_path[0] != '\0') {
             if (snprintf(save_path_buf, sizeof(save_path_buf), "%s", loaded_path) >= (int)sizeof(save_path_buf)) {
                 pthread_mutex_unlock(&config_load_mutex);
@@ -2494,7 +2480,7 @@ static int save_config_snapshot(const config_t *config, const char *path) {
             }
             save_path = save_path_buf;
         } else {
-            const char *custom_path = get_custom_config_path();
+            const char *custom_path = g_custom_config_path[0] ? g_custom_config_path : NULL;
             if (custom_path && custom_path[0] != '\0') {
                 if (snprintf(save_path_buf, sizeof(save_path_buf), "%s", custom_path) >= (int)sizeof(save_path_buf)) {
                     pthread_mutex_unlock(&config_load_mutex);
