@@ -383,9 +383,16 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         // The parser will be resumed when the connection is reset for keep-alive.
         if (err == HPE_PAUSED) {
             const char *next = llhttp_get_error_pos(&conn->parser);
+            conn->unread_bytes = 0;
             if (next && next >= buf->base && next <= buf->base + nread) {
                 conn->unread_bytes = (size_t)(buf->base + nread - next);
             }
+            // Move the unread tail before shrinking the used length; reset
+            // and the next parser pass both read from recv_buffer's start.
+            if (conn->unread_bytes > 0) {
+                memmove(conn->recv_buffer, next, conn->unread_bytes);
+            }
+            conn->recv_buffer_used = conn->unread_bytes;
             return;
         }
 
@@ -406,6 +413,10 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         libuv_send_response_ex(conn, &conn->response, WRITE_ACTION_CLOSE);
         return;
     }
+
+    // All bytes from this read were consumed by llhttp.
+    conn->unread_bytes = 0;
+    conn->recv_buffer_used = 0;
 
     // If message is complete, it's handled in on_message_complete callback
 }
@@ -905,7 +916,7 @@ static int on_message_complete(llhttp_t *parser) {
                   conn->request.path);
         http_response_set_json_error(&conn->response, 503, "Service temporarily unavailable");
         libuv_send_response_ex(conn, &conn->response, action);
-        return HPE_OK;
+        return HPE_PAUSED;
     }
 
     if (handler) {
@@ -919,7 +930,7 @@ static int on_message_complete(llhttp_t *parser) {
             log_error("on_message_complete: Failed to allocate handler work context");
             http_response_set_json_error(&conn->response, 500, "Internal Server Error");
             libuv_send_response_ex(conn, &conn->response, action);
-            return HPE_OK;
+            return HPE_PAUSED;
         }
 
         hw->work.data = hw;
@@ -938,7 +949,7 @@ static int on_message_complete(llhttp_t *parser) {
             safe_free(hw);
             http_response_set_json_error(&conn->response, 500, "Internal Server Error");
             libuv_send_response_ex(conn, &conn->response, action);
-            return HPE_OK;
+            return HPE_PAUSED;
         }
 
         // Pause the parser to prevent llhttp from continuing to parse
