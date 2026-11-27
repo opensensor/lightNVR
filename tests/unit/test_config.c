@@ -38,6 +38,7 @@
 static config_t cfg;
 static config_t reloaded_cfg;
 static FILE *saved_config_file;
+static FILE *saved_baseline_file;
 static char *saved_config_text;
 static stream_config_t *owned_snapshot_streams;
 static int owned_pid_fd;
@@ -125,6 +126,7 @@ void setUp(void) {
     owned_pid_fd = -1;
     owned_pid_path[0] = '\0';
     saved_config_file = NULL;
+    saved_baseline_file = NULL;
     saved_config_text = NULL;
     check_config_pwrite_mode = false;
     check_config_pwrite_saw_write = false;
@@ -164,6 +166,8 @@ void tearDown(void) {
     check_config_pwrite_mode = false;
     if (saved_config_file) fclose(saved_config_file);
     saved_config_file = NULL;
+    if (saved_baseline_file) fclose(saved_baseline_file);
+    saved_baseline_file = NULL;
     free(saved_config_text);
     saved_config_text = NULL;
     free(owned_snapshot_streams);
@@ -1817,13 +1821,13 @@ static void test_save_config_bind_mount_retries_short_write(void) {
 
     saved_config_file = fopen(path, "rb");
     TEST_ASSERT_NOT_NULL(saved_config_file);
-    FILE *baseline = fopen(baseline_path, "rb");
-    TEST_ASSERT_NOT_NULL(baseline);
+    saved_baseline_file = fopen(baseline_path, "rb");
+    TEST_ASSERT_NOT_NULL(saved_baseline_file);
 
-    assert_files_equal_binary(baseline, saved_config_file);
+    assert_files_equal_binary(saved_baseline_file, saved_config_file);
 
-    fclose(baseline);
-    baseline = NULL;
+    fclose(saved_baseline_file);
+    saved_baseline_file = NULL;
     fclose(saved_config_file);
     saved_config_file = NULL;
     unlink(path);
