@@ -308,49 +308,75 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
 
     int malformed_fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0644);
-    TEST_ASSERT_TRUE(malformed_fd >= 0);
-    const char *bad_pid_text = "not-a-pid\n";
-    TEST_ASSERT_EQUAL_INT((int)strlen(bad_pid_text), write(malformed_fd, bad_pid_text, strlen(bad_pid_text)));
-    TEST_ASSERT_EQUAL_INT(0, close(malformed_fd));
-    int ready_pipe[2], release_pipe[2];
-    TEST_ASSERT_EQUAL_INT(0, pipe(ready_pipe));
-    TEST_ASSERT_EQUAL_INT(0, pipe(release_pipe));
-    pid_t locker = fork();
-    TEST_ASSERT_TRUE(locker >= 0);
-    if (locker == 0) {
+    pid_t supervised = fork();
+    TEST_ASSERT_TRUE(supervised >= 0);
+    if (supervised == 0) {
+        TEST_ASSERT_TRUE(malformed_fd >= 0);
+        const char *bad_pid_text = "not-a-pid\n";
+        TEST_ASSERT_EQUAL_INT((int)strlen(bad_pid_text), write(malformed_fd, bad_pid_text, strlen(bad_pid_text)));
+        TEST_ASSERT_EQUAL_INT(0, close(malformed_fd));
+        int ready_pipe[2], release_pipe[2];
+        TEST_ASSERT_EQUAL_INT(0, pipe(ready_pipe));
+        TEST_ASSERT_EQUAL_INT(0, pipe(release_pipe));
+        pid_t locker = fork();
+        TEST_ASSERT_TRUE(locker >= 0);
+        if (locker == 0) {
+            close(ready_pipe[0]);
+            close(release_pipe[1]);
+            int lock_fd = open(path, O_RDWR);
+            if (lock_fd < 0 || lockf(lock_fd, F_LOCK, 0) != 0) _exit(2);
+            if (write(ready_pipe[1], "r", 1) != 1) _exit(3);
+            char release;
+            if (read(release_pipe[0], &release, 1) != 1) _exit(4);
+            close(lock_fd);
+            _exit(0);
+        }
+        close(ready_pipe[1]);
+        close(release_pipe[0]);
+        char ready;
+        int ready_read_rc = (int)read(ready_pipe[0], &ready, 1);
+        int daemon_status_rc = ready_read_rc == 1 ? daemon_status(path) : -1;
+        int release_write_rc = ready_read_rc == 1 ?
+            (int)write(release_pipe[1], "x", 1) : -1;
         close(ready_pipe[0]);
         close(release_pipe[1]);
-        int lock_fd = open(path, O_RDWR);
-        if (lock_fd < 0 || lockf(lock_fd, F_LOCK, 0) != 0) _exit(2);
-        if (write(ready_pipe[1], "r", 1) != 1) _exit(3);
-        char release;
-        if (read(release_pipe[0], &release, 1) != 1) _exit(4);
-        close(lock_fd);
+        pid_t waited = waitpid(locker, &status, 0);
+
+        TEST_ASSERT_EQUAL_INT(1, ready_read_rc);
+        TEST_ASSERT_EQUAL_INT(-1, daemon_status_rc);
+        TEST_ASSERT_EQUAL_INT(1, release_write_rc);
+        TEST_ASSERT_EQUAL_INT(locker, waited);
+        TEST_ASSERT_TRUE(WIFEXITED(status));
+        TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
+        TEST_ASSERT_EQUAL_INT(0, unlink(path));
+
+        int second_fd = write_pid_file(path);
+        TEST_ASSERT_TRUE(second_fd >= 0);
+        TEST_ASSERT_EQUAL_INT(0, remove_pid_file(second_fd, path));
+        TEST_ASSERT_EQUAL_INT(0, unlink(path));
         _exit(0);
+    } else {
+        int supervised_status = 0;
+        const int timeout_ms = 3000;
+        int elapsed_ms = 0;
+        pid_t wait_rc;
+        do {
+            wait_rc = waitpid(supervised, &supervised_status, WNOHANG);
+            if (wait_rc == supervised) break;
+            usleep(10000);
+            elapsed_ms += 10;
+        } while (elapsed_ms < timeout_ms);
+
+        if (wait_rc == 0) {
+            kill(supervised, SIGKILL);
+            (void)waitpid(supervised, &supervised_status, 0);
+            TEST_FAIL_MESSAGE("lock-regression scenario timed out");
+        }
+
+        TEST_ASSERT_EQUAL_INT(supervised, wait_rc);
+        TEST_ASSERT_TRUE(WIFEXITED(supervised_status));
+        TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(supervised_status));
     }
-    close(ready_pipe[1]);
-    close(release_pipe[0]);
-    char ready;
-    int ready_read_rc = (int)read(ready_pipe[0], &ready, 1);
-    int daemon_status_rc = ready_read_rc == 1 ? daemon_status(path) : -1;
-    int release_write_rc = ready_read_rc == 1 ?
-        (int)write(release_pipe[1], "x", 1) : -1;
-    close(ready_pipe[0]);
-    close(release_pipe[1]);
-    pid_t waited = waitpid(locker, &status, 0);
-
-    TEST_ASSERT_EQUAL_INT(1, ready_read_rc);
-    TEST_ASSERT_EQUAL_INT(-1, daemon_status_rc);
-    TEST_ASSERT_EQUAL_INT(1, release_write_rc);
-    TEST_ASSERT_EQUAL_INT(locker, waited);
-    TEST_ASSERT_TRUE(WIFEXITED(status));
-    TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
-    TEST_ASSERT_EQUAL_INT(0, unlink(path));
-
-    int second_fd = write_pid_file(path);
-    TEST_ASSERT_TRUE(second_fd >= 0);
-    TEST_ASSERT_EQUAL_INT(0, remove_pid_file(second_fd, path));
-    TEST_ASSERT_EQUAL_INT(0, unlink(path));
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
 
