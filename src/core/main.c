@@ -391,8 +391,10 @@ static void init_signals() {
  * a completely unrelated process (e.g. a shell, go2rtc, or a system daemon).
  * Killing that unrelated process would crash the container.
  *
- * Returns true  if the process is (or may be) a LightNVR instance.
- * Returns false if we can positively confirm it is NOT LightNVR (stale PID).
+ * Linux: returns true only when /proc/<pid>/comm is read successfully and
+ * equals "lightnvr"; returns false on name mismatch or if identity cannot be
+ * verified (for example, if /proc cannot be opened/read).
+ * Non-Linux: uses a permissive fallback (returns true).
  */
 static bool is_lightnvr_process(pid_t pid) {
 #ifdef __linux__
@@ -1027,8 +1029,14 @@ int main(int argc, char *argv[]) {
         evidence_config.storage_path = config.storage_path;
         if (db_get_system_setting("observation_global_queue_bytes", queue_bytes,
                                   sizeof(queue_bytes)) == 0 && queue_bytes[0]) {
-            long long value = strtoll(queue_bytes, NULL, 10);
-            if (value > 0) evidence_config.global_max_bytes = value;
+            char *endptr = NULL;
+            errno = 0;
+            long long value = strtoll(queue_bytes, &endptr, 10);
+            if (endptr == queue_bytes || *endptr != '\0' || errno == ERANGE || value <= 0) {
+                log_warn("Invalid observation_global_queue_bytes value '%s'; using default", queue_bytes);
+            } else {
+                evidence_config.global_max_bytes = value;
+            }
         }
         if (observation_evidence_init(&evidence_config) != 0) {
             log_error("Failed to initialize observation evidence; evidence admission disabled");
