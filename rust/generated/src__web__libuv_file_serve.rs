@@ -71,6 +71,13 @@ unsafe extern "C" {
         len: size_t,
         free_after_send: bool,
     ) -> ::core::ffi::c_int;
+    unsafe fn libuv_connection_send_ex(
+        conn: *mut libuv_connection_t,
+        data: *mut ::core::ffi::c_char,
+        len: size_t,
+        free_after_send: bool,
+        action: write_complete_action_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn _log_message_ctx(
         level: log_level_t,
         component: *const ::core::ffi::c_char,
@@ -777,22 +784,7 @@ pub struct libuv_server {
     pub thread_running: atomic_bool,
     pub thread_joinable: atomic_bool,
     pub init_close_pending: ::core::ffi::c_uint,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2Rust_Unnamed_11 {
-    pub path: [::core::ffi::c_char; 256],
-    pub method: [::core::ffi::c_char; 16],
-    pub handler: request_handler_t,
-}
-pub type libuv_server_t = libuv_server;
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct write_complete_action_t(pub ::core::ffi::c_uint);
-impl write_complete_action_t {
-    pub const WRITE_ACTION_NONE: Self = Self(0);
-    pub const WRITE_ACTION_KEEP_ALIVE: Self = Self(1);
-    pub const WRITE_ACTION_CLOSE: Self = Self(2);
+    pub connections: *mut libuv_connection,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -809,6 +801,8 @@ pub struct libuv_connection {
     pub body_capacity: size_t,
     pub unread_bytes: size_t,
     pub server: *mut libuv_server_t,
+    pub server_next: *mut libuv_connection,
+    pub server_prev: *mut libuv_connection,
     pub tls_session: *mut ::core::ffi::c_void,
     pub headers_complete: bool,
     pub message_complete: bool,
@@ -826,6 +820,22 @@ pub struct libuv_connection {
     pub deferred_content_type: [::core::ffi::c_char; 128],
     pub deferred_extra_headers: [::core::ffi::c_char; 512],
     pub deferred_action: write_complete_action_t,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct write_complete_action_t(pub ::core::ffi::c_uint);
+impl write_complete_action_t {
+    pub const WRITE_ACTION_NONE: Self = Self(0);
+    pub const WRITE_ACTION_KEEP_ALIVE: Self = Self(1);
+    pub const WRITE_ACTION_CLOSE: Self = Self(2);
+}
+pub type libuv_server_t = libuv_server;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed_11 {
+    pub path: [::core::ffi::c_char; 256],
+    pub method: [::core::ffi::c_char; 16],
+    pub handler: request_handler_t,
 }
 pub type libuv_connection_t = libuv_connection;
 pub type file_serve_ctx_t = file_serve_ctx;
@@ -848,6 +858,7 @@ pub struct file_serve_ctx {
     pub range_start: size_t,
     pub range_end: size_t,
     pub headers_sent: bool,
+    pub head_response_managed: bool,
     pub write_error: bool,
     pub content_type: [::core::ffi::c_char; 128],
     pub extra_headers: [::core::ffi::c_char; 512],
@@ -1315,6 +1326,27 @@ unsafe extern "C" fn on_file_stat(mut req: *mut uv_fs_t) {
         &raw mut headers as *mut ::core::ffi::c_char as *const ::core::ffi::c_void,
         len as size_t,
     );
+    if (*conn).request.method.0 == http_method_t::HTTP_METHOD_HEAD.0 {
+        let mut action_1: write_complete_action_t = write_complete_action_t(
+            (if (*conn).keep_alive as ::core::ffi::c_int != 0
+                && llhttp_should_keep_alive(&raw mut (*conn).parser) != 0
+            {
+                write_complete_action_t::WRITE_ACTION_KEEP_ALIVE.0 as ::core::ffi::c_int
+            } else {
+                write_complete_action_t::WRITE_ACTION_CLOSE.0 as ::core::ffi::c_int
+            }) as ::core::ffi::c_uint,
+        );
+        (*ctx).head_response_managed = r#true != 0;
+        (*conn).async_response_pending = r#false != 0;
+        libuv_connection_send_ex(conn, header_buf, len as size_t, r#true != 0, action_1);
+        uv_fs_close(
+            (*(*conn).server).r#loop,
+            &raw mut (*ctx).close_req,
+            (*ctx).fd,
+            Some(on_file_close as unsafe extern "C" fn(*mut uv_fs_t) -> ()),
+        );
+        return;
+    }
     if libuv_connection_send((*ctx).conn, header_buf, len as size_t, r#true != 0)
         != 0 as ::core::ffi::c_int
     {
@@ -1511,6 +1543,10 @@ unsafe extern "C" fn on_file_read(mut req: *mut uv_fs_t) {
 }
 unsafe extern "C" fn on_file_close(mut req: *mut uv_fs_t) {
     let mut ctx: *mut file_serve_ctx_t = (*req).data as *mut file_serve_ctx_t;
+    if (*ctx).head_response_managed {
+        file_serve_cleanup(ctx);
+        return;
+    }
     let mut conn: *mut libuv_connection_t = (*ctx).conn;
     let mut should_manage_connection: bool = (*conn).async_response_pending;
     let mut write_error: bool = (*ctx).write_error;

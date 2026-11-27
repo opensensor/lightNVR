@@ -573,22 +573,7 @@ pub struct libuv_server {
     pub thread_running: atomic_bool,
     pub thread_joinable: atomic_bool,
     pub init_close_pending: ::core::ffi::c_uint,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2Rust_Unnamed_10 {
-    pub path: [::core::ffi::c_char; 256],
-    pub method: [::core::ffi::c_char; 16],
-    pub handler: request_handler_t,
-}
-pub type libuv_server_t = libuv_server;
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct write_complete_action_t(pub ::core::ffi::c_uint);
-impl write_complete_action_t {
-    pub const WRITE_ACTION_NONE: Self = Self(0);
-    pub const WRITE_ACTION_KEEP_ALIVE: Self = Self(1);
-    pub const WRITE_ACTION_CLOSE: Self = Self(2);
+    pub connections: *mut libuv_connection,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -605,6 +590,8 @@ pub struct libuv_connection {
     pub body_capacity: size_t,
     pub unread_bytes: size_t,
     pub server: *mut libuv_server_t,
+    pub server_next: *mut libuv_connection,
+    pub server_prev: *mut libuv_connection,
     pub tls_session: *mut ::core::ffi::c_void,
     pub headers_complete: bool,
     pub message_complete: bool,
@@ -622,6 +609,22 @@ pub struct libuv_connection {
     pub deferred_content_type: [::core::ffi::c_char; 128],
     pub deferred_extra_headers: [::core::ffi::c_char; 512],
     pub deferred_action: write_complete_action_t,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct write_complete_action_t(pub ::core::ffi::c_uint);
+impl write_complete_action_t {
+    pub const WRITE_ACTION_NONE: Self = Self(0);
+    pub const WRITE_ACTION_KEEP_ALIVE: Self = Self(1);
+    pub const WRITE_ACTION_CLOSE: Self = Self(2);
+}
+pub type libuv_server_t = libuv_server;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed_10 {
+    pub path: [::core::ffi::c_char; 256],
+    pub method: [::core::ffi::c_char; 16],
+    pub handler: request_handler_t,
 }
 pub type libuv_connection_t = libuv_connection;
 pub type libuv_write_ctx_t = libuv_write_ctx;
@@ -857,7 +860,13 @@ pub unsafe extern "C" fn libuv_send_response(
     }
     headers_size = headers_size.wrapping_add(64 as size_t);
     headers_size = headers_size.wrapping_add(4 as size_t);
-    let mut total_size: size_t = headers_size.wrapping_add((*response).body_length);
+    let mut send_body: bool = (*conn).request.method.0 != http_method_t::HTTP_METHOD_HEAD.0;
+    let mut total_size: size_t =
+        headers_size.wrapping_add(if send_body as ::core::ffi::c_int != 0 {
+            (*response).body_length
+        } else {
+            0 as size_t
+        });
     let mut buffer: *mut ::core::ffi::c_char = safe_malloc(total_size) as *mut ::core::ffi::c_char;
     if buffer.is_null() {
         _log_message_ctx(
@@ -976,7 +985,10 @@ pub unsafe extern "C" fn libuv_send_response(
         return -1 as ::core::ffi::c_int;
     }
     offset = offset.wrapping_add(written_3 as size_t);
-    if !(*response).body.is_null() && (*response).body_length > 0 as size_t {
+    if send_body as ::core::ffi::c_int != 0
+        && !(*response).body.is_null()
+        && (*response).body_length > 0 as size_t
+    {
         if (*response).body_length > total_size.wrapping_sub(offset) {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_ERROR,
@@ -1038,7 +1050,13 @@ pub unsafe extern "C" fn libuv_send_response_ex(
     }
     headers_size = headers_size.wrapping_add(64 as size_t);
     headers_size = headers_size.wrapping_add(4 as size_t);
-    let mut total_size: size_t = headers_size.wrapping_add((*response).body_length);
+    let mut send_body: bool = (*conn).request.method.0 != http_method_t::HTTP_METHOD_HEAD.0;
+    let mut total_size: size_t =
+        headers_size.wrapping_add(if send_body as ::core::ffi::c_int != 0 {
+            (*response).body_length
+        } else {
+            0 as size_t
+        });
     let mut buffer: *mut ::core::ffi::c_char = safe_malloc(total_size) as *mut ::core::ffi::c_char;
     if buffer.is_null() {
         _log_message_ctx(
@@ -1157,7 +1175,10 @@ pub unsafe extern "C" fn libuv_send_response_ex(
         return -1 as ::core::ffi::c_int;
     }
     offset = offset.wrapping_add(written_3 as size_t);
-    if !(*response).body.is_null() && (*response).body_length > 0 as size_t {
+    if send_body as ::core::ffi::c_int != 0
+        && !(*response).body.is_null()
+        && (*response).body_length > 0 as size_t
+    {
         if (*response).body_length > total_size.wrapping_sub(offset) {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_ERROR,

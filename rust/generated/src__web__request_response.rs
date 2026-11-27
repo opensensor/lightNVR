@@ -611,6 +611,8 @@ pub struct libuv_connection {
     pub body_capacity: size_t,
     pub unread_bytes: size_t,
     pub server: *mut libuv_server_t,
+    pub server_next: *mut libuv_connection,
+    pub server_prev: *mut libuv_connection,
     pub tls_session: *mut ::core::ffi::c_void,
     pub headers_complete: bool,
     pub message_complete: bool,
@@ -656,6 +658,7 @@ pub struct libuv_server {
     pub thread_running: atomic_bool,
     pub thread_joinable: atomic_bool,
     pub init_close_pending: ::core::ffi::c_uint,
+    pub connections: *mut libuv_connection,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]

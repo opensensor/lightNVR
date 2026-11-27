@@ -1209,22 +1209,7 @@ pub struct libuv_server {
     pub thread_running: atomic_bool,
     pub thread_joinable: atomic_bool,
     pub init_close_pending: ::core::ffi::c_uint,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2Rust_Unnamed_11 {
-    pub path: [::core::ffi::c_char; 256],
-    pub method: [::core::ffi::c_char; 16],
-    pub handler: request_handler_t,
-}
-pub type libuv_server_t = libuv_server;
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct write_complete_action_t(pub ::core::ffi::c_uint);
-impl write_complete_action_t {
-    pub const WRITE_ACTION_NONE: Self = Self(0);
-    pub const WRITE_ACTION_KEEP_ALIVE: Self = Self(1);
-    pub const WRITE_ACTION_CLOSE: Self = Self(2);
+    pub connections: *mut libuv_connection,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -1241,6 +1226,8 @@ pub struct libuv_connection {
     pub body_capacity: size_t,
     pub unread_bytes: size_t,
     pub server: *mut libuv_server_t,
+    pub server_next: *mut libuv_connection,
+    pub server_prev: *mut libuv_connection,
     pub tls_session: *mut ::core::ffi::c_void,
     pub headers_complete: bool,
     pub message_complete: bool,
@@ -1258,6 +1245,22 @@ pub struct libuv_connection {
     pub deferred_content_type: [::core::ffi::c_char; 128],
     pub deferred_extra_headers: [::core::ffi::c_char; 512],
     pub deferred_action: write_complete_action_t,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct write_complete_action_t(pub ::core::ffi::c_uint);
+impl write_complete_action_t {
+    pub const WRITE_ACTION_NONE: Self = Self(0);
+    pub const WRITE_ACTION_KEEP_ALIVE: Self = Self(1);
+    pub const WRITE_ACTION_CLOSE: Self = Self(2);
+}
+pub type libuv_server_t = libuv_server;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed_11 {
+    pub path: [::core::ffi::c_char; 256],
+    pub method: [::core::ffi::c_char; 16],
+    pub handler: request_handler_t,
 }
 pub type libuv_connection_t = libuv_connection;
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1611,7 +1614,6 @@ unsafe extern "C" fn maybe_compress_response(
         || (*response).status_code == 204 as ::core::ffi::c_int
         || (*response).status_code == 206 as ::core::ffi::c_int
         || (*response).status_code == 304 as ::core::ffi::c_int
-        || (*request).method.0 == http_method_t::HTTP_METHOD_HEAD.0
     {
         return;
     }
@@ -1783,6 +1785,11 @@ pub unsafe extern "C" fn libuv_connection_create(
     http_request_init(&raw mut (*conn).request);
     http_response_init(&raw mut (*conn).response);
     (*conn).keep_alive = r#true != 0;
+    (*conn).server_next = (*server).connections as *mut libuv_connection;
+    if !(*server).connections.is_null() {
+        (*(*server).connections).server_prev = conn as *mut libuv_connection;
+    }
+    (*server).connections = conn as *mut libuv_connection;
     return conn;
 }
 #[unsafe(no_mangle)]
@@ -1876,6 +1883,14 @@ pub unsafe extern "C" fn libuv_connection_close(mut conn: *mut libuv_connection_
 pub unsafe extern "C" fn libuv_connection_destroy(mut conn: *mut libuv_connection_t) {
     if conn.is_null() {
         return;
+    }
+    if !(*conn).server_prev.is_null() {
+        (*(*conn).server_prev).server_next = (*conn).server_next;
+    } else if !(*conn).server.is_null() && (*(*conn).server).connections == conn {
+        (*(*conn).server).connections = (*conn).server_next as *mut libuv_connection;
+    }
+    if !(*conn).server_next.is_null() {
+        (*(*conn).server_next).server_prev = (*conn).server_prev;
     }
     go2rtc_websocket_disconnected(conn);
     recording_archive_disconnected(conn);
@@ -2745,6 +2760,12 @@ unsafe extern "C" fn on_message_complete(mut parser: *mut llhttp_t) -> ::core::f
                         as *mut ::core::ffi::c_char,
                     &raw mut (*conn).request.method_str as *mut ::core::ffi::c_char,
                 ) != 0 as ::core::ffi::c_int
+                    && !((*conn).request.method.0 == http_method_t::HTTP_METHOD_HEAD.0
+                        && strcmp(
+                            &raw mut (*(*server).handlers.offset(i as isize)).method
+                                as *mut ::core::ffi::c_char,
+                            b"GET\0".as_ptr() as *const ::core::ffi::c_char,
+                        ) == 0 as ::core::ffi::c_int)
                 {
                     break 's_13;
                 }

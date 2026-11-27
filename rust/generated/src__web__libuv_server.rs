@@ -115,6 +115,7 @@ unsafe extern "C" {
         __src: *const ::core::ffi::c_void,
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
+    unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
     unsafe fn getenv(__name: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
     unsafe fn setenv(
         __name: *const ::core::ffi::c_char,
@@ -936,24 +937,8 @@ pub struct libuv_server {
     pub thread_running: atomic_bool,
     pub thread_joinable: atomic_bool,
     pub init_close_pending: ::core::ffi::c_uint,
+    pub connections: *mut libuv_connection,
 }
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2Rust_Unnamed_11 {
-    pub path: [::core::ffi::c_char; 256],
-    pub method: [::core::ffi::c_char; 16],
-    pub handler: request_handler_t,
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct log_level_t(pub ::core::ffi::c_uint);
-impl log_level_t {
-    pub const LOG_LEVEL_ERROR: Self = Self(0);
-    pub const LOG_LEVEL_WARN: Self = Self(1);
-    pub const LOG_LEVEL_INFO: Self = Self(2);
-    pub const LOG_LEVEL_DEBUG: Self = Self(3);
-}
-pub type libuv_connection_t = libuv_connection;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct libuv_connection {
@@ -969,6 +954,8 @@ pub struct libuv_connection {
     pub body_capacity: size_t,
     pub unread_bytes: size_t,
     pub server: *mut libuv_server_t,
+    pub server_next: *mut libuv_connection,
+    pub server_prev: *mut libuv_connection,
     pub tls_session: *mut ::core::ffi::c_void,
     pub headers_complete: bool,
     pub message_complete: bool,
@@ -995,6 +982,23 @@ impl write_complete_action_t {
     pub const WRITE_ACTION_KEEP_ALIVE: Self = Self(1);
     pub const WRITE_ACTION_CLOSE: Self = Self(2);
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed_11 {
+    pub path: [::core::ffi::c_char; 256],
+    pub method: [::core::ffi::c_char; 16],
+    pub handler: request_handler_t,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct log_level_t(pub ::core::ffi::c_uint);
+impl log_level_t {
+    pub const LOG_LEVEL_ERROR: Self = Self(0);
+    pub const LOG_LEVEL_WARN: Self = Self(1);
+    pub const LOG_LEVEL_INFO: Self = Self(2);
+    pub const LOG_LEVEL_DEBUG: Self = Self(3);
+}
+pub type libuv_connection_t = libuv_connection;
 pub type libuv_tls_context_t = libuv_tls_context;
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -1085,7 +1089,9 @@ unsafe extern "C" fn stop_async_cb(mut handle: *mut uv_async_t) {
         if uv_is_closing(&raw mut (*server).listener as *mut uv_handle_t) == 0 {
             uv_close(&raw mut (*server).listener as *mut uv_handle_t, None);
         }
-        uv_stop((*server).r#loop);
+        if (*server).owns_loop {
+            uv_stop((*server).r#loop);
+        }
     }
 }
 unsafe extern "C" fn libuv_server_init_internal(
@@ -1648,19 +1654,29 @@ pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
     }
     go2rtc_proxy_thread_shutdown();
     go2rtc_websocket_shutdown((*server).r#loop);
-    _log_message_ctx(
-        log_level_t::LOG_LEVEL_INFO,
-        LOG_COMPONENT.as_ptr(),
-        _log_stream_name,
-        b"libuv_server_stop: Closing all active handles\0".as_ptr() as *const ::core::ffi::c_char,
-    );
-    uv_walk(
-        (*server).r#loop,
-        Some(
-            close_walk_cb as unsafe extern "C" fn(*mut uv_handle_t, *mut ::core::ffi::c_void) -> (),
-        ),
-        NULL,
-    );
+    if (*server).owns_loop {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_INFO,
+            LOG_COMPONENT.as_ptr(),
+            _log_stream_name,
+            b"libuv_server_stop: Closing all active handles\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        uv_walk(
+            (*server).r#loop,
+            Some(
+                close_walk_cb
+                    as unsafe extern "C" fn(*mut uv_handle_t, *mut ::core::ffi::c_void) -> (),
+            ),
+            NULL,
+        );
+    } else {
+        let mut conn: *mut libuv_connection_t = (*server).connections;
+        while !conn.is_null() {
+            libuv_connection_close(conn);
+            conn = (*conn).server_next as *mut libuv_connection_t;
+        }
+    }
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT.as_ptr(),
@@ -1672,7 +1688,26 @@ pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
     let mut elapsed_ms_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while elapsed_ms_0 < max_wait_ms_0 {
         let mut active: ::core::ffi::c_int = uv_run((*server).r#loop, uv_run_mode::UV_RUN_NOWAIT);
-        if active == 0 as ::core::ffi::c_int {
+        let mut scan: server_handle_scan_t = server_handle_scan_t {
+            server: server,
+            present: r#false != 0,
+        };
+        if !(*server).owns_loop {
+            uv_walk(
+                (*server).r#loop,
+                Some(
+                    scan_server_handles_cb
+                        as unsafe extern "C" fn(*mut uv_handle_t, *mut ::core::ffi::c_void) -> (),
+                ),
+                &raw mut scan as *mut ::core::ffi::c_void,
+            );
+        }
+        if if (*server).owns_loop as ::core::ffi::c_int != 0 {
+            (active == 0 as ::core::ffi::c_int) as ::core::ffi::c_int
+        } else {
+            (!scan.present && (*server).connections.is_null()) as ::core::ffi::c_int
+        } != 0
+        {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_INFO,
                 LOG_COMPONENT.as_ptr(),
@@ -1741,8 +1776,37 @@ pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
                 handle_count_0,
             );
         }
-        while uv_loop_alive((*server).r#loop) != 0 {
-            uv_run((*server).r#loop, uv_run_mode::UV_RUN_DEFAULT);
+        if (*server).owns_loop {
+            while uv_loop_alive((*server).r#loop) != 0 {
+                uv_run((*server).r#loop, uv_run_mode::UV_RUN_DEFAULT);
+            }
+        } else {
+            let mut scan_0: server_handle_scan_t = server_handle_scan_t {
+                server: server,
+                present: r#false != 0,
+            };
+            loop {
+                uv_run((*server).r#loop, uv_run_mode::UV_RUN_NOWAIT);
+                scan_0.present = r#false != 0;
+                uv_walk(
+                    (*server).r#loop,
+                    Some(
+                        scan_server_handles_cb
+                            as unsafe extern "C" fn(
+                                *mut uv_handle_t,
+                                *mut ::core::ffi::c_void,
+                            ) -> (),
+                    ),
+                    &raw mut scan_0 as *mut ::core::ffi::c_void,
+                );
+                if scan_0.present as ::core::ffi::c_int != 0 || !(*server).connections.is_null() {
+                    usleep((check_interval_ms_0 * 1000 as ::core::ffi::c_int) as __useconds_t);
+                }
+                if !(scan_0.present as ::core::ffi::c_int != 0 || !(*server).connections.is_null())
+                {
+                    break;
+                }
+            }
         }
     }
     _log_message_ctx(
@@ -1805,6 +1869,28 @@ pub unsafe extern "C" fn libuv_server_register_handler(
 ) -> ::core::ffi::c_int {
     let mut server: *mut libuv_server_t = handle as *mut libuv_server_t;
     if server.is_null() || path.is_null() || handler.is_none() {
+        return -1 as ::core::ffi::c_int;
+    }
+    if strlen(path) >= ::core::mem::size_of::<[::core::ffi::c_char; 256]>() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT.as_ptr(),
+            _log_stream_name,
+            b"libuv_server_register_handler: Path too long for handler registry: %s\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            path,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if !method.is_null() && strlen(method) >= ::core::mem::size_of::<[::core::ffi::c_char; 16]>() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT.as_ptr(),
+            _log_stream_name,
+            b"libuv_server_register_handler: Method too long for handler registry: %s\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            method,
+        );
         return -1 as ::core::ffi::c_int;
     }
     if (*server).handler_count >= (*server).handler_capacity {
