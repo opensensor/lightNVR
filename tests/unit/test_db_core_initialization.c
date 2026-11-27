@@ -133,13 +133,18 @@ static void test_legacy_database_enables_incremental_auto_vacuum(void) {
 
 static void test_overlong_database_path_is_rejected_before_initialization(void) {
     char rejected_path[8192];
-    snprintf(rejected_path, sizeof(rejected_path), "%s", test_fixture_dir);
-    for (size_t i = 0; strlen(rejected_path) <= PATH_MAX; i++) {
+    int written = snprintf(rejected_path, sizeof(rejected_path), "%s/longname", test_fixture_dir);
+    TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(rejected_path));
+
+    /* Ensure parent directory exists so failure cannot be due to nonexistent parents. */
+    TEST_ASSERT_EQUAL_INT(0, mkdir(rejected_path, 0700));
+
+    while (strlen(rejected_path) <= PATH_MAX) {
         size_t used = strlen(rejected_path);
-        int written = snprintf(rejected_path + used, sizeof(rejected_path) - used,
-                               "/segment%06zu", i);
+        written = snprintf(rejected_path + used, sizeof(rejected_path) - used, "a");
         TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(rejected_path) - used);
     }
+
     TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
     TEST_ASSERT_NULL(get_db_handle());
 }
