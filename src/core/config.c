@@ -62,6 +62,26 @@ static bool contains_unsupported_ini_credential_chars(const char *value,
     return false;
 }
 
+static unsigned long stream_name_hash(const char *name) {
+    const unsigned char *s = (const unsigned char *)name;
+    unsigned long h = 5381UL;
+    while (*s) h = ((h << 5) + h) + *s++;
+    return h;
+}
+
+static int stream_name_index_slot(const stream_config_t *streams,
+                                  const int *name_index_slots,
+                                  int name_index_size,
+                                  const char *name) {
+    int slot = (int)(stream_name_hash(name) & (unsigned long)(name_index_size - 1));
+    while (name_index_slots[slot] != -1) {
+        int idx = name_index_slots[slot];
+        if (strcmp(streams[idx].name, name) == 0) break;
+        slot = (slot + 1) & (name_index_size - 1);
+    }
+    return slot;
+}
+
 // Also protects whole-config copies from racing with live option updates.
 static pthread_mutex_t mp4_faststart_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t config_in_place_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -1933,37 +1953,24 @@ int save_stream_configs(config_t *config) {
     for (int i = 0; i < name_index_size; i++) name_index_slots[i] = -1;
 
     for (int j = 0; j < reloaded_count; j++) {
-        const unsigned char *s = (const unsigned char *)reloaded_streams[j].name;
-        unsigned long h = 5381UL;
-        while (*s) h = ((h << 5) + h) + *s++;
-        int slot = (int)(h & (unsigned long)(name_index_size - 1));
-        while (name_index_slots[slot] != -1) {
-            if (strcmp(reloaded_streams[name_index_slots[slot]].name,
-                       reloaded_streams[j].name) == 0) {
-                break;
-            }
-            slot = (slot + 1) & (name_index_size - 1);
-        }
+        int slot = stream_name_index_slot(reloaded_streams, name_index_slots,
+                                          name_index_size, reloaded_streams[j].name);
         if (name_index_slots[slot] == -1) name_index_slots[slot] = j;
     }
 
     for (int i = 0; i < max_streams; i++) {
         if (strlen(streams_snapshot[i].name) == 0) continue;
 
-        const unsigned char *s = (const unsigned char *)streams_snapshot[i].name;
-        unsigned long h = 5381UL;
-        while (*s) h = ((h << 5) + h) + *s++;
-        int slot = (int)(h & (unsigned long)(name_index_size - 1));
+        int slot = stream_name_index_slot(reloaded_streams, name_index_slots,
+                                          name_index_size, streams_snapshot[i].name);
 
         bool found = false;
-        while (name_index_slots[slot] != -1) {
+        if (name_index_slots[slot] != -1) {
             int idx = name_index_slots[slot];
             if (strcmp(streams_snapshot[i].name, reloaded_streams[idx].name) == 0) {
                 streams_snapshot[i] = reloaded_streams[idx];
                 found = true;
-                break;
             }
-            slot = (slot + 1) & (name_index_size - 1);
         }
 
         if (!found) {
