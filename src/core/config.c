@@ -364,6 +364,13 @@ static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAP
                              env_name, env_value, *int_ptr);
                     break;
                 }
+                if (strcmp(mapping->env_name, "LIGHTNVR_GO2RTC_WEBRTC_LISTEN_PORT") == 0 &&
+                    (new_value < 0 || new_value > 65535)) {
+                    log_warn("Invalid go2rtc WebRTC listen port for %s: '%s'; "
+                             "must be between 0 and 65535; keeping existing value %d",
+                             env_name, env_value, *int_ptr);
+                    break;
+                }
                 *int_ptr = new_value;
 
                 log_info("Applied env override: %s=%s (int: %d)",
