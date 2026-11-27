@@ -1239,6 +1239,7 @@ pub struct libuv_connection {
     pub settings: llhttp_settings_t,
     pub request: http_request_t,
     pub response: http_response_t,
+    pub body_capacity: size_t,
     pub unread_bytes: size_t,
     pub server: *mut libuv_server_t,
     pub tls_session: *mut ::core::ffi::c_void,
@@ -1521,7 +1522,6 @@ unsafe extern "C" fn maybe_compress_response(
     mut response: *mut http_response_t,
 ) {
     if !g_config.web_compression_enabled
-        || !request_accepts_gzip(request)
         || response.is_null()
         || (*response).body.is_null()
         || (*response).body_length < HTTP_COMPRESSION_MIN_BYTES as size_t
@@ -1538,6 +1538,14 @@ unsafe extern "C" fn maybe_compress_response(
         || (*response).status_code == 304 as ::core::ffi::c_int
         || (*request).method.0 == http_method_t::HTTP_METHOD_HEAD.0
     {
+        return;
+    }
+    http_response_add_header(
+        response,
+        b"Vary\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Accept-Encoding\0".as_ptr() as *const ::core::ffi::c_char,
+    );
+    if !request_accepts_gzip(request) {
         return;
     }
     let mut stream: z_stream = z_stream_s {
@@ -1597,11 +1605,6 @@ unsafe extern "C" fn maybe_compress_response(
         response,
         b"Content-Encoding\0".as_ptr() as *const ::core::ffi::c_char,
         b"gzip\0".as_ptr() as *const ::core::ffi::c_char,
-    );
-    http_response_add_header(
-        response,
-        b"Vary\0".as_ptr() as *const ::core::ffi::c_char,
-        b"Accept-Encoding\0".as_ptr() as *const ::core::ffi::c_char,
     );
 }
 #[unsafe(no_mangle)]
@@ -1723,6 +1726,7 @@ pub unsafe extern "C" fn libuv_connection_reset(mut conn: *mut libuv_connection_
     recording_archive_disconnected(conn);
     http_response_free(&raw mut (*conn).response);
     safe_free((*conn).request.body);
+    (*conn).body_capacity = 0 as size_t;
     http_request_init(&raw mut (*conn).request);
     http_response_init(&raw mut (*conn).response);
     safe_strcpy(
@@ -2238,20 +2242,40 @@ unsafe extern "C" fn on_body(
     if length > LIBUV_RECV_BUFFER_MAX.wrapping_sub(old_len) {
         return llhttp_errno::HPE_USER.0 as ::core::ffi::c_int;
     }
-    let mut new_body: *mut ::core::ffi::c_char = safe_realloc(
-        (*conn).request.body,
-        old_len.wrapping_add(length).wrapping_add(1 as size_t),
-    ) as *mut ::core::ffi::c_char;
-    if new_body.is_null() {
-        return llhttp_errno::HPE_USER.0 as ::core::ffi::c_int;
+    let mut required: size_t = old_len.wrapping_add(length).wrapping_add(1 as size_t);
+    if required > (*conn).body_capacity {
+        let max_capacity: size_t = LIBUV_RECV_BUFFER_MAX.wrapping_add(1 as size_t);
+        let mut new_capacity: size_t = if (*conn).body_capacity != 0 {
+            (*conn).body_capacity
+        } else {
+            1024 as size_t
+        };
+        while new_capacity < required {
+            if new_capacity > max_capacity.wrapping_div(2 as size_t) {
+                new_capacity = max_capacity;
+                break;
+            } else {
+                new_capacity = new_capacity.wrapping_mul(2 as size_t);
+            }
+        }
+        if new_capacity < required {
+            return llhttp_errno::HPE_USER.0 as ::core::ffi::c_int;
+        }
+        let mut new_body: *mut ::core::ffi::c_char =
+            safe_realloc((*conn).request.body, new_capacity) as *mut ::core::ffi::c_char;
+        if new_body.is_null() {
+            return llhttp_errno::HPE_USER.0 as ::core::ffi::c_int;
+        }
+        (*conn).request.body = new_body as *mut ::core::ffi::c_void;
+        (*conn).body_capacity = new_capacity;
     }
+    let mut body: *mut ::core::ffi::c_char = (*conn).request.body as *mut ::core::ffi::c_char;
     memcpy(
-        new_body.offset(old_len as isize) as *mut ::core::ffi::c_void,
+        body.offset(old_len as isize) as *mut ::core::ffi::c_void,
         at as *const ::core::ffi::c_void,
         length,
     );
-    *new_body.offset(old_len.wrapping_add(length) as isize) = '\0' as ::core::ffi::c_char;
-    (*conn).request.body = new_body as *mut ::core::ffi::c_void;
+    *body.offset(old_len.wrapping_add(length) as isize) = '\0' as ::core::ffi::c_char;
     (*conn).request.body_len = old_len.wrapping_add(length);
     return 0 as ::core::ffi::c_int;
 }
@@ -2452,13 +2476,23 @@ unsafe extern "C" fn static_file_resolve_handler(
         }
     }
     let mut file_path: [::core::ffi::c_char; 512] = [0; 512];
-    snprintf(
+    let mut file_path_written: ::core::ffi::c_int = snprintf(
         &raw mut file_path as *mut ::core::ffi::c_char,
         ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
         b"%s%s\0".as_ptr() as *const ::core::ffi::c_char,
         (*server).config.web_root,
         &raw const (*req).path as *const ::core::ffi::c_char,
     );
+    if file_path_written < 0 as ::core::ffi::c_int
+        || file_path_written as size_t >= ::core::mem::size_of::<[::core::ffi::c_char; 512]>()
+    {
+        http_response_set_json_error(
+            res,
+            400 as ::core::ffi::c_int,
+            b"Bad Request\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
     let mut st: stat = stat {
         st_dev: 0,
         st_ino: 0,
@@ -2491,13 +2525,23 @@ unsafe extern "C" fn static_file_resolve_handler(
     if original_exists as ::core::ffi::c_int != 0
         && st.st_mode & __S_IFMT as __mode_t == 0o40000 as __mode_t
     {
-        snprintf(
+        file_path_written = snprintf(
             &raw mut file_path as *mut ::core::ffi::c_char,
             ::core::mem::size_of::<[::core::ffi::c_char; 512]>(),
             b"%s%s/index.html\0".as_ptr() as *const ::core::ffi::c_char,
             (*server).config.web_root,
             &raw const (*req).path as *const ::core::ffi::c_char,
         );
+        if file_path_written < 0 as ::core::ffi::c_int
+            || file_path_written as size_t >= ::core::mem::size_of::<[::core::ffi::c_char; 512]>()
+        {
+            http_response_set_json_error(
+                res,
+                400 as ::core::ffi::c_int,
+                b"Bad Request\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            return;
+        }
         original_exists = stat(&raw mut file_path as *mut ::core::ffi::c_char, &raw mut st)
             == 0 as ::core::ffi::c_int
             && st.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t;
@@ -2762,7 +2806,7 @@ unsafe extern "C" fn on_message_complete(mut parser: *mut llhttp_t) -> ::core::f
                 b"Internal Server Error\0".as_ptr() as *const ::core::ffi::c_char,
             );
             libuv_send_response_ex(conn, &raw mut (*conn).response, action);
-            return llhttp_errno::HPE_OK.0 as ::core::ffi::c_int;
+            return llhttp_errno::HPE_PAUSED.0 as ::core::ffi::c_int;
         }
         (*hw_0).work.data = hw_0 as *mut ::core::ffi::c_void;
         (*hw_0).conn = conn;
@@ -2803,7 +2847,7 @@ unsafe extern "C" fn on_message_complete(mut parser: *mut llhttp_t) -> ::core::f
                 b"Internal Server Error\0".as_ptr() as *const ::core::ffi::c_char,
             );
             libuv_send_response_ex(conn, &raw mut (*conn).response, action);
-            return llhttp_errno::HPE_OK.0 as ::core::ffi::c_int;
+            return llhttp_errno::HPE_PAUSED.0 as ::core::ffi::c_int;
         }
         return llhttp_errno::HPE_PAUSED.0 as ::core::ffi::c_int;
     };

@@ -607,6 +607,7 @@ pub struct libuv_connection {
     pub settings: llhttp_settings_t,
     pub request: http_request_t,
     pub response: http_response_t,
+    pub body_capacity: size_t,
     pub unread_bytes: size_t,
     pub server: *mut libuv_server_t,
     pub tls_session: *mut ::core::ffi::c_void,
