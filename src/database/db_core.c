@@ -460,6 +460,9 @@ static int copy_file_contents(const char *source_path, const char *dest_path) {
             break;
         }
         if (bytes_read < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             log_error("Failed to read source file during copy: %s (%s)", source_path, strerror(errno));
             close(src_fd);
             close(dst_fd);
@@ -470,6 +473,9 @@ static int copy_file_contents(const char *source_path, const char *dest_path) {
         while (total_written < bytes_read) {
             ssize_t bytes_written = write(dst_fd, buffer + total_written, (size_t)(bytes_read - total_written));
             if (bytes_written < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
                 log_error("Failed to write destination file during copy: %s (%s)", dest_path, strerror(errno));
                 close(src_fd);
                 close(dst_fd);
