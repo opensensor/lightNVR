@@ -1034,9 +1034,15 @@ int maybe_run_scheduled_database_backup(void) {
     time_t interval_seconds = (time_t)g_config.db_backup_interval_minutes * 60;
     time_t last_cycle = last_scheduled_backup_finished > last_backup_time
         ? last_scheduled_backup_finished : last_backup_time;
-    if (last_cycle != 0 && now - last_cycle < interval_seconds) {
-        pthread_mutex_unlock(&scheduled_backup_lock);
-        return 0;
+    if (last_cycle != 0) {
+        if (now < last_cycle) {
+            pthread_mutex_unlock(&scheduled_backup_lock);
+            return 0;
+        }
+        if (now - last_cycle < interval_seconds) {
+            pthread_mutex_unlock(&scheduled_backup_lock);
+            return 0;
+        }
     }
 
     // Nothing is in flight here, so a cancel that shutdown_database() could
