@@ -391,8 +391,10 @@ static void init_signals() {
  * a completely unrelated process (e.g. a shell, go2rtc, or a system daemon).
  * Killing that unrelated process would crash the container.
  *
- * Returns true  if the process is (or may be) a LightNVR instance.
- * Returns false if we can positively confirm it is NOT LightNVR (stale PID).
+ * Linux: returns true only when /proc/<pid>/comm is read successfully and
+ * equals "lightnvr"; returns false on name mismatch or if identity cannot be
+ * verified (for example, if /proc cannot be opened/read).
+ * Non-Linux: uses a permissive fallback (returns true).
  */
 static bool is_lightnvr_process(pid_t pid) {
 #ifdef __linux__
