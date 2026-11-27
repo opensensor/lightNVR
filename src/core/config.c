@@ -2372,9 +2372,11 @@ static int publish_config_in_place_locked(int dir_fd, const char *filename,
         return -1;
     }
 
-    int read_fd = openat(dir_fd, filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    int read_fd = openat(dir_fd, filename,
+                         O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     struct stat current;
     if (read_fd < 0 || fstat(read_fd, &current) != 0 ||
+        !S_ISREG(current.st_mode) ||
         current.st_dev != original_stat->st_dev ||
         current.st_ino != original_stat->st_ino || current.st_nlink != 1) {
         if (read_fd >= 0) close(read_fd);
