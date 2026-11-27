@@ -840,13 +840,17 @@ int validate_config(config_t *config) {
 void config_set_detection_grace_period(config_t *config, int seconds) {
     if (seconds < 0)  seconds = 0;
     if (seconds > 60) seconds = 60;
+    pthread_mutex_lock(&config_mutex);
     config->detection_grace_period = seconds;
+    pthread_mutex_unlock(&config_mutex);
 }
 
 void config_set_detection_engine_threads(config_t *config, int threads) {
     if (threads < 1)  threads = 1;
     if (threads > 16) threads = 16;
+    pthread_mutex_lock(&config_mutex);
     config->detection_engine.num_threads = threads;
+    pthread_mutex_unlock(&config_mutex);
 }
 
 bool config_set_detection_engine_delegate(config_t *config, const char *delegate) {
@@ -855,8 +859,10 @@ bool config_set_detection_engine_delegate(config_t *config, const char *delegate
          strcmp(delegate, "none") != 0)) {
         return false;
     }
+    pthread_mutex_lock(&config_mutex);
     safe_strcpy(config->detection_engine.delegate, delegate,
                 sizeof(config->detection_engine.delegate), 0);
+    pthread_mutex_unlock(&config_mutex);
     return true;
 }
 
