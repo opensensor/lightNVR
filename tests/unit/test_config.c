@@ -47,6 +47,10 @@ static bool stream_save_db_active;
 static char group_replace_dir[MAX_PATH_LENGTH];
 static char group_replace_path[MAX_PATH_LENGTH];
 static bool group_replace_cleanup_active;
+static char short_write_dir[MAX_PATH_LENGTH];
+static char short_write_path[MAX_PATH_LENGTH];
+static char short_write_baseline_dir[MAX_PATH_LENGTH];
+static char short_write_baseline_path[MAX_PATH_LENGTH];
 static char *saved_config_text;
 static stream_config_t *owned_snapshot_streams;
 static int owned_pid_fd;
@@ -155,6 +159,10 @@ void setUp(void) {
     group_replace_dir[0] = '\0';
     group_replace_path[0] = '\0';
     group_replace_cleanup_active = false;
+    short_write_dir[0] = '\0';
+    short_write_path[0] = '\0';
+    short_write_baseline_dir[0] = '\0';
+    short_write_baseline_path[0] = '\0';
     saved_config_file = NULL;
     saved_baseline_file = NULL;
     concurrent_config_dir[0] = '\0';
@@ -199,6 +207,10 @@ void tearDown(void) {
         snprintf(aux_path, sizeof(aux_path), "%s-shm", stream_save_db_path);
         unlink(aux_path);
     }
+    if (short_write_path[0]) unlink(short_write_path);
+    if (short_write_dir[0]) rmdir(short_write_dir);
+    if (short_write_baseline_path[0]) unlink(short_write_baseline_path);
+    if (short_write_baseline_dir[0]) rmdir(short_write_baseline_dir);
     if (group_replace_cleanup_active) {
         unlink(group_replace_path);
         rmdir(group_replace_dir);
@@ -2077,9 +2089,8 @@ static void test_save_config_bind_mount_retries_short_write(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
-    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", directory);
-    snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
-    group_replace_cleanup_active = true;
+    snprintf(short_write_dir, sizeof(short_write_dir), "%s", directory);
+    snprintf(short_write_path, sizeof(short_write_path), "%s", path);
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
     fputs("previous configuration", initial);
@@ -2100,7 +2111,8 @@ static void test_save_config_bind_mount_retries_short_write(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(baseline_directory));
     char baseline_path[MAX_PATH_LENGTH];
     snprintf(baseline_path, sizeof(baseline_path), "%s/settings.ini", baseline_directory);
-    snprintf(concurrent_config_dir, sizeof(concurrent_config_dir), "%s", baseline_directory);
+    snprintf(short_write_baseline_dir, sizeof(short_write_baseline_dir), "%s", baseline_directory);
+    snprintf(short_write_baseline_path, sizeof(short_write_baseline_path), "%s", baseline_path);
     short_config_pwrite = false;
     busy_config_rename = false;
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
