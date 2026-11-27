@@ -361,6 +361,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     if (conflicts.length > 0) {
       setOverrideValidation(prev => ({
         ...prev,
+        valid: false,
         error: {
           message: `Preset insertion would duplicate top-level section(s): ${conflicts.join(', ')}. Merge into the existing section instead of inserting the full preset.`,
         },
