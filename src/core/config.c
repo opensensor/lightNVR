@@ -1899,27 +1899,63 @@ int save_stream_configs(config_t *config) {
         return -1;
     }
 
+    int name_index_size = 1;
+    while (name_index_size < (reloaded_count * 2)) name_index_size <<= 1;
+    int *name_index_slots = (int *)malloc((size_t)name_index_size * sizeof(int));
+    if (!name_index_slots) {
+        log_error("Failed to allocate stream identity name index");
+        free(reloaded_streams);
+        free(streams_snapshot);
+        rollback_transaction();
+        return -1;
+    }
+    for (int i = 0; i < name_index_size; i++) name_index_slots[i] = -1;
+
+    for (int j = 0; j < reloaded_count; j++) {
+        const unsigned char *s = (const unsigned char *)reloaded_streams[j].name;
+        unsigned long h = 5381UL;
+        while (*s) h = ((h << 5) + h) + *s++;
+        int slot = (int)(h & (unsigned long)(name_index_size - 1));
+        while (name_index_slots[slot] != -1) {
+            if (strcmp(reloaded_streams[name_index_slots[slot]].name,
+                       reloaded_streams[j].name) == 0) {
+                break;
+            }
+            slot = (slot + 1) & (name_index_size - 1);
+        }
+        if (name_index_slots[slot] == -1) name_index_slots[slot] = j;
+    }
+
     for (int i = 0; i < max_streams; i++) {
         if (strlen(streams_snapshot[i].name) == 0) continue;
 
+        const unsigned char *s = (const unsigned char *)streams_snapshot[i].name;
+        unsigned long h = 5381UL;
+        while (*s) h = ((h << 5) + h) + *s++;
+        int slot = (int)(h & (unsigned long)(name_index_size - 1));
+
         bool found = false;
-        for (int j = 0; j < reloaded_count; j++) {
-            if (strcmp(streams_snapshot[i].name, reloaded_streams[j].name) == 0) {
-                streams_snapshot[i] = reloaded_streams[j];
+        while (name_index_slots[slot] != -1) {
+            int idx = name_index_slots[slot];
+            if (strcmp(streams_snapshot[i].name, reloaded_streams[idx].name) == 0) {
+                streams_snapshot[i] = reloaded_streams[idx];
                 found = true;
                 break;
             }
+            slot = (slot + 1) & (name_index_size - 1);
         }
 
         if (!found) {
             log_error("Failed to reload stable identity for stream: %s",
                       streams_snapshot[i].name);
+            free(name_index_slots);
             free(reloaded_streams);
             free(streams_snapshot);
             rollback_transaction();
             return -1;
         }
     }
+    free(name_index_slots);
     free(reloaded_streams);
 
     int table_size = 1;
