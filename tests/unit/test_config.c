@@ -93,6 +93,12 @@ ssize_t __real_pwrite(int, const void *, size_t, off_t);
 ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
     struct stat st;
     if (fstat(fd, &st) == 0) {
+        if (check_config_pwrite_mode && st.st_ino == check_config_pwrite_inode) {
+            check_config_pwrite_saw_write = true;
+            if ((st.st_mode & 0777) != 0600) {
+                check_config_pwrite_mode_violation = true;
+            }
+        }
         if (short_config_pwrite &&
             !short_config_pwrite_done &&
             st.st_ino == short_config_pwrite_inode &&
@@ -115,6 +121,9 @@ void setUp(void) {
     memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
     saved_config_file = NULL;
     saved_config_text = NULL;
+    check_config_pwrite_mode = false;
+    check_config_pwrite_saw_write = false;
+    check_config_pwrite_mode_violation = false;
     owned_snapshot_streams = NULL;
     observed_config_stream = false;
     observed_config_stream_with_private_mode = true;
@@ -134,6 +143,7 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    check_config_pwrite_mode = false;
     if (saved_config_file) fclose(saved_config_file);
     saved_config_file = NULL;
     free(saved_config_text);
