@@ -2082,6 +2082,9 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         {"hw_accel_device", config->hw_accel_device, sizeof(config->hw_accel_device)},
         {"db_path", config->db_path, sizeof(config->db_path)},
         {"web_root", config->web_root, sizeof(config->web_root)},
+        {"web_bind_ip", config->web_bind_ip, sizeof(config->web_bind_ip)},
+        {"web_ssl_cert_path", config->web_ssl_cert_path, sizeof(config->web_ssl_cert_path)},
+        {"web_ssl_key_path", config->web_ssl_key_path, sizeof(config->web_ssl_key_path)},
         {"models_path", config->models_path, sizeof(config->models_path)},
         {"trusted_proxy_cidrs", config->trusted_proxy_cidrs, sizeof(config->trusted_proxy_cidrs)},
         {"api_detection_url", config->api_detection_url, sizeof(config->api_detection_url)},
@@ -2491,21 +2494,6 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "web_cache_max_age_images = %d\n", config->web_cache_max_age_images);
     fprintf(file, "web_cache_max_age_fonts = %d\n", config->web_cache_max_age_fonts);
     fprintf(file, "web_cache_max_age_default = %d\n", config->web_cache_max_age_default);
-    if (contains_unsupported_ini_credential_chars(config->web_bind_ip,
-                                                  sizeof(config->web_bind_ip)) ||
-        contains_unsupported_ini_credential_chars(config->web_root,
-                                                  sizeof(config->web_root)) ||
-        contains_unsupported_ini_credential_chars(config->web_ssl_cert_path,
-                                                  sizeof(config->web_ssl_cert_path)) ||
-        contains_unsupported_ini_credential_chars(config->web_ssl_key_path,
-                                                  sizeof(config->web_ssl_key_path)) ||
-        contains_unsupported_ini_credential_chars(config->web_username,
-                                                  sizeof(config->web_username))) {
-        log_error("Refusing to write config: one or more string fields contain unsupported INI characters");
-        fclose(file);
-        return false;
-    }
-
     fprintf(file, "port = %d\n", config->web_port);
     fprintf(file, "bind_ip = %s\n", config->web_bind_ip);
     fprintf(file, "root = %s\n", config->web_root);
@@ -2669,27 +2657,16 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     return 0;
 }
 
-static bool config_copy_settings_only(config_t *dst, const config_t *src) {
-    if (!dst || !src) return false;
-
-    *dst = *src;
-
-    // Settings saves do not serialize stream entries; avoid retaining/copying them.
-    dst->streams = NULL;
-    dst->stream_count = 0;
-    dst->max_streams = 0;
-
-    return true;
-}
-
 int save_config(const config_t *config, const char *path) {
     if (!config) return -1;
     config_t snapshot = {0};
-    if (!config_copy_settings_only(&snapshot, config)) {
+    if (!config_copy(&snapshot, config)) {
         log_error("Could not create config snapshot for saving");
         return -1;
     }
-    return save_config_snapshot(&snapshot, path);
+    int result = save_config_snapshot(&snapshot, path);
+    free(snapshot.streams);
+    return result;
 }
 
 // Print configuration to stdout (for debugging)
