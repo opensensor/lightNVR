@@ -2021,11 +2021,11 @@ static void close_original_config_fd(int fd) {
     pthread_mutex_unlock(&config_in_place_mutex);
 }
 
-static int publish_config_in_place(int dir_fd, const char *filename,
+/* Caller holds config_in_place_mutex across target revalidation and publish. */
+static int publish_config_in_place_locked(int dir_fd, const char *filename,
                                    const struct stat *original_stat,
                                    int original_fd, int staged_fd) {
     if (original_fd < 0 || !original_stat) return -1;
-    pthread_mutex_lock(&config_in_place_mutex);
 
     struct flock lock = {
         .l_type = F_WRLCK,
@@ -2034,7 +2034,6 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         .l_len = 0
     };
     if (fcntl(original_fd, F_SETLKW, &lock) != 0) {
-        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
 
@@ -2046,7 +2045,6 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         if (read_fd >= 0) close(read_fd);
         lock.l_type = F_UNLCK;
         (void)fcntl(original_fd, F_SETLK, &lock);
-        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
     char backup_path[] = "/tmp/lightnvr-config-backup-XXXXXX";
@@ -2055,7 +2053,6 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         close(read_fd);
         lock.l_type = F_UNLCK;
         (void)fcntl(original_fd, F_SETLK, &lock);
-        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
     int result = copy_config_fd(read_fd, backup_fd);
@@ -2065,7 +2062,6 @@ static int publish_config_in_place(int dir_fd, const char *filename,
         unlink(backup_path);
         lock.l_type = F_UNLCK;
         (void)fcntl(original_fd, F_SETLK, &lock);
-        pthread_mutex_unlock(&config_in_place_mutex);
         return -1;
     }
     result = copy_config_fd(staged_fd, original_fd);
@@ -2076,7 +2072,6 @@ static int publish_config_in_place(int dir_fd, const char *filename,
             close(backup_fd);
             lock.l_type = F_UNLCK;
             (void)fcntl(original_fd, F_SETLK, &lock);
-            pthread_mutex_unlock(&config_in_place_mutex);
             return -1;
         }
     }
@@ -2085,7 +2080,6 @@ static int publish_config_in_place(int dir_fd, const char *filename,
     unlink(backup_path);
     lock.l_type = F_UNLCK;
     (void)fcntl(original_fd, F_SETLK, &lock);
-    pthread_mutex_unlock(&config_in_place_mutex);
     return result;
 }
 
@@ -2592,7 +2586,8 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "auth_timeout_hours = %d  ; Session idle timeout in hours (default: 24)\n", config->auth_timeout_hours);
     fprintf(file, "auth_absolute_timeout_hours = %d  ; Absolute session lifetime in hours (default: 168)\n", config->auth_absolute_timeout_hours);
     fprintf(file, "trusted_device_days = %d  ; Remember trusted device for N days (0 disables, default: 30)\n", config->trusted_device_days);
-    fprintf(file, "trusted_proxy_cidrs = %s  ; Trusted reverse-proxy CIDRs for X-Forwarded-For (blank disables trust)\n", config->trusted_proxy_cidrs);
+    fprintf(file, "; Trusted reverse-proxy CIDRs for X-Forwarded-For (blank disables trust)\n");
+    fprintf(file, "trusted_proxy_cidrs = %s\n", config->trusted_proxy_cidrs);
     fprintf(file, "demo_mode = %s  ; Demo mode: allows unauthenticated viewer access\n", config->demo_mode ? "true" : "false");
     fprintf(file, "force_mfa_on_login = %s  ; Require TOTP code with password at login (prevents password-only brute force)\n", config->force_mfa_on_login ? "true" : "false");
     fprintf(file, "login_rate_limit_enabled = %s  ; Enable login rate limiting\n", config->login_rate_limit_enabled ? "true" : "false");
@@ -2694,28 +2689,33 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     }
     if (fclose(file) != 0) write_failed = 1;
     if (!write_failed) {
-        /* Do not replace a symlink, hardlink, or changed target introduced
-         * while the replacement was being written. */
-        struct stat current;
-        int stat_result = fstatat(dir_fd, validated_filename, &current, AT_SYMLINK_NOFOLLOW);
-        bool unchanged = target_exists
-            ? stat_result == 0 && S_ISREG(current.st_mode) && current.st_nlink == 1 &&
-              current.st_dev == config_stat.st_dev && current.st_ino == config_stat.st_ino
-            : stat_result != 0 && errno == ENOENT;
-        if (!unchanged) {
+        if (pthread_mutex_lock(&config_in_place_mutex) != 0) {
             write_failed = 1;
-        } else if (external_staging) {
-            if (publish_config_in_place(dir_fd, validated_filename,
-                    &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
-        } else if (renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
-            if (errno == EBUSY && original_fd >= 0) {
-                if (publish_config_in_place(dir_fd, validated_filename,
-                        &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
-            } else {
+        } else {
+            /* Do not replace a symlink, hardlink, or changed target introduced
+             * while the replacement was being written. */
+            struct stat current;
+            int stat_result = fstatat(dir_fd, validated_filename, &current, AT_SYMLINK_NOFOLLOW);
+            bool unchanged = target_exists
+                ? stat_result == 0 && S_ISREG(current.st_mode) && current.st_nlink == 1 &&
+                  current.st_dev == config_stat.st_dev && current.st_ino == config_stat.st_ino
+                : stat_result != 0 && errno == ENOENT;
+            if (!unchanged) {
                 write_failed = 1;
+            } else if (external_staging) {
+                if (publish_config_in_place_locked(dir_fd, validated_filename,
+                        &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
+            } else if (renameat(dir_fd, replacement_name, dir_fd, validated_filename) != 0) {
+                if (errno == EBUSY && original_fd >= 0) {
+                    if (publish_config_in_place_locked(dir_fd, validated_filename,
+                            &config_stat, original_fd, staged_fd) != 0) write_failed = 1;
+                } else {
+                    write_failed = 1;
+                }
+            } else if (fsync(dir_fd) != 0) {
+                log_warn("Could not sync config directory after replacement: %s", strerror(errno));
             }
-        } else if (fsync(dir_fd) != 0) {
-            log_warn("Could not sync config directory after replacement: %s", strerror(errno));
+            pthread_mutex_unlock(&config_in_place_mutex);
         }
     }
     if (staged_fd >= 0) close(staged_fd);
@@ -2763,94 +2763,94 @@ int save_config(const config_t *config, const char *path) {
 // Print configuration to stdout (for debugging)
 void print_config(const config_t *config) {
     if (!config) return;
-    
-    printf("LightNVR Configuration:\n");
-    printf("  General Settings:\n");
-    printf("    PID File: %s\n", config->pid_file);
-    printf("    Log File: %s\n", config->log_file);
-    printf("    Log Level: %d\n", config->log_level);
-    
-    printf("  Storage Settings:\n");
-    printf("    Storage Path: %s\n", config->storage_path);
-    if (config->storage_path_hls[0] != '\0') {
-        printf("    HLS Storage Path: %s\n", config->storage_path_hls);
-    }
-    printf("    Max Storage Size: %llu bytes\n", (unsigned long long)config->max_storage_size);
-    printf("    Retention Days: %d\n", config->retention_days);
-    printf("    Auto Delete Oldest: %s\n", config->auto_delete_oldest ? "true" : "false");
-    printf("    MP4 Faststart: %s\n", config_get_mp4_faststart(config) ? "true" : "false");
 
-    printf("  Health Settings:\n");
-    printf("    Enabled: %s\n", config->health.enabled ? "true" : "false");
-    printf("    Profile: %s\n", config->health.profile);
-    printf("    Sampling intervals: %u/%u/%u/%u seconds\n",
-           config->health.fast_interval_seconds,
-           config->health.normal_interval_seconds,
-           config->health.slow_interval_seconds,
-           config->health.device_interval_seconds);
-    
-    printf("  Models Settings:\n");
-    printf("    Models Path: %s\n", config->models_path);
-    
-    printf("  API Detection Settings:\n");
-    printf("    API URL: %s\n", config->api_detection_url);
-    
-    printf("  Database Settings:\n");
-    printf("    Database Path: %s\n", config->db_path);
-    printf("    Backup Interval: %d minutes\n", config->db_backup_interval_minutes);
-    printf("    Backup Retention Count: %d\n", config->db_backup_retention_count);
-    printf("    Startup Check: %s\n",
-           config->db_startup_check == DB_STARTUP_CHECK_OFF ? "off" :
-           config->db_startup_check == DB_STARTUP_CHECK_FULL ? "full" : "quick");
-    printf("    Backup Verification: %s\n",
-           config->db_backup_verify == DB_BACKUP_VERIFY_OFF ? "off" :
-           config->db_backup_verify == DB_BACKUP_VERIFY_QUICK ? "quick" : "full");
-    printf("    Post-backup Script: %s\n",
-           config->db_post_backup_script[0] ? config->db_post_backup_script : "(disabled)");
-    
-    printf("  Web Server Settings:\n");
-    printf("    Web Port: %d\n", config->web_port);
-    printf("    Web Bind Address: %s\n", config->web_bind_ip);
-    printf("    Web Root: %s\n", config->web_root);
-    printf("    Web Auth Enabled: %s\n", config->web_auth_enabled ? "true" : "false");
-    printf("    Web Username: %s\n", config->web_username);
-    printf("    Web Password: %s\n", "********");
-    printf("    Audio Disabled: %s\n",  config->audio_disabled ? "true" : "false");
-    printf("    Auto Disabled: %s\n",   config->auto_disabled ? "true" : "false");
-    printf("    WebRTC Disabled: %s\n", config->webrtc_disabled ? "true" : "false");
-    printf("    HLS Disabled: %s\n",    config->hls_disabled ? "true" : "false");
-    printf("    MSE Disabled: %s\n",    config->mse_disabled ? "true" : "false");
-    printf("    Auth Idle Timeout: %d hours\n", config->auth_timeout_hours);
-    printf("    Auth Absolute Timeout: %d hours\n", config->auth_absolute_timeout_hours);
-    printf("    Trusted Device Lifetime: %d days\n", config->trusted_device_days);
-    printf("    Demo Mode: %s\n", config->demo_mode ? "true" : "false");
-    printf("    Force MFA on Login: %s\n", config->force_mfa_on_login ? "true" : "false");
-    printf("    Login Rate Limit: %s\n", config->login_rate_limit_enabled ? "true" : "false");
-    printf("    Login Rate Limit Max Attempts: %d\n", config->login_rate_limit_max_attempts);
-    printf("    Login Rate Limit Window: %d seconds\n", config->login_rate_limit_window_seconds);
-
-    printf("  Stream Settings:\n");
-    printf("    Max Streams: %d (runtime) / %d (compile-time ceiling)\n",
-           config->max_streams, MAX_STREAMS);
-    printf("  Web Thread Pool Size: %d\n", config->web_thread_pool_size);
-    
-    printf("  Memory Optimization:\n");
-    printf("    Buffer Size: %d KB\n", config->buffer_size);
-    printf("    Use Swap: %s\n", config->use_swap ? "true" : "false");
-    printf("    Swap File: %s\n", config->swap_file);
-    printf("    Swap Size: %llu bytes\n", (unsigned long long)config->swap_size);
-    
-    printf("  Hardware Acceleration:\n");
-    printf("    HW Accel Enabled: %s\n", config->hw_accel_enabled ? "true" : "false");
-    printf("    HW Accel Device: %s\n", config->hw_accel_device);
-    
-    printf("  Stream Configurations:\n");
     config_t snapshot = {0};
     if (!config_copy(&snapshot, config)) {
-        printf("    (unable to snapshot stream configuration)\n");
+        log_error("Could not create config snapshot for printing");
         return;
     }
 
+    printf("LightNVR Configuration:\n");
+    printf("  General Settings:\n");
+    printf("    PID File: %s\n", snapshot.pid_file);
+    printf("    Log File: %s\n", snapshot.log_file);
+    printf("    Log Level: %d\n", snapshot.log_level);
+    
+    printf("  Storage Settings:\n");
+    printf("    Storage Path: %s\n", snapshot.storage_path);
+    if (snapshot.storage_path_hls[0] != '\0') {
+        printf("    HLS Storage Path: %s\n", snapshot.storage_path_hls);
+    }
+    printf("    Max Storage Size: %llu bytes\n", (unsigned long long)snapshot.max_storage_size);
+    printf("    Retention Days: %d\n", snapshot.retention_days);
+    printf("    Auto Delete Oldest: %s\n", snapshot.auto_delete_oldest ? "true" : "false");
+    printf("    MP4 Faststart: %s\n", config_get_mp4_faststart(&snapshot) ? "true" : "false");
+
+    printf("  Health Settings:\n");
+    printf("    Enabled: %s\n", snapshot.health.enabled ? "true" : "false");
+    printf("    Profile: %s\n", snapshot.health.profile);
+    printf("    Sampling intervals: %u/%u/%u/%u seconds\n",
+           snapshot.health.fast_interval_seconds,
+           snapshot.health.normal_interval_seconds,
+           snapshot.health.slow_interval_seconds,
+           snapshot.health.device_interval_seconds);
+    
+    printf("  Models Settings:\n");
+    printf("    Models Path: %s\n", snapshot.models_path);
+    
+    printf("  API Detection Settings:\n");
+    printf("    API URL: %s\n", snapshot.api_detection_url);
+    
+    printf("  Database Settings:\n");
+    printf("    Database Path: %s\n", snapshot.db_path);
+    printf("    Backup Interval: %d minutes\n", snapshot.db_backup_interval_minutes);
+    printf("    Backup Retention Count: %d\n", snapshot.db_backup_retention_count);
+    printf("    Startup Check: %s\n",
+           snapshot.db_startup_check == DB_STARTUP_CHECK_OFF ? "off" :
+           snapshot.db_startup_check == DB_STARTUP_CHECK_FULL ? "full" : "quick");
+    printf("    Backup Verification: %s\n",
+           snapshot.db_backup_verify == DB_BACKUP_VERIFY_OFF ? "off" :
+           snapshot.db_backup_verify == DB_BACKUP_VERIFY_QUICK ? "quick" : "full");
+    printf("    Post-backup Script: %s\n",
+           snapshot.db_post_backup_script[0] ? snapshot.db_post_backup_script : "(disabled)");
+    
+    printf("  Web Server Settings:\n");
+    printf("    Web Port: %d\n", snapshot.web_port);
+    printf("    Web Bind Address: %s\n", snapshot.web_bind_ip);
+    printf("    Web Root: %s\n", snapshot.web_root);
+    printf("    Web Auth Enabled: %s\n", snapshot.web_auth_enabled ? "true" : "false");
+    printf("    Web Username: %s\n", snapshot.web_username);
+    printf("    Web Password: %s\n", "********");
+    printf("    Audio Disabled: %s\n",  snapshot.audio_disabled ? "true" : "false");
+    printf("    Auto Disabled: %s\n",   snapshot.auto_disabled ? "true" : "false");
+    printf("    WebRTC Disabled: %s\n", snapshot.webrtc_disabled ? "true" : "false");
+    printf("    HLS Disabled: %s\n",    snapshot.hls_disabled ? "true" : "false");
+    printf("    MSE Disabled: %s\n",    snapshot.mse_disabled ? "true" : "false");
+    printf("    Auth Idle Timeout: %d hours\n", snapshot.auth_timeout_hours);
+    printf("    Auth Absolute Timeout: %d hours\n", snapshot.auth_absolute_timeout_hours);
+    printf("    Trusted Device Lifetime: %d days\n", snapshot.trusted_device_days);
+    printf("    Demo Mode: %s\n", snapshot.demo_mode ? "true" : "false");
+    printf("    Force MFA on Login: %s\n", snapshot.force_mfa_on_login ? "true" : "false");
+    printf("    Login Rate Limit: %s\n", snapshot.login_rate_limit_enabled ? "true" : "false");
+    printf("    Login Rate Limit Max Attempts: %d\n", snapshot.login_rate_limit_max_attempts);
+    printf("    Login Rate Limit Window: %d seconds\n", snapshot.login_rate_limit_window_seconds);
+
+    printf("  Stream Settings:\n");
+    printf("    Max Streams: %d (runtime) / %d (compile-time ceiling)\n",
+           snapshot.max_streams, MAX_STREAMS);
+    printf("  Web Thread Pool Size: %d\n", snapshot.web_thread_pool_size);
+    
+    printf("  Memory Optimization:\n");
+    printf("    Buffer Size: %d KB\n", snapshot.buffer_size);
+    printf("    Use Swap: %s\n", snapshot.use_swap ? "true" : "false");
+    printf("    Swap File: %s\n", snapshot.swap_file);
+    printf("    Swap Size: %llu bytes\n", (unsigned long long)snapshot.swap_size);
+    
+    printf("  Hardware Acceleration:\n");
+    printf("    HW Accel Enabled: %s\n", snapshot.hw_accel_enabled ? "true" : "false");
+    printf("    HW Accel Device: %s\n", snapshot.hw_accel_device);
+    
+    printf("  Stream Configurations:\n");
     for (int i = 0; snapshot.streams && i < snapshot.max_streams; i++) {
         if (strlen(snapshot.streams[i].name) > 0) {
             printf("    Stream %d:\n", i);
