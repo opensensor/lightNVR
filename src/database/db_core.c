@@ -649,28 +649,26 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
             break;
         }
         if (entry->d_name[0] == '.' || !has_suffix(entry->d_name, ".sqlite3")) continue;
-        int candidate = openat(parent, entry->d_name, O_PATH | O_NOFOLLOW | O_CLOEXEC);
-        if (candidate < 0) { result = -1; break; }
         struct stat selected;
-        if (fstat(candidate, &selected) != 0) { close(candidate); result = -1; break; }
-        if (!S_ISREG(selected.st_mode)) { close(candidate); continue; }
+        if (fstatat(parent, entry->d_name, &selected, AT_SYMLINK_NOFOLLOW) != 0) { result = -1; break; }
+        if (!S_ISREG(selected.st_mode)) { continue; }
 
         if (backup_count == backup_capacity) {
             if (backup_capacity > SIZE_MAX / 2) {
-                close(candidate); result = -1; break;
+                result = -1; break;
             }
             size_t capacity = backup_capacity ? backup_capacity * 2 : 8;
             if (capacity > SIZE_MAX / sizeof(*backups)) {
-                close(candidate); result = -1; break;
+                result = -1; break;
             }
             selected_backup_t *grown = realloc(backups, capacity * sizeof(*backups));
-            if (!grown) { close(candidate); result = -1; break; }
+            if (!grown) { result = -1; break; }
             backups = grown;
             backup_capacity = capacity;
         }
         char *name = strdup(entry->d_name);
-        if (!name) { close(candidate); result = -1; break; }
-        backups[backup_count++] = (selected_backup_t){name, candidate, selected};
+        if (!name) { result = -1; break; }
+        backups[backup_count++] = (selected_backup_t){name, -1, selected};
     }
 
     if (result == 0 && backup_count > 1) {
