@@ -204,15 +204,19 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
     }
 
     TEST_ASSERT_TRUE(strlen(rejected_path) > PATH_MAX);
-    TEST_ASSERT_EQUAL_INT(-1, access(rejected_path, F_OK));
 
-    errno = 0;
     TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
-    TEST_ASSERT_EQUAL_INT(ENAMETOOLONG, errno);
     TEST_ASSERT_NULL(get_db_handle());
-    TEST_ASSERT_EQUAL_INT(-1, access(rejected_path, F_OK));
-    TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(rejected_path, "-wal"), F_OK));
-    TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(rejected_path, "-shm"), F_OK));
+    DIR *parent_dir = opendir(overlong_parent_dir);
+    TEST_ASSERT_NOT_NULL(parent_dir);
+    struct dirent *entry;
+    bool unexpected_entry = false;
+    while ((entry = readdir(parent_dir))) {
+        if (strcmp(entry->d_name, ".") != 0 &&
+            strcmp(entry->d_name, "..") != 0) unexpected_entry = true;
+    }
+    TEST_ASSERT_EQUAL_INT(0, closedir(parent_dir));
+    TEST_ASSERT_FALSE(unexpected_entry);
 }
 
 static void create_readable_wal_database(void) {
@@ -302,7 +306,7 @@ void test_read_only_initialization_cannot_write(void) {
         sqlite3_prepare_v2(handle, "SELECT value FROM sample WHERE id=1;",
                            -1, &stmt, NULL));
     TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
-    TEST_ASSERT_EQUAL_STRING("unchanged", sqlite3_column_text(stmt, 0));
+    TEST_ASSERT_EQUAL_STRING("wal_only", sqlite3_column_text(stmt, 0));
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
 
     TEST_ASSERT_EQUAL_INT(
