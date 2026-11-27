@@ -1459,9 +1459,19 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             }
             config->go2rtc_webrtc_listen_port = port;
         } else if (strcmp(name, "webrtc_enabled") == 0) {
-            config->go2rtc_webrtc_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid go2rtc webrtc_enabled value: '%s' (expected true/false/1/0/yes/no/on/off)", value);
+                return 0;
+            }
+            config->go2rtc_webrtc_enabled = parsed_bool;
         } else if (strcmp(name, "stun_enabled") == 0) {
-            config->go2rtc_stun_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid go2rtc stun_enabled value: '%s' (expected true/false/1/0/yes/no/on/off)", value);
+                return 0;
+            }
+            config->go2rtc_stun_enabled = parsed_bool;
         } else if (strcmp(name, "stun_server") == 0) {
             safe_strcpy(config->go2rtc_stun_server, value, sizeof(config->go2rtc_stun_server), 0);
         } else if (strcmp(name, "external_ip") == 0) {
