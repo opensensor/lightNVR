@@ -125,6 +125,8 @@ test('backup creates parseable private bytes only in an owned web root',async()=
   const result=await ok(server,'/api/system/backup',admin,'POST');valid('SystemBackupCreated',result);
   expect(result.backupUrl).toBe(`/backups/${result.filename}`);
   expect(path.basename(result.filename)).toBe(result.filename);
+  expect((await server.request(result.backupUrl,{principal:'anonymous'})).status).toBe(401);
+  expect((await server.request(result.backupUrl,{principal:'viewer'})).status).toBe(403);
   const file=path.join(webRoot,'backups',result.filename),bytes=readFileSync(file);
   expect(JSON.parse(bytes.toString())).toEqual(expect.any(Object));
   expect(statSync(file).mode&0o777).toBe(0o600);expect(readdirSync(path.dirname(file))).toEqual([result.filename]);
