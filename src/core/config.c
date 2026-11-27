@@ -2910,7 +2910,9 @@ bool config_set_api_detection_format(config_t *config, const char *name) {
     if (!config || !api_detection_format_parse(name, &format)) {
         return false;
     }
+    pthread_mutex_lock(&mp4_faststart_mutex);
     safe_strcpy(config->api_detection_format, api_detection_format_name(format),
                 sizeof(config->api_detection_format), 0);
+    pthread_mutex_unlock(&mp4_faststart_mutex);
     return true;
 }
