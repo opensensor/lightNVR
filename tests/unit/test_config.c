@@ -651,6 +651,11 @@ void test_save_config_round_trips_web_cache_and_mp4_faststart(void) {
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
     memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
+    /* Register temporary config artifacts for tearDown() so assertion
+     * failures below do not skip cleanup. */
+    snprintf(group_replace_path, sizeof(group_replace_path), "%s", config_path);
+    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", dir);
+    group_replace_cleanup_active = true;
     set_custom_config_path(config_path);
     TEST_ASSERT_EQUAL_INT(0, load_config(&reloaded_cfg));
     TEST_ASSERT_FALSE(config_get_mp4_faststart(&reloaded_cfg));
