@@ -109,8 +109,10 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
     // closed: the server refuses to start instead of falling back to HTTP.
     if (config->ssl_enabled) {
         if (!libuv_tls_compiled_in()) {
-            log_warn("libuv_server_init: ssl_enabled is set but this build has no TLS "
-                     "support (rebuild with -DENABLE_SSL=ON); serving plain HTTP");
+            log_error("libuv_server_init: ssl_enabled is set but this build has no TLS "
+                      "support (rebuild with -DENABLE_SSL=ON); refusing to start");
+            safe_free(server);
+            return NULL;
         } else {
             server->tls_ctx = libuv_tls_context_create(config->cert_path, config->key_path);
             if (!server->tls_ctx) {
