@@ -97,6 +97,8 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
         log_error("libuv_server_init: Failed to allocate server");
         return NULL;
     }
+    atomic_init(&server->running, false);
+    atomic_init(&server->shutting_down, false);
     
     // Copy configuration
     memcpy(&server->config, config, sizeof(http_server_config_t));

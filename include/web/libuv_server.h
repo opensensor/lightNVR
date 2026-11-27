@@ -20,6 +20,7 @@
 
 #include <llhttp.h>
 #include <uv.h>
+#include <stdatomic.h>
 #include "web/http_server.h"
 #include "web/request_response.h"
 
@@ -31,9 +32,9 @@ typedef struct libuv_server {
     uv_tcp_t listener;                  // TCP listener handle
     uv_async_t stop_async;              // Async handle to wake up event loop for stop
     http_server_config_t config;        // Server configuration (copied)
-    volatile bool running;              // Server running flag (volatile for cross-thread visibility)
+    atomic_bool running;                // Server running flag (atomic for cross-thread synchronization)
     bool owns_loop;                     // Whether we own the event loop
-    volatile bool shutting_down;        // Server is shutting down (volatile for cross-thread visibility)
+    atomic_bool shutting_down;          // Server is shutting down (atomic for cross-thread synchronization)
 
     // Handler registry (same structure as http_server_t)
     struct {
