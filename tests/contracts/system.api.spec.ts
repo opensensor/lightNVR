@@ -87,7 +87,15 @@ test('settings preserve zero, mask credentials, and reject invalid formats befor
 test('workspace preferences belong to the interactive owner and do not grant camera access',async({server})=>{
  const before=await ok(server,'/api/ui/workspaces');valid('WorkspacesResponse',before);
  const updated=await ok(server,'/api/ui/workspaces',viewer,'PUT',{workspaces:{'live.navigator':false,investigation:false}});valid('WorkspacesResponse',updated);
- expect(updated.workspaces.every((w:{visible:boolean})=>!w.visible)).toBe(true);
+ const updatedLiveNavigator=updated.workspaces.find((w:{workspace:string;visible:boolean})=>w.workspace==='live.navigator');
+ const updatedInvestigation=updated.workspaces.find((w:{workspace:string;visible:boolean})=>w.workspace==='investigation');
+ expect(updatedLiveNavigator).toBeDefined();expect(updatedLiveNavigator?.visible).toBe(false);
+ expect(updatedInvestigation).toBeDefined();expect(updatedInvestigation?.visible).toBe(false);
+ const persisted=await ok(server,'/api/ui/workspaces',viewer);valid('WorkspacesResponse',persisted);
+ const persistedLiveNavigator=persisted.workspaces.find((w:{workspace:string;visible:boolean})=>w.workspace==='live.navigator');
+ const persistedInvestigation=persisted.workspaces.find((w:{workspace:string;visible:boolean})=>w.workspace==='investigation');
+ expect(persistedLiveNavigator).toBeDefined();expect(persistedLiveNavigator?.visible).toBe(false);
+ expect(persistedInvestigation).toBeDefined();expect(persistedInvestigation?.visible).toBe(false);
  expect(await ok(server,'/api/ui/workspaces')).toEqual(before);
  const scoped=await token(server);const view=await ok(server,'/api/ui/workspaces',scoped);valid('WorkspacesResponse',view);expect(view.configurable).toBe(false);
  expect((await wire(server,'/api/ui/workspaces',scoped,'PUT',{workspaces:{'live.navigator':false}})).response.status).toBe(403);
