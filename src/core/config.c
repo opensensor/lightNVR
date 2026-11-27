@@ -2023,7 +2023,8 @@ int save_stream_configs(config_t *config) {
 
     for (int i = 0; i < max_streams; i++) {
         if (streams_snapshot[i].name[0] == '\0') continue;
-        int slot = stream_name_index_slot(hash_slots, table_size, streams_snapshot, streams_snapshot[i].name);
+        int slot = stream_name_index_slot(streams_snapshot, hash_slots,
+                                          table_size, streams_snapshot[i].name);
         if (slot >= 0 && hash_slots[slot] == -1) hash_slots[slot] = i;
     }
 
@@ -2038,7 +2039,8 @@ int save_stream_configs(config_t *config) {
     }
     for (int j = 0; j < max_streams; j++) {
         if (config->streams[j].name[0] == '\0') continue;
-        int slot = stream_name_index_slot(hash_slots, table_size, streams_snapshot, config->streams[j].name);
+        int slot = stream_name_index_slot(streams_snapshot, hash_slots,
+                                          table_size, config->streams[j].name);
         if (slot >= 0 && hash_slots[slot] != -1) {
             int idx = hash_slots[slot];
             safe_strcpy(config->streams[j].camera_uuid,
