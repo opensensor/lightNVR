@@ -722,8 +722,10 @@ static int run_post_backup_script(const char *backup_path, const char *backup_di
             NULL
         };
         execv(g_config.db_post_backup_script, (char *const *)argv);
-        fprintf(stderr, "Failed to execute post-backup script %s: %s\n",
-                g_config.db_post_backup_script, strerror(errno));
+        {
+            static const char msg[] = "Failed to execute post-backup script\n";
+            (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
+        }
         _exit(127);
     }
 
