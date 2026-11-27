@@ -404,17 +404,24 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         _exit(0);
     } else {
         int supervised_status = 0;
-        const int timeout_ms = 3000;
-        int elapsed_ms = 0;
+        struct timespec start_ts;
+        struct timespec now_ts;
+        const long timeout_ns = 3000000000L;
         pid_t wait_rc;
-        do {
+
+        TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_MONOTONIC, &start_ts));
+        while (1) {
             wait_rc = waitpid(supervised, &supervised_status, WNOHANG);
             if (wait_rc == supervised) break;
             if (wait_rc < 0 && errno == EINTR) continue;
             if (wait_rc < 0) break;
+
             usleep(10000);
-            elapsed_ms += 10;
-        } while (elapsed_ms < timeout_ms);
+            TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_MONOTONIC, &now_ts));
+            long elapsed_ns = (now_ts.tv_sec - start_ts.tv_sec) * 1000000000L
+                            + (now_ts.tv_nsec - start_ts.tv_nsec);
+            if (elapsed_ns >= timeout_ns) break;
+        }
 
         if (wait_rc == 0) {
             kill(supervised, SIGKILL);
