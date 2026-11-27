@@ -165,7 +165,7 @@ static void maybe_compress_response(const http_request_t *request,
         !response_content_is_compressible(response->content_type) ||
         response_has_header(response, "Content-Encoding") ||
         response->status_code == 204 || response->status_code == 206 ||
-        response->status_code == 304 || request->method == HTTP_METHOD_HEAD) {
+        response->status_code == 304) {
         return;
     }
 
@@ -174,6 +174,11 @@ static void maybe_compress_response(const http_request_t *request,
     http_response_add_header(response, "Vary", "Accept-Encoding");
 
     if (!request_accepts_gzip(request)) {
+        return;
+    }
+
+    if (request->method == HTTP_METHOD_HEAD) {
+        http_response_add_header(response, "Content-Encoding", "gzip");
         return;
     }
 
