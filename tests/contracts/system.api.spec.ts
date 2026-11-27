@@ -87,7 +87,15 @@ test('settings preserve zero, mask credentials, and reject invalid formats befor
 test('workspace preferences belong to the interactive owner and do not grant camera access',async({server})=>{
  const before=await ok(server,'/api/ui/workspaces');valid('WorkspacesResponse',before);
  const updated=await ok(server,'/api/ui/workspaces',viewer,'PUT',{workspaces:{'live.navigator':false,investigation:false}});valid('WorkspacesResponse',updated);
- expect(updated.workspaces.every((w:{visible:boolean})=>!w.visible)).toBe(true);
+ const updatedLiveNavigator=updated.workspaces.find((w:{key:string;visible:boolean})=>w.key==='live.navigator');
+ const updatedInvestigation=updated.workspaces.find((w:{key:string;visible:boolean})=>w.key==='investigation');
+ expect(updatedLiveNavigator).toBeDefined();expect(updatedLiveNavigator?.visible).toBe(false);
+ expect(updatedInvestigation).toBeDefined();expect(updatedInvestigation?.visible).toBe(false);
+ const persisted=await ok(server,'/api/ui/workspaces',viewer);valid('WorkspacesResponse',persisted);
+ const persistedLiveNavigator=persisted.workspaces.find((w:{key:string;visible:boolean})=>w.key==='live.navigator');
+ const persistedInvestigation=persisted.workspaces.find((w:{key:string;visible:boolean})=>w.key==='investigation');
+ expect(persistedLiveNavigator).toBeDefined();expect(persistedLiveNavigator?.visible).toBe(false);
+ expect(persistedInvestigation).toBeDefined();expect(persistedInvestigation?.visible).toBe(false);
  expect(await ok(server,'/api/ui/workspaces')).toEqual(before);
  const scoped=await token(server);const view=await ok(server,'/api/ui/workspaces',scoped);valid('WorkspacesResponse',view);expect(view.configurable).toBe(false);
  expect((await wire(server,'/api/ui/workspaces',scoped,'PUT',{workspaces:{'live.navigator':false}})).response.status).toBe(403);
@@ -111,15 +119,19 @@ test('public health variants hide unauthorized cameras and completed bootstrap r
 
 test('backup creates parseable private bytes only in an owned web root',async()=>{
  const webRoot=mkdtempSync(path.join(tmpdir(),'lightnvr-system-contract-'));
- const server=await startFixture({webRoot});
+ let server: Awaited<ReturnType<typeof startFixture>>|undefined;
  try {
+  server=await startFixture({webRoot});
   const result=await ok(server,'/api/system/backup',admin,'POST');valid('SystemBackupCreated',result);
   expect(result.backupUrl).toBe(`/backups/${result.filename}`);
   expect(path.basename(result.filename)).toBe(result.filename);
   const file=path.join(webRoot,'backups',result.filename),bytes=readFileSync(file);
   expect(JSON.parse(bytes.toString())).toEqual(expect.any(Object));
   expect(statSync(file).mode&0o777).toBe(0o600);expect(readdirSync(path.dirname(file))).toEqual([result.filename]);
- } finally {await server.stop();rmSync(webRoot,{recursive:true,force:true});}
+ } finally {
+  try {if(server)await server.stop();}
+  finally {rmSync(webRoot,{recursive:true,force:true});}
+ }
 });
 
 
@@ -153,4 +165,14 @@ test('restart and shutdown acknowledgments are followed by actual owned-process 
   }
   await expect.poll(()=>{try{process.kill(server.pid,0);return true;}catch{return false;}},{timeout:30000}).toBe(false);
  } finally {await server.stop({expectedExitCode});}
+});
+
+test('shutdown acknowledgment is followed by process exit in any runtime mode',async()=>{
+ const server=await startFixture();
+ try {
+  const before=readFileSync(server.logPath,'utf8');
+  valid('SystemActionAccepted',await ok(server,'/api/system/shutdown',admin,'POST'));
+  await expect.poll(()=>readFileSync(server.logPath,'utf8').slice(before.length),{timeout:30000}).toMatch(/System shutdown requested via API/);
+  await expect.poll(()=>{try{process.kill(server.pid,0);return true;}catch{return false;}},{timeout:30000}).toBe(false);
+ } finally {await server.stop();}
 });
