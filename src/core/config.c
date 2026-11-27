@@ -1388,11 +1388,26 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "config_dir") == 0) {
             safe_strcpy(config->go2rtc_config_dir, value, MAX_PATH_LENGTH, 0);
         } else if (strcmp(name, "api_port") == 0) {
-            config->go2rtc_api_port = safe_atoi(value, 0);
+            int port = safe_atoi(value, 0);
+            if (port < 0 || port > 65535) {
+                log_error("Invalid go2rtc api_port: %d (expected 0-65535)", port);
+                return 0;
+            }
+            config->go2rtc_api_port = port;
         } else if (strcmp(name, "rtsp_port") == 0) {
-            config->go2rtc_rtsp_port = safe_atoi(value, 0);
+            int port = safe_atoi(value, 0);
+            if (port < 0 || port > 65535) {
+                log_error("Invalid go2rtc rtsp_port: %d (expected 0-65535)", port);
+                return 0;
+            }
+            config->go2rtc_rtsp_port = port;
         } else if (strcmp(name, "webrtc_port") == 0 || strcmp(name, "webrtc_listen_port") == 0) {
-            config->go2rtc_webrtc_listen_port = safe_atoi(value, 0);
+            int port = safe_atoi(value, 0);
+            if (port < 0 || port > 65535) {
+                log_error("Invalid go2rtc webrtc_listen_port: %d (expected 0-65535)", port);
+                return 0;
+            }
+            config->go2rtc_webrtc_listen_port = port;
         } else if (strcmp(name, "webrtc_enabled") == 0) {
             config->go2rtc_webrtc_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "stun_enabled") == 0) {
