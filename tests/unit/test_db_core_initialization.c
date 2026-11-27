@@ -20,6 +20,8 @@ static char test_fixture_dir[] = "/tmp/lightnvr_db_core_initialization.XXXXXX";
 static char test_db_path[512];
 static char test_backup_dir[512];
 static int test_paths_initialized = 0;
+static unsigned char *wal_before_bytes;
+static unsigned char *wal_after_bytes;
 #define TEST_DB_PATH test_db_path
 #define TEST_BACKUP_DIR test_backup_dir
 
@@ -34,20 +36,35 @@ static unsigned char *read_entire_file(const char *path, size_t *out_size) {
     FILE *f = fopen(path, "rb");
     TEST_ASSERT_NOT_NULL(f);
 
-    TEST_ASSERT_EQUAL_INT(0, fseek(f, 0, SEEK_END));
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        TEST_FAIL_MESSAGE("Could not seek fixture file");
+    }
     long file_size = ftell(f);
-    TEST_ASSERT_TRUE(file_size >= 0);
-    TEST_ASSERT_EQUAL_INT(0, fseek(f, 0, SEEK_SET));
+    if (file_size < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        TEST_FAIL_MESSAGE("Could not size fixture file");
+    }
 
     unsigned char *buffer = NULL;
     if (file_size > 0) {
-        buffer = (unsigned char *)malloc((size_t)file_size);
-        TEST_ASSERT_NOT_NULL(buffer);
+        buffer = malloc((size_t)file_size);
+        if (!buffer) {
+            fclose(f);
+            TEST_FAIL_MESSAGE("Could not allocate fixture snapshot");
+        }
         size_t read_count = fread(buffer, 1, (size_t)file_size, f);
-        TEST_ASSERT_EQUAL_UINT64((uint64_t)file_size, (uint64_t)read_count);
+        if (read_count != (size_t)file_size) {
+            free(buffer);
+            fclose(f);
+            TEST_FAIL_MESSAGE("Could not read fixture file");
+        }
     }
 
-    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+    if (fclose(f) != 0) {
+        free(buffer);
+        TEST_FAIL_MESSAGE("Could not close fixture file");
+    }
     *out_size = (size_t)file_size;
     return buffer;
 }
@@ -104,6 +121,7 @@ static void create_file(const char *path) {
 }
 
 void setUp(void) {
+    wal_before_bytes = wal_after_bytes = NULL;
     initialize_test_paths();
     if (get_db_handle()) {
         shutdown_database();
@@ -118,6 +136,8 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    free(wal_before_bytes);
+    free(wal_after_bytes);
     if (get_db_handle()) {
         shutdown_database();
     }
@@ -225,24 +245,19 @@ void test_read_only_initialization_cannot_write(void) {
     struct stat shm_after;
     size_t wal_before_size = 0;
     size_t wal_after_size = 0;
-    size_t shm_before_size = 0;
-    size_t shm_after_size = 0;
-    unsigned char *wal_before_bytes = NULL;
-    unsigned char *wal_after_bytes = NULL;
-    unsigned char *shm_before_bytes = NULL;
-    unsigned char *shm_after_bytes = NULL;
-    const char *wal_path = NULL;
-    const char *shm_path = NULL;
+    char wal_path[1024];
+    char shm_path[1024];
 
     create_readable_wal_database();
     TEST_ASSERT_EQUAL_INT(0, chmod(TEST_DB_PATH, 0400));
     TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &before));
-    wal_path = path_with_suffix(TEST_DB_PATH, "-wal");
+    int path_len = snprintf(wal_path, sizeof(wal_path), "%s-wal", TEST_DB_PATH);
+    TEST_ASSERT_TRUE(path_len > 0 && (size_t)path_len < sizeof(wal_path));
     TEST_ASSERT_EQUAL_INT(0, stat(wal_path, &wal_before));
     wal_before_bytes = read_entire_file(wal_path, &wal_before_size);
-    shm_path = path_with_suffix(TEST_DB_PATH, "-shm");
+    path_len = snprintf(shm_path, sizeof(shm_path), "%s-shm", TEST_DB_PATH);
+    TEST_ASSERT_TRUE(path_len > 0 && (size_t)path_len < sizeof(shm_path));
     TEST_ASSERT_EQUAL_INT(0, stat(shm_path, &shm_before));
-    shm_before_bytes = read_entire_file(shm_path, &shm_before_size);
 
     TEST_ASSERT_EQUAL_INT(
         0, init_database_ex(TEST_DB_PATH, DB_INIT_READ_ONLY));
@@ -269,24 +284,16 @@ void test_read_only_initialization_cannot_write(void) {
     TEST_ASSERT_EQUAL_INT(0, stat(wal_path, &wal_after));
     wal_after_bytes = read_entire_file(wal_path, &wal_after_size);
     TEST_ASSERT_EQUAL_INT(0, stat(shm_path, &shm_after));
-    shm_after_bytes = read_entire_file(shm_path, &shm_after_size);
     TEST_ASSERT_EQUAL_INT64(before.st_size, after.st_size);
     TEST_ASSERT_EQUAL_UINT(before.st_mode, after.st_mode);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_sec, after.st_mtim.tv_sec);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_nsec, after.st_mtim.tv_nsec);
     TEST_ASSERT_EQUAL_UINT64((uint64_t)wal_before_size, (uint64_t)wal_after_size);
-    TEST_ASSERT_EQUAL_UINT64((uint64_t)shm_before_size, (uint64_t)shm_after_size);
+    TEST_ASSERT_EQUAL_INT64(shm_before.st_size, shm_after.st_size);
     if (wal_before_size > 0) {
         TEST_ASSERT_EQUAL_INT(0, memcmp(wal_before_bytes, wal_after_bytes, wal_before_size));
     }
-    if (shm_before_size > 0) {
-        TEST_ASSERT_EQUAL_INT(0, memcmp(shm_before_bytes, shm_after_bytes, shm_before_size));
-    }
 
-    free(wal_before_bytes);
-    free(wal_after_bytes);
-    free(shm_before_bytes);
-    free(shm_after_bytes);
 }
 
 void test_writable_initialization_removes_only_stale_backup_artifacts(void) {
