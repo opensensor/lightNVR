@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <math.h>
 #include <time.h>
+#include <signal.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -485,41 +486,51 @@ void test_config_reset_stream_slots_clears_stale_rows(void) {
 }
 
 void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
-    char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
-    char *dir = mkdtemp(temp_dir);
-    TEST_ASSERT_NOT_NULL(dir);
-    char path[MAX_PATH_LENGTH];
-    snprintf(path, sizeof(path), "%s/settings.ini", dir);
-    load_default_config(&cfg);
+    pid_t child = fork();
+    TEST_ASSERT_TRUE_MESSAGE(child >= 0, "fork failed for concurrency timeout harness");
 
-    atomic_store(&faststart_writer_stop, false);
-    atomic_store(&faststart_writer_updates, 0);
-    pthread_t writer;
-    TEST_ASSERT_EQUAL_INT(0, pthread_create(&writer, NULL, toggle_faststart, NULL));
-    int save_result = 0;
-    int valid_saves = 0;
-    bool streams_distinct_ok = true;
-    bool writer_progress_ok = true;
-    struct timespec initial_wait_start = {0};
-    if (clock_gettime(CLOCK_MONOTONIC, &initial_wait_start) != 0) {
-        writer_progress_ok = false;
-    }
-    while (writer_progress_ok && atomic_load(&faststart_writer_updates) == 0) {
-        struct timespec now = {0};
-        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-            writer_progress_ok = false;
-            break;
+    if (child == 0) {
+        char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
+        char *dir = mkdtemp(temp_dir);
+        if (dir == NULL) {
+            _exit(EXIT_FAILURE);
         }
-        long elapsed_ms =
-            (now.tv_sec - initial_wait_start.tv_sec) * 1000L +
-            (now.tv_nsec - initial_wait_start.tv_nsec) / 1000000L;
-        if (elapsed_ms > 2000L) {
-            writer_progress_ok = false;
-            break;
+        char path[MAX_PATH_LENGTH];
+        snprintf(path, sizeof(path), "%s/settings.ini", dir);
+        load_default_config(&cfg);
+
+        atomic_store(&faststart_writer_stop, false);
+        atomic_store(&faststart_writer_updates, 0);
+        pthread_t writer;
+        if (pthread_create(&writer, NULL, toggle_faststart, NULL) != 0) {
+            unlink(path);
+            rmdir(dir);
+            _exit(EXIT_FAILURE);
         }
-        sched_yield();
-    }
-    for (int i = 0; i < 50 && writer_progress_ok; ++i) {
+        int save_result = 0;
+        int valid_saves = 0;
+        bool streams_distinct_ok = true;
+        bool writer_progress_ok = true;
+        struct timespec initial_wait_start = {0};
+        if (clock_gettime(CLOCK_MONOTONIC, &initial_wait_start) != 0) {
+            writer_progress_ok = false;
+        }
+        while (writer_progress_ok && atomic_load(&faststart_writer_updates) == 0) {
+            struct timespec now = {0};
+            if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+                writer_progress_ok = false;
+                break;
+            }
+            long elapsed_ms =
+                (now.tv_sec - initial_wait_start.tv_sec) * 1000L +
+                (now.tv_nsec - initial_wait_start.tv_nsec) / 1000000L;
+            if (elapsed_ms > 2000L) {
+                writer_progress_ok = false;
+                break;
+            }
+            sched_yield();
+        }
+        for (int i = 0; i < 50 && writer_progress_ok; ++i) {
         (void)config_get_mp4_faststart(&cfg);
         config_t snapshot = {0};
         if (!config_copy(&snapshot, &cfg)) streams_distinct_ok = false;
@@ -595,28 +606,59 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
             break;
         }
     }
-    atomic_store(&faststart_writer_stop, true);
-    int join_result = pthread_join(writer, NULL);
-    unlink(path);
-    rmdir(dir);
-    TEST_ASSERT_EQUAL_INT(0, join_result);
-    TEST_ASSERT_TRUE_MESSAGE(writer_progress_ok,
-                             "writer made no bounded progress during read/copy/save loop");
-    TEST_ASSERT_TRUE(streams_distinct_ok);
-    TEST_ASSERT_EQUAL_INT(0, save_result);
-    TEST_ASSERT_EQUAL_INT(50, valid_saves);
+        atomic_store(&faststart_writer_stop, true);
+        int join_result = pthread_join(writer, NULL);
+        unlink(path);
+        rmdir(dir);
+        if (join_result != 0 || !writer_progress_ok || !streams_distinct_ok ||
+            save_result != 0 || valid_saves != 50) {
+            _exit(EXIT_FAILURE);
+        }
 
-    config_set_mp4_faststart(&cfg, false);
-    config_t snapshot = {0};
-    TEST_ASSERT_TRUE(config_copy(&snapshot, &cfg));
-    owned_snapshot_streams = snapshot.streams;
-    config_set_mp4_faststart(&cfg, true);
-    TEST_ASSERT_FALSE(config_get_mp4_faststart(&snapshot));
-    TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));
-    TEST_ASSERT_NOT_EQUAL_PTR(cfg.streams, snapshot.streams);
-    TEST_ASSERT_EQUAL_INT(cfg.max_streams, snapshot.max_streams);
-    TEST_ASSERT_EQUAL_MEMORY(cfg.streams, snapshot.streams,
-                             (size_t)cfg.max_streams * sizeof(*cfg.streams));
+        config_set_mp4_faststart(&cfg, false);
+        config_t snapshot = {0};
+        if (!config_copy(&snapshot, &cfg)) {
+            _exit(EXIT_FAILURE);
+        }
+        owned_snapshot_streams = snapshot.streams;
+        config_set_mp4_faststart(&cfg, true);
+        if (config_get_mp4_faststart(&snapshot) ||
+            !config_get_mp4_faststart(&cfg) ||
+            cfg.streams == snapshot.streams ||
+            cfg.max_streams != snapshot.max_streams ||
+            memcmp(cfg.streams, snapshot.streams,
+                   (size_t)cfg.max_streams * sizeof(*cfg.streams)) != 0) {
+            _exit(EXIT_FAILURE);
+        }
+        _exit(EXIT_SUCCESS);
+    }
+
+    struct timespec start = {0};
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, clock_gettime(CLOCK_MONOTONIC, &start),
+                                  "clock_gettime failed in timeout harness");
+    for (;;) {
+        int status = 0;
+        pid_t waited = waitpid(child, &status, WNOHANG);
+        if (waited == child) {
+            TEST_ASSERT_TRUE_MESSAGE(WIFEXITED(status), "child did not exit normally");
+            TEST_ASSERT_EQUAL_INT_MESSAGE(EXIT_SUCCESS, WEXITSTATUS(status),
+                                          "child reported failure in concurrency scenario");
+            break;
+        }
+        TEST_ASSERT_TRUE_MESSAGE(waited == 0, "waitpid failed while monitoring child");
+
+        struct timespec now = {0};
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, clock_gettime(CLOCK_MONOTONIC, &now),
+                                      "clock_gettime failed during timeout monitoring");
+        long elapsed_ms =
+            (now.tv_sec - start.tv_sec) * 1000L + (now.tv_nsec - start.tv_nsec) / 1000000L;
+        if (elapsed_ms > 8000L) {
+            kill(child, SIGKILL);
+            waitpid(child, NULL, 0);
+            TEST_FAIL_MESSAGE("concurrency scenario timed out (possible deadlock regression)");
+        }
+        sched_yield();
+    }
 }
 
 void test_default_config_buffer_size(void) {
