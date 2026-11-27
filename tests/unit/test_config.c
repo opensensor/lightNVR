@@ -2077,6 +2077,9 @@ static void test_save_config_bind_mount_retries_short_write(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", directory);
+    snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
+    group_replace_cleanup_active = true;
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
     fputs("previous configuration", initial);
@@ -2097,6 +2100,7 @@ static void test_save_config_bind_mount_retries_short_write(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(baseline_directory));
     char baseline_path[MAX_PATH_LENGTH];
     snprintf(baseline_path, sizeof(baseline_path), "%s/settings.ini", baseline_directory);
+    snprintf(concurrent_config_dir, sizeof(concurrent_config_dir), "%s", baseline_directory);
     short_config_pwrite = false;
     busy_config_rename = false;
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
