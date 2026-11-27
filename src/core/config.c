@@ -2073,8 +2073,10 @@ void set_custom_config_path(const char *path) {
         return;
     }
 
+    pthread_mutex_lock(&config_load_mutex);
     safe_strcpy(g_custom_config_path, path, MAX_PATH_LENGTH, 0);
     log_info("Custom config path set to: %s", g_custom_config_path);
+    pthread_mutex_unlock(&config_load_mutex);
 }
 
 // Function to get the custom config path
@@ -2451,12 +2453,37 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     }
     
     // If no path is specified, try tracked paths then well-known defaults
-    const char *save_path = path;
-    if (!save_path || save_path[0] == '\0') {
-        save_path = get_loaded_config_path();
-        if (!save_path) {
-            save_path = get_custom_config_path();
+    char save_path_buf[PATH_MAX];
+    const char *save_path = NULL;
+    if (path && path[0] != '\0') {
+        if (snprintf(save_path_buf, sizeof(save_path_buf), "%s", path) >= (int)sizeof(save_path_buf)) {
+            log_error("Specified save path is too long");
+            return -1;
         }
+        save_path = save_path_buf;
+    } else {
+        pthread_mutex_lock(&config_load_mutex);
+        const char *loaded_path = get_loaded_config_path();
+        if (loaded_path && loaded_path[0] != '\0') {
+            if (snprintf(save_path_buf, sizeof(save_path_buf), "%s", loaded_path) >= (int)sizeof(save_path_buf)) {
+                pthread_mutex_unlock(&config_load_mutex);
+                log_error("Loaded config path is too long");
+                return -1;
+            }
+            save_path = save_path_buf;
+        } else {
+            const char *custom_path = get_custom_config_path();
+            if (custom_path && custom_path[0] != '\0') {
+                if (snprintf(save_path_buf, sizeof(save_path_buf), "%s", custom_path) >= (int)sizeof(save_path_buf)) {
+                    pthread_mutex_unlock(&config_load_mutex);
+                    log_error("Custom config path is too long");
+                    return -1;
+                }
+                save_path = save_path_buf;
+            }
+        }
+        pthread_mutex_unlock(&config_load_mutex);
+
         if (!save_path) {
             // Fall back to well-known default locations (writable check)
             static const char *defaults[] = {
