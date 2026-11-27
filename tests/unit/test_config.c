@@ -1967,8 +1967,8 @@ static void test_save_config_atomically_replaces_owned_file(void) {
     TEST_ASSERT_EQUAL_INT(0, stat(path, &after));
     TEST_ASSERT_NOT_EQUAL(before.st_ino, after.st_ino);
     TEST_ASSERT_EQUAL_UINT(0600, after.st_mode & 0777);
-    unlink(path);
-    rmdir(directory);
+    TEST_ASSERT_EQUAL_INT(0, unlink(path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
     group_replace_cleanup_active = false;
 }
 
