@@ -970,7 +970,7 @@ static int on_message_complete(llhttp_t *parser) {
             log_error("on_message_complete: Failed to allocate static file work context");
             http_response_set_json_error(&conn->response, 500, "Internal Server Error");
             libuv_send_response_ex(conn, &conn->response, action);
-            return HPE_OK;
+            return HPE_PAUSED;
         }
 
         hw->work.data = hw;
@@ -990,7 +990,7 @@ static int on_message_complete(llhttp_t *parser) {
             safe_free(hw);
             http_response_set_json_error(&conn->response, 500, "Internal Server Error");
             libuv_send_response_ex(conn, &conn->response, action);
-            return HPE_OK;
+            return HPE_PAUSED;
         }
 
         return HPE_PAUSED;
