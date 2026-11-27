@@ -20,6 +20,7 @@ function rawExchange(port: number, bytes: string): Promise<string> {
 function stagedExchange(port: number, parts: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const socket = connect(port, '127.0.0.1');
+    socket.setNoDelay(true);
     const chunks: Buffer[] = [];
     const timer = setTimeout(() => socket.destroy(new Error('HTTP response timed out')), 10000);
 
@@ -33,7 +34,8 @@ function stagedExchange(port: number, parts: string[]): Promise<string> {
           reject(error);
           return;
         }
-        writePart(index + 1);
+        // Allow each fragment to reach the parser before sending the next.
+        setTimeout(() => writePart(index + 1), 5);
       });
     };
 
