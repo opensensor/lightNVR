@@ -51,6 +51,55 @@ static int on_message_complete(llhttp_t *parser);
 
 #define HTTP_COMPRESSION_MIN_BYTES 1024
 
+static bool parse_http_qvalue(const char *value, double *out_quality) {
+    if (!value || !*value) return false;
+
+    const char *p = value;
+    if (*p == '0') {
+        p++;
+        if (*p == '\0') {
+            *out_quality = 0.0;
+            return true;
+        }
+        if (*p != '.') return false;
+        p++;
+        int digits = 0;
+        while (*p >= '0' && *p <= '9' && digits < 3) {
+            p++;
+            digits++;
+        }
+        if (*p != '\0') return false;
+        unsigned int thousandths = 0;
+        unsigned int place = 100;
+        for (const char *digit = value + 2; digit < p; digit++, place /= 10) {
+            thousandths += (unsigned int)(*digit - '0') * place;
+        }
+        *out_quality = (double)thousandths / 1000.0;
+        return true;
+    }
+
+    if (*p == '1') {
+        p++;
+        if (*p == '\0') {
+            *out_quality = 1.0;
+            return true;
+        }
+        if (*p != '.') return false;
+        p++;
+        int digits = 0;
+        while (*p >= '0' && *p <= '9' && digits < 3) {
+            if (*p != '0') return false;
+            p++;
+            digits++;
+        }
+        if (*p != '\0') return false;
+        *out_quality = 1.0;
+        return true;
+    }
+
+    return false;
+}
+
 static bool request_accepts_gzip(const http_request_t *request) {
     const char *header = http_request_get_header(request, "Accept-Encoding");
     if (!header) return false;
@@ -74,10 +123,13 @@ static bool request_accepts_gzip(const http_request_t *request) {
             if (next) *next++ = '\0';
             while (*parameter == ' ' || *parameter == '\t') parameter++;
             if (strncasecmp(parameter, "q=", 2) == 0) {
-                char *quality_end = NULL;
-                quality = strtod(parameter + 2, &quality_end);
-                if (quality_end == parameter + 2 || quality < 0.0 ||
-                    quality > 1.0) {
+                char *quality_value = parameter + 2;
+                char *quality_end = quality_value + strlen(quality_value);
+                while (quality_end > quality_value &&
+                       (quality_end[-1] == ' ' || quality_end[-1] == '\t')) {
+                    *--quality_end = '\0';
+                }
+                if (!parse_http_qvalue(quality_value, &quality)) {
                     quality = 0.0;
                 }
             }
