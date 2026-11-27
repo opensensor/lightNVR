@@ -11,7 +11,7 @@ import {validateGo2rtcConfiguration,getGo2rtcEffectiveConfiguration,getGo2rtcOve
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
-import { isMap, isPair, isScalar, parseDocument, YAMLMap } from 'yaml';
+import { isMap, isScalar, parseDocument } from 'yaml';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type {
   Go2rtcEffectiveConfig,
@@ -367,57 +367,29 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
       return;
     }
 
-    setSettings(prev => {
-      const current = prev.go2rtcConfigOverride || '';
-      try {
-        const currentDoc = parseDocument(current);
-        const presetDoc = parseDocument(preset!.yaml);
-
-        if (currentDoc.errors.length > 0 || presetDoc.errors.length > 0) {
-          setOverrideValidation({
-            valid: false,
-            error: { message: 'Cannot insert preset because YAML parsing failed during merge.' },
-          });
-          return prev;
-        }
-
-        const presetRoot = presetDoc.contents;
-        if (!isMap(presetRoot)) {
-          setOverrideValidation({
-            valid: false,
-            error: { message: 'Cannot insert preset because preset root is not a mapping.' },
-          });
-          return prev;
-        }
-
-        let currentRoot = currentDoc.contents;
-        if (currentRoot == null) {
-          currentRoot = new YAMLMap();
-          currentDoc.contents = currentRoot;
-        }
-        if (!isMap(currentRoot)) {
-          setOverrideValidation({
-            valid: false,
-            error: { message: 'Cannot insert preset because current override root is not a mapping.' },
-          });
-          return prev;
-        }
-
-        for (const item of presetRoot.items) {
-          if (isPair(item)) {
-            currentRoot.items.push(item);
-          }
-        }
-
-        return { ...prev, go2rtcConfigOverride: currentDoc.toString() };
-      } catch {
-        setOverrideValidation({
-          valid: false,
-          error: { message: 'Cannot insert preset because merge produced invalid YAML.' },
-        });
-        return prev;
+    let mergedYaml: string;
+    try {
+      let currentDoc = parseDocument(cur);
+      const presetDoc = parseDocument(preset!.yaml);
+      if (currentDoc.errors.length || presetDoc.errors.length) throw new Error('YAML parsing failed');
+      const presetRoot = presetDoc.contents;
+      if (!isMap(presetRoot)) throw new Error('Preset root is not a mapping');
+      if (currentDoc.contents == null) {
+        currentDoc = parseDocument(`${cur}${cur.endsWith('\n') ? '' : '\n'}{}`);
       }
-    });
+      const currentRoot = currentDoc.contents;
+      if (!isMap(currentRoot)) throw new Error('Current override root is not a mapping');
+      currentRoot.items.push(...presetRoot.items);
+      mergedYaml = currentDoc.toString();
+    } catch (error) {
+      invalidateOverrideValidation();
+      setOverrideValidation({
+        valid: false,
+        error: { message: `Cannot insert preset: ${error instanceof Error ? error.message : 'YAML merge failed'}.` },
+      });
+      return;
+    }
+    setSettings(prev => ({ ...prev, go2rtcConfigOverride: mergedYaml }));
     invalidateOverrideValidation();
   };
 
