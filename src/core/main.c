@@ -1027,8 +1027,14 @@ int main(int argc, char *argv[]) {
         evidence_config.storage_path = config.storage_path;
         if (db_get_system_setting("observation_global_queue_bytes", queue_bytes,
                                   sizeof(queue_bytes)) == 0 && queue_bytes[0]) {
-            long long value = strtoll(queue_bytes, NULL, 10);
-            if (value > 0) evidence_config.global_max_bytes = value;
+            char *endptr = NULL;
+            errno = 0;
+            long long value = strtoll(queue_bytes, &endptr, 10);
+            if (endptr == queue_bytes || *endptr != '\0' || errno == ERANGE || value <= 0) {
+                log_warn("Invalid observation_global_queue_bytes value '%s'; using default", queue_bytes);
+            } else {
+                evidence_config.global_max_bytes = value;
+            }
         }
         if (observation_evidence_init(&evidence_config) != 0) {
             log_error("Failed to initialize observation evidence; evidence admission disabled");
