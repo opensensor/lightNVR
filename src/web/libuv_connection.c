@@ -258,6 +258,9 @@ libuv_connection_t *libuv_connection_create(libuv_server_t *server) {
     http_response_init(&conn->response);
     
     conn->keep_alive = true;  // HTTP/1.1 default
+    conn->server_next = server->connections;
+    if (server->connections) server->connections->server_prev = conn;
+    server->connections = conn;
     
     return conn;
 }
@@ -343,6 +346,11 @@ void libuv_connection_close(libuv_connection_t *conn) {
  */
 void libuv_connection_destroy(libuv_connection_t *conn) {
     if (!conn) return;
+
+    if (conn->server_prev) conn->server_prev->server_next = conn->server_next;
+    else if (conn->server && conn->server->connections == conn)
+        conn->server->connections = conn->server_next;
+    if (conn->server_next) conn->server_next->server_prev = conn->server_prev;
     
     go2rtc_websocket_disconnected(conn);
     recording_archive_disconnected(conn);
