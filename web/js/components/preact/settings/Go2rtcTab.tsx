@@ -115,14 +115,14 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   const effectiveConfigDialogRef = useRef<HTMLDivElement>(null);
   const effectiveConfigCloseButtonRef = useRef<HTMLButtonElement>(null);
 
-  const invalidateOverrideValidation = () => {
+  const invalidateOverrideValidation = (clearResult = true) => {
     validationGenerationRef.current += 1;
     if (overrideValidateTimerRef.current) {
       clearTimeout(overrideValidateTimerRef.current);
       overrideValidateTimerRef.current = null;
     }
     setOverrideValidating(false);
-    setOverrideValidation(null);
+    if (clearResult) setOverrideValidation(null);
   };
 
   useEffect(() => {
@@ -359,6 +359,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
     const conflicts = Array.from(presetParsed.keys).filter(k => existingParsed.keys.has(k));
     if (conflicts.length > 0) {
+      invalidateOverrideValidation(false);
       setOverrideValidation(prev => ({
         ...prev,
         valid: false,
