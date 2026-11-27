@@ -733,10 +733,6 @@ static int ensure_directories(const config_t *config) {
     int cfg_log_fd = open(config->log_file, O_WRONLY | O_CREAT | O_APPEND, 0640);
     if (cfg_log_fd < 0) {
         log_warn("Log file %s is not writable: %s", config->log_file, strerror(errno));
-        // Try to fix log directory permissions
-        if (chmod_parent(config->log_file, 0755)) {
-            log_warn("Failed to change log directory permissions: %s", strerror(errno));
-        }
     } else {
         close(cfg_log_fd);
     }
