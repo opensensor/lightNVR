@@ -141,6 +141,14 @@ void setUp(void) {
 void tearDown(void) {
     free(wal_before_bytes);
     free(wal_after_bytes);
+    if (tracked_fixture_stmt) {
+        sqlite3_finalize(tracked_fixture_stmt);
+        tracked_fixture_stmt = NULL;
+    }
+    if (tracked_fixture_db) {
+        sqlite3_close(tracked_fixture_db);
+        tracked_fixture_db = NULL;
+    }
     if (get_db_handle()) {
         shutdown_database();
     }
@@ -454,16 +462,16 @@ static void test_private_backup_creation_failure_is_reported_and_can_retry(void)
                                            path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"), false));
     TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite.tmp"), F_OK));
     TEST_ASSERT_EQUAL_INT(ENOENT, errno);
-    sqlite3 *copy = NULL;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path_with_suffix(TEST_BACKUP_DIR, "/missing.sqlite"),
-                                                  &copy, SQLITE_OPEN_READONLY, NULL));
-    sqlite3_stmt *stmt = NULL;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(copy, "SELECT value FROM sample",
-                                                     -1, &stmt, NULL));
-    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
-    TEST_ASSERT_EQUAL_STRING("unchanged", sqlite3_column_text(stmt, 0));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(copy));
+                                                  &tracked_fixture_db, SQLITE_OPEN_READONLY, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(tracked_fixture_db, "SELECT value FROM sample",
+                                                     -1, &tracked_fixture_stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(tracked_fixture_stmt));
+    TEST_ASSERT_EQUAL_STRING("unchanged", sqlite3_column_text(tracked_fixture_stmt, 0));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(tracked_fixture_stmt));
+    tracked_fixture_stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(tracked_fixture_db));
+    tracked_fixture_db = NULL;
 }
 
 int main(void) {
