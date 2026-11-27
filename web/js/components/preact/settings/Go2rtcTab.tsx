@@ -608,7 +608,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                         {formatBytes(overrideBytes)} / {formatBytes(GO2RTC_OVERRIDE_MAX_BYTES)}
                         {overrideValidating ? t('settings.go2rtcValidating') : null}
                         {overrideTooLarge ? (
-                          <span id="go2rtc-config-override-size-error" class="ml-2 text-red-600 dark:text-red-400">
+                          <span id="go2rtc-config-override-size-error" class="ms-2 text-red-600 dark:text-red-400">
                             {t('settings.go2rtcOverrideTooLarge')}
                           </span>
                         ) : null}

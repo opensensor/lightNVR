@@ -69,7 +69,7 @@ export async function startFixture(options = {}) {
       expectedSignal = null;
       await launch();
     },
-    async stop({failed = false} = {}) {
+    async stop({failed = false, expectedExitCode = 0} = {}) {
       if (stopped) return;
       stopped = true;
       if (reservation) await reservation.release();
@@ -84,7 +84,7 @@ export async function startFixture(options = {}) {
       }
       if (output) await output.close();
       const logs = await readFile(fixture.logPath, 'utf8').catch(() => '');
-      const nativeFailure = /ERROR: (AddressSanitizer|LeakSanitizer)|runtime error:/.test(logs) || (child && child.exitCode !== 0 && child.exitCode !== null) || shutdownTimedOut ||
+      const nativeFailure = /ERROR: (AddressSanitizer|LeakSanitizer)|runtime error:/.test(logs) || (child && child.exitCode !== expectedExitCode && child.exitCode !== null) || shutdownTimedOut ||
         (child?.signalCode && !(shutdownRequested && child.signalCode === 'SIGTERM') && child.signalCode !== expectedSignal);
       if (failed || nativeFailure || options.retain) console.error(`Contract fixture retained: ${directory}`);
       else await rm(directory, {recursive: true, force: true});
