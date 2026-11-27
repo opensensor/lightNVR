@@ -127,19 +127,17 @@ add_compile_options(
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Add ASan/UBSan flags for Debug builds with GCC/Clang
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        message(STATUS "Enabling AddressSanitizer and UndefinedBehaviorSanitizer for Debug build")
-        add_compile_options(-fsanitize=address,undefined)
-        add_link_options(-fsanitize=address,undefined)
-        add_compile_options(-ggdb3)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    message(STATUS "Configuring AddressSanitizer and UndefinedBehaviorSanitizer for Debug configuration")
+    add_compile_options($<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    add_link_options($<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    add_compile_options($<$<CONFIG:Debug>:-ggdb3>)
 
-        # Improved debugging experience
-        add_compile_options(-fno-omit-frame-pointer -fno-optimize-sibling-calls)
-        add_compile_options(-fno-inline -fno-inline-functions)
-    else()
-        message(STATUS "Compiler (${CMAKE_C_COMPILER_ID}/${CMAKE_CXX_COMPILER_ID}) does not support sanitizers or build type is not Debug, skipping sanitizer flags.")
-    endif()
+    # Improved debugging experience
+    add_compile_options($<$<CONFIG:Debug>:-fno-omit-frame-pointer> $<$<CONFIG:Debug>:-fno-optimize-sibling-calls>)
+    add_compile_options($<$<CONFIG:Debug>:-fno-inline> $<$<CONFIG:Debug>:-fno-inline-functions>)
+else()
+    message(STATUS "Compiler (${CMAKE_C_COMPILER_ID}/${CMAKE_CXX_COMPILER_ID}) does not support sanitizers, skipping sanitizer flags.")
 endif()
 
 # Create project-specific include directory
@@ -212,8 +210,10 @@ endif()
 # find_library fallback's library list empty and broke the link.
 unset(MBEDTLS_DETECTION_DONE CACHE)
 macro(DETECT_MBEDTLS)
-    pkg_check_modules(MBEDTLS QUIET mbedtls mbedcrypto mbedx509)
-    if (NOT MBEDTLS_FOUND)
+    pkg_check_modules(MBEDTLS QUIET IMPORTED_TARGET mbedtls mbedcrypto mbedx509)
+    if (MBEDTLS_FOUND)
+        set(MBEDTLS_LIBRARIES PkgConfig::MBEDTLS)
+    else()
         find_path(MBEDTLS_INCLUDE_DIRS "mbedtls/version.h" DOC "mbedtls include directory")
         find_library(MBEDTLS_LIBRARY NAMES mbedtls)
         find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto)
@@ -868,9 +868,9 @@ target_link_libraries(lightnvr
         lightnvr_lib
         ${HTTP_BACKEND_LIBS}
         inih_lib
-        ${FFMPEG_LIBRARIES}
-        ${SQLITE_LIBRARIES}
-        ${CURL_LIBRARIES}
+        PkgConfig::FFMPEG
+        PkgConfig::SQLITE
+        PkgConfig::CURL
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
         atomic
@@ -881,19 +881,19 @@ target_link_libraries(lightnvr
 
 # Link libraries for rebuild_recordings utility
 target_link_libraries(rebuild_recordings
-        ${CURL_LIBRARIES}
+        PkgConfig::CURL
         ${SSL_LIBRARIES}
         inih_lib
-        ${FFMPEG_LIBRARIES}
-        ${SQLITE_LIBRARIES}
+        PkgConfig::FFMPEG
+        PkgConfig::SQLITE
         pthread
         dl
         m
 )
 
 # Link cJSON (system library)
-target_link_libraries(lightnvr ${CJSON_LIBRARIES})
-target_link_libraries(rebuild_recordings ${CJSON_LIBRARIES})
+target_link_libraries(lightnvr ${CJSON_LINK_LIB})
+target_link_libraries(rebuild_recordings ${CJSON_LINK_LIB})
 
 # Link libyaml if available (used by src/utils/yaml_validate.c)
 # Use LDFLAGS to get both -L and -l from pkg-config so non-default prefixes work.
