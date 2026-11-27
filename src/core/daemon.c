@@ -352,8 +352,22 @@ int write_pid_file(const char *pid_file) {
     // Write PID to file
     char pid_str[16];
     sprintf(pid_str, "%d\n", getpid());
-    if (write(fd, pid_str, strlen(pid_str)) != strlen(pid_str)) {
-        log_error("Failed to write to PID file %s: %s", pid_file, strerror(errno));
+    size_t pid_len = strlen(pid_str);
+    size_t total_written = 0;
+    while (total_written < pid_len) {
+        ssize_t n = write(fd, pid_str + total_written, pid_len - total_written);
+        if (n > 0) {
+            total_written += (size_t)n;
+            continue;
+        }
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        if (n == 0) {
+            log_error("Failed to write to PID file %s: short write", pid_file);
+        } else {
+            log_error("Failed to write to PID file %s: %s", pid_file, strerror(errno));
+        }
         close(fd);
         pthread_mutex_unlock(&owned_pid_mutex);
         return -1;
