@@ -868,9 +868,9 @@ target_link_libraries(lightnvr
         lightnvr_lib
         ${HTTP_BACKEND_LIBS}
         inih_lib
-        ${FFMPEG_LIBRARIES}
-        ${SQLITE_LIBRARIES}
-        ${CURL_LIBRARIES}
+        PkgConfig::FFMPEG
+        PkgConfig::SQLITE
+        PkgConfig::CURL
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
         atomic
@@ -881,19 +881,19 @@ target_link_libraries(lightnvr
 
 # Link libraries for rebuild_recordings utility
 target_link_libraries(rebuild_recordings
-        ${CURL_LIBRARIES}
+        PkgConfig::CURL
         ${SSL_LIBRARIES}
         inih_lib
-        ${FFMPEG_LIBRARIES}
-        ${SQLITE_LIBRARIES}
+        PkgConfig::FFMPEG
+        PkgConfig::SQLITE
         pthread
         dl
         m
 )
 
 # Link cJSON (system library)
-target_link_libraries(lightnvr ${CJSON_LIBRARIES})
-target_link_libraries(rebuild_recordings ${CJSON_LIBRARIES})
+target_link_libraries(lightnvr ${CJSON_LINK_LIB})
+target_link_libraries(rebuild_recordings ${CJSON_LINK_LIB})
 
 # Link libyaml if available (used by src/utils/yaml_validate.c)
 # Use LDFLAGS to get both -L and -l from pkg-config so non-default prefixes work.
