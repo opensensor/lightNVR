@@ -1758,21 +1758,14 @@ int init_database_ex(const char *db_path, unsigned flags) {
     return 0;
 }
 
-// Reset SQLite internal state to prevent memory leaks
+// Ask SQLite to release unused heap memory back to the system.
 static void reset_sqlite_internal_state(void) {
-    log_info("Resetting SQLite internal state to prevent memory leaks");
+    log_info("Releasing unused SQLite memory");
 
-    // Reset SQLite's internal memory management
-    sqlite3_config(SQLITE_CONFIG_MEMSTATUS, 1);
-
-    // Release unused memory back to the system
+    // Valid while initialized; returns amount of memory actually released.
     sqlite3_release_memory(INT_MAX);
 
-    // Reset SQLite's internal thread-local storage
-    sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
-    sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
-
-    log_info("SQLite internal state reset complete");
+    log_info("SQLite memory release request complete");
 }
 
 // Shutdown the database
