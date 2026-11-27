@@ -1614,6 +1614,9 @@ int init_database_ex(const char *db_path, unsigned flags) {
     if (restored_from_backup && !(db_init_flags & DB_INIT_NO_MIGRATE) &&
         regenerate_observation_epoch_after_restore() != 0) {
         log_error("Failed to regenerate the observation cursor epoch after restore");
+        sqlite3_close_v2(db);
+        db = NULL;
+        return -1;
     }
 
     /* Normalize legacy comma-separated camera tags after the schema exists.
