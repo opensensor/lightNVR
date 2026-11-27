@@ -59,8 +59,13 @@ test('pipelined requests are replayed after the first response', async () => {
   try {
     const response = await rawExchange(server.port,
       'GET /api/health?liveness=true HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n' +
-      'GET /api/health?liveness=true HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
+      'GET /api/health?liveness=false HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
     expect(response.match(/HTTP\/1\.1 200 /g)).toHaveLength(2);
+    const firstBodyIndex = response.indexOf('"liveness":true');
+    const secondBodyIndex = response.indexOf('"streams":', firstBodyIndex + 1);
+    expect(firstBodyIndex).toBeGreaterThan(-1);
+    expect(secondBodyIndex).toBeGreaterThan(-1);
+    expect(firstBodyIndex).toBeLessThan(secondBodyIndex);
   } finally {
     await server.stop();
   }
@@ -115,6 +120,10 @@ test('compressible responses vary by accepted content encoding', async () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('vary')?.toLowerCase()).toContain('accept-encoding');
       expect(response.headers.get('content-encoding')).toBe(encoding === 'gzip' ? 'gzip' : null);
+      const body = await response.text();
+      const openapi = JSON.parse(body) as {openapi?: unknown; paths?: unknown};
+      expect(typeof openapi.openapi).toBe('string');
+      expect(openapi.paths).toBeTruthy();
     }
   } finally {
     await server.stop();
