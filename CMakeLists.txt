@@ -723,11 +723,11 @@ set(HLS_UNIFIED_THREAD_SOURCES
 # Set up go2rtc integration if enabled
 set(GO2RTC_SOURCES "")
 if(ENABLE_GO2RTC)
-    add_subdirectory(src/video/go2rtc)
     add_definitions(-DUSE_GO2RTC)
     add_definitions(-DGO2RTC_BINARY_PATH_RAW=\"${GO2RTC_BINARY_PATH}\")
     add_definitions(-DGO2RTC_CONFIG_DIR_RAW=\"${GO2RTC_CONFIG_DIR}\")
     add_definitions(-DGO2RTC_API_PORT=${GO2RTC_API_PORT})
+    add_subdirectory(src/video/go2rtc)
     message(STATUS "go2rtc integration enabled with binary path: ${GO2RTC_BINARY_PATH}")
     message(STATUS "go2rtc config directory: ${GO2RTC_CONFIG_DIR}")
     message(STATUS "go2rtc API port: ${GO2RTC_API_PORT}")
