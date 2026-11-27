@@ -1379,11 +1379,18 @@ int init_database_ex(const char *db_path, unsigned flags) {
                              check_label, step_rc,
                              failure_reason ? failure_reason : "unknown error");
                 } else {
-                    check_failed = true;
+                    int primary_rc = step_rc & 0xFF;
                     failure_reason = sqlite3_errmsg(test_db);
-                    log_error("Database %s check execution failed (rc=%d): %s",
-                              check_label, step_rc,
-                              failure_reason ? failure_reason : "unknown error");
+                    if (primary_rc == SQLITE_CORRUPT || primary_rc == SQLITE_NOTADB) {
+                        check_failed = true;
+                        log_error("Database %s check reported corruption (rc=%d): %s",
+                                  check_label, step_rc,
+                                  failure_reason ? failure_reason : "unknown error");
+                    } else {
+                        log_warn("Database %s check execution was inconclusive (rc=%d): %s",
+                                 check_label, step_rc,
+                                 failure_reason ? failure_reason : "unknown error");
+                    }
                 }
 
                 if (check_failed) {
