@@ -1825,29 +1825,64 @@ int save_stream_configs(config_t *config) {
         return -1;
     }
 
+    int table_size = 1;
+    while (table_size < (max_streams * 2)) table_size <<= 1;
+    int *hash_slots = (int *)malloc((size_t)table_size * sizeof(int));
+    if (!hash_slots) {
+        free(streams_snapshot);
+        log_error("Failed to allocate stream identity index");
+        return -1;
+    }
+    for (int i = 0; i < table_size; i++) hash_slots[i] = -1;
+
+    for (int i = 0; i < max_streams; i++) {
+        if (streams_snapshot[i].name[0] == '\0') continue;
+        unsigned long h = 5381;
+        for (const unsigned char *p = (const unsigned char *)streams_snapshot[i].name; *p; ++p) {
+            h = ((h << 5) + h) + (unsigned long)(*p);
+        }
+        int slot = (int)(h & (unsigned long)(table_size - 1));
+        while (hash_slots[slot] != -1) {
+            if (strcmp(streams_snapshot[hash_slots[slot]].name, streams_snapshot[i].name) == 0) {
+                break;
+            }
+            slot = (slot + 1) & (table_size - 1);
+        }
+        if (hash_slots[slot] == -1) hash_slots[slot] = i;
+    }
+
     pthread_mutex_lock(&mp4_faststart_mutex);
     if (config->streams != initial_streams || config->max_streams != max_streams) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
+        free(hash_slots);
         free(streams_snapshot);
         log_warn("Stream destination changed after database save; stable identities will reload later");
         return saved;
     }
-    for (int i = 0; i < max_streams; i++) {
-        if (streams_snapshot[i].name[0] == '\0') continue;
-        for (int j = 0; j < max_streams; j++) {
-            if (strcmp(config->streams[j].name, streams_snapshot[i].name) == 0) {
+    for (int j = 0; j < max_streams; j++) {
+        if (config->streams[j].name[0] == '\0') continue;
+        unsigned long h = 5381;
+        for (const unsigned char *p = (const unsigned char *)config->streams[j].name; *p; ++p) {
+            h = ((h << 5) + h) + (unsigned long)(*p);
+        }
+        int slot = (int)(h & (unsigned long)(table_size - 1));
+        while (hash_slots[slot] != -1) {
+            int idx = hash_slots[slot];
+            if (strcmp(streams_snapshot[idx].name, config->streams[j].name) == 0) {
                 safe_strcpy(config->streams[j].camera_uuid,
-                            streams_snapshot[i].camera_uuid,
+                            streams_snapshot[idx].camera_uuid,
                             sizeof(config->streams[j].camera_uuid), 0);
                 safe_strcpy(config->streams[j].location_uuid,
-                            streams_snapshot[i].location_uuid,
+                            streams_snapshot[idx].location_uuid,
                             sizeof(config->streams[j].location_uuid), 0);
                 break;
             }
+            slot = (slot + 1) & (table_size - 1);
         }
     }
     pthread_mutex_unlock(&mp4_faststart_mutex);
 
+    free(hash_slots);
     free(streams_snapshot);
     log_info("Saved %d stream configurations to database", saved);
     return saved;
