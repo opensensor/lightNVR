@@ -69,8 +69,12 @@ static bool parse_http_qvalue(const char *value, double *out_quality) {
             digits++;
         }
         if (*p != '\0') return false;
-        if (digits == 0) return false;
-        *out_quality = strtod(value, NULL);
+        unsigned int thousandths = 0;
+        unsigned int place = 100;
+        for (const char *digit = value + 2; digit < p; digit++, place /= 10) {
+            thousandths += (unsigned int)(*digit - '0') * place;
+        }
+        *out_quality = (double)thousandths / 1000.0;
         return true;
     }
 
@@ -89,7 +93,6 @@ static bool parse_http_qvalue(const char *value, double *out_quality) {
             digits++;
         }
         if (*p != '\0') return false;
-        if (digits == 0) return false;
         *out_quality = 1.0;
         return true;
     }
@@ -120,7 +123,13 @@ static bool request_accepts_gzip(const http_request_t *request) {
             if (next) *next++ = '\0';
             while (*parameter == ' ' || *parameter == '\t') parameter++;
             if (strncasecmp(parameter, "q=", 2) == 0) {
-                if (!parse_http_qvalue(parameter + 2, &quality)) {
+                char *quality_value = parameter + 2;
+                char *quality_end = quality_value + strlen(quality_value);
+                while (quality_end > quality_value &&
+                       (quality_end[-1] == ' ' || quality_end[-1] == '\t')) {
+                    *--quality_end = '\0';
+                }
+                if (!parse_http_qvalue(quality_value, &quality)) {
                     quality = 0.0;
                 }
             }

@@ -71,3 +71,24 @@ test('compressible responses vary by accepted content encoding', async () => {
     await server.stop();
   }
 });
+
+test('gzip quality values follow the HTTP grammar', async () => {
+  const server = await startFixture();
+  try {
+    const cases: [string, boolean][] = [
+      ['gzip;q=0.5', true], ['gzip;q=0.5 ', true], ['gzip;q=0.001', true],
+      ['gzip;q=1.', true], ['gzip;q=0', false], ['gzip;q=0.000', false],
+      ['gzip;q=0.5junk', false], ['gzip;q=1.001', false],
+    ];
+    for (const [header, acceptsGzip] of cases) {
+      const response = await server.request('/api/openapi.json', {
+        headers: {'Accept-Encoding': header},
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-encoding'), header)
+        .toBe(acceptsGzip ? 'gzip' : null);
+    }
+  } finally {
+    await server.stop();
+  }
+});
