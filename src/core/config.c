@@ -1388,11 +1388,26 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "config_dir") == 0) {
             safe_strcpy(config->go2rtc_config_dir, value, MAX_PATH_LENGTH, 0);
         } else if (strcmp(name, "api_port") == 0) {
-            config->go2rtc_api_port = safe_atoi(value, 0);
+            int port = safe_atoi(value, -1);
+            if (port < 0 || port > 65535) {
+                log_error("Invalid go2rtc api_port: %d (expected 0-65535)", port);
+                return 0;
+            }
+            config->go2rtc_api_port = port;
         } else if (strcmp(name, "rtsp_port") == 0) {
-            config->go2rtc_rtsp_port = safe_atoi(value, 0);
+            int port = safe_atoi(value, -1);
+            if (port < 0 || port > 65535) {
+                log_error("Invalid go2rtc rtsp_port: %d (expected 0-65535)", port);
+                return 0;
+            }
+            config->go2rtc_rtsp_port = port;
         } else if (strcmp(name, "webrtc_port") == 0 || strcmp(name, "webrtc_listen_port") == 0) {
-            config->go2rtc_webrtc_listen_port = safe_atoi(value, 0);
+            int port = safe_atoi(value, -1);
+            if (port < 0 || port > 65535) {
+                log_error("Invalid go2rtc webrtc_listen_port: %d (expected 0-65535)", port);
+                return 0;
+            }
+            config->go2rtc_webrtc_listen_port = port;
         } else if (strcmp(name, "webrtc_enabled") == 0) {
             config->go2rtc_webrtc_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "stun_enabled") == 0) {
@@ -1836,15 +1851,6 @@ int save_stream_configs(config_t *config) {
             saved++;
         }
     }
-    
-    // Commit transaction
-    if (commit_transaction() != 0) {
-        log_error("Failed to commit transaction for saving stream configurations");
-        // Try to rollback, but don't check the result since we're already in an error state
-        free(streams_snapshot);
-        rollback_transaction();
-        return -1;
-    }
 
     int table_size = 1;
     while (table_size < (max_streams * 2)) table_size <<= 1;
@@ -1852,9 +1858,20 @@ int save_stream_configs(config_t *config) {
     if (!hash_slots) {
         free(streams_snapshot);
         log_error("Failed to allocate stream identity index");
+        rollback_transaction();
         return -1;
     }
     for (int i = 0; i < table_size; i++) hash_slots[i] = -1;
+
+    // Commit transaction
+    if (commit_transaction() != 0) {
+        log_error("Failed to commit transaction for saving stream configurations");
+        // Try to rollback, but don't check the result since we're already in an error state
+        free(hash_slots);
+        free(streams_snapshot);
+        rollback_transaction();
+        return -1;
+    }
 
     for (int i = 0; i < max_streams; i++) {
         if (streams_snapshot[i].name[0] == '\0') continue;

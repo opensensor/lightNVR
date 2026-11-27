@@ -1109,6 +1109,29 @@ void test_default_config_go2rtc_api_port(void) {
     TEST_ASSERT_EQUAL_INT(1984, cfg.go2rtc_api_port);
 }
 
+void test_go2rtc_ini_rejects_invalid_ports(void) {
+    char directory[] = "/tmp/lightnvr_go2rtc_ports_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    snprintf(concurrent_config_dir, sizeof(concurrent_config_dir), "%s", directory);
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    set_custom_config_path(path);
+
+    const char *invalid_lines[] = {
+        "api_port = -1\n",
+        "rtsp_port = 65536\n",
+        "webrtc_listen_port = abc\n",
+    };
+    for (size_t i = 0; i < sizeof(invalid_lines) / sizeof(invalid_lines[0]); i++) {
+        FILE *file = fopen(path, "w");
+        TEST_ASSERT_NOT_NULL(file);
+        TEST_ASSERT_TRUE(fputs("[go2rtc]\n", file) >= 0);
+        TEST_ASSERT_TRUE(fputs(invalid_lines[i], file) >= 0);
+        TEST_ASSERT_EQUAL_INT(0, fclose(file));
+        TEST_ASSERT_EQUAL_INT(-1, load_config(&cfg));
+    }
+}
+
 void test_default_config_go2rtc_webrtc_enabled(void) {
     load_default_config(&cfg);
     TEST_ASSERT_TRUE(cfg.go2rtc_webrtc_enabled);
@@ -2135,6 +2158,7 @@ int main(void) {
     RUN_TEST(test_save_config_writes_api_detection_format);
     RUN_TEST(test_load_config_parses_api_detection_format);
     RUN_TEST(test_malformed_ini_after_stream_resize_keeps_streams_owned);
+    RUN_TEST(test_go2rtc_ini_rejects_invalid_ports);
     /* Uses the process-wide custom config path; run last to avoid affecting later tests. */
     RUN_TEST(test_save_config_round_trips_web_cache_and_mp4_faststart);
     RUN_TEST(test_streaming_config_snapshots_are_thread_local);
