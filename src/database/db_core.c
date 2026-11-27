@@ -787,6 +787,8 @@ static int perform_database_backup_cycle(const char *reason, bool run_post_backu
 // Function to checkpoint the database WAL file
 int checkpoint_database(void) {
     int rc = SQLITE_OK;
+    int log_frames = -1;
+    int ckpt_frames = -1;
 
     if (!db) {
         log_error("Database not initialized");
@@ -801,9 +803,16 @@ int checkpoint_database(void) {
     pthread_mutex_lock(get_db_mutex());
 
     log_info("Checkpointing WAL file");
-    rc = sqlite3_exec(db, "PRAGMA wal_checkpoint(FULL);", NULL, NULL, NULL);
+    rc = sqlite3_wal_checkpoint_v2(db, NULL, SQLITE_CHECKPOINT_FULL, &log_frames, &ckpt_frames);
     if (rc != SQLITE_OK) {
         log_error("Failed to checkpoint WAL: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(get_db_mutex());
+        return -1;
+    }
+
+    if (log_frames >= 0 && ckpt_frames >= 0 && ckpt_frames < log_frames) {
+        log_warn("WAL checkpoint incomplete: checkpointed %d of %d frame(s), active readers may have prevented completion",
+                 ckpt_frames, log_frames);
         pthread_mutex_unlock(get_db_mutex());
         return -1;
     }
