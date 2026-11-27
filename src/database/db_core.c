@@ -1007,6 +1007,10 @@ int maybe_run_scheduled_database_backup(void) {
         return 0;
     }
 
+    if (db_init_flags & DB_INIT_NO_BACKUP) {
+        return 0;
+    }
+
     if (g_config.db_backup_interval_minutes <= 0) {
         return 0;
     }
