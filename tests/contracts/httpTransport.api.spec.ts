@@ -34,7 +34,9 @@ function stagedExchange(port: number, parts: string[]): Promise<string> {
           reject(error);
           return;
         }
-        // Allow each fragment to reach the parser before sending the next.
+        // Best-effort pacing only: TCP is a byte stream, so writes may still be
+        // coalesced/split before parser reads. Parser-boundary behavior must be
+        // validated with parser-level tests that feed fragments explicitly.
         setTimeout(() => writePart(index + 1), 5);
       });
     };
