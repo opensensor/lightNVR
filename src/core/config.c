@@ -2122,10 +2122,17 @@ const char* get_loaded_config_path(void) {
 
 // Function to set the loaded config path
 static void set_loaded_config_path(const char *path) {
-    if (path && path[0] != '\0') {
-        safe_strcpy(g_loaded_config_path, path, MAX_PATH_LENGTH, 0);
-        log_info("Loaded config path set to: %s", g_loaded_config_path);
+    if (!path || path[0] == '\0') return;
+
+    // Prevent silent truncation of resolved paths that exceed storage capacity.
+    size_t len = strnlen(path, MAX_PATH_LENGTH);
+    if (len >= MAX_PATH_LENGTH) {
+        log_warn("Loaded config path too long, ignoring");
+        return;
     }
+
+    safe_strcpy(g_loaded_config_path, path, MAX_PATH_LENGTH, 0);
+    log_info("Loaded config path set to: %s", g_loaded_config_path);
 }
 
 // Load configuration into a private destination. The public wrapper publishes
