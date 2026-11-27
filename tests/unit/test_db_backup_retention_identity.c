@@ -355,14 +355,17 @@ static void test_collection_stat_failure_preserves_all(void) {
     TEST_ASSERT_EQUAL_UINT(1, fault_hits);
     assert_both_originals();
 }
-static void test_collection_realloc_failure_preserves_all(void) {
-    fail_realloc = true;
+static void test_collection_realloc_growth_failure_preserves_all(void) {
+    /* Fail realloc after initial successful allocations so cleanup runs on
+     * a partially populated candidate inventory. */
+    fail_realloc_after = 1;
     TEST_ASSERT_NOT_EQUAL(0, prune(1));
     TEST_ASSERT_EQUAL_UINT(1, fault_hits);
     assert_both_originals();
 }
-static void test_collection_strdup_failure_preserves_all(void) {
-    fail_strdup = true;
+static void test_collection_strdup_late_failure_preserves_all(void) {
+    /* Fail strdup after at least one prior name has been collected. */
+    fail_strdup_after = 1;
     TEST_ASSERT_NOT_EQUAL(0, prune(1));
     TEST_ASSERT_EQUAL_UINT(1, fault_hits);
     assert_both_originals();
