@@ -929,7 +929,12 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "log_level") == 0) {
             config->log_level = safe_atoi(value, 0);
         } else if (strcmp(name, "syslog_enabled") == 0) {
-            config->syslog_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for general.syslog_enabled: '%s'", value);
+                return 0;
+            }
+            config->syslog_enabled = parsed_bool;
         } else if (strcmp(name, "syslog_ident") == 0) {
             safe_strcpy(config->syslog_ident, value, sizeof(config->syslog_ident), 0);
         } else if (strcmp(name, "syslog_facility") == 0) {
@@ -1177,11 +1182,6 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             safe_strcpy(config->web_root, value, MAX_PATH_LENGTH, 0);
         } else if (strcmp(name, "ssl_enabled") == 0) {
             bool parsed_bool = false;
-            if (!parse_bool_strict(value, &parsed_bool)) {
-                log_error("Invalid boolean value for web.ssl_enabled: '%s'", value);
-                return 0;
-            }
-            config->web_ssl_enabled = parsed_bool;
             if (!parse_bool_strict(value, &parsed_bool)) {
                 log_error("Invalid boolean value for web.ssl_enabled: '%s'", value);
                 return 0;
