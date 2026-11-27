@@ -39,6 +39,7 @@ static config_t cfg;
 static config_t reloaded_cfg;
 static FILE *saved_config_file;
 static FILE *saved_baseline_file;
+static void assert_files_equal_binary(FILE *expected, FILE *actual);
 static char concurrent_config_dir[MAX_PATH_LENGTH];
 static char *saved_config_text;
 static stream_config_t *owned_snapshot_streams;
@@ -404,12 +405,12 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         _exit(0);
     } else {
         int supervised_status = 0;
-        struct timespec start_ts;
-        struct timespec now_ts;
+        struct timespec supervised_start_ts;
+        struct timespec supervised_now_ts;
         const long long timeout_ns = 3000000000LL;
         pid_t wait_rc;
 
-        if (clock_gettime(CLOCK_MONOTONIC, &start_ts) != 0) {
+        if (clock_gettime(CLOCK_MONOTONIC, &supervised_start_ts) != 0) {
             (void)kill(supervised, SIGKILL);
             (void)waitpid(supervised, &supervised_status, 0);
             TEST_FAIL_MESSAGE("clock_gettime failed before PID lock wait");
@@ -421,13 +422,13 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
             if (wait_rc < 0) break;
 
             usleep(10000);
-            if (clock_gettime(CLOCK_MONOTONIC, &now_ts) != 0) {
+            if (clock_gettime(CLOCK_MONOTONIC, &supervised_now_ts) != 0) {
                 (void)kill(supervised, SIGKILL);
                 (void)waitpid(supervised, &supervised_status, 0);
                 TEST_FAIL_MESSAGE("clock_gettime failed during PID lock wait");
             }
-            long long elapsed_ns = (long long)(now_ts.tv_sec - start_ts.tv_sec) * 1000000000LL
-                                 + (now_ts.tv_nsec - start_ts.tv_nsec);
+            long long elapsed_ns = (long long)(supervised_now_ts.tv_sec - supervised_start_ts.tv_sec) * 1000000000LL
+                                 + (supervised_now_ts.tv_nsec - supervised_start_ts.tv_nsec);
             if (elapsed_ns >= timeout_ns) break;
         }
 
