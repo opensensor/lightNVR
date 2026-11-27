@@ -661,7 +661,8 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
             waitpid(child, NULL, 0);
             TEST_FAIL_MESSAGE("concurrency scenario timed out (possible deadlock regression)");
         }
-        sched_yield();
+        struct timespec poll_delay = {.tv_sec = 0, .tv_nsec = 1000000L}; /* 1 ms */
+        nanosleep(&poll_delay, NULL);
     }
 }
 
