@@ -1518,7 +1518,6 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
         }
         memcpy(temp_config.streams, config->streams, bytes);
     }
-    pthread_mutex_unlock(&mp4_faststart_mutex);
 
     // Use inih to parse the INI file through a locked descriptor
     config_ini_context_t context = {&temp_config, ini_present};
@@ -1549,15 +1548,16 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
 
     if (result < 0) {
         free(temp_config.streams);
+        pthread_mutex_unlock(&mp4_faststart_mutex);
         log_warn("Could not read config file %s", filename);
         return -1;
     } else if (result > 0) {
         free(temp_config.streams);
+        pthread_mutex_unlock(&mp4_faststart_mutex);
         log_warn("Error in config file %s at line %d", filename, result);
         return -1;
     }
 
-    pthread_mutex_lock(&mp4_faststart_mutex);
     free(config->streams);
     *config = temp_config;
     pthread_mutex_unlock(&mp4_faststart_mutex);
