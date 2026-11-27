@@ -563,6 +563,11 @@ void test_daemon_status_validates_opened_pid_file(void) {
     snprintf(path, sizeof(path), "%s/lightnvr.pid", directory);
     snprintf(alias, sizeof(alias), "%s/alias.pid", directory);
 
+    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", directory);
+    snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
+    snprintf(stream_save_db_path, sizeof(stream_save_db_path), "%s", alias);
+    group_replace_cleanup_active = true;
+
     int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
     TEST_ASSERT_TRUE(fd >= 0);
     TEST_ASSERT_EQUAL_INT(0, close(fd));
@@ -578,6 +583,7 @@ void test_daemon_status_validates_opened_pid_file(void) {
     TEST_ASSERT_EQUAL_INT(0, unlink(alias));
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    group_replace_cleanup_active = false;
 }
 
 void test_default_config_mp4_faststart_on(void) {
