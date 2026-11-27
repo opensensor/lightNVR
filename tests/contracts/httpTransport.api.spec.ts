@@ -59,7 +59,7 @@ test('pipelined requests are replayed after the first response', async () => {
       'GET /api/health?liveness=false HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
     expect(response.match(/HTTP\/1\.1 200 /g)).toHaveLength(2);
     const firstBodyIndex = response.indexOf('"liveness":true');
-    const secondBodyIndex = response.indexOf('"liveness":false');
+    const secondBodyIndex = response.indexOf('"streams":', firstBodyIndex + 1);
     expect(firstBodyIndex).toBeGreaterThan(-1);
     expect(secondBodyIndex).toBeGreaterThan(-1);
     expect(firstBodyIndex).toBeLessThan(secondBodyIndex);
