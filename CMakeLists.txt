@@ -784,7 +784,7 @@ target_link_libraries(lightnvr_lib PUBLIC
         ${CJSON_LINK_LIB}
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
-        pthread
+        Threads::Threads
         dl
         m
 )
