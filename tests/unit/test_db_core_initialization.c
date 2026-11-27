@@ -206,13 +206,23 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
     }
 
     size_t used = strlen(rejected_path);
-    while (used <= PATH_MAX) {
-        const size_t component_len = 200; /* Stay below NAME_MAX per component. */
+    while (used + 1 < PATH_MAX) {
+        const size_t component_len = 50; /* Keep each component below NAME_MAX. */
         TEST_ASSERT_TRUE(used + component_len + 2 < sizeof(rejected_path));
         rejected_path[used++] = '/';
         memset(rejected_path + used, 'a', component_len);
         used += component_len;
         rejected_path[used] = '\0';
+        if (mkdir(rejected_path, 0700) != 0) {
+            TEST_ASSERT_EQUAL_INT(EEXIST, errno);
+        }
+    }
+
+    {
+        const char *leaf = "/db.sqlite3";
+        size_t leaf_len = strlen(leaf);
+        TEST_ASSERT_TRUE(used + leaf_len + 1 < sizeof(rejected_path));
+        memcpy(rejected_path + used, leaf, leaf_len + 1);
     }
 
     TEST_ASSERT_TRUE(strlen(rejected_path) > PATH_MAX);
