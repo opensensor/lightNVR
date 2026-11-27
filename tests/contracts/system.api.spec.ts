@@ -79,9 +79,9 @@ test('settings preserve zero, mask credentials, and reject invalid formats befor
  const result=await ok(server,'/api/settings',admin,'POST',{default_detection_threshold:0,mqtt_password:'fixture-mqtt-secret',turn_password:'fixture-turn-secret'});
  valid('SystemSettingsSaved',result);expect(result.success).toBe(true);
  const persisted=readFileSync(config,'utf8');
- expect(persisted).toContain('default_detection_threshold=0');
- expect(persisted).toContain('mqtt_password=fixture-mqtt-secret');
- expect(persisted).toContain('turn_password=fixture-turn-secret');
+ expect(/^detection_threshold = 0\b/m.test(persisted)).toBe(true);
+ expect(/^password = fixture-mqtt-secret$/m.test(persisted)).toBe(true);
+ expect(/^turn_password = fixture-turn-secret$/m.test(persisted)).toBe(true);
  const settings=await ok(server,'/api/settings');valid('SystemSettings',settings);
  expect(settings.default_detection_threshold).toBe(0);expect(settings.mqtt_password).toBe('********');expect(settings.turn_password).toBe('********');
  expect(JSON.stringify(settings)).not.toContain('fixture-mqtt-secret');expect(JSON.stringify(settings)).not.toContain('fixture-turn-secret');
@@ -132,6 +132,9 @@ test('backup creates parseable private bytes only in an owned web root',async()=
   expect((await server.request(result.backupUrl,{principal:'anonymous'})).status).toBe(401);
   expect((await server.request(result.backupUrl,{principal:'viewer'})).status).toBe(403);
   const file=path.join(webRoot,'backups',result.filename),bytes=readFileSync(file);
+  const download=await server.request(result.backupUrl,{principal:'admin'});
+  expect(download.status).toBe(200);
+  expect(Buffer.from(await download.arrayBuffer())).toEqual(bytes);
   expect(JSON.parse(bytes.toString())).toEqual(expect.any(Object));
   expect(statSync(file).mode&0o777).toBe(0o600);expect(readdirSync(path.dirname(file))).toEqual([result.filename]);
  } finally {
