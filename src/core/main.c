@@ -23,6 +23,7 @@
 #include <sys/socket.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <linux/close_range.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <limits.h>
@@ -1668,8 +1669,13 @@ cleanup:
 
         // Drop inherited descriptors so watchdog does not keep parent resources
         // (recording files, sockets, DB handles, etc.) alive during its timeout wait.
-        for (long fd = 3; fd < watchdog_max_fd; ++fd) {
-            (void)close(fd);
+        // Prefer close_range to avoid O(RLIMIT_NOFILE) close syscalls on large limits.
+        long cr_rc = syscall(SYS_close_range, 3u, ~0u, 0u);
+        if (cr_rc != 0 && (errno == ENOSYS || errno == EINVAL)) {
+            // Fallback for older kernels/libcs without close_range support.
+            for (long fd = 3; fd < watchdog_max_fd; ++fd) {
+                (void)close(fd);
+            }
         }
 
         // Reset signal handlers to default to avoid inheriting any problematic dispositions
