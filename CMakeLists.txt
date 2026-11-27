@@ -88,6 +88,12 @@ option(ENABLE_GO2RTC "Enable go2rtc integration for WebRTC streaming" ON)
 set(GO2RTC_BINARY_PATH "/usr/local/bin/go2rtc" CACHE STRING "Path to go2rtc binary")
 set(GO2RTC_CONFIG_DIR "/etc/lightnvr/go2rtc" CACHE STRING "Directory for go2rtc configuration files")
 set(GO2RTC_API_PORT 1984 CACHE STRING "Port for go2rtc HTTP API")
+if(NOT "${GO2RTC_API_PORT}" MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "GO2RTC_API_PORT must be a decimal integer in range 1..65535 (got: '${GO2RTC_API_PORT}')")
+endif()
+if(GO2RTC_API_PORT LESS 1 OR GO2RTC_API_PORT GREATER 65535)
+    message(FATAL_ERROR "GO2RTC_API_PORT must be in range 1..65535 (got: '${GO2RTC_API_PORT}')")
+endif()
 
 # llhttp download configuration. Avoid the LLHTTP_VERSION name because
 # pkg_check_modules(LLHTTP ...) owns that variable when libllhttp is probed.
