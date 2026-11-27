@@ -192,11 +192,14 @@ static void test_destroy_initialized_server_without_start(void) {
 
 static void test_tls_request_does_not_start_plain_http(void) {
     tearDown();
-    if (libuv_tls_compiled_in()) return;
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-lifecycle-fixture";
     config.ssl_enabled = true;
+    if (libuv_tls_compiled_in()) {
+        config.ssl_cert = "/nonexistent-lifecycle-fixture-cert.pem";
+        config.ssl_key = "/nonexistent-lifecycle-fixture-key.pem";
+    }
     TEST_ASSERT_NULL(libuv_server_init(&config));
 }
 
