@@ -298,23 +298,44 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         _exit(lock_result < 0 && (lock_error == EACCES || lock_error == EAGAIN) ? 0 : 4);
     }
     int status = 0;
-    const int wait_step_us = 10000;       /* 10 ms */
-    const int wait_timeout_us = 2000000;  /* 2 s */
-    int waited_us = 0;
+    const long wait_step_ns = 10L * 1000L * 1000L;       /* 10 ms */
+    const long wait_timeout_ns = 2L * 1000L * 1000L * 1000L;  /* 2 s */
+    struct timespec start_ts;
+    struct timespec now_ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &start_ts) != 0) {
+        (void)kill(child, SIGKILL);
+        (void)waitpid(child, &status, 0);
+        TEST_FAIL_MESSAGE("clock_gettime failed");
+    }
+    long long deadline_ns =
+        (long long)start_ts.tv_sec * 1000000000LL + start_ts.tv_nsec + wait_timeout_ns;
     pid_t waited = -1;
-    while (waited_us < wait_timeout_us) {
+    for (;;) {
         waited = waitpid(child, &status, WNOHANG);
         if (waited == child) {
             break;
         }
-        if (waited < 0) {
-            if (errno == EINTR) continue;
+        if (waited < 0 && errno != EINTR) {
             (void)kill(child, SIGKILL);
             (void)waitpid(child, &status, 0);
             TEST_FAIL_MESSAGE("waitpid failed while polling child");
         }
-        usleep((useconds_t)wait_step_us);
-        waited_us += wait_step_us;
+
+        if (clock_gettime(CLOCK_MONOTONIC, &now_ts) != 0) {
+            (void)kill(child, SIGKILL);
+            (void)waitpid(child, &status, 0);
+            TEST_FAIL_MESSAGE("clock_gettime failed");
+        }
+        long long now_ns = (long long)now_ts.tv_sec * 1000000000LL + now_ts.tv_nsec;
+        if (now_ns >= deadline_ns) {
+            break;
+        }
+
+        long long remaining_ns = deadline_ns - now_ns;
+        long sleep_ns = (remaining_ns < wait_step_ns) ? (long)remaining_ns : wait_step_ns;
+        struct timespec req = { .tv_sec = sleep_ns / 1000000000L, .tv_nsec = sleep_ns % 1000000000L };
+        while (nanosleep(&req, &req) != 0 && errno == EINTR) {
+        }
     }
     if (waited != child) {
         (void)kill(child, SIGKILL);
