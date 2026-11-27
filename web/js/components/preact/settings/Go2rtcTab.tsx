@@ -98,6 +98,8 @@ function utf8ByteLength(s: string) {
 }
 
 export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifySettings, t }: Go2rtcTabProps) {
+  const overrideBytes = utf8ByteLength(settings.go2rtcConfigOverride);
+  const overrideTooLarge = overrideBytes > GO2RTC_OVERRIDE_MAX_BYTES;
   // ---------- T9 — go2rtc override validation, preview, presets ----------
   const [overrideValidation, setOverrideValidation] = useState<Go2rtcOverrideValidation | null>(null); // null | { valid, error?, warnings, libyaml_available, skipped }
   const [overrideValidating, setOverrideValidating] = useState(false);
