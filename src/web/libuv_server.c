@@ -99,6 +99,8 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
     }
     atomic_init(&server->running, false);
     atomic_init(&server->shutting_down, false);
+    atomic_init(&server->thread_running, false);
+    atomic_init(&server->thread_joinable, false);
     
     // Copy configuration
     memcpy(&server->config, config, sizeof(http_server_config_t));
@@ -365,12 +367,15 @@ int libuv_server_start(http_server_handle_t handle) {
 
     // Start event loop in separate thread if we own it
     if (server->owns_loop) {
+        server->thread_running = true;
         r = uv_thread_create(&server->thread, server_thread_func, server);
         if (r != 0) {
+            server->thread_running = false;
+            server->running = false;
             log_error("libuv_server_start: Failed to create server thread");
             return -1;
         }
-        server->thread_running = true;
+        server->thread_joinable = true;
     }
 
     return 0;
@@ -481,13 +486,13 @@ void libuv_server_stop(http_server_handle_t handle) {
     // CRITICAL FIX: We must wait for the event loop thread to exit FIRST
     // before trying to manipulate the loop from the main thread.
     // Running uv_run() from multiple threads is not safe.
-    if (server->thread_running) {
+    if (server->thread_joinable) {
         log_info("libuv_server_stop: Signaling event loop thread to stop");
 
         // Send async signal to wake up the event loop thread
         // This is critical because uv_run(UV_RUN_ONCE) can block indefinitely
         // waiting for I/O, and we need to wake it up so it can check server->running
-        uv_async_send(&server->stop_async);
+        if (server->thread_running) uv_async_send(&server->stop_async);
 
         // Also stop the loop to ensure uv_run returns
         uv_stop(server->loop);
@@ -509,6 +514,7 @@ void libuv_server_stop(http_server_handle_t handle) {
 
         // Now join the thread - hopefully it has exited
         uv_thread_join(&server->thread);
+        server->thread_joinable = false;
         server->thread_running = false;
         log_info("libuv_server_stop: Server thread exited after %d ms", elapsed_ms);
     }
