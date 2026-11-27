@@ -1733,28 +1733,38 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     char directory[] = "/tmp/lightnvr_config_credentials_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
+    char control_path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(control_path, sizeof(control_path), "%s/control.ini", directory);
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
     fputs("previous configuration", initial);
     fclose(initial);
-    load_default_config(&cfg);
 
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, control_path));
+
+    load_default_config(&cfg);
     snprintf(cfg.turn_username, sizeof(cfg.turn_username), "user;admin");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.turn_username[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.turn_password, sizeof(cfg.turn_password), "secret\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.turn_password[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.mqtt_password, sizeof(cfg.mqtt_password), "secret#comment");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.mqtt_password[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.mqtt_username, sizeof(cfg.mqtt_username), "user;admin");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.mqtt_username[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.turn_password, sizeof(cfg.turn_password), " leading-space");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
-    cfg.turn_password[0] = '\0';
+
+    load_default_config(&cfg);
     snprintf(cfg.mqtt_username, sizeof(cfg.mqtt_username), "trailing-space ");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
     cfg.mqtt_username[0] = '\0';
