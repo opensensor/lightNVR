@@ -513,9 +513,79 @@ typedef struct {
     struct stat selected;
 } selected_backup_t;
 
+static int parse_backup_name_components(const char *name,
+                                        const char **ts_start,
+                                        size_t *ts_len,
+                                        unsigned long *suffix) {
+    static const char ext[] = ".sqlite3";
+    size_t ext_len = sizeof(ext) - 1;
+    size_t len;
+    const char *dot;
+    const char *dash;
+    char *endptr = NULL;
+    unsigned long parsed_suffix = 0;
+
+    if (!name || !ts_start || !ts_len || !suffix) {
+        return -1;
+    }
+
+    len = strlen(name);
+    if (len <= ext_len) {
+        return -1;
+    }
+
+    dot = name + (len - ext_len);
+    if (strcmp(dot, ext) != 0) {
+        return -1;
+    }
+
+    dash = strrchr(name, '-');
+    if (dash && dash < dot) {
+        parsed_suffix = strtoul(dash + 1, &endptr, 10);
+        if (endptr == dot && endptr != dash + 1) {
+            *ts_start = name;
+            *ts_len = (size_t)(dash - name);
+            *suffix = parsed_suffix;
+            return 0;
+        }
+    }
+
+    *ts_start = name;
+    *ts_len = (size_t)(dot - name);
+    *suffix = 0;
+    return 0;
+}
+
 static int compare_selected_backups(const void *lhs, const void *rhs) {
     const selected_backup_t *left = lhs, *right = rhs;
-    return strcmp(left->name, right->name);
+    const char *left_ts = NULL, *right_ts = NULL;
+    size_t left_ts_len = 0, right_ts_len = 0;
+    unsigned long left_suffix = 0, right_suffix = 0;
+    size_t min_len;
+    int cmp;
+
+    if (parse_backup_name_components(left->name, &left_ts, &left_ts_len, &left_suffix) != 0 ||
+        parse_backup_name_components(right->name, &right_ts, &right_ts_len, &right_suffix) != 0) {
+        return strcmp(left->name, right->name);
+    }
+
+    min_len = left_ts_len < right_ts_len ? left_ts_len : right_ts_len;
+    cmp = strncmp(left_ts, right_ts, min_len);
+    if (cmp != 0) {
+        return cmp;
+    }
+    if (left_ts_len != right_ts_len) {
+        return left_ts_len < right_ts_len ? -1 : 1;
+    }
+
+    if (left_suffix < right_suffix) {
+        return -1;
+    }
+    if (left_suffix > right_suffix) {
+        return 1;
+    }
+
+    return 0;
 }
 
 static int prune_timestamped_backups(const char *backup_dir, int retention_count) {
