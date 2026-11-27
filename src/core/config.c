@@ -2592,7 +2592,8 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "auth_timeout_hours = %d  ; Session idle timeout in hours (default: 24)\n", config->auth_timeout_hours);
     fprintf(file, "auth_absolute_timeout_hours = %d  ; Absolute session lifetime in hours (default: 168)\n", config->auth_absolute_timeout_hours);
     fprintf(file, "trusted_device_days = %d  ; Remember trusted device for N days (0 disables, default: 30)\n", config->trusted_device_days);
-    fprintf(file, "trusted_proxy_cidrs = %s  ; Trusted reverse-proxy CIDRs for X-Forwarded-For (blank disables trust)\n", config->trusted_proxy_cidrs);
+    fprintf(file, "; Trusted reverse-proxy CIDRs for X-Forwarded-For (blank disables trust)\n");
+    fprintf(file, "trusted_proxy_cidrs = %s\n", config->trusted_proxy_cidrs);
     fprintf(file, "demo_mode = %s  ; Demo mode: allows unauthenticated viewer access\n", config->demo_mode ? "true" : "false");
     fprintf(file, "force_mfa_on_login = %s  ; Require TOTP code with password at login (prevents password-only brute force)\n", config->force_mfa_on_login ? "true" : "false");
     fprintf(file, "login_rate_limit_enabled = %s  ; Enable login rate limiting\n", config->login_rate_limit_enabled ? "true" : "false");
