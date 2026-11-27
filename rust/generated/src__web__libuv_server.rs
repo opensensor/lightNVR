@@ -933,7 +933,9 @@ pub struct libuv_server {
     pub handler_capacity: ::core::ffi::c_int,
     pub tls_ctx: *mut ::core::ffi::c_void,
     pub thread: uv_thread_t,
-    pub thread_running: bool,
+    pub thread_running: atomic_bool,
+    pub thread_joinable: atomic_bool,
+    pub init_close_pending: ::core::ffi::c_uint,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -994,6 +996,12 @@ impl write_complete_action_t {
     pub const WRITE_ACTION_CLOSE: Self = Self(2);
 }
 pub type libuv_tls_context_t = libuv_tls_context;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct server_handle_scan_t {
+    pub server: *const libuv_server_t,
+    pub present: bool,
+}
 pub const PF_INET: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const PF_INET6: ::core::ffi::c_int = 10 as ::core::ffi::c_int;
 pub const AF_INET: ::core::ffi::c_int = PF_INET;
@@ -1001,6 +1009,69 @@ pub const AF_INET6: ::core::ffi::c_int = PF_INET6;
 pub const LOG_COMPONENT: [::core::ffi::c_char; 5] =
     unsafe { ::core::mem::transmute::<[u8; 5], [::core::ffi::c_char; 5]>(*b"HTTP\0") };
 pub const INITIAL_HANDLER_CAPACITY: ::core::ffi::c_int = 32 as ::core::ffi::c_int;
+unsafe extern "C" fn free_failed_init(mut server: *mut libuv_server_t) {
+    if (*server).owns_loop {
+        let mut rc: ::core::ffi::c_int = uv_loop_close((*server).r#loop);
+        if rc != 0 as ::core::ffi::c_int {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT.as_ptr(),
+                _log_stream_name,
+                b"libuv_server_init: Failed to close event loop: %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                uv_strerror(rc),
+            );
+            return;
+        }
+        safe_free((*server).r#loop as *mut ::core::ffi::c_void);
+    }
+    libuv_tls_context_free((*server).tls_ctx as *mut libuv_tls_context_t);
+    safe_free(server as *mut ::core::ffi::c_void);
+}
+unsafe extern "C" fn failed_init_close_cb(mut handle: *mut uv_handle_t) {
+    let mut server: *mut libuv_server_t = (*handle).data as *mut libuv_server_t;
+    (*server).init_close_pending = (*server).init_close_pending.wrapping_sub(1);
+    if (*server).init_close_pending == 0 as ::core::ffi::c_uint && !(*server).owns_loop {
+        free_failed_init(server);
+    }
+}
+unsafe extern "C" fn close_failed_init_handles(
+    mut server: *mut libuv_server_t,
+    mut close_async: bool,
+) {
+    (*server).init_close_pending = (if close_async as ::core::ffi::c_int != 0 {
+        2 as ::core::ffi::c_int
+    } else {
+        1 as ::core::ffi::c_int
+    }) as ::core::ffi::c_uint;
+    uv_close(
+        &raw mut (*server).listener as *mut uv_handle_t,
+        Some(failed_init_close_cb as unsafe extern "C" fn(*mut uv_handle_t) -> ()),
+    );
+    if close_async {
+        uv_close(
+            &raw mut (*server).stop_async as *mut uv_handle_t,
+            Some(failed_init_close_cb as unsafe extern "C" fn(*mut uv_handle_t) -> ()),
+        );
+    }
+    if (*server).owns_loop {
+        while (*server).init_close_pending > 0 as ::core::ffi::c_uint {
+            uv_run((*server).r#loop, uv_run_mode::UV_RUN_DEFAULT);
+        }
+        free_failed_init(server);
+    }
+}
+unsafe extern "C" fn scan_server_handles_cb(
+    mut handle: *mut uv_handle_t,
+    mut arg: *mut ::core::ffi::c_void,
+) {
+    let mut scan: *mut server_handle_scan_t = arg as *mut server_handle_scan_t;
+    if handle == &raw const (*(*scan).server).listener as *mut uv_handle_t
+        || handle == &raw const (*(*scan).server).stop_async as *mut uv_handle_t
+    {
+        (*scan).present = r#true != 0;
+    }
+}
 unsafe extern "C" fn stop_async_cb(mut handle: *mut uv_async_t) {
     let mut server: *mut libuv_server_t = (*handle).data as *mut libuv_server_t;
     if !server.is_null() {
@@ -1073,6 +1144,8 @@ unsafe extern "C" fn libuv_server_init_internal(
     }
     *&raw mut (*server).running = r#false != 0;
     *&raw mut (*server).shutting_down = r#false != 0;
+    *&raw mut (*server).thread_running = r#false != 0;
+    *&raw mut (*server).thread_joinable = r#false != 0;
     memcpy(
         &raw mut (*server).config as *mut ::core::ffi::c_void,
         config as *const ::core::ffi::c_void,
@@ -1081,12 +1154,14 @@ unsafe extern "C" fn libuv_server_init_internal(
     if (*config).ssl_enabled {
         if !libuv_tls_compiled_in() {
             _log_message_ctx(
-                log_level_t::LOG_LEVEL_WARN,
+                log_level_t::LOG_LEVEL_ERROR,
                 LOG_COMPONENT.as_ptr(),
                 _log_stream_name,
-                b"libuv_server_init: ssl_enabled is set but this build has no TLS support (rebuild with -DENABLE_SSL=ON); serving plain HTTP\0"
+                b"libuv_server_init: ssl_enabled is set but this build has no TLS support (rebuild with -DENABLE_SSL=ON); refusing to start\0"
                     .as_ptr() as *const ::core::ffi::c_char,
             );
+            safe_free(server as *mut ::core::ffi::c_void);
+            return ::core::ptr::null_mut::<http_server_t>();
         } else {
             (*server).tls_ctx = libuv_tls_context_create(
                 &raw const (*config).cert_path as *const ::core::ffi::c_char,
@@ -1118,6 +1193,7 @@ unsafe extern "C" fn libuv_server_init_internal(
                 b"libuv_server_init: Failed to allocate event loop\0".as_ptr()
                     as *const ::core::ffi::c_char,
             );
+            libuv_tls_context_free((*server).tls_ctx as *mut libuv_tls_context_t);
             safe_free(server as *mut ::core::ffi::c_void);
             return ::core::ptr::null_mut::<http_server_t>();
         }
@@ -1130,6 +1206,7 @@ unsafe extern "C" fn libuv_server_init_internal(
                     as *const ::core::ffi::c_char,
             );
             safe_free((*server).r#loop as *mut ::core::ffi::c_void);
+            libuv_tls_context_free((*server).tls_ctx as *mut libuv_tls_context_t);
             safe_free(server as *mut ::core::ffi::c_void);
             return ::core::ptr::null_mut::<http_server_t>();
         }
@@ -1165,13 +1242,7 @@ unsafe extern "C" fn libuv_server_init_internal(
             b"libuv_server_init: Failed to initialize async handle\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
-        uv_close(&raw mut (*server).listener as *mut uv_handle_t, None);
-        if (*server).owns_loop {
-            uv_loop_close((*server).r#loop);
-            safe_free((*server).r#loop as *mut ::core::ffi::c_void);
-        }
-        libuv_tls_context_free((*server).tls_ctx as *mut libuv_tls_context_t);
-        safe_free(server as *mut ::core::ffi::c_void);
+        close_failed_init_handles(server, r#false != 0);
         return ::core::ptr::null_mut::<http_server_t>();
     }
     (*server).stop_async.data = server as *mut ::core::ffi::c_void;
@@ -1187,13 +1258,7 @@ unsafe extern "C" fn libuv_server_init_internal(
             b"libuv_server_init: Failed to allocate handler registry\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
-        uv_close(&raw mut (*server).listener as *mut uv_handle_t, None);
-        if (*server).owns_loop {
-            uv_loop_close((*server).r#loop);
-            safe_free((*server).r#loop as *mut ::core::ffi::c_void);
-        }
-        libuv_tls_context_free((*server).tls_ctx as *mut libuv_tls_context_t);
-        safe_free(server as *mut ::core::ffi::c_void);
+        close_failed_init_handles(server, r#true != 0);
         return ::core::ptr::null_mut::<http_server_t>();
     }
     (*server).handler_capacity = INITIAL_HANDLER_CAPACITY;
@@ -1255,58 +1320,6 @@ pub unsafe extern "C" fn libuv_server_get_loop(mut handle: http_server_handle_t)
         ::core::ptr::null_mut::<uv_loop_t>()
     };
 }
-unsafe extern "C" fn libuv_server_reset_loop(
-    mut server: *mut libuv_server_t,
-) -> ::core::ffi::c_int {
-    _log_message_ctx(
-        log_level_t::LOG_LEVEL_INFO,
-        LOG_COMPONENT.as_ptr(),
-        _log_stream_name,
-        b"libuv_server_reset_loop: Attempting to recycle the event loop\0".as_ptr()
-            as *const ::core::ffi::c_char,
-    );
-    let mut close_result: ::core::ffi::c_int = uv_loop_close((*server).r#loop);
-    if close_result != 0 as ::core::ffi::c_int {
-        let mut active_handles: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-        uv_walk(
-            (*server).r#loop,
-            Some(
-                count_handles_cb
-                    as unsafe extern "C" fn(*mut uv_handle_t, *mut ::core::ffi::c_void) -> (),
-            ),
-            &raw mut active_handles as *mut ::core::ffi::c_void,
-        );
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT.as_ptr(),
-            _log_stream_name,
-            b"libuv_server_reset_loop: Refusing to abandon a busy event loop (close returned %d (%s); %d active handles). In-flight thread-pool work still references it -- recycling now would crash the process when that work completes. Leaving the loop intact.\0"
-                .as_ptr() as *const ::core::ffi::c_char,
-            close_result,
-            uv_strerror(close_result),
-            active_handles,
-        );
-        return -1 as ::core::ffi::c_int;
-    }
-    if uv_loop_init((*server).r#loop) != 0 as ::core::ffi::c_int {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT.as_ptr(),
-            _log_stream_name,
-            b"libuv_server_reset_loop: Failed to re-initialize event loop\0".as_ptr()
-                as *const ::core::ffi::c_char,
-        );
-        return -1 as ::core::ffi::c_int;
-    }
-    _log_message_ctx(
-        log_level_t::LOG_LEVEL_INFO,
-        LOG_COMPONENT.as_ptr(),
-        _log_stream_name,
-        b"libuv_server_reset_loop: Event loop recycled successfully\0".as_ptr()
-            as *const ::core::ffi::c_char,
-    );
-    return 0 as ::core::ffi::c_int;
-}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn libuv_server_start(
     mut handle: http_server_handle_t,
@@ -1326,46 +1339,27 @@ pub unsafe extern "C" fn libuv_server_start(
             b"libuv_server_start: Handles are closed, reinitializing\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
-        let mut wait_count: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-        while (uv_is_closing(&raw mut (*server).listener as *mut uv_handle_t) != 0
-            || uv_is_closing(&raw mut (*server).stop_async as *mut uv_handle_t) != 0)
-            && wait_count < 100 as ::core::ffi::c_int
-        {
-            uv_run((*server).r#loop, uv_run_mode::UV_RUN_NOWAIT);
-            usleep(10000 as __useconds_t);
-            wait_count += 1;
-        }
-        if uv_is_closing(&raw mut (*server).listener as *mut uv_handle_t) != 0
-            || uv_is_closing(&raw mut (*server).stop_async as *mut uv_handle_t) != 0
-        {
+        let mut scan: server_handle_scan_t = server_handle_scan_t {
+            server: server,
+            present: r#false != 0,
+        };
+        uv_walk(
+            (*server).r#loop,
+            Some(
+                scan_server_handles_cb
+                    as unsafe extern "C" fn(*mut uv_handle_t, *mut ::core::ffi::c_void) -> (),
+            ),
+            &raw mut scan as *mut ::core::ffi::c_void,
+        );
+        if scan.present {
             _log_message_ctx(
-                log_level_t::LOG_LEVEL_WARN,
+                log_level_t::LOG_LEVEL_ERROR,
                 LOG_COMPONENT.as_ptr(),
                 _log_stream_name,
-                b"libuv_server_start: Handles still closing after timeout, creating fresh event loop\0"
-                    .as_ptr() as *const ::core::ffi::c_char,
+                b"libuv_server_start: Cannot reuse handles before close callbacks finish\0".as_ptr()
+                    as *const ::core::ffi::c_char,
             );
-            if (*server).owns_loop {
-                if libuv_server_reset_loop(server) != 0 as ::core::ffi::c_int {
-                    _log_message_ctx(
-                        log_level_t::LOG_LEVEL_ERROR,
-                        LOG_COMPONENT.as_ptr(),
-                        _log_stream_name,
-                        b"libuv_server_start: Failed to create fresh event loop\0".as_ptr()
-                            as *const ::core::ffi::c_char,
-                    );
-                    return -1 as ::core::ffi::c_int;
-                }
-            } else {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_ERROR,
-                    LOG_COMPONENT.as_ptr(),
-                    _log_stream_name,
-                    b"libuv_server_start: Cannot reset shared event loop\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                );
-                return -1 as ::core::ffi::c_int;
-            }
+            return -1 as ::core::ffi::c_int;
         }
         if uv_tcp_init((*server).r#loop, &raw mut (*server).listener) != 0 as ::core::ffi::c_int {
             _log_message_ctx(
@@ -1466,12 +1460,15 @@ pub unsafe extern "C" fn libuv_server_start(
         (*server).config.port,
     );
     if (*server).owns_loop {
+        (*server).thread_running = r#true != 0;
         r = uv_thread_create(
             &raw mut (*server).thread,
             Some(server_thread_func as unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()),
             server as *mut ::core::ffi::c_void,
         );
         if r != 0 as ::core::ffi::c_int {
+            (*server).thread_running = r#false != 0;
+            (*server).running = r#false != 0;
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_ERROR,
                 LOG_COMPONENT.as_ptr(),
@@ -1481,7 +1478,7 @@ pub unsafe extern "C" fn libuv_server_start(
             );
             return -1 as ::core::ffi::c_int;
         }
-        (*server).thread_running = r#true != 0;
+        (*server).thread_joinable = r#true != 0;
     }
     return 0 as ::core::ffi::c_int;
 }
@@ -1605,7 +1602,7 @@ pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
     );
     (*server).running = r#false != 0;
     (*server).shutting_down = r#true != 0;
-    if (*server).thread_running {
+    if (*server).thread_joinable {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
             LOG_COMPONENT.as_ptr(),
@@ -1613,8 +1610,9 @@ pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
             b"libuv_server_stop: Signaling event loop thread to stop\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
-        uv_async_send(&raw mut (*server).stop_async);
-        uv_stop((*server).r#loop);
+        if (*server).thread_running {
+            uv_async_send(&raw mut (*server).stop_async);
+        }
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
             LOG_COMPONENT.as_ptr(),
@@ -1627,11 +1625,11 @@ pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
         let mut elapsed_ms: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
         while elapsed_ms < max_wait_ms && (*server).thread_running as ::core::ffi::c_int != 0 {
             uv_async_send(&raw mut (*server).stop_async);
-            uv_stop((*server).r#loop);
             usleep((check_interval_ms * 1000 as ::core::ffi::c_int) as __useconds_t);
             elapsed_ms += check_interval_ms;
         }
         uv_thread_join(&raw mut (*server).thread);
+        (*server).thread_joinable = r#false != 0;
         (*server).thread_running = r#false != 0;
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,

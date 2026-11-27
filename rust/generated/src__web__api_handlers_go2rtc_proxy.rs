@@ -1163,8 +1163,11 @@ pub struct libuv_server {
     pub handler_capacity: ::core::ffi::c_int,
     pub tls_ctx: *mut ::core::ffi::c_void,
     pub thread: uv_thread_t,
-    pub thread_running: bool,
+    pub thread_running: atomic_bool,
+    pub thread_joinable: atomic_bool,
+    pub init_close_pending: ::core::ffi::c_uint,
 }
+pub type atomic_bool = bool;
 pub type uv_thread_t = pthread_t;
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -1173,7 +1176,6 @@ pub struct C2Rust_Unnamed_1 {
     pub method: [::core::ffi::c_char; 16],
     pub handler: request_handler_t,
 }
-pub type atomic_bool = bool;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct http_server_config_t {
