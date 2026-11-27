@@ -159,14 +159,22 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
 
     // Initialize async handle for cross-thread stop signaling
     if (uv_async_init(server->loop, &server->stop_async, stop_async_cb) != 0) {
+        int loop_close_rc = 0;
         log_error("libuv_server_init: Failed to initialize async handle");
-        uv_close((uv_handle_t *)&server->listener, NULL);
         if (server->owns_loop) {
-            uv_loop_close(server->loop);
-            safe_free(server->loop);
+            loop_close_rc = uv_loop_close(server->loop);
+            if (loop_close_rc != 0) {
+                log_error("libuv_server_init: uv_loop_close failed during async init cleanup: %s",
+                          uv_strerror(loop_close_rc));
+            }
         }
         libuv_tls_context_free(server->tls_ctx);
-        safe_free(server);
+        if (!server->owns_loop || loop_close_rc == 0) {
+            if (server->owns_loop) {
+                safe_free(server->loop);
+            }
+            safe_free(server);
+        }
         return NULL;
     }
     server->stop_async.data = server;
@@ -174,14 +182,22 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
     // Initialize handler registry
     server->handlers = safe_calloc(INITIAL_HANDLER_CAPACITY, sizeof(*server->handlers));
     if (!server->handlers) {
+        int loop_close_rc = 0;
         log_error("libuv_server_init: Failed to allocate handler registry");
-        uv_close((uv_handle_t *)&server->listener, NULL);
         if (server->owns_loop) {
-            uv_loop_close(server->loop);
-            safe_free(server->loop);
+            loop_close_rc = uv_loop_close(server->loop);
+            if (loop_close_rc != 0) {
+                log_error("libuv_server_init: uv_loop_close failed during handler allocation cleanup: %s",
+                          uv_strerror(loop_close_rc));
+            }
         }
         libuv_tls_context_free(server->tls_ctx);
-        safe_free(server);
+        if (!server->owns_loop || loop_close_rc == 0) {
+            if (server->owns_loop) {
+                safe_free(server->loop);
+            }
+            safe_free(server);
+        }
         return NULL;
     }
     server->handler_capacity = INITIAL_HANDLER_CAPACITY;
