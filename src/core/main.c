@@ -894,6 +894,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Initialize libcurl globally (MUST be done once at startup, before any threads)
+    if (curl_init_global() != 0) {
+        log_error("Failed to initialize libcurl globally");
+        return EXIT_FAILURE;
+    }
+    log_info("libcurl initialized globally");
+
     // Must start after daemonize(): daemonize() calls fork(), and fork()
     // only duplicates the calling thread -- a thread started earlier would
     // simply not exist in the daemonized child process.
@@ -906,13 +913,6 @@ int main(int argc, char *argv[]) {
     } else {
         log_info("Native mode detected - restart will use execv()");
     }
-
-    // Initialize libcurl globally (MUST be done once at startup, before any threads)
-    if (curl_init_global() != 0) {
-        log_error("Failed to initialize libcurl globally");
-        return EXIT_FAILURE;
-    }
-    log_info("libcurl initialized globally");
     lightnvr_sentry_init();
 
     // Startup safety: if the recordings volume is critically low on free space,
