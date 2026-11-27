@@ -379,7 +379,7 @@ void test_writable_initialization_removes_only_stale_backup_artifacts(void) {
     TEST_ASSERT_EQUAL_INT(ENOENT, errno);
     TEST_ASSERT_EQUAL_INT(0, access(unrelated_path, F_OK));
 
-    sqlite3_stmt *stmt = NULL;
+    tracked_fixture_stmt = NULL;
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
         sqlite3_prepare_v2(
@@ -387,12 +387,13 @@ void test_writable_initialization_removes_only_stale_backup_artifacts(void) {
             "EXPLAIN QUERY PLAN "
             "UPDATE detections SET event_end_time=timestamp "
             "WHERE source='external_motion' AND event_end_time IS NULL;",
-            -1, &stmt, NULL));
-    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
-    const char *plan = (const char *)sqlite3_column_text(stmt, 3);
+            -1, &tracked_fixture_stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(tracked_fixture_stmt));
+    const char *plan = (const char *)sqlite3_column_text(tracked_fixture_stmt, 3);
     TEST_ASSERT_NOT_NULL(plan);
     TEST_ASSERT_NOT_NULL(strstr(plan, "idx_detections_open_external_motion"));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(tracked_fixture_stmt));
+    tracked_fixture_stmt = NULL;
 }
 
 static void assert_database_private(void) {
