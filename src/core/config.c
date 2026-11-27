@@ -1725,20 +1725,54 @@ int save_stream_configs(config_t *config) {
 
     /* Database-owned identity belongs to each matching stream, regardless of
      * whether other streams were added, removed, or renamed. */
-    for (int i = 0; i < max_streams; i++) {
-        if (streams_snapshot[i].name[0] == '\0') continue;
+    struct db_name_index_entry {
+        const char *name;
+        int idx;
+    };
+    int db_name_index_cmp(const void *a, const void *b) {
+        const struct db_name_index_entry *ea = (const struct db_name_index_entry *)a;
+        const struct db_name_index_entry *eb = (const struct db_name_index_entry *)b;
+        return strcmp(ea->name, eb->name);
+    }
+
+    struct db_name_index_entry *db_name_index = NULL;
+    if (loaded > 0) {
+        db_name_index = calloc((size_t)loaded, sizeof(*db_name_index));
+        if (!db_name_index) {
+            log_error("save_stream_configs: out of memory");
+            free(db_streams);
+            free(streams_snapshot);
+            rollback_transaction();
+            return -1;
+        }
         for (int j = 0; j < loaded; j++) {
-            if (strcmp(streams_snapshot[i].name, db_streams[j].name) == 0) {
-                safe_strcpy(streams_snapshot[i].camera_uuid,
-                            db_streams[j].camera_uuid,
-                            sizeof(streams_snapshot[i].camera_uuid), 0);
-                safe_strcpy(streams_snapshot[i].location_uuid,
-                            db_streams[j].location_uuid,
-                            sizeof(streams_snapshot[i].location_uuid), 0);
-                break;
-            }
+            db_name_index[j].name = db_streams[j].name;
+            db_name_index[j].idx = j;
+        }
+        qsort(db_name_index, (size_t)loaded, sizeof(*db_name_index), db_name_index_cmp);
+    }
+
+    for (int i = 0; i < max_streams; i++) {
+        if (streams_snapshot[i].name[0] == '\0' || loaded <= 0) continue;
+
+        struct db_name_index_entry key = {
+            .name = streams_snapshot[i].name,
+            .idx = -1
+        };
+        struct db_name_index_entry *found =
+            bsearch(&key, db_name_index, (size_t)loaded, sizeof(*db_name_index), db_name_index_cmp);
+        if (found) {
+            int j = found->idx;
+            safe_strcpy(streams_snapshot[i].camera_uuid,
+                        db_streams[j].camera_uuid,
+                        sizeof(streams_snapshot[i].camera_uuid), 0);
+            safe_strcpy(streams_snapshot[i].location_uuid,
+                        db_streams[j].location_uuid,
+                        sizeof(streams_snapshot[i].location_uuid), 0);
         }
     }
+
+    free(db_name_index);
 
     // Delete existing stream configurations
     // 'loaded' is bounded by max_streams (the calloc capacity)
