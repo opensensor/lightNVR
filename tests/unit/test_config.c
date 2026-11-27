@@ -1371,6 +1371,38 @@ void test_go2rtc_ini_rejects_invalid_ports(void) {
     }
 }
 
+void test_go2rtc_ini_rejects_oversized_turn_credentials(void) {
+    char directory[] = "/tmp/lightnvr_turn_credentials_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    snprintf(malformed_ini_dir, sizeof(malformed_ini_dir), "%s", directory);
+    malformed_ini_cleanup_active = true;
+    snprintf(malformed_ini_path, sizeof(malformed_ini_path),
+             "%s/settings.ini", directory);
+    set_custom_config_path(malformed_ini_path);
+    load_default_config(&cfg);
+
+    char oversized[sizeof(cfg.turn_username) + 1];
+    memset(oversized, 'x', sizeof(oversized) - 1);
+    oversized[sizeof(oversized) - 1] = '\0';
+    const char *fields[] = {"turn_username", "turn_password"};
+    for (size_t i = 0; i < sizeof(fields) / sizeof(fields[0]); ++i) {
+        saved_config_file = fopen(malformed_ini_path, "w");
+        TEST_ASSERT_NOT_NULL(saved_config_file);
+        TEST_ASSERT_TRUE(fprintf(saved_config_file, "[go2rtc]\n%s = %s\n",
+                                 fields[i], oversized) > 0);
+        TEST_ASSERT_EQUAL_INT(0, fclose(saved_config_file));
+        saved_config_file = NULL;
+        TEST_ASSERT_EQUAL_INT(-1, load_config(&cfg));
+        TEST_ASSERT_EQUAL_STRING("", cfg.turn_username);
+        TEST_ASSERT_EQUAL_STRING("", cfg.turn_password);
+    }
+    TEST_ASSERT_EQUAL_INT(0, unlink(malformed_ini_path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    malformed_ini_cleanup_active = false;
+    malformed_ini_path[0] = '\0';
+    malformed_ini_dir[0] = '\0';
+}
+
 void test_default_config_go2rtc_webrtc_enabled(void) {
     load_default_config(&cfg);
     TEST_ASSERT_TRUE(cfg.go2rtc_webrtc_enabled);
@@ -2495,6 +2527,7 @@ int main(void) {
     RUN_TEST(test_load_config_parses_api_detection_format);
     RUN_TEST(test_malformed_ini_after_stream_resize_keeps_streams_owned);
     RUN_TEST(test_go2rtc_ini_rejects_invalid_ports);
+    RUN_TEST(test_go2rtc_ini_rejects_oversized_turn_credentials);
     /* Uses the process-wide custom config path; run last to avoid affecting later tests. */
     RUN_TEST(test_save_config_round_trips_web_cache_and_mp4_faststart);
     RUN_TEST(test_streaming_config_snapshots_are_thread_local);
