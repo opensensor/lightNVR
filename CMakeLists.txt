@@ -422,20 +422,41 @@ if(NOT LLHTTP_FOUND)
         set(LLHTTP_VERIFY_HASHES TRUE)
     else()
         set(LLHTTP_VERIFY_HASHES FALSE)
-        # A nonempty source-tree cache may belong to the default tag or a
-        # different override. Isolate alternate refs (including their type).
-        string(SHA256 LLHTTP_REF_CACHE_KEY
-               "${LLHTTP_DOWNLOAD_REF_TYPE}:${LLHTTP_DOWNLOAD_REF}")
-        set(LLHTTP_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/llhttp-${LLHTTP_REF_CACHE_KEY}")
     endif()
     if(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "tag")
-        set(LLHTTP_REF_PATH "refs/tags/${LLHTTP_DOWNLOAD_REF}")
+        set(LLHTTP_RESOLVED_REF "${LLHTTP_DOWNLOAD_REF}")
+        set(LLHTTP_REF_PATH "refs/tags/${LLHTTP_RESOLVED_REF}")
     elseif(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "branch")
-        set(LLHTTP_REF_PATH "refs/heads/${LLHTTP_DOWNLOAD_REF}")
+        set(LLHTTP_BRANCH_API_URL "https://api.github.com/repos/nodejs/llhttp/commits/${LLHTTP_DOWNLOAD_REF}")
+        file(DOWNLOAD
+            "${LLHTTP_BRANCH_API_URL}"
+            "${CMAKE_CURRENT_BINARY_DIR}/llhttp-branch-head.json"
+            STATUS LLHTTP_BRANCH_API_STATUS
+            TLS_VERIFY ON
+        )
+        list(GET LLHTTP_BRANCH_API_STATUS 0 LLHTTP_BRANCH_API_STATUS_CODE)
+        if(NOT LLHTTP_BRANCH_API_STATUS_CODE EQUAL 0)
+            message(FATAL_ERROR "Failed to resolve LLHTTP branch '${LLHTTP_DOWNLOAD_REF}' to a commit.")
+        endif()
+        file(READ "${CMAKE_CURRENT_BINARY_DIR}/llhttp-branch-head.json" LLHTTP_BRANCH_API_BODY)
+        string(REGEX MATCH "\"sha\"[ \t]*:[ \t]*\"([0-9a-fA-F]+)\"" LLHTTP_SHA_MATCH "${LLHTTP_BRANCH_API_BODY}")
+        set(LLHTTP_RESOLVED_REF "${CMAKE_MATCH_1}")
+        string(LENGTH "${LLHTTP_RESOLVED_REF}" LLHTTP_RESOLVED_REF_LENGTH)
+        if(NOT LLHTTP_RESOLVED_REF_LENGTH EQUAL 40)
+            message(FATAL_ERROR "Unable to parse commit SHA for LLHTTP branch '${LLHTTP_DOWNLOAD_REF}'.")
+        endif()
+        set(LLHTTP_REF_PATH "${LLHTTP_RESOLVED_REF}")
     elseif(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "commit")
-        set(LLHTTP_REF_PATH "${LLHTTP_DOWNLOAD_REF}")
+        set(LLHTTP_RESOLVED_REF "${LLHTTP_DOWNLOAD_REF}")
+        set(LLHTTP_REF_PATH "${LLHTTP_RESOLVED_REF}")
     else()
         message(FATAL_ERROR "Invalid LLHTTP_DOWNLOAD_REF_TYPE='${LLHTTP_DOWNLOAD_REF_TYPE}'. Expected one of: tag, branch, commit.")
+    endif()
+    if(NOT LLHTTP_VERIFY_HASHES)
+        # A moving branch must not reuse cached files from an older head.
+        string(SHA256 LLHTTP_REF_CACHE_KEY
+               "${LLHTTP_DOWNLOAD_REF_TYPE}:${LLHTTP_RESOLVED_REF}")
+        set(LLHTTP_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/llhttp-${LLHTTP_REF_CACHE_KEY}")
     endif()
     set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_REF_PATH}")
 
@@ -815,13 +836,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Audio workers receive RLIMIT_AS. ASan reserves a large virtual shadow
     # mapping before main(), so instrumenting this supervisor defeats that
     # limit in Debug builds. Keep gcov instrumentation from CMAKE_C_FLAGS.
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND
-       CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
        CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(lightnvr-ffmpeg-guard PRIVATE
-            -fno-sanitize=address,undefined)
+            $<$<CONFIG:Debug>:-fno-sanitize=address,undefined>)
         target_link_options(lightnvr-ffmpeg-guard PRIVATE
-            -fno-sanitize=address,undefined)
+            $<$<CONFIG:Debug>:-fno-sanitize=address,undefined>)
     endif()
 endif()
 
