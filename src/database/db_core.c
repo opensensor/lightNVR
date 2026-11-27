@@ -1130,6 +1130,17 @@ int init_database_ex(const char *db_path, unsigned flags) {
         return -1;
     }
 
+    if (!db_path || !db_path[0]) {
+        log_error("Database path is empty");
+        return -1;
+    }
+    size_t db_path_len = strlen(db_path);
+    if (db_path_len >= sizeof(db_file_path) ||
+        db_path_len > sizeof(db_backup_path) - sizeof(".bak")) {
+        log_error("Database path is too long for database and backup paths");
+        return -1;
+    }
+
     wal_mode_enabled = false;
 
     db_init_flags = flags;
@@ -1163,26 +1174,10 @@ int init_database_ex(const char *db_path, unsigned flags) {
     sqlite3_soft_heap_limit64((sqlite3_int64)8 * 1024 * 1024); // 8MB soft limit
 
     // Store the database path for backup/recovery operations
-    size_t db_path_len = strlen(db_path);
-    if (db_path_len >= sizeof(db_file_path)) {
-        log_error("Database path is too long (%zu bytes, max %zu): %s",
-                  db_path_len, sizeof(db_file_path) - 1, db_path);
-        return -1;
-    }
     safe_strcpy(db_file_path, db_path, sizeof(db_file_path), 0);
 
     // Create backup path by appending .bak to the database path
-    int backup_path_len = snprintf(NULL, 0, "%s.bak", db_path);
-    if (backup_path_len < 0 || (size_t)backup_path_len >= sizeof(db_backup_path)) {
-        log_error("Backup path is too long for buffer (required %d bytes, max %zu): %s.bak",
-                  backup_path_len, sizeof(db_backup_path) - 1, db_path);
-        return -1;
-    }
-    int written = snprintf(db_backup_path, sizeof(db_backup_path), "%s.bak", db_path);
-    if (written < 0 || (size_t)written >= sizeof(db_backup_path)) {
-        log_error("Failed to format backup path safely for: %s", db_path);
-        return -1;
-    }
+    snprintf(db_backup_path, sizeof(db_backup_path), "%s.bak", db_path);
     log_info("Backup path set to: %s", db_backup_path);
 
     struct stat backup_stat;
@@ -1565,6 +1560,7 @@ int init_database_ex(const char *db_path, unsigned flags) {
     }
 
     rc = sqlite3_exec(db, "PRAGMA auto_vacuum=INCREMENTAL;", NULL, NULL, &err_msg);
+    bool auto_vacuum_requested = (rc == SQLITE_OK);
     if (rc != SQLITE_OK) {
         log_warn("Failed to request auto_vacuum=INCREMENTAL: %s", err_msg);
         if (err_msg) {
@@ -1587,7 +1583,7 @@ int init_database_ex(const char *db_path, unsigned flags) {
         av_stmt = NULL;
     }
 
-    if (auto_vacuum_before == 0 && auto_vacuum_after != 2) {
+    if (auto_vacuum_requested && auto_vacuum_before == 0 && auto_vacuum_after != 2) {
         log_info("auto_vacuum transition from NONE requires VACUUM; rebuilding database file");
         rc = sqlite3_exec(db, "VACUUM;", NULL, NULL, &err_msg);
         if (rc != SQLITE_OK) {
