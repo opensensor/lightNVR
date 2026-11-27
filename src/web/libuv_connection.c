@@ -218,6 +218,9 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     recording_archive_disconnected(conn);
     http_response_free(&conn->response);
 
+    // The body is assembled separately from the receive buffer because
+    // chunk framing may separate successive on_body callbacks.
+    safe_free(conn->request.body);
     // Reset request/response
     http_request_init(&conn->request);
     http_response_init(&conn->response);
@@ -230,20 +233,15 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     conn->current_header_field[0] = '\0';
     conn->current_header_field_len = 0;
 
-    // Preserve unread bytes (e.g. next pipelined request already received)
-    // before resetting body-position tracking.
-    size_t unread = 0;
-    if (conn->body_offset <= conn->recv_buffer_used) {
-        unread = conn->recv_buffer_used - conn->body_offset;
-        if (unread > 0 && conn->body_offset > 0) {
-            memmove(conn->recv_buffer,
-                    conn->recv_buffer + conn->body_offset,
-                    unread);
-        }
+    size_t unread = conn->unread_bytes;
+    if (unread > 0 && unread <= conn->recv_buffer_used) {
+        memmove(conn->recv_buffer,
+                conn->recv_buffer + conn->recv_buffer_used - unread, unread);
+    } else {
+        unread = 0;
     }
-    conn->recv_buffer_used = unread;
-    conn->body_offset      = 0;
-    conn->body_present     = false;
+    conn->recv_buffer_used = 0;
+    conn->unread_bytes = 0;
 
     // Reset thread pool offloading state
     conn->handler_on_worker = false;
@@ -260,6 +258,10 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     // to the thread pool. We must restart it for the next request.
     if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
         libuv_connection_read_start(conn, libuv_alloc_cb, libuv_read_cb);
+        if (unread > 0) {
+            uv_buf_t pending = uv_buf_init(conn->recv_buffer, (unsigned int)unread);
+            libuv_read_cb((uv_stream_t *)&conn->handle, (ssize_t)unread, &pending);
+        }
     }
 }
 
@@ -286,6 +288,7 @@ void libuv_connection_destroy(libuv_connection_t *conn) {
     go2rtc_websocket_disconnected(conn);
     recording_archive_disconnected(conn);
     http_response_free(&conn->response);
+    safe_free(conn->request.body);
     libuv_tls_session_free(conn);
     
     if (conn->recv_buffer) {
@@ -379,6 +382,10 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         // pipelined data while the handler runs concurrently on a worker thread.
         // The parser will be resumed when the connection is reset for keep-alive.
         if (err == HPE_PAUSED) {
+            const char *next = llhttp_get_error_pos(&conn->parser);
+            if (next && next >= buf->base && next <= buf->base + nread) {
+                conn->unread_bytes = (size_t)(buf->base + nread - next);
+            }
             return;
         }
 
@@ -582,18 +589,7 @@ static int on_headers_complete(llhttp_t *parser) {
     return 0;
 }
 
-/**
- * @brief Body callback - accumulate request body
- *
- * We store the body's *offset* into recv_buffer rather than a raw pointer,
- * because libuv_alloc_cb() may safe_realloc() the receive buffer between
- * successive TCP chunks (see #390). A raw pointer captured during the first
- * on_body() call would dangle as soon as realloc moved the buffer; the
- * offset stays correct because realloc preserves content. The pointer form
- * `request.body` is materialized from (recv_buffer + body_offset) later in
- * on_message_complete(), once the full message has arrived and the buffer
- * has settled at its final address.
- */
+/** Assemble decoded body chunks, excluding chunked-transfer framing. */
 static int on_body(llhttp_t *parser, const char *at, size_t length) {
     libuv_connection_t *conn = (libuv_connection_t *)parser->data;
 
@@ -602,13 +598,14 @@ static int on_body(llhttp_t *parser, const char *at, size_t length) {
     }
 
     size_t old_len = conn->request.body_len;
+    if (length > LIBUV_RECV_BUFFER_MAX - old_len) return HPE_USER;
     char *new_body = safe_realloc(conn->request.body, old_len + length + 1);
+    if (!new_body) return HPE_USER;
     memcpy(new_body + old_len, at, length);
     new_body[old_len + length] = '\0';
 
     conn->request.body = new_body;
     conn->request.body_len = old_len + length;
-    conn->body_present = true;
 
     return 0;
 }
@@ -859,16 +856,6 @@ static void static_file_resolve_handler(const http_request_t *req, http_response
 static int on_message_complete(llhttp_t *parser) {
     libuv_connection_t *conn = (libuv_connection_t *)parser->data;
     conn->message_complete = true;
-
-    // Resolve the body pointer from the offset we accumulated during on_body
-    // callbacks. recv_buffer is stable from this point until the handler
-    // returns and libuv_connection_reset clears it (#390).
-    if (conn->body_present) {
-        conn->request.body = conn->recv_buffer + conn->body_offset;
-    } else {
-        conn->request.body = NULL;
-        conn->request.body_len = 0;
-    }
 
     // Find matching handler
     libuv_server_t *server = conn->server;

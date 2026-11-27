@@ -77,13 +77,9 @@ typedef struct libuv_connection {
     http_request_t request;             // Parsed request
     http_response_t response;           // Response being built
 
-    // Request body position tracked as an offset into recv_buffer rather
-    // than a raw pointer, because recv_buffer may be realloc'd mid-request
-    // when the incoming body doesn't fit in the initial buffer (#390).
-    // The pointer-form `request.body` is resolved from this offset in
-    // on_message_complete() just before the handler is dispatched.
-    size_t body_offset;                 // Offset of body start within recv_buffer
-    bool   body_present;                // True once at least one on_body chunk has arrived
+    // Bytes after a paused message in the most recent read. Replay them
+    // after its response completes so pipelined requests are not lost.
+    size_t unread_bytes;
     
     libuv_server_t *server;             // Back-pointer to server
     
