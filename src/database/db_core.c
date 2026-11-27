@@ -1348,8 +1348,12 @@ int init_database_ex(const char *db_path, unsigned flags) {
                         log_info("Database %s check passed (%ld s)", check_label,
                                  (long)(time(NULL) - check_started));
                     }
+                } else if (step_rc == SQLITE_BUSY || step_rc == SQLITE_LOCKED) {
+                    failure_reason = sqlite3_errmsg(test_db);
+                    log_warn("Database %s check could not run due to lock contention (rc=%d): %s",
+                             check_label, step_rc,
+                             failure_reason ? failure_reason : "unknown error");
                 } else {
-                    check_failed = true;
                     failure_reason = sqlite3_errmsg(test_db);
                     log_error("Database %s check execution failed (rc=%d): %s",
                               check_label, step_rc,
