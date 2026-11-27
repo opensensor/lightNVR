@@ -178,13 +178,21 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
     struct stat parent;
     TEST_ASSERT_EQUAL_INT(0, stat(test_fixture_dir, &parent));
     TEST_ASSERT_TRUE(S_ISDIR(parent.st_mode));
-    snprintf(rejected_path, sizeof(rejected_path), "%s", test_fixture_dir);
-    for (size_t i = 0; strlen(rejected_path) <= PATH_MAX; i++) {
-        size_t used = strlen(rejected_path);
-        int written = snprintf(rejected_path + used, sizeof(rejected_path) - used,
-                               "/segment%06zu", i);
-        TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(rejected_path) - used);
+
+    int written = snprintf(rejected_path, sizeof(rejected_path), "%s/existing_parent", test_fixture_dir);
+    TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(rejected_path));
+    if (mkdir(rejected_path, 0700) != 0) {
+        TEST_ASSERT_EQUAL_INT(EEXIST, errno);
     }
+
+    size_t used = strlen(rejected_path);
+    size_t min_needed = (size_t)PATH_MAX + 1;
+    size_t final_component_len = (min_needed > used + 1) ? (min_needed - used - 1) : 1;
+    TEST_ASSERT_TRUE(used + 1 + final_component_len + 1 < sizeof(rejected_path));
+    rejected_path[used] = '/';
+    memset(rejected_path + used + 1, 'a', final_component_len);
+    rejected_path[used + 1 + final_component_len] = '\0';
+
     TEST_ASSERT_TRUE(strlen(rejected_path) > PATH_MAX);
 
     TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
