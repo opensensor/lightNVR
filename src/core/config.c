@@ -372,7 +372,8 @@ static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAP
                 safe_strcpy(str_ptr, env_value, mapping->size, 0);
                 // Log with masked value for sensitive fields
                 if (strstr(mapping->env_name, "PASSWORD") != NULL ||
-                    strstr(mapping->env_name, "SECRET") != NULL) {
+                    strstr(mapping->env_name, "SECRET") != NULL ||
+                    strstr(mapping->env_name, "ICE_SERVERS") != NULL) {
                     log_info("Applied env override: %s=*** (string, masked)",
                              env_name);
                 } else {
