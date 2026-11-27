@@ -1773,6 +1773,7 @@ impl stream_state_t {
 pub const PTHREAD_ONCE_INIT: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const LOG_COMPONENT: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
+pub const MAX_STREAMS: ::core::ffi::c_int = LIGHTNVR_MAX_STREAMS;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_stream_hls_writer(mut stream: stream_handle_t) -> *mut hls_writer_t {
     if stream.is_null() {
@@ -1867,6 +1868,16 @@ unsafe extern "C" fn init_streaming_snapshot_key() {
         &raw mut streaming_snapshot_key,
         Some(destroy_streaming_snapshot as unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()),
     );
+}
+unsafe extern "C" fn usable_streaming_snapshot(mut snapshot: *mut config_t) -> *mut config_t {
+    if snapshot.is_null()
+        || (*snapshot).streams.is_null()
+        || (*snapshot).max_streams <= 0 as ::core::ffi::c_int
+        || (*snapshot).max_streams > MAX_STREAMS
+    {
+        return ::core::ptr::null_mut::<config_t>();
+    }
+    return snapshot;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
@@ -2047,19 +2058,11 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
     pthread_mutex_lock(&raw mut config_mutex);
     if !config_copy(&raw mut db_config, &raw mut g_config) {
         pthread_mutex_unlock(&raw mut config_mutex);
-        return if !(*snapshot).streams.is_null() {
-            snapshot
-        } else {
-            ::core::ptr::null_mut::<config_t>()
-        };
+        return usable_streaming_snapshot(snapshot);
     }
     if config_reset_stream_slots(&raw mut db_config) != 0 as ::core::ffi::c_int {
         pthread_mutex_unlock(&raw mut config_mutex);
-        return if !(*snapshot).streams.is_null() {
-            snapshot
-        } else {
-            ::core::ptr::null_mut::<config_t>()
-        };
+        return usable_streaming_snapshot(snapshot);
     }
     let mut ms: ::core::ffi::c_int = db_config.max_streams;
     let mut db_streams: *mut stream_config_t =
@@ -2069,11 +2072,7 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
             config_copy(snapshot, &raw mut g_config);
         }
         pthread_mutex_unlock(&raw mut config_mutex);
-        return if !(*snapshot).streams.is_null() {
-            snapshot
-        } else {
-            ::core::ptr::null_mut::<config_t>()
-        };
+        return usable_streaming_snapshot(snapshot);
     }
     let mut count: ::core::ffi::c_int = get_all_stream_configs(db_streams, ms);
     if count < 0 as ::core::ffi::c_int {
@@ -2082,11 +2081,7 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
             config_copy(snapshot, &raw mut g_config);
         }
         pthread_mutex_unlock(&raw mut config_mutex);
-        return if !(*snapshot).streams.is_null() {
-            snapshot
-        } else {
-            ::core::ptr::null_mut::<config_t>()
-        };
+        return usable_streaming_snapshot(snapshot);
     }
     if count > 0 as ::core::ffi::c_int {
         let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -2116,11 +2111,7 @@ pub unsafe extern "C" fn get_streaming_config() -> *mut config_t {
     );
     if !config_copy(snapshot, &raw mut db_config) {
         pthread_mutex_unlock(&raw mut config_mutex);
-        return if !(*snapshot).streams.is_null() {
-            snapshot
-        } else {
-            ::core::ptr::null_mut::<config_t>()
-        };
+        return usable_streaming_snapshot(snapshot);
     }
     pthread_mutex_unlock(&raw mut config_mutex);
     return snapshot;
@@ -2151,7 +2142,10 @@ pub unsafe extern "C" fn stream_restart_hls(
     mut stream_name: *const ::core::ffi::c_char,
 ) -> ::core::ffi::c_int {
     if should_use_go2rtc() {
-        go2rtc_integration_stop_hls(stream_name);
+        let mut stop_result: ::core::ffi::c_int = go2rtc_integration_stop_hls(stream_name);
+        if stop_result != 0 as ::core::ffi::c_int {
+            return stop_result;
+        }
         return go2rtc_integration_start_hls(stream_name);
     }
     return restart_hls_stream(stream_name);
@@ -2175,7 +2169,9 @@ pub unsafe extern "C" fn stop_transcode_stream(
         );
     }
     if should_use_go2rtc() {
-        if go2rtc_integration_stop_recording(stream_name) != 0 as ::core::ffi::c_int {
+        let mut recording_stop_result: ::core::ffi::c_int =
+            go2rtc_integration_stop_recording(stream_name);
+        if recording_stop_result != 0 as ::core::ffi::c_int {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_WARN,
                 LOG_COMPONENT,
@@ -2184,6 +2180,9 @@ pub unsafe extern "C" fn stop_transcode_stream(
                     as *const ::core::ffi::c_char,
                 stream_name,
             );
+            if result == 0 as ::core::ffi::c_int {
+                result = recording_stop_result;
+            }
         }
     } else {
         unregister_mp4_writer_for_stream(stream_name);
@@ -2191,3 +2190,4 @@ pub unsafe extern "C" fn stop_transcode_stream(
     return result;
 }
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
+pub const LIGHTNVR_MAX_STREAMS: ::core::ffi::c_int = 1024 as ::core::ffi::c_int;

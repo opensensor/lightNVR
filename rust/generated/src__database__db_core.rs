@@ -7,7 +7,6 @@ unsafe extern "C" {
     pub type __dirstream;
     pub type sqlite3;
     pub type sqlite3_stmt;
-    static mut stderr: *mut FILE;
     unsafe fn rename(
         __old: *const ::core::ffi::c_char,
         __new: *const ::core::ffi::c_char,
@@ -17,11 +16,6 @@ unsafe extern "C" {
         __filename: *const ::core::ffi::c_char,
         __modes: *const ::core::ffi::c_char,
     ) -> *mut FILE;
-    unsafe fn fprintf(
-        __stream: *mut FILE,
-        __format: *const ::core::ffi::c_char,
-        ...
-    ) -> ::core::ffi::c_int;
     unsafe fn snprintf(
         __s: *mut ::core::ffi::c_char,
         __maxlen: size_t,
@@ -39,6 +33,7 @@ unsafe extern "C" {
     unsafe fn clock_gettime(__clock_id: clockid_t, __tp: *mut timespec) -> ::core::ffi::c_int;
     unsafe fn closedir(__dirp: *mut DIR) -> ::core::ffi::c_int;
     unsafe fn opendir(__name: *const ::core::ffi::c_char) -> *mut DIR;
+    unsafe fn fdopendir(__fd: ::core::ffi::c_int) -> *mut DIR;
     unsafe fn readdir(__dirp: *mut DIR) -> *mut dirent;
     unsafe fn dirfd(__dirp: *mut DIR) -> ::core::ffi::c_int;
     unsafe fn sqlite3_close_v2(_: *mut sqlite3) -> ::core::ffi::c_int;
@@ -84,6 +79,10 @@ unsafe extern "C" {
         _: Option<unsafe extern "C" fn(*mut ::core::ffi::c_void) -> ()>,
     ) -> ::core::ffi::c_int;
     unsafe fn sqlite3_step(_: *mut sqlite3_stmt) -> ::core::ffi::c_int;
+    unsafe fn sqlite3_column_int(
+        _: *mut sqlite3_stmt,
+        iCol: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
     unsafe fn sqlite3_column_text(
         _: *mut sqlite3_stmt,
         iCol: ::core::ffi::c_int,
@@ -97,6 +96,13 @@ unsafe extern "C" {
         zDbName: *const ::core::ffi::c_char,
         op: ::core::ffi::c_int,
         _: *mut ::core::ffi::c_void,
+    ) -> ::core::ffi::c_int;
+    unsafe fn sqlite3_wal_checkpoint_v2(
+        db_0: *mut sqlite3,
+        zDb: *const ::core::ffi::c_char,
+        eMode: ::core::ffi::c_int,
+        pnLog: *mut ::core::ffi::c_int,
+        pnCkpt: *mut ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
     unsafe fn pthread_create(
         __newthread: *mut pthread_t,
@@ -115,8 +121,18 @@ unsafe extern "C" {
         __once_control: *mut pthread_once_t,
         __init_routine: Option<unsafe extern "C" fn() -> ()>,
     ) -> ::core::ffi::c_int;
+    unsafe fn pthread_mutex_init(
+        __mutex: *mut pthread_mutex_t,
+        __mutexattr: *const pthread_mutexattr_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_lock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
     unsafe fn pthread_mutex_unlock(__mutex: *mut pthread_mutex_t) -> ::core::ffi::c_int;
+    unsafe fn pthread_mutexattr_init(__attr: *mut pthread_mutexattr_t) -> ::core::ffi::c_int;
+    unsafe fn pthread_mutexattr_destroy(__attr: *mut pthread_mutexattr_t) -> ::core::ffi::c_int;
+    unsafe fn pthread_mutexattr_settype(
+        __attr: *mut pthread_mutexattr_t,
+        __kind: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
     unsafe fn pthread_cond_init(
         __cond: *mut pthread_cond_t,
         __cond_attr: *const pthread_condattr_t,
@@ -243,11 +259,22 @@ unsafe extern "C" {
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
+    unsafe fn strncmp(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+        __n: size_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn strdup(__s: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
     unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
     unsafe fn strerror(__errnum: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
+    unsafe fn strtoul(
+        __nptr: *const ::core::ffi::c_char,
+        __endptr: *mut *mut ::core::ffi::c_char,
+        __base: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_ulong;
     unsafe fn realloc(__ptr: *mut ::core::ffi::c_void, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
+    unsafe fn abort() -> !;
     unsafe fn qsort(
         __base: *mut ::core::ffi::c_void,
         __nmemb: size_t,
@@ -326,6 +353,12 @@ pub struct __pthread_cond_s {
     pub __unused_initialized_2: ::core::ffi::c_uint,
 }
 pub type pthread_t = ::core::ffi::c_ulong;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub union pthread_mutexattr_t {
+    pub __size: [::core::ffi::c_char; 4],
+    pub __align: ::core::ffi::c_int,
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub union pthread_condattr_t {
@@ -702,7 +735,6 @@ impl stream_protocol_t {
 #[repr(C)]
 pub struct selected_backup_t {
     pub name: *mut ::core::ffi::c_char,
-    pub fd: ::core::ffi::c_int,
     pub selected: stat,
 }
 #[derive(Copy, Clone)]
@@ -722,7 +754,11 @@ pub const CLOCK_REALTIME: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const CLOCK_MONOTONIC: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const ETIMEDOUT: ::core::ffi::c_int = 110 as ::core::ffi::c_int;
 pub const SQLITE_OK: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const SQLITE_BUSY: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
+pub const SQLITE_LOCKED: ::core::ffi::c_int = 6 as ::core::ffi::c_int;
+pub const SQLITE_CORRUPT: ::core::ffi::c_int = 11 as ::core::ffi::c_int;
 pub const SQLITE_NOTFOUND: ::core::ffi::c_int = 12 as ::core::ffi::c_int;
+pub const SQLITE_NOTADB: ::core::ffi::c_int = 26 as ::core::ffi::c_int;
 pub const SQLITE_ROW: ::core::ffi::c_int = 100 as ::core::ffi::c_int;
 pub const SQLITE_DONE: ::core::ffi::c_int = 101 as ::core::ffi::c_int;
 pub const SQLITE_OPEN_READONLY: ::core::ffi::c_int = 0x1 as ::core::ffi::c_int;
@@ -731,14 +767,15 @@ pub const SQLITE_OPEN_NOMUTEX: ::core::ffi::c_int = 0x8000 as ::core::ffi::c_int
 pub const SQLITE_OPEN_FULLMUTEX: ::core::ffi::c_int = 0x10000 as ::core::ffi::c_int;
 pub const SQLITE_OPEN_PRIVATECACHE: ::core::ffi::c_int = 0x40000 as ::core::ffi::c_int;
 pub const SQLITE_FCNTL_PERSIST_WAL: ::core::ffi::c_int = 10 as ::core::ffi::c_int;
-pub const SQLITE_CONFIG_SINGLETHREAD: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-pub const SQLITE_CONFIG_MULTITHREAD: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const SQLITE_CONFIG_PAGECACHE: ::core::ffi::c_int = 7 as ::core::ffi::c_int;
 pub const SQLITE_CONFIG_MEMSTATUS: ::core::ffi::c_int = 9 as ::core::ffi::c_int;
+pub const SQLITE_CHECKPOINT_FULL: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const PTHREAD_ONCE_INIT: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const STDERR_FILENO: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const F_OK: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const ENOENT: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const EINTR: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
+pub const EIO: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
 pub const EEXIST: ::core::ffi::c_int = 17 as ::core::ffi::c_int;
 pub const __O_CLOEXEC: ::core::ffi::c_int = 0o2000000 as ::core::ffi::c_int;
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
@@ -748,7 +785,7 @@ pub const O_RDONLY: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const O_WRONLY: ::core::ffi::c_int = 0o1 as ::core::ffi::c_int;
 pub const O_RDWR: ::core::ffi::c_int = 0o2 as ::core::ffi::c_int;
 pub const O_CREAT: ::core::ffi::c_int = 0o100 as ::core::ffi::c_int;
-pub const O_TRUNC: ::core::ffi::c_int = 0o1000 as ::core::ffi::c_int;
+pub const O_EXCL: ::core::ffi::c_int = 0o200 as ::core::ffi::c_int;
 pub const O_NONBLOCK: ::core::ffi::c_int = 0o4000 as ::core::ffi::c_int;
 pub const __O_DIRECTORY: ::core::ffi::c_int = 0o200000 as ::core::ffi::c_int;
 pub const __O_NOFOLLOW: ::core::ffi::c_int = 0o400000 as ::core::ffi::c_int;
@@ -771,19 +808,33 @@ pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::
 static mut db: *mut sqlite3 = ::core::ptr::null_mut::<sqlite3>();
 static mut db_mutex: pthread_mutex_t = pthread_mutex_t {
     __data: __pthread_mutex_s {
-        __lock: 0 as ::core::ffi::c_int,
-        __count: 0 as ::core::ffi::c_uint,
-        __owner: 0 as ::core::ffi::c_int,
-        __nusers: 0 as ::core::ffi::c_uint,
-        __kind: C2Rust_Unnamed_0::PTHREAD_MUTEX_TIMED_NP.0 as ::core::ffi::c_int,
-        __spins: 0 as ::core::ffi::c_short,
-        __glibc_reserved: 0 as ::core::ffi::c_short,
-        __list: __pthread_internal_list {
+        __lock: 0,
+        __count: 0,
+        __owner: 0,
+        __nusers: 0,
+        __kind: 0,
+        __spins: 0,
+        __glibc_reserved: 0,
+        __list: __pthread_list_t {
             __prev: ::core::ptr::null_mut::<__pthread_internal_list>(),
             __next: ::core::ptr::null_mut::<__pthread_internal_list>(),
         },
     },
 };
+static mut db_mutex_once: pthread_once_t = PTHREAD_ONCE_INIT;
+unsafe extern "C" fn init_db_mutex() {
+    let mut attr: pthread_mutexattr_t = pthread_mutexattr_t { __size: [0; 4] };
+    if pthread_mutexattr_init(&raw mut attr) != 0 as ::core::ffi::c_int
+        || pthread_mutexattr_settype(
+            &raw mut attr,
+            C2Rust_Unnamed_0::PTHREAD_MUTEX_RECURSIVE.0 as ::core::ffi::c_int,
+        ) != 0 as ::core::ffi::c_int
+        || pthread_mutex_init(&raw mut db_mutex, &raw mut attr) != 0 as ::core::ffi::c_int
+    {
+        abort();
+    }
+    pthread_mutexattr_destroy(&raw mut attr);
+}
 static mut db_file_path: [::core::ffi::c_char; 4096] = [
     0 as ::core::ffi::c_char,
     0,
@@ -9734,13 +9785,52 @@ unsafe extern "C" fn cleanup_stale_backup_entry(
 unsafe extern "C" fn cleanup_stale_backup_artifacts(
     mut backup_dir: *const ::core::ffi::c_char,
 ) -> ::core::ffi::c_int {
-    let mut dir: *mut DIR = opendir(backup_dir);
-    if dir.is_null() {
+    let mut dfd: ::core::ffi::c_int = open(backup_dir, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if dfd < 0 as ::core::ffi::c_int {
         return if *__errno_location() == ENOENT {
             0 as ::core::ffi::c_int
         } else {
             -1 as ::core::ffi::c_int
         };
+    }
+    let mut dir_st: stat = stat {
+        st_dev: 0,
+        st_ino: 0,
+        st_nlink: 0,
+        st_mode: 0,
+        st_uid: 0,
+        st_gid: 0,
+        __pad0: 0,
+        st_rdev: 0,
+        st_size: 0,
+        st_blksize: 0,
+        st_blocks: 0,
+        st_atim: timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        st_mtim: timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        st_ctim: timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        __glibc_reserved: [0; 3],
+    };
+    if fstat(dfd, &raw mut dir_st) != 0 as ::core::ffi::c_int
+        || !(dir_st.st_mode & __S_IFMT as __mode_t == 0o40000 as __mode_t)
+        || dir_st.st_uid != geteuid()
+        || dir_st.st_mode & 0o77 as __mode_t != 0 as __mode_t
+    {
+        close(dfd);
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut dir: *mut DIR = fdopendir(dfd);
+    if dir.is_null() {
+        close(dfd);
+        return -1 as ::core::ffi::c_int;
     }
     let mut result: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     let mut parent: ::core::ffi::c_int = dirfd(dir);
@@ -9750,33 +9840,49 @@ unsafe extern "C" fn cleanup_stale_backup_artifacts(
     }
     let mut entry: *mut dirent = ::core::ptr::null_mut::<dirent>();
     loop {
+        *__errno_location() = 0 as ::core::ffi::c_int;
         entry = readdir(dir);
         if entry.is_null() {
+            if *__errno_location() != 0 as ::core::ffi::c_int {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Failed to enumerate backup directory %s (%s)\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    backup_dir,
+                    strerror(*__errno_location()),
+                );
+                result = -1 as ::core::ffi::c_int;
+            }
             break;
-        }
-        if !(is_temporary_backup_artifact(&raw mut (*entry).d_name as *mut ::core::ffi::c_char)
-            as ::core::ffi::c_int
-            != 0
-            && cleanup_stale_backup_entry(
-                parent,
+        } else {
+            if !(is_temporary_backup_artifact(&raw mut (*entry).d_name as *mut ::core::ffi::c_char)
+                as ::core::ffi::c_int
+                != 0
+                && cleanup_stale_backup_entry(
+                    parent,
+                    backup_dir,
+                    &raw mut (*entry).d_name as *mut ::core::ffi::c_char,
+                ) != 0 as ::core::ffi::c_int)
+            {
+                continue;
+            }
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Incomplete stale backup cleanup: %s/%s\0".as_ptr() as *const ::core::ffi::c_char,
                 backup_dir,
                 &raw mut (*entry).d_name as *mut ::core::ffi::c_char,
-            ) != 0 as ::core::ffi::c_int)
-        {
-            continue;
+            );
+            result = -1 as ::core::ffi::c_int;
+            break;
         }
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_WARN,
-            LOG_COMPONENT,
-            _log_stream_name,
-            b"Incomplete stale backup cleanup: %s/%s\0".as_ptr() as *const ::core::ffi::c_char,
-            backup_dir,
-            &raw mut (*entry).d_name as *mut ::core::ffi::c_char,
-        );
-        result = -1 as ::core::ffi::c_int;
-        break;
     }
-    closedir(dir);
+    if closedir(dir) != 0 as ::core::ffi::c_int {
+        result = -1 as ::core::ffi::c_int;
+    }
     return result;
 }
 unsafe extern "C" fn copy_file_contents(
@@ -9801,7 +9907,7 @@ unsafe extern "C" fn copy_file_contents(
     }
     dst_fd = open(
         dest_path,
-        O_WRONLY | O_CREAT | O_TRUNC,
+        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
         0o600 as ::core::ffi::c_int,
     );
     if dst_fd < 0 as ::core::ffi::c_int {
@@ -9827,6 +9933,9 @@ unsafe extern "C" fn copy_file_contents(
             break;
         }
         if bytes_read < 0 as ssize_t {
+            if *__errno_location() == EINTR {
+                continue;
+            }
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_ERROR,
                 LOG_COMPONENT,
@@ -9839,30 +9948,38 @@ unsafe extern "C" fn copy_file_contents(
             close(src_fd);
             close(dst_fd);
             return -1 as ::core::ffi::c_int;
-        }
-        let mut total_written: ssize_t = 0 as ssize_t;
-        while total_written < bytes_read {
-            let mut bytes_written: ssize_t = write(
-                dst_fd,
-                (&raw mut buffer as *mut ::core::ffi::c_char).offset(total_written as isize)
-                    as *const ::core::ffi::c_void,
-                (bytes_read - total_written) as size_t,
-            );
-            if bytes_written < 0 as ssize_t {
-                _log_message_ctx(
-                    log_level_t::LOG_LEVEL_ERROR,
-                    LOG_COMPONENT,
-                    _log_stream_name,
-                    b"Failed to write destination file during copy: %s (%s)\0".as_ptr()
-                        as *const ::core::ffi::c_char,
-                    dest_path,
-                    strerror(*__errno_location()),
+        } else {
+            let mut total_written: ssize_t = 0 as ssize_t;
+            while total_written < bytes_read {
+                let mut bytes_written: ssize_t = write(
+                    dst_fd,
+                    (&raw mut buffer as *mut ::core::ffi::c_char).offset(total_written as isize)
+                        as *const ::core::ffi::c_void,
+                    (bytes_read - total_written) as size_t,
                 );
-                close(src_fd);
-                close(dst_fd);
-                return -1 as ::core::ffi::c_int;
+                if bytes_written <= 0 as ssize_t {
+                    if bytes_written < 0 as ssize_t && *__errno_location() == EINTR {
+                        continue;
+                    }
+                    if bytes_written == 0 as ssize_t {
+                        *__errno_location() = EIO;
+                    }
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Failed to write destination file during copy: %s (%s)\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        dest_path,
+                        strerror(*__errno_location()),
+                    );
+                    close(src_fd);
+                    close(dst_fd);
+                    return -1 as ::core::ffi::c_int;
+                } else {
+                    total_written += bytes_written;
+                }
             }
-            total_written += bytes_written;
         }
     }
     close(src_fd);
@@ -9911,6 +10028,20 @@ unsafe extern "C" fn refresh_latest_backup(
             unlink(&raw mut temp_latest_path as *mut ::core::ffi::c_char);
             return -1 as ::core::ffi::c_int;
         }
+        if sync_path_if_exists(&raw mut temp_latest_path as *mut ::core::ffi::c_char)
+            != 0 as ::core::ffi::c_int
+        {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"Failed to sync temporary latest backup before publish: %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                &raw mut temp_latest_path as *mut ::core::ffi::c_char,
+            );
+            unlink(&raw mut temp_latest_path as *mut ::core::ffi::c_char);
+            return -1 as ::core::ffi::c_int;
+        }
     }
     if rename(
         &raw mut temp_latest_path as *mut ::core::ffi::c_char,
@@ -9939,12 +10070,143 @@ unsafe extern "C" fn refresh_latest_backup(
     }
     return 0 as ::core::ffi::c_int;
 }
+unsafe extern "C" fn parse_backup_name_components(
+    mut name: *const ::core::ffi::c_char,
+    mut ts_start: *mut *const ::core::ffi::c_char,
+    mut ts_len: *mut size_t,
+    mut suffix: *mut ::core::ffi::c_ulong,
+) -> ::core::ffi::c_int {
+    static mut ext: [::core::ffi::c_char; 9] =
+        unsafe { ::core::mem::transmute::<[u8; 9], [::core::ffi::c_char; 9]>(*b".sqlite3\0") };
+    let mut ext_len: size_t =
+        ::core::mem::size_of::<[::core::ffi::c_char; 9]>().wrapping_sub(1 as size_t);
+    let mut len: size_t = 0;
+    let mut dot: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut suffix_start: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut endptr: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut parsed_suffix: ::core::ffi::c_ulong = 0 as ::core::ffi::c_ulong;
+    if name.is_null() || ts_start.is_null() || ts_len.is_null() || suffix.is_null() {
+        return -1 as ::core::ffi::c_int;
+    }
+    len = strlen(name);
+    if len < (16 as size_t).wrapping_add(ext_len) {
+        return -1 as ::core::ffi::c_int;
+    }
+    dot = name.offset(len.wrapping_sub(ext_len) as isize);
+    if strcmp(dot, &raw const ext as *const ::core::ffi::c_char) != 0 as ::core::ffi::c_int {
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut i: size_t = 0 as size_t;
+    while i < 16 as size_t {
+        if i == 8 as size_t || i == 15 as size_t {
+            if *name.offset(i as isize) as ::core::ffi::c_int
+                != if i == 8 as size_t {
+                    'T' as ::core::ffi::c_int
+                } else {
+                    'Z' as ::core::ffi::c_int
+                }
+            {
+                return -1 as ::core::ffi::c_int;
+            }
+        } else if (*name.offset(i as isize) as ::core::ffi::c_int) < '0' as ::core::ffi::c_int
+            || *name.offset(i as isize) as ::core::ffi::c_int > '9' as ::core::ffi::c_int
+        {
+            return -1 as ::core::ffi::c_int;
+        }
+        i = i.wrapping_add(1);
+    }
+    suffix_start = name.offset(16 as ::core::ffi::c_int as isize);
+    if suffix_start != dot {
+        if *suffix_start as ::core::ffi::c_int != '-' as ::core::ffi::c_int
+            || suffix_start.offset(1 as ::core::ffi::c_int as isize) == dot
+        {
+            return -1 as ::core::ffi::c_int;
+        }
+        let mut p: *const ::core::ffi::c_char =
+            suffix_start.offset(1 as ::core::ffi::c_int as isize);
+        while p < dot {
+            if (*p as ::core::ffi::c_int) < '0' as ::core::ffi::c_int
+                || *p as ::core::ffi::c_int > '9' as ::core::ffi::c_int
+            {
+                return -1 as ::core::ffi::c_int;
+            }
+            p = p.offset(1);
+        }
+        *__errno_location() = 0 as ::core::ffi::c_int;
+        parsed_suffix = strtoul(
+            suffix_start.offset(1 as ::core::ffi::c_int as isize),
+            &raw mut endptr,
+            10 as ::core::ffi::c_int,
+        );
+        if *__errno_location() != 0 as ::core::ffi::c_int
+            || endptr != dot as *mut ::core::ffi::c_char
+        {
+            return -1 as ::core::ffi::c_int;
+        }
+    }
+    *ts_start = name;
+    *ts_len = 16 as size_t;
+    *suffix = parsed_suffix;
+    return 0 as ::core::ffi::c_int;
+}
 unsafe extern "C" fn compare_selected_backups(
     mut lhs: *const ::core::ffi::c_void,
     mut rhs: *const ::core::ffi::c_void,
 ) -> ::core::ffi::c_int {
     let mut left: *const selected_backup_t = lhs as *const selected_backup_t;
     let mut right: *const selected_backup_t = rhs as *const selected_backup_t;
+    let mut left_ts: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut right_ts: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut left_ts_len: size_t = 0 as size_t;
+    let mut right_ts_len: size_t = 0 as size_t;
+    let mut left_suffix: ::core::ffi::c_ulong = 0 as ::core::ffi::c_ulong;
+    let mut right_suffix: ::core::ffi::c_ulong = 0 as ::core::ffi::c_ulong;
+    let mut min_len: size_t = 0;
+    let mut cmp: ::core::ffi::c_int = 0;
+    let mut left_generated: bool = parse_backup_name_components(
+        (*left).name,
+        &raw mut left_ts,
+        &raw mut left_ts_len,
+        &raw mut left_suffix,
+    ) == 0 as ::core::ffi::c_int;
+    let mut right_generated: bool = parse_backup_name_components(
+        (*right).name,
+        &raw mut right_ts,
+        &raw mut right_ts_len,
+        &raw mut right_suffix,
+    ) == 0 as ::core::ffi::c_int;
+    if left_generated as ::core::ffi::c_int != right_generated as ::core::ffi::c_int {
+        return if left_generated as ::core::ffi::c_int != 0 {
+            1 as ::core::ffi::c_int
+        } else {
+            -1 as ::core::ffi::c_int
+        };
+    }
+    if !left_generated {
+        return strcmp((*left).name, (*right).name);
+    }
+    min_len = if left_ts_len < right_ts_len {
+        left_ts_len
+    } else {
+        right_ts_len
+    };
+    cmp = strncmp(left_ts, right_ts, min_len);
+    if cmp != 0 as ::core::ffi::c_int {
+        return cmp;
+    }
+    if left_ts_len != right_ts_len {
+        return if left_ts_len < right_ts_len {
+            -1 as ::core::ffi::c_int
+        } else {
+            1 as ::core::ffi::c_int
+        };
+    }
+    if left_suffix < right_suffix {
+        return -1 as ::core::ffi::c_int;
+    }
+    if left_suffix > right_suffix {
+        return 1 as ::core::ffi::c_int;
+    }
     return strcmp((*left).name, (*right).name);
 }
 unsafe extern "C" fn prune_timestamped_backups(
@@ -10032,9 +10294,9 @@ unsafe extern "C" fn prune_timestamped_backups(
                 } else if !(selected.st_mode & __S_IFMT as __mode_t == 0o100000 as __mode_t) {
                     close(candidate);
                 } else {
+                    close(candidate);
                     if backup_count == backup_capacity {
                         if backup_capacity > (SIZE_MAX as size_t).wrapping_div(2 as size_t) {
-                            close(candidate);
                             result = -1 as ::core::ffi::c_int;
                             break;
                         } else {
@@ -10047,7 +10309,6 @@ unsafe extern "C" fn prune_timestamped_backups(
                                 > (SIZE_MAX as usize)
                                     .wrapping_div(::core::mem::size_of::<selected_backup_t>())
                             {
-                                close(candidate);
                                 result = -1 as ::core::ffi::c_int;
                                 break;
                             } else {
@@ -10058,7 +10319,6 @@ unsafe extern "C" fn prune_timestamped_backups(
                                 )
                                     as *mut selected_backup_t;
                                 if grown.is_null() {
-                                    close(candidate);
                                     result = -1 as ::core::ffi::c_int;
                                     break;
                                 } else {
@@ -10071,7 +10331,6 @@ unsafe extern "C" fn prune_timestamped_backups(
                     let mut name: *mut ::core::ffi::c_char =
                         strdup(&raw mut (*entry).d_name as *mut ::core::ffi::c_char);
                     if name.is_null() {
-                        close(candidate);
                         result = -1 as ::core::ffi::c_int;
                         break;
                     } else {
@@ -10079,7 +10338,6 @@ unsafe extern "C" fn prune_timestamped_backups(
                         backup_count = backup_count.wrapping_add(1);
                         *backups.offset(c2rust_fresh0 as isize) = selected_backup_t {
                             name: name,
-                            fd: candidate,
                             selected: selected,
                         };
                     }
@@ -10118,29 +10376,34 @@ unsafe extern "C" fn prune_timestamped_backups(
         let mut remove_count: size_t = backup_count.wrapping_sub(retention_count as size_t);
         let mut i_0: size_t = 0 as size_t;
         while i_0 < remove_count {
-            if remove_pinned_backup_entry(
+            let mut candidate_0: ::core::ffi::c_int = openat(
+                parent,
+                (*backups.offset(i_0 as isize)).name,
+                O_PATH | O_NOFOLLOW | O_CLOEXEC,
+            );
+            if candidate_0 < 0 as ::core::ffi::c_int {
+                result = -1 as ::core::ffi::c_int;
+                break;
+            } else if remove_pinned_backup_entry(
                 parent,
                 backup_dir,
                 (*backups.offset(i_0 as isize)).name,
-                (*backups.offset(i_0 as isize)).fd,
+                candidate_0,
                 &raw mut (*backups.offset(i_0 as isize)).selected,
                 r#false != 0,
             ) != 0 as ::core::ffi::c_int
             {
+                close(candidate_0);
                 result = -1 as ::core::ffi::c_int;
                 break;
             } else {
-                close((*backups.offset(i_0 as isize)).fd);
-                (*backups.offset(i_0 as isize)).fd = -1 as ::core::ffi::c_int;
+                close(candidate_0);
                 i_0 = i_0.wrapping_add(1);
             }
         }
     }
     let mut i_1: size_t = 0 as size_t;
     while i_1 < backup_count {
-        if (*backups.offset(i_1 as isize)).fd >= 0 as ::core::ffi::c_int {
-            close((*backups.offset(i_1 as isize)).fd);
-        }
         free((*backups.offset(i_1 as isize)).name as *mut ::core::ffi::c_void);
         i_1 = i_1.wrapping_add(1);
     }
@@ -10198,12 +10461,15 @@ unsafe extern "C" fn run_post_backup_script(
             &raw mut g_config.db_post_backup_script as *mut ::core::ffi::c_char,
             &raw mut argv as *mut *const ::core::ffi::c_char as *const *mut ::core::ffi::c_char,
         );
-        fprintf(
-            stderr,
-            b"Failed to execute post-backup script %s: %s\n\0".as_ptr()
-                as *const ::core::ffi::c_char,
-            &raw mut g_config.db_post_backup_script as *mut ::core::ffi::c_char,
-            strerror(*__errno_location()),
+        static mut msg: [::core::ffi::c_char; 38] = unsafe {
+            ::core::mem::transmute::<[u8; 38], [::core::ffi::c_char; 38]>(
+                *b"Failed to execute post-backup script\n\0",
+            )
+        };
+        write(
+            STDERR_FILENO,
+            &raw const msg as *const ::core::ffi::c_char as *const ::core::ffi::c_void,
+            ::core::mem::size_of::<[::core::ffi::c_char; 38]>().wrapping_sub(1 as size_t),
         );
         _exit(127 as ::core::ffi::c_int);
     }
@@ -10375,6 +10641,8 @@ unsafe extern "C" fn perform_database_backup_cycle(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn checkpoint_database() -> ::core::ffi::c_int {
     let mut rc: ::core::ffi::c_int = SQLITE_OK;
+    let mut log_frames: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut ckpt_frames: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
     if db.is_null() {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
@@ -10393,19 +10661,19 @@ pub unsafe extern "C" fn checkpoint_database() -> ::core::ffi::c_int {
         );
         return 0 as ::core::ffi::c_int;
     }
-    pthread_mutex_lock(&raw mut db_mutex);
+    pthread_mutex_lock(get_db_mutex());
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
         _log_stream_name,
         b"Checkpointing WAL file\0".as_ptr() as *const ::core::ffi::c_char,
     );
-    rc = sqlite3_exec(
+    rc = sqlite3_wal_checkpoint_v2(
         db,
-        b"PRAGMA wal_checkpoint(FULL);\0".as_ptr() as *const ::core::ffi::c_char,
-        None,
-        NULL,
-        ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
+        ::core::ptr::null::<::core::ffi::c_char>(),
+        SQLITE_CHECKPOINT_FULL,
+        &raw mut log_frames,
+        &raw mut ckpt_frames,
     );
     if rc != SQLITE_OK {
         _log_message_ctx(
@@ -10415,7 +10683,23 @@ pub unsafe extern "C" fn checkpoint_database() -> ::core::ffi::c_int {
             b"Failed to checkpoint WAL: %s\0".as_ptr() as *const ::core::ffi::c_char,
             sqlite3_errmsg(db),
         );
-        pthread_mutex_unlock(&raw mut db_mutex);
+        pthread_mutex_unlock(get_db_mutex());
+        return -1 as ::core::ffi::c_int;
+    }
+    if log_frames >= 0 as ::core::ffi::c_int
+        && ckpt_frames >= 0 as ::core::ffi::c_int
+        && ckpt_frames < log_frames
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"WAL checkpoint incomplete: checkpointed %d of %d frame(s), active readers may have prevented completion\0"
+                .as_ptr() as *const ::core::ffi::c_char,
+            ckpt_frames,
+            log_frames,
+        );
+        pthread_mutex_unlock(get_db_mutex());
         return -1 as ::core::ffi::c_int;
     }
     _log_message_ctx(
@@ -10424,7 +10708,7 @@ pub unsafe extern "C" fn checkpoint_database() -> ::core::ffi::c_int {
         _log_stream_name,
         b"WAL checkpoint successful\0".as_ptr() as *const ::core::ffi::c_char,
     );
-    pthread_mutex_unlock(&raw mut db_mutex);
+    pthread_mutex_unlock(get_db_mutex());
     return 0 as ::core::ffi::c_int;
 }
 unsafe extern "C" fn scheduled_backup_cond_init() {
@@ -10560,7 +10844,7 @@ pub unsafe extern "C" fn db_scheduled_backup_wait_idle(mut timeout_ms: ::core::f
     pthread_mutex_unlock(&raw mut scheduled_backup_lock);
     return idle;
 }
-unsafe extern "C" fn quiesce_scheduled_backup_worker() {
+unsafe extern "C" fn quiesce_scheduled_backup_worker() -> bool {
     pthread_mutex_lock(&raw mut scheduled_backup_lock);
     scheduled_backup_draining = r#true != 0;
     let mut in_flight: bool = scheduled_backup_in_flight;
@@ -10580,12 +10864,12 @@ unsafe extern "C" fn quiesce_scheduled_backup_worker() {
                 log_level_t::LOG_LEVEL_ERROR,
                 LOG_COMPONENT,
                 _log_stream_name,
-                b"Scheduled database backup worker has not stopped within its %d s budget; closing the database anyway\0"
+                b"Scheduled database backup worker has not stopped within its %d s budget; deferring database close/reinitialization until worker exits\0"
                     .as_ptr() as *const ::core::ffi::c_char,
                 60 as ::core::ffi::c_int * 1000 as ::core::ffi::c_int
                     / 1000 as ::core::ffi::c_int,
             );
-            return;
+            return r#false != 0;
         }
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
@@ -10597,10 +10881,14 @@ unsafe extern "C" fn quiesce_scheduled_backup_worker() {
         db_scheduled_backup_wait_idle(0 as ::core::ffi::c_int);
     }
     db_backup_clear_cancel();
+    return r#true != 0;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn maybe_run_scheduled_database_backup() -> ::core::ffi::c_int {
     if db.is_null() || db_file_path[0usize] as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
+        return 0 as ::core::ffi::c_int;
+    }
+    if db_init_flags & C2Rust_Unnamed_1::DB_INIT_NO_BACKUP.0 != 0 {
         return 0 as ::core::ffi::c_int;
     }
     if g_config.db_backup_interval_minutes <= 0 as ::core::ffi::c_int {
@@ -10630,9 +10918,15 @@ pub unsafe extern "C" fn maybe_run_scheduled_database_backup() -> ::core::ffi::c
     } else {
         last_backup_time
     };
-    if last_cycle != 0 as time_t && now - last_cycle < interval_seconds {
-        pthread_mutex_unlock(&raw mut scheduled_backup_lock);
-        return 0 as ::core::ffi::c_int;
+    if last_cycle != 0 as time_t {
+        if now < last_cycle {
+            pthread_mutex_unlock(&raw mut scheduled_backup_lock);
+            return 0 as ::core::ffi::c_int;
+        }
+        if now - last_cycle < interval_seconds {
+            pthread_mutex_unlock(&raw mut scheduled_backup_lock);
+            return 0 as ::core::ffi::c_int;
+        }
     }
     db_backup_clear_cancel();
     scheduled_backup_in_flight = r#true != 0;
@@ -10829,6 +11123,30 @@ pub unsafe extern "C" fn init_database_ex(
             LOG_COMPONENT,
             _log_stream_name,
             b"Refusing to initialize a second database while one is open\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    if db_path.is_null() || *db_path.offset(0isize) == 0 {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Database path is empty\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
+    let mut db_path_len: size_t = strlen(db_path);
+    if db_path_len >= ::core::mem::size_of::<[::core::ffi::c_char; 4096]>()
+        || db_path_len
+            > ::core::mem::size_of::<[::core::ffi::c_char; 4096]>()
+                .wrapping_sub(::core::mem::size_of::<[::core::ffi::c_char; 5]>())
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Database path is too long for database and backup paths\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
         return -1 as ::core::ffi::c_int;
@@ -11177,75 +11495,24 @@ pub unsafe extern "C" fn init_database_ex(
                     check_label,
                 );
                 let mut check_started: time_t = time(::core::ptr::null_mut::<time_t>());
-                if sqlite3_step(stmt) == SQLITE_ROW {
+                let mut step_rc: ::core::ffi::c_int = sqlite3_step(stmt);
+                let mut check_failed: bool = r#false != 0;
+                let mut failure_reason: *const ::core::ffi::c_char =
+                    ::core::ptr::null::<::core::ffi::c_char>();
+                if step_rc == SQLITE_ROW {
                     let mut result: *const ::core::ffi::c_char =
                         sqlite3_column_text(stmt, 0 as ::core::ffi::c_int)
                             as *const ::core::ffi::c_char;
-                    if !result.is_null()
-                        && strcmp(result, b"ok\0".as_ptr() as *const ::core::ffi::c_char)
+                    if result.is_null()
+                        || strcmp(result, b"ok\0".as_ptr() as *const ::core::ffi::c_char)
                             != 0 as ::core::ffi::c_int
                     {
-                        _log_message_ctx(
-                            log_level_t::LOG_LEVEL_ERROR,
-                            LOG_COMPONENT,
-                            _log_stream_name,
-                            b"Database %s check failed: %s\0".as_ptr()
-                                as *const ::core::ffi::c_char,
-                            check_label,
-                            result,
-                        );
-                        if !stmt.is_null() {
-                            sqlite3_finalize(stmt);
-                            stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
-                        }
-                        if !test_db.is_null() {
-                            sqlite3_close_v2(test_db);
-                            test_db = ::core::ptr::null_mut::<sqlite3>();
-                        }
-                        test_file = fopen(
-                            &raw mut db_backup_path as *mut ::core::ffi::c_char,
-                            b"r\0".as_ptr() as *const ::core::ffi::c_char,
-                        ) as *mut FILE;
-                        if !test_file.is_null() {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_INFO,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"Backup database file exists, attempting recovery\0".as_ptr()
-                                    as *const ::core::ffi::c_char,
-                            );
-                            fclose(test_file);
-                            if restore_database_from_backup(
-                                &raw mut db_backup_path as *mut ::core::ffi::c_char,
-                                db_path,
-                            ) != 0 as ::core::ffi::c_int
-                            {
-                                _log_message_ctx(
-                                    log_level_t::LOG_LEVEL_ERROR,
-                                    LOG_COMPONENT,
-                                    _log_stream_name,
-                                    b"Failed to restore database from backup\0".as_ptr()
-                                        as *const ::core::ffi::c_char,
-                                );
-                            } else {
-                                _log_message_ctx(
-                                    log_level_t::LOG_LEVEL_INFO,
-                                    LOG_COMPONENT,
-                                    _log_stream_name,
-                                    b"Successfully restored database from backup\0".as_ptr()
-                                        as *const ::core::ffi::c_char,
-                                );
-                                restored_from_backup = r#true != 0;
-                            }
+                        check_failed = r#true != 0;
+                        failure_reason = if !result.is_null() {
+                            result
                         } else {
-                            _log_message_ctx(
-                                log_level_t::LOG_LEVEL_WARN,
-                                LOG_COMPONENT,
-                                _log_stream_name,
-                                b"No backup database file found, will attempt to repair\0".as_ptr()
-                                    as *const ::core::ffi::c_char,
-                            );
-                        }
+                            b"empty check result\0".as_ptr() as *const ::core::ffi::c_char
+                        };
                     } else {
                         _log_message_ctx(
                             log_level_t::LOG_LEVEL_INFO,
@@ -11257,6 +11524,198 @@ pub unsafe extern "C" fn init_database_ex(
                             time(::core::ptr::null_mut::<time_t>()) - check_started,
                         );
                     }
+                } else if step_rc == SQLITE_BUSY || step_rc == SQLITE_LOCKED {
+                    failure_reason = sqlite3_errmsg(test_db);
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Database %s check could not run due to lock contention (rc=%d): %s\0"
+                            .as_ptr() as *const ::core::ffi::c_char,
+                        check_label,
+                        step_rc,
+                        if !failure_reason.is_null() {
+                            failure_reason
+                        } else {
+                            b"unknown error\0".as_ptr() as *const ::core::ffi::c_char
+                        },
+                    );
+                } else {
+                    let mut primary_rc: ::core::ffi::c_int = step_rc & 0xff as ::core::ffi::c_int;
+                    failure_reason = sqlite3_errmsg(test_db);
+                    if primary_rc == SQLITE_CORRUPT || primary_rc == SQLITE_NOTADB {
+                        check_failed = r#true != 0;
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_ERROR,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Database %s check reported corruption (rc=%d): %s\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                            check_label,
+                            step_rc,
+                            if !failure_reason.is_null() {
+                                failure_reason
+                            } else {
+                                b"unknown error\0".as_ptr() as *const ::core::ffi::c_char
+                            },
+                        );
+                    } else {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Database %s check execution was inconclusive (rc=%d): %s\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                            check_label,
+                            step_rc,
+                            if !failure_reason.is_null() {
+                                failure_reason
+                            } else {
+                                b"unknown error\0".as_ptr() as *const ::core::ffi::c_char
+                            },
+                        );
+                    }
+                }
+                if check_failed {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_ERROR,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Database %s check failed: %s\0".as_ptr() as *const ::core::ffi::c_char,
+                        check_label,
+                        if !failure_reason.is_null() {
+                            failure_reason
+                        } else {
+                            b"unknown error\0".as_ptr() as *const ::core::ffi::c_char
+                        },
+                    );
+                    if !stmt.is_null() {
+                        sqlite3_finalize(stmt);
+                        stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+                    }
+                    if !test_db.is_null() {
+                        sqlite3_close_v2(test_db);
+                        test_db = ::core::ptr::null_mut::<sqlite3>();
+                    }
+                    test_file = fopen(
+                        &raw mut db_backup_path as *mut ::core::ffi::c_char,
+                        b"r\0".as_ptr() as *const ::core::ffi::c_char,
+                    ) as *mut FILE;
+                    if !test_file.is_null() {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_INFO,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Backup database file exists, attempting recovery\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                        fclose(test_file);
+                        if restore_database_from_backup(
+                            &raw mut db_backup_path as *mut ::core::ffi::c_char,
+                            db_path,
+                        ) != 0 as ::core::ffi::c_int
+                        {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_ERROR,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Failed to restore database from backup\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            );
+                        } else {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_INFO,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Successfully restored database from backup\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            );
+                            restored_from_backup = r#true != 0;
+                        }
+                    } else {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"No backup database file found, will attempt to repair\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                    }
+                }
+            } else {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_ERROR,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"Failed to prepare database %s check (rc=%d): %s\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    check_label,
+                    rc,
+                    sqlite3_errmsg(test_db),
+                );
+                if !stmt.is_null() {
+                    sqlite3_finalize(stmt);
+                    stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+                }
+                if !test_db.is_null() {
+                    sqlite3_close_v2(test_db);
+                    test_db = ::core::ptr::null_mut::<sqlite3>();
+                }
+                let mut primary_rc_0: ::core::ffi::c_int = rc & 0xff as ::core::ffi::c_int;
+                if primary_rc_0 == SQLITE_CORRUPT || primary_rc_0 == SQLITE_NOTADB {
+                    test_file = fopen(
+                        &raw mut db_backup_path as *mut ::core::ffi::c_char,
+                        b"r\0".as_ptr() as *const ::core::ffi::c_char,
+                    ) as *mut FILE;
+                    if !test_file.is_null() {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_INFO,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"Backup database file exists, attempting recovery\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                        fclose(test_file);
+                        if restore_database_from_backup(
+                            &raw mut db_backup_path as *mut ::core::ffi::c_char,
+                            db_path,
+                        ) != 0 as ::core::ffi::c_int
+                        {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_ERROR,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Failed to restore database from backup\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            );
+                        } else {
+                            _log_message_ctx(
+                                log_level_t::LOG_LEVEL_INFO,
+                                LOG_COMPONENT,
+                                _log_stream_name,
+                                b"Successfully restored database from backup\0".as_ptr()
+                                    as *const ::core::ffi::c_char,
+                            );
+                            restored_from_backup = r#true != 0;
+                        }
+                    } else {
+                        _log_message_ctx(
+                            log_level_t::LOG_LEVEL_WARN,
+                            LOG_COMPONENT,
+                            _log_stream_name,
+                            b"No backup database file found, will attempt to repair\0".as_ptr()
+                                as *const ::core::ffi::c_char,
+                        );
+                    }
+                } else {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT,
+                        _log_stream_name,
+                        b"Skipping automatic restore: prepare failure was not a corruption indicator (rc=%d)\0"
+                            .as_ptr() as *const ::core::ffi::c_char,
+                        rc,
+                    );
                 }
             }
             if !stmt.is_null() {
@@ -11531,8 +11990,35 @@ pub unsafe extern "C" fn init_database_ex(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
         _log_stream_name,
-        b"Enabling auto_vacuum\0".as_ptr() as *const ::core::ffi::c_char,
+        b"Configuring auto_vacuum=INCREMENTAL\0".as_ptr() as *const ::core::ffi::c_char,
     );
+    let mut auto_vacuum_before: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut auto_vacuum_after: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut av_stmt: *mut sqlite3_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+    rc = sqlite3_prepare_v2(
+        db,
+        b"PRAGMA auto_vacuum;\0".as_ptr() as *const ::core::ffi::c_char,
+        -1 as ::core::ffi::c_int,
+        &raw mut av_stmt,
+        ::core::ptr::null_mut::<*const ::core::ffi::c_char>(),
+    );
+    if rc == SQLITE_OK {
+        if sqlite3_step(av_stmt) == SQLITE_ROW {
+            auto_vacuum_before = sqlite3_column_int(av_stmt, 0 as ::core::ffi::c_int);
+        }
+    } else {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to read current auto_vacuum mode: %s\0".as_ptr() as *const ::core::ffi::c_char,
+            sqlite3_errmsg(db),
+        );
+    }
+    if !av_stmt.is_null() {
+        sqlite3_finalize(av_stmt);
+        av_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+    }
     rc = sqlite3_exec(
         db,
         b"PRAGMA auto_vacuum=INCREMENTAL;\0".as_ptr() as *const ::core::ffi::c_char,
@@ -11540,18 +12026,112 @@ pub unsafe extern "C" fn init_database_ex(
         NULL,
         &raw mut err_msg,
     );
+    let mut auto_vacuum_requested: bool = rc == SQLITE_OK;
     if rc != SQLITE_OK {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_WARN,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Failed to enable auto_vacuum: %s\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Failed to request auto_vacuum=INCREMENTAL: %s\0".as_ptr()
+                as *const ::core::ffi::c_char,
             err_msg,
         );
         if !err_msg.is_null() {
             sqlite3_free(err_msg as *mut ::core::ffi::c_void);
             err_msg = ::core::ptr::null_mut::<::core::ffi::c_char>();
         }
+    }
+    rc = sqlite3_prepare_v2(
+        db,
+        b"PRAGMA auto_vacuum;\0".as_ptr() as *const ::core::ffi::c_char,
+        -1 as ::core::ffi::c_int,
+        &raw mut av_stmt,
+        ::core::ptr::null_mut::<*const ::core::ffi::c_char>(),
+    );
+    if rc == SQLITE_OK {
+        if sqlite3_step(av_stmt) == SQLITE_ROW {
+            auto_vacuum_after = sqlite3_column_int(av_stmt, 0 as ::core::ffi::c_int);
+        }
+    } else {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Failed to verify auto_vacuum mode after PRAGMA: %s\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            sqlite3_errmsg(db),
+        );
+    }
+    if !av_stmt.is_null() {
+        sqlite3_finalize(av_stmt);
+        av_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+    }
+    if auto_vacuum_requested as ::core::ffi::c_int != 0
+        && auto_vacuum_before == 0 as ::core::ffi::c_int
+        && auto_vacuum_after != 2 as ::core::ffi::c_int
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_INFO,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"auto_vacuum transition from NONE requires VACUUM; rebuilding database file\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        rc = sqlite3_exec(
+            db,
+            b"VACUUM;\0".as_ptr() as *const ::core::ffi::c_char,
+            None,
+            NULL,
+            &raw mut err_msg,
+        );
+        if rc != SQLITE_OK {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT,
+                _log_stream_name,
+                b"VACUUM failed while enabling incremental auto_vacuum: %s\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+                err_msg,
+            );
+            if !err_msg.is_null() {
+                sqlite3_free(err_msg as *mut ::core::ffi::c_void);
+                err_msg = ::core::ptr::null_mut::<::core::ffi::c_char>();
+            }
+        } else {
+            rc = sqlite3_prepare_v2(
+                db,
+                b"PRAGMA auto_vacuum;\0".as_ptr() as *const ::core::ffi::c_char,
+                -1 as ::core::ffi::c_int,
+                &raw mut av_stmt,
+                ::core::ptr::null_mut::<*const ::core::ffi::c_char>(),
+            );
+            if rc == SQLITE_OK {
+                if sqlite3_step(av_stmt) == SQLITE_ROW {
+                    auto_vacuum_after = sqlite3_column_int(av_stmt, 0 as ::core::ffi::c_int);
+                }
+            }
+            if !av_stmt.is_null() {
+                sqlite3_finalize(av_stmt);
+                av_stmt = ::core::ptr::null_mut::<sqlite3_stmt>();
+            }
+        }
+    }
+    if auto_vacuum_after == 2 as ::core::ffi::c_int {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_INFO,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"auto_vacuum is enabled in INCREMENTAL mode\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+    } else {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_WARN,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"auto_vacuum is not INCREMENTAL after configuration attempt (mode=%d)\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            auto_vacuum_after,
+        );
     }
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
@@ -11561,8 +12141,7 @@ pub unsafe extern "C" fn init_database_ex(
     );
     rc = sqlite3_exec(
         db,
-        b"CREATE TABLE IF NOT EXISTS test_table (id INTEGER);\0".as_ptr()
-            as *const ::core::ffi::c_char,
+        b"BEGIN IMMEDIATE;\0".as_ptr() as *const ::core::ffi::c_char,
         None,
         NULL,
         &raw mut err_msg,
@@ -11572,7 +12151,7 @@ pub unsafe extern "C" fn init_database_ex(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Failed to create test table: %s\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Failed to begin write probe transaction: %s\0".as_ptr() as *const ::core::ffi::c_char,
             err_msg,
         );
         if !err_msg.is_null() {
@@ -11585,23 +12164,60 @@ pub unsafe extern "C" fn init_database_ex(
     }
     rc = sqlite3_exec(
         db,
-        b"DROP TABLE test_table;\0".as_ptr() as *const ::core::ffi::c_char,
+        b"CREATE TABLE __lightnvr_write_probe__ (id INTEGER);\0".as_ptr()
+            as *const ::core::ffi::c_char,
         None,
         NULL,
         &raw mut err_msg,
     );
-    if rc != SQLITE_OK {
+    if rc == SQLITE_OK {
+        rc = sqlite3_exec(
+            db,
+            b"INSERT INTO __lightnvr_write_probe__ (id) VALUES (1);\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            None,
+            NULL,
+            &raw mut err_msg,
+        );
+    }
+    let mut rollback_rc: ::core::ffi::c_int = sqlite3_exec(
+        db,
+        b"ROLLBACK;\0".as_ptr() as *const ::core::ffi::c_char,
+        None,
+        NULL,
+        ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
+    );
+    if rollback_rc != SQLITE_OK {
         _log_message_ctx(
-            log_level_t::LOG_LEVEL_WARN,
+            log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT,
             _log_stream_name,
-            b"Failed to drop test table: %s\0".as_ptr() as *const ::core::ffi::c_char,
-            err_msg,
+            b"Write probe rollback failed: %s\0".as_ptr() as *const ::core::ffi::c_char,
+            sqlite3_errmsg(db),
+        );
+        if rc == SQLITE_OK {
+            rc = rollback_rc;
+        }
+    }
+    if rc != SQLITE_OK {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Database write probe failed: %s\0".as_ptr() as *const ::core::ffi::c_char,
+            if !err_msg.is_null() {
+                err_msg
+            } else {
+                sqlite3_errmsg(db)
+            },
         );
         if !err_msg.is_null() {
             sqlite3_free(err_msg as *mut ::core::ffi::c_void);
             err_msg = ::core::ptr::null_mut::<::core::ffi::c_char>();
         }
+        sqlite3_close_v2(db);
+        db = ::core::ptr::null_mut::<sqlite3>();
+        return -1 as ::core::ffi::c_int;
     } else {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
@@ -11688,6 +12304,9 @@ pub unsafe extern "C" fn init_database_ex(
             b"Failed to regenerate the observation cursor epoch after restore\0".as_ptr()
                 as *const ::core::ffi::c_char,
         );
+        sqlite3_close_v2(db);
+        db = ::core::ptr::null_mut::<sqlite3>();
+        return -1 as ::core::ffi::c_int;
     }
     if db_camera_tags_backfill_legacy_once() != 0 as ::core::ffi::c_int {
         _log_message_ctx(
@@ -11732,7 +12351,9 @@ pub unsafe extern "C" fn init_database_ex(
         _log_stream_name,
         b"Database initialized successfully\0".as_ptr() as *const ::core::ffi::c_char,
     );
-    if is_new_database {
+    if is_new_database as ::core::ffi::c_int != 0
+        && flags & C2Rust_Unnamed_1::DB_INIT_NO_BACKUP.0 == 0
+    {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_INFO,
             LOG_COMPONENT,
@@ -11773,18 +12394,14 @@ unsafe extern "C" fn reset_sqlite_internal_state() {
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
         _log_stream_name,
-        b"Resetting SQLite internal state to prevent memory leaks\0".as_ptr()
-            as *const ::core::ffi::c_char,
+        b"Releasing unused SQLite memory\0".as_ptr() as *const ::core::ffi::c_char,
     );
-    sqlite3_config(SQLITE_CONFIG_MEMSTATUS, 1 as ::core::ffi::c_int);
     sqlite3_release_memory(INT_MAX);
-    sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
-    sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
         LOG_COMPONENT,
         _log_stream_name,
-        b"SQLite internal state reset complete\0".as_ptr() as *const ::core::ffi::c_char,
+        b"SQLite memory release request complete\0".as_ptr() as *const ::core::ffi::c_char,
     );
 }
 #[unsafe(no_mangle)]
@@ -11795,7 +12412,16 @@ pub unsafe extern "C" fn shutdown_database() {
         _log_stream_name,
         b"Starting database shutdown process\0".as_ptr() as *const ::core::ffi::c_char,
     );
-    quiesce_scheduled_backup_worker();
+    if !quiesce_scheduled_backup_worker() {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT,
+            _log_stream_name,
+            b"Database shutdown deferred while scheduled backup is active\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return;
+    }
     let mut backup_interval_seconds: time_t =
         if g_config.db_backup_interval_minutes > 0 as ::core::ffi::c_int {
             g_config.db_backup_interval_minutes as time_t * 60 as time_t
@@ -11865,7 +12491,7 @@ pub unsafe extern "C" fn shutdown_database() {
         b"Waiting for in-flight database operations before shutdown\0".as_ptr()
             as *const ::core::ffi::c_char,
     );
-    pthread_mutex_lock(&raw mut db_mutex);
+    pthread_mutex_lock(get_db_mutex());
     if !db.is_null() {
         let mut db_to_close: *mut sqlite3 = db;
         if wal_mode_enabled {
@@ -11876,12 +12502,14 @@ pub unsafe extern "C" fn shutdown_database() {
                 b"Checkpointing WAL before closing database\0".as_ptr()
                     as *const ::core::ffi::c_char,
             );
-            let mut rc: ::core::ffi::c_int = sqlite3_exec(
+            let mut log_frames: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+            let mut ckpt_frames: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+            let mut rc: ::core::ffi::c_int = sqlite3_wal_checkpoint_v2(
                 db_to_close,
-                b"PRAGMA wal_checkpoint(FULL);\0".as_ptr() as *const ::core::ffi::c_char,
-                None,
-                NULL,
-                ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
+                ::core::ptr::null::<::core::ffi::c_char>(),
+                SQLITE_CHECKPOINT_FULL,
+                &raw mut log_frames,
+                &raw mut ckpt_frames,
             );
             if rc != SQLITE_OK {
                 _log_message_ctx(
@@ -11891,12 +12519,25 @@ pub unsafe extern "C" fn shutdown_database() {
                     b"Failed to checkpoint WAL: %s\0".as_ptr() as *const ::core::ffi::c_char,
                     sqlite3_errmsg(db_to_close),
                 );
+            } else if ckpt_frames < log_frames {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT,
+                    _log_stream_name,
+                    b"WAL checkpoint incomplete before shutdown (checkpointed %d of %d frames)\0"
+                        .as_ptr() as *const ::core::ffi::c_char,
+                    ckpt_frames,
+                    log_frames,
+                );
             } else {
                 _log_message_ctx(
                     log_level_t::LOG_LEVEL_INFO,
                     LOG_COMPONENT,
                     _log_stream_name,
-                    b"WAL checkpoint successful\0".as_ptr() as *const ::core::ffi::c_char,
+                    b"WAL checkpoint successful (%d of %d frames checkpointed)\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    ckpt_frames,
+                    log_frames,
                 );
             }
         }
@@ -12056,7 +12697,7 @@ pub unsafe extern "C" fn shutdown_database() {
                 as *const ::core::ffi::c_char,
         );
     }
-    pthread_mutex_unlock(&raw mut db_mutex);
+    pthread_mutex_unlock(get_db_mutex());
     sqlite3_shutdown();
     _log_message_ctx(
         log_level_t::LOG_LEVEL_INFO,
@@ -12071,6 +12712,13 @@ pub unsafe extern "C" fn get_db_handle() -> *mut sqlite3 {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_db_mutex() -> *mut pthread_mutex_t {
+    if pthread_once(
+        &raw mut db_mutex_once,
+        Some(init_db_mutex as unsafe extern "C" fn() -> ()),
+    ) != 0 as ::core::ffi::c_int
+    {
+        abort();
+    }
     return &raw mut db_mutex;
 }
 #[unsafe(no_mangle)]
