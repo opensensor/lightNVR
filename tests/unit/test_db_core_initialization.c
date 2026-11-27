@@ -166,26 +166,28 @@ void tearDown(void) {
 }
 
 static void create_readable_database(void) {
-    sqlite3 *fixture = NULL;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &fixture));
+    tracked_fixture_db = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &tracked_fixture_db));
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(fixture,
+        sqlite3_exec(tracked_fixture_db,
                      "CREATE TABLE sample(id INTEGER PRIMARY KEY, value TEXT);"
                      "INSERT INTO sample(value) VALUES('unchanged');",
                      NULL, NULL, NULL));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(fixture));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(tracked_fixture_db));
+    tracked_fixture_db = NULL;
 }
 
 static void test_legacy_database_enables_incremental_auto_vacuum(void) {
     create_readable_database();
     TEST_ASSERT_EQUAL_INT(0, init_database_ex(TEST_DB_PATH, DB_INIT_NO_BACKUP));
-    sqlite3_stmt *stmt = NULL;
+    tracked_fixture_stmt = NULL;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
-        get_db_handle(), "PRAGMA auto_vacuum;", -1, &stmt, NULL));
-    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
-    TEST_ASSERT_EQUAL_INT(2, sqlite3_column_int(stmt, 0));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
+        get_db_handle(), "PRAGMA auto_vacuum;", -1, &tracked_fixture_stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(tracked_fixture_stmt));
+    TEST_ASSERT_EQUAL_INT(2, sqlite3_column_int(tracked_fixture_stmt, 0));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(tracked_fixture_stmt));
+    tracked_fixture_stmt = NULL;
 }
 
 static void test_overlong_database_path_is_rejected_before_initialization(void) {
