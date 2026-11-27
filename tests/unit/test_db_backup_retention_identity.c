@@ -17,8 +17,9 @@ static int owned_fds[256], owned_roles[256], owned_count, private_fd;
 static DIR *held_directory;
 static bool repeat_name, repeated_name, repeat_ready;
 static struct dirent repeat_entry;
-static int fail_open_after, fail_stat_after, move_error;
-static bool fail_realloc, fail_strdup, fail_read, fail_delete, restore_collision, change_after_move;
+static int fail_open_after, fail_stat_after, fail_realloc_after, fail_strdup_after, move_error;
+static unsigned realloc_calls, strdup_calls;
+static bool fail_read, fail_delete, restore_collision, change_after_move;
 
 static unsigned role_of(int fd) {
     for (int i = 0; i < owned_count; ++i) if (owned_fds[i] == fd) return (unsigned)owned_roles[i];
@@ -50,7 +51,7 @@ static void replace_after_inspection(void) {
             write_bytes(newer_path, "replacement-parent-newer") != 0) fixture_error = true;
     } else {
         if (rename(old_path, saved_old) != 0) { fixture_error = true; return; }
-        if (kind == 2) {
+        if (kind == 2 || kind == 4) {
             if (write_bytes(old_path, "replacement-leaf") != 0) fixture_error = true;
         } else if (symlink(target, old_path) != 0) {
             fixture_error = true;
@@ -60,7 +61,7 @@ static void replace_after_inspection(void) {
 
 static void inspected(const struct stat *info) {
     candidate_stats++;
-    if (!swap_kind) return;
+    if (!swap_kind || swap_kind == 4) return;
     unsigned bit = (info->st_dev == old_identity.st_dev && info->st_ino == old_identity.st_ino) ? 1u :
                    (info->st_dev == newer_identity.st_dev && info->st_ino == newer_identity.st_ino) ? 2u : 0u;
     if (bit && !(seen_mask & bit)) {
@@ -140,12 +141,18 @@ struct dirent *__wrap_readdir(DIR *d) {
 }
 void *__real_realloc(void *, size_t);
 void *__wrap_realloc(void *p, size_t n) {
-    if (active && fail_realloc) { fail_realloc = false; fault_hits++; errno = ENOMEM; return NULL; }
+    if (active && fail_realloc_after >= 0 &&
+        realloc_calls++ == (unsigned)fail_realloc_after) {
+        fault_hits++; errno = ENOMEM; return NULL;
+    }
     return __real_realloc(p, n);
 }
 char *__real_strdup(const char *);
 char *__wrap_strdup(const char *p) {
-    if (active && fail_strdup) { fail_strdup = false; fault_hits++; errno = ENOMEM; return NULL; }
+    if (active && fail_strdup_after >= 0 &&
+        strdup_calls++ == (unsigned)fail_strdup_after) {
+        fault_hits++; errno = ENOMEM; return NULL;
+    }
     return __real_strdup(p);
 }
 long __real_syscall(long, ...);
@@ -156,6 +163,7 @@ long __wrap_syscall(long number, ...) {
     int to = va_arg(a, int); const char *dest = va_arg(a, const char *);
     unsigned flags = va_arg(a, unsigned); va_end(a);
     if (flags != 1U) { fixture_error = true; errno = EINVAL; return -1; }
+    if (active && to == private_fd && swap_kind == 4) replace_after_inspection();
     if (active && to == private_fd && move_error) { fault_hits++; errno = move_error; return -1; }
     long result = __real_syscall(number, from, name, to, dest, flags);
     if (active && result == 0 && to == private_fd) {
@@ -224,8 +232,9 @@ void setUp(void) {
     swap_kind = 0;
     swaps = inspected_files = seen_mask = candidate_stats = candidate_opens = fault_hits = pins_at_swap = max_pins = 0;
     owned_count = 0; private_fd = -1; held_directory = NULL; active = false;
-    fail_open_after = fail_stat_after = -1; move_error = 0;
-    fail_realloc = fail_strdup = fail_read = fail_delete = restore_collision = change_after_move = false;
+    fail_open_after = fail_stat_after = fail_realloc_after = fail_strdup_after = -1;
+    realloc_calls = strdup_calls = 0; move_error = 0;
+    fail_read = fail_delete = restore_collision = change_after_move = false;
     repeat_name = repeated_name = repeat_ready = false;
     fixture_error = false;
     strcpy(root, "/tmp/lightnvr-retention-identity-XXXXXX");
@@ -355,14 +364,22 @@ static void test_collection_stat_failure_preserves_all(void) {
     TEST_ASSERT_EQUAL_UINT(1, fault_hits);
     assert_both_originals();
 }
-static void test_collection_realloc_failure_preserves_all(void) {
-    fail_realloc = true;
+static void test_collection_realloc_growth_failure_preserves_all(void) {
+    /* Fail realloc after initial successful allocations so cleanup runs on
+     * a partially populated candidate inventory. */
+    for (unsigned i = 0; i < 8; ++i) {
+        char path[384];
+        snprintf(path, sizeof(path), "%s/20230101T%06uZ.sqlite3", backups, i);
+        TEST_ASSERT_EQUAL_INT(0, write_bytes(path, "older"));
+    }
+    fail_realloc_after = 1;
     TEST_ASSERT_NOT_EQUAL(0, prune(1));
     TEST_ASSERT_EQUAL_UINT(1, fault_hits);
     assert_both_originals();
 }
-static void test_collection_strdup_failure_preserves_all(void) {
-    fail_strdup = true;
+static void test_collection_strdup_late_failure_preserves_all(void) {
+    /* Fail strdup after at least one prior name has been collected. */
+    fail_strdup_after = 1;
     TEST_ASSERT_NOT_EQUAL(0, prune(1));
     TEST_ASSERT_EQUAL_UINT(1, fault_hits);
     assert_both_originals();
@@ -407,7 +424,9 @@ static void test_changed_after_move_is_restored_and_pass_stops(void) {
     assert_bytes(newer_path, "inspected-newer");
 }
 static void test_selected_inode_remains_pinned_during_replacement(void) {
-    swap_kind = 2;
+    /* Replace the leaf immediately before the move, while its verified inode
+     * is pinned by the deletion candidate descriptor. */
+    swap_kind = 4;
     TEST_ASSERT_NOT_EQUAL(0, prune(1));
     TEST_ASSERT_EQUAL_UINT(1, swaps);
     TEST_ASSERT_EQUAL_UINT(1, pins_at_swap);
@@ -470,8 +489,8 @@ int main(void) {
     RUN_TEST(test_changed_symlink_leaf_and_target_are_retained);
     RUN_TEST(test_collection_emfile_preserves_all_and_closes_pins);
     RUN_TEST(test_collection_stat_failure_preserves_all);
-    RUN_TEST(test_collection_realloc_failure_preserves_all);
-    RUN_TEST(test_collection_strdup_failure_preserves_all);
+    RUN_TEST(test_collection_realloc_growth_failure_preserves_all);
+    RUN_TEST(test_collection_strdup_late_failure_preserves_all);
     RUN_TEST(test_readdir_error_does_not_turn_partial_collection_into_retention);
     RUN_TEST(test_unsupported_move_preserves_published_backup);
     RUN_TEST(test_unlink_failure_restores_without_overwrite);
