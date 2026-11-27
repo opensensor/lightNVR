@@ -507,6 +507,11 @@ static int refresh_latest_backup(const char *timestamped_backup_path) {
             unlink(temp_latest_path);
             return -1;
         }
+        if (sync_path_if_exists(temp_latest_path) != 0) {
+            log_error("Failed to sync temporary latest backup before publish: %s", temp_latest_path);
+            unlink(temp_latest_path);
+            return -1;
+        }
     }
 
     if (rename(temp_latest_path, db_backup_path) != 0) {
