@@ -2018,6 +2018,11 @@ static void set_loaded_config_path(const char *path) {
 int load_config(config_t *config) {
     if (!config) return -1;
 
+    // Build into a temporary config first so callers never observe
+    // partially reloaded/default-only state on failure.
+    config_t next_config;
+    memset(&next_config, 0, sizeof(next_config));
+
     // Reset loaded-path tracking for this load attempt.
     // It will be set again only if a config file is successfully loaded.
     g_loaded_config_path[0] = '\0';
@@ -2025,11 +2030,11 @@ int load_config(config_t *config) {
     bool ini_present[ENV_MAPPING_COUNT] = {false};
     
     // Load default configuration
-    load_default_config(config);
+    load_default_config(&next_config);
 
     // Fail fast if defaults could not initialize required stream state.
     // This prevents continuing with a partially initialized config.
-    if (config->streams == NULL || config->max_streams <= 0) {
+    if (next_config.streams == NULL || next_config.max_streams <= 0) {
         log_error("Failed to initialize default stream configuration");
         return -1;
     }
