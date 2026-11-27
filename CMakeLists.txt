@@ -249,16 +249,8 @@ list(APPEND SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
 list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
 message(STATUS "ONVIF and authentication system enabled, linking with mbedTLS for cryptographic functions")
 
-# Explicitly add mbedcrypto to the link libraries
-# Use CMake's standard library search paths for portability across distros/platforms.
-find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto)
-
-if(MBEDCRYPTO_LIBRARY)
-    message(STATUS "Found mbedcrypto library: ${MBEDCRYPTO_LIBRARY}")
-    list(APPEND SSL_LIBRARIES ${MBEDCRYPTO_LIBRARY})
-else()
-    message(FATAL_ERROR "mbedcrypto library not found. Please install the mbedTLS development package.")
-endif()
+# mbedTLS link requirements (including mbedcrypto) are provided by DETECT_MBEDTLS().
+# Avoid a second manual find_library() lookup, which can miss pkg-config-only paths.
 
 # Find cJSON (required dependency)
 pkg_check_modules(CJSON QUIET IMPORTED_TARGET libcjson)
