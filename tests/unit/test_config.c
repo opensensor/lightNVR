@@ -1593,6 +1593,15 @@ static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
     cfg.swap_file[0] = '\0';
     snprintf(cfg.hw_accel_device, sizeof(cfg.hw_accel_device), "/dev/video0\n[web]");
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.hw_accel_device[0] = '\0';
+    snprintf(cfg.web_bind_ip, sizeof(cfg.web_bind_ip), "127.0.0.1\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.web_bind_ip[0] = '\0';
+    snprintf(cfg.web_ssl_cert_path, sizeof(cfg.web_ssl_cert_path), "/tmp/cert.pem#bad");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    cfg.web_ssl_cert_path[0] = '\0';
+    snprintf(cfg.web_ssl_key_path, sizeof(cfg.web_ssl_key_path), "/tmp/key.pem\n[web]");
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
 
     char content[64] = {0};
     FILE *saved = fopen(path, "r");

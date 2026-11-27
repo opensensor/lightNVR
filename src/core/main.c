@@ -1680,6 +1680,7 @@ cleanup:
         sigaction(SIGINT, &sa_default, NULL);
         sigaction(SIGALRM, &sa_default, NULL);
         sigaction(SIGUSR1, &sa_default, NULL);
+        sigaction(SIGHUP, &sa_default, NULL);
 
         // Unblock all signals in the child
         sigset_t empty_mask;
@@ -1691,7 +1692,23 @@ cleanup:
 
         // Allow the same final-backup deadline as the thread watchdog.
         // Large databases can take several minutes to copy and verify.
-        sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
+        struct timespec watchdog_deadline;
+        if (clock_gettime(CLOCK_MONOTONIC, &watchdog_deadline) == 0) {
+            watchdog_deadline.tv_sec += SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS;
+            int sleep_result;
+            do {
+                sleep_result = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME,
+                                               &watchdog_deadline, NULL);
+            } while (sleep_result == EINTR);
+            // An unexpected clock error falls through to the parent-liveness
+            // check so the watchdog remains fail-safe.
+        } else {
+            // Fallback if monotonic clock is unavailable.
+            unsigned int remaining = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS;
+            while (remaining > 0) {
+                remaining = sleep(remaining);
+            }
+        }
         // Never signal a PID after this child has been reparented: the old
         // parent's PID may already belong to an unrelated process.
         if (getppid() == parent_pid) {
