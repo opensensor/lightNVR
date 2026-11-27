@@ -758,7 +758,7 @@ list(APPEND SOURCES ${GO2RTC_SOURCES})
 # Add libuv server sources
 list(APPEND SOURCES ${LIBUV_SERVER_SOURCES})
 
-# Define the shared library
+# Define the static library
 add_library(lightnvr_lib STATIC ${SOURCES})
 if(ENABLE_LITERT)
     target_compile_features(lightnvr_lib PRIVATE cxx_std_17)
