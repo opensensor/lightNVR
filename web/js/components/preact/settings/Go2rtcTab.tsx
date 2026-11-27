@@ -29,8 +29,8 @@ interface Go2rtcTabProps extends SettingsTabProps {
 // Max UTF-8 byte length for the override — matches the server cap.
 const GO2RTC_OVERRIDE_MAX_BYTES = 65535;
 
-// Curated example presets (T9 scope). Inserts at cursor / end — never
-// overwrites existing content.
+// Curated example presets (T9 scope). Presets are merged into the parsed
+// root mapping and the YAML is reserialized; this may change formatting.
 const OVERRIDE_PRESETS = [
   {
     label: 'ffmpeg copy mode (no transcode)',
