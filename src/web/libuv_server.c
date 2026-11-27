@@ -497,9 +497,15 @@ void libuv_server_stop(http_server_handle_t handle) {
     go2rtc_proxy_thread_shutdown();
     go2rtc_websocket_shutdown(server->loop);
 
-    // Walk all handles and close them
-    log_info("libuv_server_stop: Closing all active handles");
-    uv_walk(server->loop, close_walk_cb, NULL);
+    // Walk handles and close them only when this server owns the loop.
+    // For shared loops (init_with_loop), walking the whole loop could close
+    // unrelated handles belonging to other subsystems.
+    if (server->owns_loop) {
+        log_info("libuv_server_stop: Closing all active handles");
+        uv_walk(server->loop, close_walk_cb, NULL);
+    } else {
+        log_info("libuv_server_stop: Shared loop detected; skipping global handle walk");
+    }
 
     // Warn after the diagnostic deadline; work cannot safely be abandoned.
     log_info("libuv_server_stop: Processing close callbacks");
