@@ -510,7 +510,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             log_error("Cannot safely terminate previous instance without pidfd support; stop it through the service manager before starting LightNVR again");
             return -1;
         }
-        if (term_rc == 0) {
+        bool process_already_exited = (term_rc != 0 && errno == ESRCH);
+        if (process_already_exited) {
+            log_info("Previous instance exited before SIGTERM could be delivered; waiting for PID file lock release");
+        }
+        if (term_rc == 0 || process_already_exited) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
             int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
             bool still_running = true;
