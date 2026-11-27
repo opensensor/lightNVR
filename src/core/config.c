@@ -2491,6 +2491,21 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "web_cache_max_age_images = %d\n", config->web_cache_max_age_images);
     fprintf(file, "web_cache_max_age_fonts = %d\n", config->web_cache_max_age_fonts);
     fprintf(file, "web_cache_max_age_default = %d\n", config->web_cache_max_age_default);
+    if (contains_unsupported_ini_credential_chars(config->web_bind_ip,
+                                                  sizeof(config->web_bind_ip)) ||
+        contains_unsupported_ini_credential_chars(config->web_root,
+                                                  sizeof(config->web_root)) ||
+        contains_unsupported_ini_credential_chars(config->web_ssl_cert_path,
+                                                  sizeof(config->web_ssl_cert_path)) ||
+        contains_unsupported_ini_credential_chars(config->web_ssl_key_path,
+                                                  sizeof(config->web_ssl_key_path)) ||
+        contains_unsupported_ini_credential_chars(config->web_username,
+                                                  sizeof(config->web_username))) {
+        log_error("Refusing to write config: one or more string fields contain unsupported INI characters");
+        fclose(file);
+        return false;
+    }
+
     fprintf(file, "port = %d\n", config->web_port);
     fprintf(file, "bind_ip = %s\n", config->web_bind_ip);
     fprintf(file, "root = %s\n", config->web_root);
