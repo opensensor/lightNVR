@@ -1823,11 +1823,11 @@ static char g_custom_config_path[MAX_PATH_LENGTH] = {0};
 static char g_loaded_config_path[MAX_PATH_LENGTH] = {0};
 
 // Function to set the custom config path
-// Validates the path to reject null bytes and path-traversal sequences before storing.
+// Validates the path length and rejects path-traversal parent components ("..") before storing.
 void set_custom_config_path(const char *path) {
     if (!path || path[0] == '\0') return;
 
-    // Reject paths containing null bytes embedded before the terminator
+    // Enforce maximum C-string length (strlen checks up to the first terminator)
     size_t provided_len = strlen(path);
     if (provided_len >= MAX_PATH_LENGTH) {
         log_warn("Custom config path too long, ignoring");
@@ -1882,6 +1882,11 @@ static void set_loaded_config_path(const char *path) {
 // Load configuration
 int load_config(config_t *config) {
     if (!config) return -1;
+
+    // Reset loaded-path tracking for this load attempt.
+    // It will be set again only if a config file is successfully loaded.
+    g_loaded_config_path[0] = '\0';
+
     bool ini_present[ENV_MAPPING_COUNT] = {false};
     
     // Load default configuration
@@ -2395,7 +2400,19 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     if (config_fd < 0 && original_fd >= 0 &&
         (errno == EACCES || errno == EROFS)) {
         /* A writable existing file may live in an unwritable directory. */
+#if defined(__GLIBC__) || defined(__linux__)
+        config_fd = mkostemp(external_staging_path, O_CLOEXEC);
+#else
         config_fd = mkstemp(external_staging_path);
+        if (config_fd >= 0) {
+            int fd_flags = fcntl(config_fd, F_GETFD);
+            if (fd_flags < 0 || fcntl(config_fd, F_SETFD, fd_flags | FD_CLOEXEC) != 0) {
+                close(config_fd);
+                unlink(external_staging_path);
+                config_fd = -1;
+            }
+        }
+#endif
         if (config_fd >= 0) external_staging = true;
     }
     if (config_fd < 0) {
