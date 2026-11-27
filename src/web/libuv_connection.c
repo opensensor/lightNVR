@@ -230,8 +230,18 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     conn->current_header_field[0] = '\0';
     conn->current_header_field_len = 0;
 
-    // Reset buffer usage (but keep the buffer) and body-position tracking.
-    conn->recv_buffer_used = 0;
+    // Preserve unread bytes (e.g. next pipelined request already received)
+    // before resetting body-position tracking.
+    size_t unread = 0;
+    if (conn->body_offset <= conn->recv_buffer_used) {
+        unread = conn->recv_buffer_used - conn->body_offset;
+        if (unread > 0 && conn->body_offset > 0) {
+            memmove(conn->recv_buffer,
+                    conn->recv_buffer + conn->body_offset,
+                    unread);
+        }
+    }
+    conn->recv_buffer_used = unread;
     conn->body_offset      = 0;
     conn->body_present     = false;
 
