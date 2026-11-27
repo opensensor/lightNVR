@@ -267,14 +267,16 @@ static bool parse_env_bool(const char *value) {
 /**
  * Apply environment variable overrides to configuration
  * This function reads LIGHTNVR_ prefixed environment variables and applies
- * them to config fields that are still at their default values.
+ * them only to config options that are absent from the INI file.
  *
  * The logic ensures that:
- * 1. Values explicitly set in the config file are NOT overridden
- * 2. Values that are still at defaults CAN be overridden by env vars
+ * 1. Values explicitly present in the config file are NOT overridden
+ * 2. Values not present in the config file CAN be overridden by env vars
  * 3. This allows container deployments to inject settings via env vars
  *
  * @param config Pointer to config structure to modify
+ * @param ini_present Per-mapping presence flags indicating whether each
+ *                    option was explicitly present in the INI file
  */
 static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAPPING_COUNT]) {
     if (!config) return;
@@ -1652,6 +1654,17 @@ int load_stream_configs(config_t *config) {
     return loaded;
 }
 
+typedef struct {
+    const char *name;
+    int idx;
+} db_name_index_entry_t;
+
+static int db_name_index_cmp(const void *a, const void *b) {
+    const db_name_index_entry_t *ea = a;
+    const db_name_index_entry_t *eb = b;
+    return strcmp(ea->name, eb->name);
+}
+
 // Save stream configurations to database with improved timeout protection
 int save_stream_configs(config_t *config) {
     if (!config) return -1;
@@ -1725,20 +1738,44 @@ int save_stream_configs(config_t *config) {
 
     /* Database-owned identity belongs to each matching stream, regardless of
      * whether other streams were added, removed, or renamed. */
-    for (int i = 0; i < max_streams; i++) {
-        if (streams_snapshot[i].name[0] == '\0') continue;
+    db_name_index_entry_t *db_name_index = NULL;
+    if (loaded > 0) {
+        db_name_index = calloc((size_t)loaded, sizeof(*db_name_index));
+        if (!db_name_index) {
+            log_error("save_stream_configs: out of memory");
+            free(db_streams);
+            free(streams_snapshot);
+            rollback_transaction();
+            return -1;
+        }
         for (int j = 0; j < loaded; j++) {
-            if (strcmp(streams_snapshot[i].name, db_streams[j].name) == 0) {
-                safe_strcpy(streams_snapshot[i].camera_uuid,
-                            db_streams[j].camera_uuid,
-                            sizeof(streams_snapshot[i].camera_uuid), 0);
-                safe_strcpy(streams_snapshot[i].location_uuid,
-                            db_streams[j].location_uuid,
-                            sizeof(streams_snapshot[i].location_uuid), 0);
-                break;
-            }
+            db_name_index[j].name = db_streams[j].name;
+            db_name_index[j].idx = j;
+        }
+        qsort(db_name_index, (size_t)loaded, sizeof(*db_name_index), db_name_index_cmp);
+    }
+
+    for (int i = 0; i < max_streams; i++) {
+        if (streams_snapshot[i].name[0] == '\0' || loaded <= 0) continue;
+
+        db_name_index_entry_t key = {
+            .name = streams_snapshot[i].name,
+            .idx = -1
+        };
+        db_name_index_entry_t *found =
+            bsearch(&key, db_name_index, (size_t)loaded, sizeof(*db_name_index), db_name_index_cmp);
+        if (found) {
+            int j = found->idx;
+            safe_strcpy(streams_snapshot[i].camera_uuid,
+                        db_streams[j].camera_uuid,
+                        sizeof(streams_snapshot[i].camera_uuid), 0);
+            safe_strcpy(streams_snapshot[i].location_uuid,
+                        db_streams[j].location_uuid,
+                        sizeof(streams_snapshot[i].location_uuid), 0);
         }
     }
+
+    free(db_name_index);
 
     // Delete existing stream configurations
     // 'loaded' is bounded by max_streams (the calloc capacity)
