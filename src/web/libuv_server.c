@@ -130,12 +130,14 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
         server->loop = safe_malloc(sizeof(uv_loop_t));
         if (!server->loop) {
             log_error("libuv_server_init: Failed to allocate event loop");
+            libuv_tls_context_free(server->tls_ctx);
             safe_free(server);
             return NULL;
         }
         if (uv_loop_init(server->loop) != 0) {
             log_error("libuv_server_init: Failed to initialize event loop");
             safe_free(server->loop);
+            libuv_tls_context_free(server->tls_ctx);
             safe_free(server);
             return NULL;
         }
