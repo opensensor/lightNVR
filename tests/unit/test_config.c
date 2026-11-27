@@ -1169,8 +1169,9 @@ void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
     snprintf(ini_contents, sizeof(ini_contents),
              "[streams]\nmax_streams = %d\ninvalid line\n", resize_target);
     TEST_ASSERT_TRUE(fputs(ini_contents, saved_config_file) >= 0);
-    TEST_ASSERT_EQUAL_INT(0, fclose(saved_config_file));
+    int fclose_rc = fclose(saved_config_file);
     saved_config_file = NULL;
+    TEST_ASSERT_EQUAL_INT(0, fclose_rc);
 
     load_default_config(&cfg);
     snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "preserve-camera");
