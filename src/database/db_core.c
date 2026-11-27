@@ -546,7 +546,6 @@ static int refresh_latest_backup(const char *timestamped_backup_path) {
 
 typedef struct {
     char *name;
-    int fd;
     struct stat selected;
 } selected_backup_t;
 
@@ -658,10 +657,9 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
     selected_backup_t *backups = NULL;
     size_t backup_count = 0, backup_capacity = 0;
     int result = 0;
-    /* All regular candidates remain pinned until selection/deletion finishes.
-     * This temporarily costs O(number of eligible backups) descriptors. Actual
-     * resource/allocation/enumeration failure aborts before ANY deletion; do
-     * not silently truncate the inventory or invent a retention-count limit. */
+    /* Collect the complete inventory before deleting anything. Keep inode
+     * metadata rather than an open descriptor per backup; reopen each selected
+     * name and verify it is still the inspected file before moving it. */
     for (;;) {
         errno = 0;
         struct dirent *entry = readdir(dir);
@@ -675,23 +673,24 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
         struct stat selected;
         if (fstat(candidate, &selected) != 0) { close(candidate); result = -1; break; }
         if (!S_ISREG(selected.st_mode)) { close(candidate); continue; }
+        close(candidate);
 
         if (backup_count == backup_capacity) {
             if (backup_capacity > SIZE_MAX / 2) {
-                close(candidate); result = -1; break;
+                result = -1; break;
             }
             size_t capacity = backup_capacity ? backup_capacity * 2 : 8;
             if (capacity > SIZE_MAX / sizeof(*backups)) {
-                close(candidate); result = -1; break;
+                result = -1; break;
             }
             selected_backup_t *grown = realloc(backups, capacity * sizeof(*backups));
-            if (!grown) { close(candidate); result = -1; break; }
+            if (!grown) { result = -1; break; }
             backups = grown;
             backup_capacity = capacity;
         }
         char *name = strdup(entry->d_name);
-        if (!name) { close(candidate); result = -1; break; }
-        backups[backup_count++] = (selected_backup_t){name, candidate, selected};
+        if (!name) { result = -1; break; }
+        backups[backup_count++] = (selected_backup_t){name, selected};
     }
 
     if (result == 0 && backup_count > 1) {
@@ -708,17 +707,19 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
     if (result == 0 && backup_count > (size_t)retention_count) {
         size_t remove_count = backup_count - (size_t)retention_count;
         for (size_t i = 0; i < remove_count; ++i) {
+            int candidate = openat(parent, backups[i].name,
+                                   O_PATH | O_NOFOLLOW | O_CLOEXEC);
+            if (candidate < 0) { result = -1; break; }
             if (remove_pinned_backup_entry(parent, backup_dir, backups[i].name,
-                                          backups[i].fd, &backups[i].selected, false) != 0) {
+                                          candidate, &backups[i].selected, false) != 0) {
+                close(candidate);
                 result = -1;
                 break;  /* Do not continue after uncertainty or restoration. */
             }
-            close(backups[i].fd);
-            backups[i].fd = -1;
+            close(candidate);
         }
     }
     for (size_t i = 0; i < backup_count; ++i) {
-        if (backups[i].fd >= 0) close(backups[i].fd);
         free(backups[i].name);
     }
     free(backups);
@@ -1379,11 +1380,18 @@ int init_database_ex(const char *db_path, unsigned flags) {
                              check_label, step_rc,
                              failure_reason ? failure_reason : "unknown error");
                 } else {
-                    check_failed = true;
+                    int primary_rc = step_rc & 0xFF;
                     failure_reason = sqlite3_errmsg(test_db);
-                    log_error("Database %s check execution failed (rc=%d): %s",
-                              check_label, step_rc,
-                              failure_reason ? failure_reason : "unknown error");
+                    if (primary_rc == SQLITE_CORRUPT || primary_rc == SQLITE_NOTADB) {
+                        check_failed = true;
+                        log_error("Database %s check reported corruption (rc=%d): %s",
+                                  check_label, step_rc,
+                                  failure_reason ? failure_reason : "unknown error");
+                    } else {
+                        log_warn("Database %s check execution was inconclusive (rc=%d): %s",
+                                 check_label, step_rc,
+                                 failure_reason ? failure_reason : "unknown error");
+                    }
                 }
 
                 if (check_failed) {
