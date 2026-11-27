@@ -109,8 +109,10 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
     // closed: the server refuses to start instead of falling back to HTTP.
     if (config->ssl_enabled) {
         if (!libuv_tls_compiled_in()) {
-            log_warn("libuv_server_init: ssl_enabled is set but this build has no TLS "
-                     "support (rebuild with -DENABLE_SSL=ON); serving plain HTTP");
+            log_error("libuv_server_init: ssl_enabled is set but this build has no TLS "
+                      "support (rebuild with -DENABLE_SSL=ON); refusing to start");
+            safe_free(server);
+            return NULL;
         } else {
             server->tls_ctx = libuv_tls_context_create(config->cert_path, config->key_path);
             if (!server->tls_ctx) {
@@ -130,12 +132,14 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
         server->loop = safe_malloc(sizeof(uv_loop_t));
         if (!server->loop) {
             log_error("libuv_server_init: Failed to allocate event loop");
+            libuv_tls_context_free(server->tls_ctx);
             safe_free(server);
             return NULL;
         }
         if (uv_loop_init(server->loop) != 0) {
             log_error("libuv_server_init: Failed to initialize event loop");
             safe_free(server->loop);
+            libuv_tls_context_free(server->tls_ctx);
             safe_free(server);
             return NULL;
         }
@@ -494,9 +498,6 @@ void libuv_server_stop(http_server_handle_t handle) {
         // waiting for I/O, and we need to wake it up so it can check server->running
         if (server->thread_running) uv_async_send(&server->stop_async);
 
-        // Also stop the loop to ensure uv_run returns
-        uv_stop(server->loop);
-
         // Wait for thread with timeout - keep sending signals periodically
         log_info("libuv_server_stop: Waiting for server thread to exit");
         const int max_wait_ms = 5000;  // 5 second maximum wait
@@ -504,9 +505,8 @@ void libuv_server_stop(http_server_handle_t handle) {
         int elapsed_ms = 0;
 
         while (elapsed_ms < max_wait_ms && server->thread_running) {
-            // Keep sending async signals and stop requests
+            // Keep waking the event-loop thread. stop_async_cb() calls uv_stop there.
             uv_async_send(&server->stop_async);
-            uv_stop(server->loop);
 
             usleep(check_interval_ms * 1000);
             elapsed_ms += check_interval_ms;
