@@ -111,15 +111,19 @@ test('public health variants hide unauthorized cameras and completed bootstrap r
 
 test('backup creates parseable private bytes only in an owned web root',async()=>{
  const webRoot=mkdtempSync(path.join(tmpdir(),'lightnvr-system-contract-'));
- const server=await startFixture({webRoot});
+ let server: Awaited<ReturnType<typeof startFixture>>|undefined;
  try {
+  server=await startFixture({webRoot});
   const result=await ok(server,'/api/system/backup',admin,'POST');valid('SystemBackupCreated',result);
   expect(result.backupUrl).toBe(`/backups/${result.filename}`);
   expect(path.basename(result.filename)).toBe(result.filename);
   const file=path.join(webRoot,'backups',result.filename),bytes=readFileSync(file);
   expect(JSON.parse(bytes.toString())).toEqual(expect.any(Object));
   expect(statSync(file).mode&0o777).toBe(0o600);expect(readdirSync(path.dirname(file))).toEqual([result.filename]);
- } finally {await server.stop();rmSync(webRoot,{recursive:true,force:true});}
+ } finally {
+  if(server)await server.stop();
+  rmSync(webRoot,{recursive:true,force:true});
+ }
 });
 
 
