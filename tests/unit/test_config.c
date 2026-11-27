@@ -1929,6 +1929,9 @@ static void test_save_config_atomically_replaces_owned_file(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", directory);
+    snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
+    group_replace_cleanup_active = true;
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
     fputs("old content", initial);
@@ -1942,6 +1945,7 @@ static void test_save_config_atomically_replaces_owned_file(void) {
     TEST_ASSERT_EQUAL_UINT(0600, after.st_mode & 0777);
     unlink(path);
     rmdir(directory);
+    group_replace_cleanup_active = false;
 }
 
 static void test_save_config_preserves_owned_file_when_publish_fails(void) {
