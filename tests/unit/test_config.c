@@ -1773,15 +1773,17 @@ static void test_save_config_bind_mount_retries_short_write(void) {
     TEST_ASSERT_EQUAL_INT(0, stat(baseline_path, &baseline_stat));
     TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_stat.st_size, (uint64_t)short_write_stat.st_size);
 
-    FILE *saved = fopen(path, "rb");
-    TEST_ASSERT_NOT_NULL(saved);
+    saved_config_file = fopen(path, "rb");
+    TEST_ASSERT_NOT_NULL(saved_config_file);
     FILE *baseline = fopen(baseline_path, "rb");
     TEST_ASSERT_NOT_NULL(baseline);
 
-    assert_files_equal_binary(baseline, saved);
+    assert_files_equal_binary(baseline, saved_config_file);
 
-    fclose(saved);
     fclose(baseline);
+    baseline = NULL;
+    fclose(saved_config_file);
+    saved_config_file = NULL;
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
     unlink(baseline_path);
