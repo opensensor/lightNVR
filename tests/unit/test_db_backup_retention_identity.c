@@ -376,6 +376,11 @@ static void test_collection_realloc_growth_failure_preserves_all(void) {
     TEST_ASSERT_NOT_EQUAL(0, prune(1));
     TEST_ASSERT_EQUAL_UINT(1, fault_hits);
     assert_both_originals();
+    for (unsigned i = 0; i < 8; ++i) {
+        char path[384];
+        snprintf(path, sizeof(path), "%s/20230101T%06uZ.sqlite3", backups, i);
+        assert_bytes(path, "older");
+    }
 }
 static void test_collection_strdup_late_failure_preserves_all(void) {
     /* Fail strdup after at least one prior name has been collected. */
@@ -435,14 +440,16 @@ static void test_selected_inode_remains_pinned_during_replacement(void) {
 }
 static void test_more_than_sixty_four_backups_preserve_configured_order(void) {
     for (unsigned i = 0; i < 70; ++i) {
-        char path[384]; snprintf(path, sizeof(path), "%s/20230101T%06uZ.sqlite3", backups, i);
+        unsigned mm = i / 60, ss = i % 60;
+        char path[384]; snprintf(path, sizeof(path), "%s/20230101T0000%02u%02uZ.sqlite3", backups, mm, ss);
         TEST_ASSERT_EQUAL_INT(0, write_bytes(path, "older"));
     }
     TEST_ASSERT_EQUAL_INT(0, prune(2));
     TEST_ASSERT_EQUAL_UINT(1, max_pins);
     assert_both_originals();
     for (unsigned i = 0; i < 70; ++i) {
-        char path[384]; snprintf(path, sizeof(path), "%s/20230101T%06uZ.sqlite3", backups, i);
+        unsigned mm = i / 60, ss = i % 60;
+        char path[384]; snprintf(path, sizeof(path), "%s/20230101T0000%02u%02uZ.sqlite3", backups, mm, ss);
         TEST_ASSERT_FALSE(exists(path));
     }
 }
