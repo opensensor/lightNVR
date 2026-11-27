@@ -1281,7 +1281,7 @@ int main(int argc, char *argv[]) {
         .bind_ip = config.web_bind_ip,
         .web_root = config.web_root,
         .auth_enabled = config.web_auth_enabled,
-        .cors_enabled = true,
+        .cors_enabled = false,
         .ssl_enabled = config.web_ssl_enabled,
         .max_connections = 100,
         .connection_timeout = 30,
@@ -1291,8 +1291,8 @@ int main(int argc, char *argv[]) {
     safe_strcpy(server_config.cert_path, config.web_ssl_cert_path, sizeof(server_config.cert_path), 0);
     safe_strcpy(server_config.key_path, config.web_ssl_key_path, sizeof(server_config.key_path), 0);
 
-    // Set CORS allowed origins, methods, and headers
-    safe_strcpy(server_config.allowed_origins, "*", sizeof(server_config.allowed_origins), 0);
+    // Set CORS defaults: disabled unless explicitly enabled/configured elsewhere.
+    safe_strcpy(server_config.allowed_origins, "", sizeof(server_config.allowed_origins), 0);
     safe_strcpy(server_config.allowed_methods, "GET, POST, PUT, DELETE, OPTIONS", sizeof(server_config.allowed_methods), 0);
     safe_strcpy(server_config.allowed_headers, "Content-Type, Authorization", sizeof(server_config.allowed_headers), 0);
 
@@ -2054,36 +2054,29 @@ cleanup:
             // Shutdown logging before re-exec
             shutdown_logger();
 
-            // Get the executable path
-            char exe_path[MAX_PATH_LENGTH];
-            ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-            if (len > 0) {
-                exe_path[len] = '\0';
+            // Give the system a moment to release resources
+            usleep(500000);  // 500ms
 
-                // Give the system a moment to release resources
-                usleep(500000);  // 500ms
-
-                // Ensure termination signals are unblocked before exec; signal
-                // masks are inherited across exec and must not carry a blocked
-                // shutdown mask into the restarted process.
-                sigset_t restart_unblock_set;
-                if (sigemptyset(&restart_unblock_set) == 0) {
-                    sigaddset(&restart_unblock_set, SIGINT);
-                    sigaddset(&restart_unblock_set, SIGTERM);
-                    sigaddset(&restart_unblock_set, SIGHUP);
-                    if (pthread_sigmask(SIG_UNBLOCK, &restart_unblock_set, NULL) != 0) {
-                        fprintf(stderr, "Warning: failed to unblock restart signals before exec\n");
-                    }
+            // Ensure termination signals are unblocked before exec; signal
+            // masks are inherited across exec and must not carry a blocked
+            // shutdown mask into the restarted process.
+            sigset_t restart_unblock_set;
+            if (sigemptyset(&restart_unblock_set) == 0) {
+                sigaddset(&restart_unblock_set, SIGINT);
+                sigaddset(&restart_unblock_set, SIGTERM);
+                sigaddset(&restart_unblock_set, SIGHUP);
+                if (pthread_sigmask(SIG_UNBLOCK, &restart_unblock_set, NULL) != 0) {
+                    fprintf(stderr, "Warning: failed to unblock restart signals before exec\n");
                 }
-
-                // Re-exec the program with the same arguments
-                execv(exe_path, saved_argv);
-
-                // If execv returns, it failed
-                fprintf(stderr, "Failed to restart: %s\n", strerror(errno));
-            } else {
-                fprintf(stderr, "Failed to get executable path for restart: %s\n", strerror(errno));
             }
+
+            // Re-exec the currently running image directly via procfs. This
+            // avoids readlink("/proc/self/exe") paths that may end with
+            // " (deleted)" after in-place upgrades.
+            execv("/proc/self/exe", saved_argv);
+
+            // If execv returns, it failed
+            fprintf(stderr, "Failed to restart: %s\n", strerror(errno));
 
             // If we get here, restart failed
             return EXIT_FAILURE;
