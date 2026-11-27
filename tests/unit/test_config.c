@@ -638,8 +638,11 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     }
 
     struct timespec start = {0};
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, clock_gettime(CLOCK_MONOTONIC, &start),
-                                  "clock_gettime failed in timeout harness");
+    if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) {
+        kill(child, SIGKILL);
+        waitpid(child, NULL, 0);
+        TEST_FAIL_MESSAGE("clock_gettime failed in timeout harness");
+    }
     for (;;) {
         int status = 0;
         pid_t waited = waitpid(child, &status, WNOHANG);
@@ -649,11 +652,21 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
                                           "child reported failure in concurrency scenario");
             break;
         }
-        TEST_ASSERT_TRUE_MESSAGE(waited == 0, "waitpid failed while monitoring child");
+        if (waited == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            kill(child, SIGKILL);
+            waitpid(child, NULL, 0);
+            TEST_FAIL_MESSAGE("waitpid failed while monitoring child");
+        }
 
         struct timespec now = {0};
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, clock_gettime(CLOCK_MONOTONIC, &now),
-                                      "clock_gettime failed during timeout monitoring");
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            kill(child, SIGKILL);
+            waitpid(child, NULL, 0);
+            TEST_FAIL_MESSAGE("clock_gettime failed during timeout monitoring");
+        }
         long elapsed_ms =
             (now.tv_sec - start.tv_sec) * 1000L + (now.tv_nsec - start.tv_nsec) / 1000000L;
         if (elapsed_ms > 8000L) {
