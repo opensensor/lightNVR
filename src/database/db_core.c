@@ -859,7 +859,7 @@ bool db_scheduled_backup_wait_idle(int timeout_ms) {
  * instead.  Either way the wait is bounded; on expiry the handle is closed
  * regardless, with the process-level shutdown watchdogs as the backstop.
  */
-static void quiesce_scheduled_backup_worker(void) {
+static bool quiesce_scheduled_backup_worker(void) {
     pthread_mutex_lock(&scheduled_backup_lock);
     scheduled_backup_draining = true;
     bool in_flight = scheduled_backup_in_flight;
@@ -873,9 +873,9 @@ static void quiesce_scheduled_backup_worker(void) {
         // up on this worker: its budget is not granted twice.
         if (!db_scheduled_backup_wait_idle(DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS)) {
             log_error("Scheduled database backup worker has not stopped within its %d s budget; "
-                      "closing the database anyway",
+                      "deferring database close/reinitialization until worker exits",
                       DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
-            return;
+            return false;
         }
         log_info("In-flight scheduled database backup stopped");
     } else {
@@ -886,6 +886,7 @@ static void quiesce_scheduled_backup_worker(void) {
     // Idle: a cancel raised above (or by an earlier restart) must not leak
     // into the next database's initial or scheduled backups.
     db_backup_clear_cancel();
+    return true;
 }
 
 int maybe_run_scheduled_database_backup(void) {
