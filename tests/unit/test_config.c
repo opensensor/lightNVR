@@ -2142,6 +2142,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     int result = save_config(&cfg, path);
     check_config_pwrite_mode = false;
     TEST_ASSERT_EQUAL_INT(fail_copy ? -1 : 0, result);
+    if (fail_copy) TEST_ASSERT_FALSE(fail_config_pwrite);
     if (!fail_copy) TEST_ASSERT_TRUE(check_config_pwrite_saw_write);
     TEST_ASSERT_FALSE(check_config_pwrite_mode_violation);
     if (fail_copy) TEST_ASSERT_TRUE(short_config_pwrite_done);
