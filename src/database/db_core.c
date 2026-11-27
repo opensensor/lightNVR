@@ -413,7 +413,7 @@ static int cleanup_stale_backup_artifacts(const char *backup_dir) {
     struct stat dir_st;
     if (fstat(dfd, &dir_st) != 0 ||
         !S_ISDIR(dir_st.st_mode) ||
-        dir_st.st_uid != getuid() ||
+        dir_st.st_uid != geteuid() ||
         (dir_st.st_mode & 077) != 0) {
         close(dfd);
         return -1;
@@ -1431,7 +1431,8 @@ int init_database_ex(const char *db_path, unsigned flags) {
                     test_db = NULL;
                 }
 
-                if (rc == SQLITE_CORRUPT || rc == SQLITE_NOTADB) {
+                int primary_rc = rc & 0xff;
+                if (primary_rc == SQLITE_CORRUPT || primary_rc == SQLITE_NOTADB) {
                     test_file = fopen(db_backup_path, "r");
                     if (test_file) {
                         log_info("Backup database file exists, attempting recovery");
