@@ -724,7 +724,7 @@ void test_save_stream_configs_preserves_identities_after_batch_reload(void) {
     snprintf(second_uuid, sizeof(second_uuid), "%s", cfg.streams[1].camera_uuid);
 
     load_default_config(&reloaded_cfg);
-    TEST_ASSERT_EQUAL_INT(2, load_stream_configs_from_db(&reloaded_cfg));
+    TEST_ASSERT_EQUAL_INT(2, load_stream_configs(&reloaded_cfg));
 
     TEST_ASSERT_EQUAL_STRING("camera-one", reloaded_cfg.streams[0].name);
     TEST_ASSERT_EQUAL_STRING("rtsp://example.invalid/one", reloaded_cfg.streams[0].url);
