@@ -1851,6 +1851,8 @@ static void check_group_writable_config_replacement(bool fail_publish) {
     umask(prior_umask);
     monitor_secret_write_permissions = false;
     deny_config_rename = false;
+    /* Ensure the targeted chmod/fchmod fault injection path was actually hit. */
+    TEST_ASSERT_FALSE(deny_config_chmod);
     TEST_ASSERT_EQUAL_INT(fail_publish ? -1 : 0, result);
     if (!fail_publish) {
         TEST_ASSERT_TRUE(observed_config_stream);
