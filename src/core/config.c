@@ -1547,22 +1547,16 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
     // Parsing may resize streams, so the temporary copy needs its own array.
     pthread_mutex_lock(&mp4_faststart_mutex);
     config_t temp_config = *config;
-    config_t original_config = *config;
-    stream_config_t *original_streams = NULL;
     temp_config.streams = NULL;
     if (config->streams && config->max_streams > 0) {
         size_t bytes = (size_t)config->max_streams * sizeof(stream_config_t);
         temp_config.streams = malloc(bytes);
-        original_streams = malloc(bytes);
-        if (!temp_config.streams || !original_streams) {
-            free(temp_config.streams);
-            free(original_streams);
+        if (!temp_config.streams) {
             pthread_mutex_unlock(&mp4_faststart_mutex);
             log_error("Could not copy streams array before parsing %s", filename);
             return -1;
         }
         memcpy(temp_config.streams, config->streams, bytes);
-        memcpy(original_streams, config->streams, bytes);
     }
     pthread_mutex_unlock(&mp4_faststart_mutex);
 
@@ -1597,33 +1591,18 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
 
     if (result < 0) {
         free(temp_config.streams);
-        free(original_streams);
         log_warn("Could not read config file %s", filename);
         return -1;
     } else if (result > 0) {
         free(temp_config.streams);
-        free(original_streams);
         log_warn("Error in config file %s at line %d", filename, result);
         return -1;
     }
 
     pthread_mutex_lock(&mp4_faststart_mutex);
-    bool changed = memcmp(config, &original_config, sizeof(*config)) != 0;
-    if (!changed && original_streams) {
-        changed = memcmp(config->streams, original_streams,
-                         (size_t)original_config.max_streams * sizeof(*original_streams)) != 0;
-    }
-    if (changed) {
-        pthread_mutex_unlock(&mp4_faststart_mutex);
-        free(temp_config.streams);
-        free(original_streams);
-        log_warn("Config changed during reload of %s; refusing to overwrite newer in-memory updates", filename);
-        return -1;
-    }
     free(config->streams);
     *config = temp_config;
     pthread_mutex_unlock(&mp4_faststart_mutex);
-    free(original_streams);
     return 0;
 }
 
