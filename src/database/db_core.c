@@ -45,8 +45,20 @@
 // Database handle
 static sqlite3 *db = NULL;
 
-// Mutex for thread safety
-static pthread_mutex_t db_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Stream replacement holds this mutex for its transaction and calls stream
+// helpers that also lock it. Keep the transaction exclusive across those calls.
+static pthread_mutex_t db_mutex;
+static pthread_once_t db_mutex_once = PTHREAD_ONCE_INIT;
+
+static void init_db_mutex(void) {
+    pthread_mutexattr_t attr;
+    if (pthread_mutexattr_init(&attr) != 0 ||
+        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE) != 0 ||
+        pthread_mutex_init(&db_mutex, &attr) != 0) {
+        abort();
+    }
+    pthread_mutexattr_destroy(&attr);
+}
 
 // Database path for backup/recovery operations
 static char db_file_path[PATH_MAX] = {0};
@@ -700,18 +712,18 @@ int checkpoint_database(void) {
         return 0;
     }
 
-    pthread_mutex_lock(&db_mutex);
+    pthread_mutex_lock(get_db_mutex());
 
     log_info("Checkpointing WAL file");
     rc = sqlite3_exec(db, "PRAGMA wal_checkpoint(FULL);", NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to checkpoint WAL: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(&db_mutex);
+        pthread_mutex_unlock(get_db_mutex());
         return -1;
     }
 
     log_info("WAL checkpoint successful");
-    pthread_mutex_unlock(&db_mutex);
+    pthread_mutex_unlock(get_db_mutex());
     return 0;
 }
 
@@ -1598,7 +1610,7 @@ void shutdown_database(void) {
      * for any in-flight database operation instead of closing the connection
      * without its lock after an arbitrary timeout. */
     log_info("Waiting for in-flight database operations before shutdown");
-    pthread_mutex_lock(&db_mutex);
+    pthread_mutex_lock(get_db_mutex());
 
     if (db != NULL) {
         // Store the database handle locally but DO NOT set the global to NULL yet
@@ -1683,7 +1695,7 @@ void shutdown_database(void) {
         log_warn("Database handle is already NULL during shutdown");
     }
 
-    pthread_mutex_unlock(&db_mutex);
+    pthread_mutex_unlock(get_db_mutex());
 
     /* db_mutex has static process lifetime. Destroying and later reinitializing
      * it races callers that retained get_db_mutex(), and reinitializing a live
@@ -1703,6 +1715,7 @@ sqlite3 *get_db_handle(void) {
 
 // Get the database mutex (for internal use by other database modules)
 pthread_mutex_t *get_db_mutex(void) {
+    if (pthread_once(&db_mutex_once, init_db_mutex) != 0) abort();
     return &db_mutex;
 }
 
