@@ -784,9 +784,9 @@ int validate_config(config_t *config) {
     }
 
     if (config->auth_absolute_timeout_hours < config->auth_timeout_hours) {
-        log_warn("auth_absolute_timeout_hours (%d) is less than auth_timeout_hours (%d); clamping to the idle timeout",
+        log_warn("auth_absolute_timeout_hours (%d) is less than auth_timeout_hours (%d); clamping idle timeout to the absolute timeout",
                  config->auth_absolute_timeout_hours, config->auth_timeout_hours);
-        config->auth_absolute_timeout_hours = config->auth_timeout_hours;
+        config->auth_timeout_hours = config->auth_absolute_timeout_hours;
     }
     
     // Check for required paths
