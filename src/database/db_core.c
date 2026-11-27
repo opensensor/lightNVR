@@ -1496,8 +1496,8 @@ int init_database_ex(const char *db_path, unsigned flags) {
 
     log_info("Database initialized successfully");
 
-    // Create an initial backup if this is a new database
-    if (is_new_database) {
+    // Create an initial backup if this is a new database and backups are enabled
+    if (is_new_database && !(flags & DB_INIT_NO_BACKUP)) {
         log_info("Creating initial backup of new database");
         if (perform_database_backup_cycle("initial", true, true) == 0) {
             log_info("Initial backup created successfully");
