@@ -46,6 +46,10 @@ static stream_config_t *owned_snapshot_streams;
 static int owned_pid_fd;
 static char owned_pid_path[MAX_PATH_LENGTH];
 static bool deny_config_chmod;
+static bool owned_bind_dir_active;
+static char owned_bind_dir_path[MAX_PATH_LENGTH];
+static char owned_bind_file_path[MAX_PATH_LENGTH];
+static char owned_bind_baseline_path[MAX_PATH_LENGTH];
 static bool deny_config_rename;
 static bool busy_config_rename;
 static bool fail_config_pwrite;
@@ -127,6 +131,10 @@ void setUp(void) {
     memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
     owned_pid_fd = -1;
     owned_pid_path[0] = '\0';
+    owned_bind_dir_active = false;
+    owned_bind_dir_path[0] = '\0';
+    owned_bind_file_path[0] = '\0';
+    owned_bind_baseline_path[0] = '\0';
     saved_config_file = NULL;
     saved_baseline_file = NULL;
     concurrent_config_dir[0] = '\0';
@@ -153,6 +161,12 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (owned_bind_dir_active) {
+        unlink(owned_bind_file_path);
+        unlink(owned_bind_baseline_path);
+        rmdir(owned_bind_dir_path);
+        owned_bind_dir_active = false;
+    }
     if (concurrent_config_dir[0]) {
         char path[MAX_PATH_LENGTH];
         snprintf(path, sizeof(path), "%s/settings.ini", concurrent_config_dir);
@@ -1827,6 +1841,10 @@ static void check_bind_mount_fallback(bool fail_copy) {
     size_t original_len = strlen(original);
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
     snprintf(baseline_path, sizeof(baseline_path), "%s/settings.baseline.ini", directory);
+    owned_bind_dir_active = true;
+    snprintf(owned_bind_dir_path, sizeof(owned_bind_dir_path), "%s", directory);
+    snprintf(owned_bind_file_path, sizeof(owned_bind_file_path), "%s", path);
+    snprintf(owned_bind_baseline_path, sizeof(owned_bind_baseline_path), "%s", baseline_path);
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
     fputs(original, initial);
@@ -1894,6 +1912,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     if (!fail_copy) unlink(baseline_path);
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    owned_bind_dir_active = false;
 }
 
 static void test_save_config_bind_mount_fallback(void) {
