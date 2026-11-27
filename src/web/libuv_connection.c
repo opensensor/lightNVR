@@ -387,7 +387,11 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
             if (next && next >= buf->base && next <= buf->base + nread) {
                 conn->unread_bytes = (size_t)(buf->base + nread - next);
             }
-            // Reclaim all bytes consumed by llhttp; keep only unread pipelined tail.
+            // Move the unread tail before shrinking the used length; reset
+            // and the next parser pass both read from recv_buffer's start.
+            if (conn->unread_bytes > 0) {
+                memmove(conn->recv_buffer, next, conn->unread_bytes);
+            }
             conn->recv_buffer_used = conn->unread_bytes;
             return;
         }
