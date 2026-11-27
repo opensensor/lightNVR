@@ -11,7 +11,7 @@ import {validateGo2rtcConfiguration,getGo2rtcEffectiveConfiguration,getGo2rtcOve
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
-import { parseDocument } from 'yaml';
+import { isMap, isScalar, parseDocument } from 'yaml';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type {
   Go2rtcEffectiveConfig,
@@ -302,16 +302,21 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   const getTopLevelYamlKeys = (yaml: string): { keys: Set<string>; error: string | null } => {
     const doc = parseDocument(yaml);
     if (doc.errors.length > 0) {
-      return { keys: new Set<string>(), error: doc.errors[0].message };
+      return { keys: new Set<string>(), error: doc.errors[0]?.message || 'Invalid YAML' };
     }
 
     const keys = new Set<string>();
     const contents = doc.contents;
-    if (contents && contents.type === 'MAP') {
+    if (contents && !isMap(contents)) {
+      return { keys, error: 'Top-level YAML must be a mapping' };
+    }
+    if (isMap(contents)) {
       for (const item of contents.items) {
         const keyNode = item.key;
-        if (!keyNode) continue;
-        const key = keyNode.toString();
+        if (!isScalar(keyNode) || typeof keyNode.value !== 'string') {
+          return { keys: new Set<string>(), error: 'Top-level YAML keys must be strings' };
+        }
+        const key = keyNode.value;
         if (key) keys.add(key);
       }
     }
