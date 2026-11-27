@@ -661,7 +661,8 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
             waitpid(child, NULL, 0);
             TEST_FAIL_MESSAGE("concurrency scenario timed out (possible deadlock regression)");
         }
-        sched_yield();
+        struct timespec poll_delay = {.tv_sec = 0, .tv_nsec = 1000000L}; /* 1 ms */
+        nanosleep(&poll_delay, NULL);
     }
 }
 
@@ -1734,6 +1735,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     if (fail_copy) TEST_ASSERT_EQUAL_UINT64(before.st_size, after.st_size);
     FILE *saved = fopen(path, "rb");
     TEST_ASSERT_NOT_NULL(saved);
+    saved_config_file = saved;
     if (fail_copy) {
         char content[128] = {0};
         size_t count = fread(content, 1, sizeof(content) - 1, saved);
@@ -1743,6 +1745,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
         TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_stat.st_size, (uint64_t)after.st_size);
         FILE *baseline_file = fopen(baseline_path, "rb");
         TEST_ASSERT_NOT_NULL(baseline_file);
+        saved_baseline_file = baseline_file;
         unsigned char actual[256], expected[256];
         while (true) {
             size_t actual_count = fread(actual, 1, sizeof(actual), saved);
@@ -1753,9 +1756,11 @@ static void check_bind_mount_fallback(bool fail_copy) {
         }
         TEST_ASSERT_FALSE(ferror(baseline_file));
         fclose(baseline_file);
+        saved_baseline_file = NULL;
     }
     TEST_ASSERT_FALSE(ferror(saved));
     fclose(saved);
+    saved_config_file = NULL;
     if (!fail_copy) unlink(baseline_path);
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
