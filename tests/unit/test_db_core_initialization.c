@@ -14,8 +14,19 @@
 #include "core/config.h"
 #include "database/db_core.h"
 
-#define TEST_DB_PATH "/tmp/lightnvr_db_core_initialization.sqlite"
-#define TEST_BACKUP_DIR TEST_DB_PATH ".backups"
+static char test_fixture_dir[] = "/tmp/lightnvr_db_core_initialization.XXXXXX";
+static char test_db_path[512];
+static char test_backup_dir[512];
+static int test_paths_initialized = 0;
+
+static void initialize_test_paths(void) {
+    if (test_paths_initialized) return;
+
+    TEST_ASSERT_NOT_NULL(mkdtemp(test_fixture_dir));
+    TEST_ASSERT_TRUE(snprintf(test_db_path, sizeof(test_db_path), "%s/db.sqlite", test_fixture_dir) > 0);
+    TEST_ASSERT_TRUE(snprintf(test_backup_dir, sizeof(test_backup_dir), "%s.backups", test_db_path) > 0);
+    test_paths_initialized = 1;
+}
 
 static void remove_if_present(const char *path) {
     if (unlink(path) != 0 && errno != ENOENT) {
@@ -27,17 +38,17 @@ static void remove_database_files(void) {
     static const char *suffixes[] = {"", "-wal", "-shm", "-journal", ".bak", ".private-backup", ".private-backup.tmp"};
     char path[512];
     for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); i++) {
-        snprintf(path, sizeof(path), "%s%s", TEST_DB_PATH, suffixes[i]);
+        snprintf(path, sizeof(path), "%s%s", test_db_path, suffixes[i]);
         remove_if_present(path);
     }
     /* A new database creates an initial timestamped backup even when shutdown
      * backups are disabled. Remove only regular entries in this owned fixture. */
-    DIR *directory = opendir(TEST_BACKUP_DIR);
+    DIR *directory = opendir(test_backup_dir);
     if (directory) {
         struct dirent *entry;
         while ((entry = readdir(directory))) {
             if (entry->d_name[0] == '.') continue;
-            snprintf(path, sizeof(path), "%s/%s", TEST_BACKUP_DIR, entry->d_name);
+            snprintf(path, sizeof(path), "%s/%s", test_backup_dir, entry->d_name);
             remove_if_present(path);
         }
         closedir(directory);
@@ -46,7 +57,7 @@ static void remove_database_files(void) {
 
 static void remove_backup_fixture(const char *name) {
     char path[512];
-    snprintf(path, sizeof(path), "%s/%s", TEST_BACKUP_DIR, name);
+    snprintf(path, sizeof(path), "%s/%s", test_backup_dir, name);
     remove_if_present(path);
 }
 
@@ -58,6 +69,7 @@ static void create_file(const char *path) {
 }
 
 void setUp(void) {
+    initialize_test_paths();
     if (get_db_handle()) {
         shutdown_database();
     }
@@ -66,7 +78,7 @@ void setUp(void) {
     remove_backup_fixture("20260905T120100Z.sqlite3.tmp");
     remove_backup_fixture("20260905T120100Z.sqlite3.tmp-journal");
     remove_backup_fixture("operator-notes.tmp");
-    rmdir(TEST_BACKUP_DIR);
+    rmdir(test_backup_dir);
     load_default_config(&g_config);
 }
 
