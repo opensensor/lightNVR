@@ -39,6 +39,7 @@ static config_t cfg;
 static config_t reloaded_cfg;
 static FILE *saved_config_file;
 static FILE *saved_baseline_file;
+static char concurrent_config_dir[MAX_PATH_LENGTH];
 static char *saved_config_text;
 static stream_config_t *owned_snapshot_streams;
 static int owned_pid_fd;
@@ -127,6 +128,7 @@ void setUp(void) {
     owned_pid_path[0] = '\0';
     saved_config_file = NULL;
     saved_baseline_file = NULL;
+    concurrent_config_dir[0] = '\0';
     saved_config_text = NULL;
     check_config_pwrite_mode = false;
     check_config_pwrite_saw_write = false;
@@ -150,6 +152,13 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (concurrent_config_dir[0]) {
+        char path[MAX_PATH_LENGTH];
+        snprintf(path, sizeof(path), "%s/settings.ini", concurrent_config_dir);
+        unlink(path);
+        rmdir(concurrent_config_dir);
+        concurrent_config_dir[0] = '\0';
+    }
     if (owned_pid_fd >= 0) {
         remove_pid_file(owned_pid_fd, owned_pid_path);
         owned_pid_fd = -1;
@@ -513,17 +522,17 @@ void test_config_reset_stream_slots_clears_stale_rows(void) {
 }
 
 void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
+    char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL_MESSAGE(dir, "mkdtemp failed for concurrency timeout harness");
+    snprintf(concurrent_config_dir, sizeof(concurrent_config_dir), "%s", dir);
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", dir);
+
     pid_t child = fork();
     TEST_ASSERT_TRUE_MESSAGE(child >= 0, "fork failed for concurrency timeout harness");
 
     if (child == 0) {
-        char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
-        char *dir = mkdtemp(temp_dir);
-        if (dir == NULL) {
-            _exit(EXIT_FAILURE);
-        }
-        char path[MAX_PATH_LENGTH];
-        snprintf(path, sizeof(path), "%s/settings.ini", dir);
         load_default_config(&cfg);
 
         atomic_store(&faststart_writer_stop, false);
@@ -700,6 +709,9 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
         struct timespec poll_delay = {.tv_sec = 0, .tv_nsec = 1000000L}; /* 1 ms */
         nanosleep(&poll_delay, NULL);
     }
+    unlink(path);
+    rmdir(dir);
+    concurrent_config_dir[0] = '\0';
 }
 
 void test_default_config_buffer_size(void) {
@@ -1920,16 +1932,7 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
 
     TEST_ASSERT_EQUAL_INT64((long long)baseline_size, (long long)saved_size);
 
-    unsigned char saved_content[256], baseline_content[256];
-    while (true) {
-        size_t saved_read = fread(saved_content, 1, sizeof(saved_content), saved_config_file);
-        size_t baseline_read = fread(baseline_content, 1, sizeof(baseline_content), saved_baseline_file);
-        TEST_ASSERT_EQUAL_UINT(baseline_read, saved_read);
-        if (saved_read == 0) break;
-        TEST_ASSERT_EQUAL_MEMORY(baseline_content, saved_content, saved_read);
-    }
-    TEST_ASSERT_FALSE(ferror(saved_config_file));
-    TEST_ASSERT_FALSE(ferror(saved_baseline_file));
+    assert_files_equal_binary(saved_baseline_file, saved_config_file);
     fclose(saved_config_file);
     saved_config_file = NULL;
     fclose(saved_baseline_file);
