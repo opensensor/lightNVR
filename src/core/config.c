@@ -372,7 +372,8 @@ static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAP
                 safe_strcpy(str_ptr, env_value, mapping->size, 0);
                 // Log with masked value for sensitive fields
                 if (strstr(mapping->env_name, "PASSWORD") != NULL ||
-                    strstr(mapping->env_name, "SECRET") != NULL) {
+                    strstr(mapping->env_name, "SECRET") != NULL ||
+                    strstr(mapping->env_name, "ICE_SERVERS") != NULL) {
                     log_info("Applied env override: %s=*** (string, masked)",
                              env_name);
                 } else {
@@ -840,13 +841,17 @@ int validate_config(config_t *config) {
 void config_set_detection_grace_period(config_t *config, int seconds) {
     if (seconds < 0)  seconds = 0;
     if (seconds > 60) seconds = 60;
+    pthread_mutex_lock(&mp4_faststart_mutex);
     config->detection_grace_period = seconds;
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 }
 
 void config_set_detection_engine_threads(config_t *config, int threads) {
     if (threads < 1)  threads = 1;
     if (threads > 16) threads = 16;
+    pthread_mutex_lock(&mp4_faststart_mutex);
     config->detection_engine.num_threads = threads;
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 }
 
 bool config_set_detection_engine_delegate(config_t *config, const char *delegate) {
@@ -855,8 +860,10 @@ bool config_set_detection_engine_delegate(config_t *config, const char *delegate
          strcmp(delegate, "none") != 0)) {
         return false;
     }
+    pthread_mutex_lock(&mp4_faststart_mutex);
     safe_strcpy(config->detection_engine.delegate, delegate,
                 sizeof(config->detection_engine.delegate), 0);
+    pthread_mutex_unlock(&mp4_faststart_mutex);
     return true;
 }
 
@@ -1231,9 +1238,19 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "demo_mode") == 0) {
             config->demo_mode = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "force_mfa_on_login") == 0) {
-            config->force_mfa_on_login = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.force_mfa_on_login: '%s'", value);
+                return 0;
+            }
+            config->force_mfa_on_login = parsed_bool;
         } else if (strcmp(name, "login_rate_limit_enabled") == 0) {
-            config->login_rate_limit_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            bool parsed_bool = false;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.login_rate_limit_enabled: '%s'", value);
+                return 0;
+            }
+            config->login_rate_limit_enabled = parsed_bool;
         } else if (strcmp(name, "login_rate_limit_max_attempts") == 0) {
             config->login_rate_limit_max_attempts = safe_atoi(value, 0);
             if (config->login_rate_limit_max_attempts < 1) {

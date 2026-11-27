@@ -38,6 +38,26 @@ static char pid_file_path[MAX_PATH_LENGTH] = "/run/lightnvr.pid";
 static pthread_mutex_t owned_pid_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int owned_pid_fd = -1;
 static pid_t owned_pid_process = 0;
+static pthread_once_t owned_pid_atfork_once = PTHREAD_ONCE_INIT;
+
+static void owned_pid_atfork_prepare(void) {
+    pthread_mutex_lock(&owned_pid_mutex);
+}
+
+static void owned_pid_atfork_parent(void) {
+    pthread_mutex_unlock(&owned_pid_mutex);
+}
+
+static void owned_pid_atfork_child(void) {
+    if (owned_pid_fd >= 0) close(owned_pid_fd);
+    owned_pid_fd = -1;
+    owned_pid_process = 0;
+    pthread_mutex_unlock(&owned_pid_mutex);
+}
+
+static void register_owned_pid_atfork(void) {
+    (void)pthread_atfork(owned_pid_atfork_prepare, owned_pid_atfork_parent, owned_pid_atfork_child);
+}
 
 // Forward declarations
 static void daemon_signal_handler(int sig);
@@ -112,6 +132,10 @@ int init_daemon(const char *pid_file) {
         log_error("Failed to create startup status pipe: %s", strerror(errno));
         return -1;
     }
+
+    // Coordinate the PID mutex across the daemon fork, even before a PID
+    // file has been written.
+    (void)pthread_once(&owned_pid_atfork_once, register_owned_pid_atfork);
 
     // Fork the process
     pid_t pid = fork();
@@ -297,6 +321,8 @@ static void daemon_signal_handler(int sig) {
 
 // Write PID file
 int write_pid_file(const char *pid_file) {
+    // Register before acquiring the lock so any later fork resets child ownership.
+    (void)pthread_once(&owned_pid_atfork_once, register_owned_pid_atfork);
     pthread_mutex_lock(&owned_pid_mutex);
     if (owned_pid_fd >= 0 && owned_pid_process == getpid()) {
         log_error("PID file already owned by this process");
@@ -400,10 +426,16 @@ int remove_pid_file(int fd, const char *pid_file) {
     // with concurrent starters. Keep the inode in place and only release the lock.
     if (fd >= 0) {
         pthread_mutex_lock(&owned_pid_mutex);
-        if (fd == owned_pid_fd && owned_pid_process == getpid()) {
-            owned_pid_fd = -1;
-            owned_pid_process = 0;
+        if (fd != owned_pid_fd || owned_pid_process != getpid()) {
+            pthread_mutex_unlock(&owned_pid_mutex);
+            log_warn("PID file descriptor %d for %s is not owned (already released or replaced); skipping close",
+                     fd, pid_file);
+            return -1;
         }
+
+        owned_pid_fd = -1;
+        owned_pid_process = 0;
+
         int close_result = close(fd);
         int close_error = errno;
         pthread_mutex_unlock(&owned_pid_mutex);
