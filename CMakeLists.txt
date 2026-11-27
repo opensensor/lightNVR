@@ -147,14 +147,14 @@ set(LIGHTNVR_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Find required packages
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
     libavcodec>=61
     libavformat>=61
     libavutil>=59
     libswscale>=8
     libswresample>=5)
-pkg_check_modules(SQLITE REQUIRED sqlite3)
-pkg_check_modules(CURL REQUIRED libcurl)
+pkg_check_modules(SQLITE REQUIRED IMPORTED_TARGET sqlite3)
+pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
 option(ENABLE_S3_ARCHIVE "Enable S3 archive targets (requires libcurl 7.75+)" ON)
 if(ENABLE_S3_ARCHIVE AND CURL_VERSION VERSION_LESS "7.75.0")
     message(FATAL_ERROR "S3 archival requires libcurl >= 7.75. Use -DENABLE_S3_ARCHIVE=OFF for filesystem-only builds.")
@@ -261,13 +261,13 @@ else()
 endif()
 
 # Find cJSON (required dependency)
-pkg_check_modules(CJSON QUIET libcjson)
+pkg_check_modules(CJSON QUIET IMPORTED_TARGET libcjson)
 if(CJSON_FOUND)
     message(STATUS "Found cJSON via pkg-config: ${CJSON_LIBRARIES}")
     message(STATUS "cJSON include dirs: ${CJSON_INCLUDE_DIRS}")
 else()
     # Try alternative pkg-config name
-    pkg_check_modules(CJSON QUIET cjson)
+    pkg_check_modules(CJSON QUIET IMPORTED_TARGET cjson)
     if(CJSON_FOUND)
         message(STATUS "Found cJSON via pkg-config (alternative): ${CJSON_LIBRARIES}")
     else()
@@ -292,6 +292,10 @@ else()
             endif()
         endif()
     endif()
+endif()
+set(CJSON_LINK_LIB ${CJSON_LIBRARIES})
+if(TARGET PkgConfig::CJSON)
+    set(CJSON_LINK_LIB PkgConfig::CJSON)
 endif()
 
 # Set up SOD library if enabled
@@ -383,15 +387,16 @@ message(STATUS "Using libuv + llhttp HTTP backend")
 add_definitions(-DHTTP_BACKEND_LIBUV)
 
 # Find libuv
-pkg_check_modules(LIBUV REQUIRED libuv)
+pkg_check_modules(LIBUV REQUIRED IMPORTED_TARGET libuv)
 
 # llhttp - try to find via pkg-config first, otherwise download and build
-pkg_check_modules(LLHTTP QUIET libllhttp)
+pkg_check_modules(LLHTTP QUIET IMPORTED_TARGET libllhttp)
 if(NOT LLHTTP_FOUND)
     # Check if llhttp is in external directory, downloading any missing files.
     # A partial prior download can leave src/llhttp.c present while api.c/http.c
     # are absent, which would otherwise fail later with "No SOURCES given".
-    set(LLHTTP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp")
+    # Use a build-local directory to avoid races between concurrent build dirs.
+    set(LLHTTP_DIR "${CMAKE_CURRENT_BINARY_DIR}/external/llhttp")
     set(LLHTTP_REQUIRED_FILES
         "src/llhttp.c"
         "src/api.c"
@@ -470,11 +475,12 @@ if(NOT LLHTTP_FOUND)
             endif()
             get_filename_component(LLHTTP_LOCAL_DIR "${LLHTTP_LOCAL_PATH}" DIRECTORY)
             file(MAKE_DIRECTORY "${LLHTTP_LOCAL_DIR}")
-            file(REMOVE "${LLHTTP_LOCAL_PATH}")
+            set(LLHTTP_TEMP_PATH "${LLHTTP_LOCAL_PATH}.tmp")
+            file(REMOVE "${LLHTTP_LOCAL_PATH}" "${LLHTTP_TEMP_PATH}")
 
             file(DOWNLOAD
                 "${LLHTTP_BASE_URL}/${LLHTTP_FILE}"
-                "${LLHTTP_LOCAL_PATH}"
+                "${LLHTTP_TEMP_PATH}"
                 SHOW_PROGRESS
                 STATUS LLHTTP_DOWNLOAD_STATUS
                 TLS_VERIFY ON
@@ -483,13 +489,16 @@ if(NOT LLHTTP_FOUND)
             list(GET LLHTTP_DOWNLOAD_STATUS 0 LLHTTP_STATUS_CODE)
             list(GET LLHTTP_DOWNLOAD_STATUS 1 LLHTTP_STATUS_MESSAGE)
             if(NOT LLHTTP_STATUS_CODE EQUAL 0)
+                file(REMOVE "${LLHTTP_TEMP_PATH}" "${LLHTTP_LOCAL_PATH}")
                 message(FATAL_ERROR
                     "Failed to download llhttp ${LLHTTP_FILE}: ${LLHTTP_STATUS_MESSAGE}")
             endif()
-            file(READ "${LLHTTP_LOCAL_PATH}" LLHTTP_FILE_PROBE LIMIT 1)
+            file(READ "${LLHTTP_TEMP_PATH}" LLHTTP_FILE_PROBE LIMIT 1)
             if(LLHTTP_FILE_PROBE STREQUAL "")
+                file(REMOVE "${LLHTTP_TEMP_PATH}" "${LLHTTP_LOCAL_PATH}")
                 message(FATAL_ERROR "Downloaded llhttp ${LLHTTP_FILE} is empty")
             endif()
+            file(RENAME "${LLHTTP_TEMP_PATH}" "${LLHTTP_LOCAL_PATH}")
         endif()
     endforeach()
 
@@ -501,12 +510,12 @@ if(NOT LLHTTP_FOUND)
     )
     add_library(llhttp_lib STATIC ${LLHTTP_SOURCES})
     target_include_directories(llhttp_lib PUBLIC "${LLHTTP_DIR}/include")
-    set(HTTP_BACKEND_LIBS llhttp_lib ${LIBUV_LIBRARIES})
+    set(HTTP_BACKEND_LIBS llhttp_lib PkgConfig::LIBUV)
     set(LLHTTP_INCLUDE_DIRS "${LLHTTP_DIR}/include")
     message(STATUS "Building llhttp from source")
 else()
     message(STATUS "Found llhttp via pkg-config: ${LLHTTP_LIBRARIES}")
-    set(HTTP_BACKEND_LIBS ${LLHTTP_LIBRARIES} ${LIBUV_LIBRARIES})
+    set(HTTP_BACKEND_LIBS PkgConfig::LLHTTP PkgConfig::LIBUV)
 endif()
 
 set(HTTP_BACKEND_INCLUDE_DIRS ${LIBUV_INCLUDE_DIRS} ${LLHTTP_INCLUDE_DIRS})
@@ -756,10 +765,10 @@ target_link_libraries(lightnvr_lib PUBLIC
         ${HTTP_BACKEND_LIBS}
         inih_lib
         faac_lib
-        ${FFMPEG_LIBRARIES}
-        ${SQLITE_LIBRARIES}
-        ${CURL_LIBRARIES}
-        ${CJSON_LIBRARIES}
+        PkgConfig::FFMPEG
+        PkgConfig::SQLITE
+        PkgConfig::CURL
+        ${CJSON_LINK_LIB}
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
         pthread
