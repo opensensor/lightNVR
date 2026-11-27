@@ -39,6 +39,8 @@ static config_t reloaded_cfg;
 static FILE *saved_config_file;
 static char *saved_config_text;
 static stream_config_t *owned_snapshot_streams;
+static int owned_pid_fd;
+static char owned_pid_path[MAX_PATH_LENGTH];
 static bool deny_config_chmod;
 static bool deny_config_rename;
 static bool busy_config_rename;
@@ -119,6 +121,8 @@ ssize_t __wrap_pwrite(int fd, const void *buf, size_t size, off_t offset) {
 void setUp(void) {
     memset(&cfg, 0, sizeof(cfg));
     memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
+    owned_pid_fd = -1;
+    owned_pid_path[0] = '\0';
     saved_config_file = NULL;
     saved_config_text = NULL;
     check_config_pwrite_mode = false;
@@ -143,6 +147,19 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (owned_pid_fd >= 0) {
+        remove_pid_file(owned_pid_fd, owned_pid_path);
+        owned_pid_fd = -1;
+    }
+    if (owned_pid_path[0]) {
+        unlink(owned_pid_path);
+        char *last_slash = strrchr(owned_pid_path, '/');
+        if (last_slash) {
+            *last_slash = '\0';
+            rmdir(owned_pid_path);
+        }
+        owned_pid_path[0] = '\0';
+    }
     check_config_pwrite_mode = false;
     if (saved_config_file) fclose(saved_config_file);
     saved_config_file = NULL;
@@ -242,8 +259,9 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/lightnvr.pid", directory);
 
-    int fd = write_pid_file(path);
-    TEST_ASSERT_TRUE(fd >= 0);
+    owned_pid_fd = write_pid_file(path);
+    TEST_ASSERT_TRUE(owned_pid_fd >= 0);
+    snprintf(owned_pid_path, sizeof(owned_pid_path), "%s", path);
     TEST_ASSERT_EQUAL_INT(-1, write_pid_file(path));
     TEST_ASSERT_EQUAL_INT(1, daemon_status(path));
     char alias[MAX_PATH_LENGTH];
@@ -256,7 +274,7 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     pid_t child = fork();
     TEST_ASSERT_TRUE(child >= 0);
     if (child == 0) {
-        close(fd);
+        close(owned_pid_fd);
         if (daemon_status(path) != 1) _exit(2);
         int probe = open(path, O_RDWR);
         if (probe < 0) _exit(3);
@@ -270,7 +288,8 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     TEST_ASSERT_TRUE(WIFEXITED(status));
     TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
 
-    TEST_ASSERT_EQUAL_INT(0, remove_pid_file(fd, path));
+    TEST_ASSERT_EQUAL_INT(0, remove_pid_file(owned_pid_fd, path));
+    owned_pid_fd = -1;
     TEST_ASSERT_EQUAL_INT(0, daemon_status(path));
 
     int plain_fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0644);
@@ -1704,6 +1723,22 @@ static void test_save_config_bind_mount_restores_after_write_failure(void) {
     check_bind_mount_fallback(true);
 }
 
+static void assert_files_equal_binary(FILE *expected, FILE *actual) {
+    unsigned char expected_buf[256];
+    unsigned char actual_buf[256];
+    while (true) {
+        size_t expected_n = fread(expected_buf, 1, sizeof(expected_buf), expected);
+        size_t actual_n = fread(actual_buf, 1, sizeof(actual_buf), actual);
+        TEST_ASSERT_EQUAL_UINT64((uint64_t)expected_n, (uint64_t)actual_n);
+        if (expected_n == 0) {
+            break;
+        }
+        TEST_ASSERT_EQUAL_INT(0, memcmp(expected_buf, actual_buf, expected_n));
+    }
+    TEST_ASSERT_FALSE(ferror(expected));
+    TEST_ASSERT_FALSE(ferror(actual));
+}
+
 static void test_save_config_bind_mount_retries_short_write(void) {
     char directory[] = "/tmp/lightnvr_config_short_write_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
@@ -1743,19 +1778,7 @@ static void test_save_config_bind_mount_retries_short_write(void) {
     FILE *baseline = fopen(baseline_path, "rb");
     TEST_ASSERT_NOT_NULL(baseline);
 
-    unsigned char saved_buf[256];
-    unsigned char baseline_buf[256];
-    while (true) {
-        size_t saved_n = fread(saved_buf, 1, sizeof(saved_buf), saved);
-        size_t baseline_n = fread(baseline_buf, 1, sizeof(baseline_buf), baseline);
-        TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_n, (uint64_t)saved_n);
-        if (saved_n == 0) {
-            break;
-        }
-        TEST_ASSERT_EQUAL_INT(0, memcmp(saved_buf, baseline_buf, saved_n));
-    }
-    TEST_ASSERT_FALSE(ferror(saved));
-    TEST_ASSERT_FALSE(ferror(baseline));
+    assert_files_equal_binary(baseline, saved);
 
     fclose(saved);
     fclose(baseline);
