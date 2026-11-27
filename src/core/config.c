@@ -36,6 +36,8 @@ config_t g_config;
 
 // Serialize full load operations (including loaded-path snapshot/rollback).
 static pthread_mutex_t config_load_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Serialize stream save operations from snapshot acquisition through commit.
+static pthread_mutex_t stream_save_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static bool contains_unsupported_ini_credential_chars(const char *value,
                                                        size_t capacity) {
@@ -1742,17 +1744,20 @@ static int db_name_index_cmp(const void *a, const void *b) {
 // Save stream configurations to database with improved timeout protection
 int save_stream_configs(config_t *config) {
     if (!config) return -1;
+    pthread_mutex_lock(&stream_save_mutex);
     pthread_mutex_lock(&mp4_faststart_mutex);
     int max_streams = config->max_streams;
     stream_config_t *initial_streams = config->streams;
     if (!initial_streams || max_streams <= 0 || max_streams > MAX_STREAMS) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     stream_config_t *streams_snapshot = malloc((size_t)max_streams * sizeof(*streams_snapshot));
     if (!streams_snapshot) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
         log_error("Failed to allocate stream snapshot");
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     memcpy(streams_snapshot, initial_streams,
@@ -1768,6 +1773,7 @@ int save_stream_configs(config_t *config) {
     if (begin_transaction() != 0) {
         log_error("Failed to begin transaction for saving stream configurations");
         free(streams_snapshot);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
