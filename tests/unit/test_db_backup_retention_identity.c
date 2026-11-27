@@ -407,7 +407,9 @@ static void test_changed_after_move_is_restored_and_pass_stops(void) {
     assert_bytes(newer_path, "inspected-newer");
 }
 static void test_selected_inode_remains_pinned_during_replacement(void) {
-    swap_kind = 2;
+    /* Trigger replacement after deletion-candidate identity verification, so
+     * the pin check corresponds to the selected old inode during replacement. */
+    swap_kind = 3;
     TEST_ASSERT_NOT_EQUAL(0, prune(1));
     TEST_ASSERT_EQUAL_UINT(1, swaps);
     TEST_ASSERT_EQUAL_UINT(1, pins_at_swap);
