@@ -1837,8 +1837,11 @@ void test_save_config_tightens_existing_permissions_before_writing_secrets(void)
 void test_save_config_rejects_hardlinks_without_truncation_or_mode_change(void) {
     char directory[] = "/tmp/lightnvr_config_link_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", directory);
+    group_replace_cleanup_active = true;
     char path[MAX_PATH_LENGTH], original[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
     snprintf(original, sizeof(original), "%s/original.ini", directory);
     FILE *file = fopen(original, "w"); TEST_ASSERT_NOT_NULL(file);
     fputs("preserve-me", file); fclose(file);
