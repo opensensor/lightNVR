@@ -20,6 +20,7 @@ static char test_fixture_dir[] = "/tmp/lightnvr_db_core_initialization.XXXXXX";
 static char test_db_path[512];
 static char test_backup_dir[512];
 static char overlong_parent_dir[512];
+static char overlong_deepest_dir[8192];
 static int test_paths_initialized = 0;
 static unsigned char *wal_before_bytes;
 static unsigned char *wal_after_bytes;
@@ -159,6 +160,14 @@ void tearDown(void) {
     remove_backup_fixture("20260905T120100Z.sqlite3.tmp-journal");
     remove_backup_fixture("operator-notes.tmp");
     rmdir(TEST_BACKUP_DIR);
+    while (overlong_deepest_dir[0] != '\0' &&
+           strcmp(overlong_deepest_dir, overlong_parent_dir) != 0) {
+        rmdir(overlong_deepest_dir);
+        char *slash = strrchr(overlong_deepest_dir, '/');
+        if (!slash) break;
+        *slash = '\0';
+    }
+    overlong_deepest_dir[0] = '\0';
     if (overlong_parent_dir[0] != '\0') {
         rmdir(overlong_parent_dir);
         overlong_parent_dir[0] = '\0';
@@ -206,20 +215,32 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
     }
 
     size_t used = strlen(rejected_path);
-    while (used <= PATH_MAX) {
-        const size_t component_len = 200; /* Stay below NAME_MAX per component. */
+    while (used + 1 + 50 < PATH_MAX) {
+        const size_t component_len = 50; /* Keep each component below NAME_MAX. */
         TEST_ASSERT_TRUE(used + component_len + 2 < sizeof(rejected_path));
         rejected_path[used++] = '/';
         memset(rejected_path + used, 'a', component_len);
         used += component_len;
         rejected_path[used] = '\0';
+        TEST_ASSERT_EQUAL_INT(0, mkdir(rejected_path, 0700));
+        snprintf(overlong_deepest_dir, sizeof(overlong_deepest_dir),
+                 "%s", rejected_path);
+    }
+
+    {
+        size_t leaf_len = (size_t)PATH_MAX - used + 1;
+        TEST_ASSERT_TRUE(leaf_len <= NAME_MAX);
+        TEST_ASSERT_TRUE(used + leaf_len + 2 < sizeof(rejected_path));
+        rejected_path[used++] = '/';
+        memset(rejected_path + used, 'b', leaf_len);
+        rejected_path[used + leaf_len] = '\0';
     }
 
     TEST_ASSERT_TRUE(strlen(rejected_path) > PATH_MAX);
 
     TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
     TEST_ASSERT_NULL(get_db_handle());
-    DIR *parent_dir = opendir(overlong_parent_dir);
+    DIR *parent_dir = opendir(overlong_deepest_dir);
     TEST_ASSERT_NOT_NULL(parent_dir);
     struct dirent *entry;
     bool unexpected_entry = false;
@@ -379,7 +400,7 @@ void test_writable_initialization_removes_only_stale_backup_artifacts(void) {
     TEST_ASSERT_EQUAL_INT(ENOENT, errno);
     TEST_ASSERT_EQUAL_INT(0, access(unrelated_path, F_OK));
 
-    sqlite3_stmt *stmt = NULL;
+    tracked_fixture_stmt = NULL;
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
         sqlite3_prepare_v2(
@@ -387,12 +408,13 @@ void test_writable_initialization_removes_only_stale_backup_artifacts(void) {
             "EXPLAIN QUERY PLAN "
             "UPDATE detections SET event_end_time=timestamp "
             "WHERE source='external_motion' AND event_end_time IS NULL;",
-            -1, &stmt, NULL));
-    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
-    const char *plan = (const char *)sqlite3_column_text(stmt, 3);
+            -1, &tracked_fixture_stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(tracked_fixture_stmt));
+    const char *plan = (const char *)sqlite3_column_text(tracked_fixture_stmt, 3);
     TEST_ASSERT_NOT_NULL(plan);
     TEST_ASSERT_NOT_NULL(strstr(plan, "idx_detections_open_external_motion"));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(tracked_fixture_stmt));
+    tracked_fixture_stmt = NULL;
 }
 
 static void assert_database_private(void) {
