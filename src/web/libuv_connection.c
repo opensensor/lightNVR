@@ -383,9 +383,12 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         // The parser will be resumed when the connection is reset for keep-alive.
         if (err == HPE_PAUSED) {
             const char *next = llhttp_get_error_pos(&conn->parser);
+            conn->unread_bytes = 0;
             if (next && next >= buf->base && next <= buf->base + nread) {
                 conn->unread_bytes = (size_t)(buf->base + nread - next);
             }
+            // Reclaim all bytes consumed by llhttp; keep only unread pipelined tail.
+            conn->recv_buffer_used = conn->unread_bytes;
             return;
         }
 
@@ -406,6 +409,10 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         libuv_send_response_ex(conn, &conn->response, WRITE_ACTION_CLOSE);
         return;
     }
+
+    // All bytes from this read were consumed by llhttp.
+    conn->unread_bytes = 0;
+    conn->recv_buffer_used = 0;
 
     // If message is complete, it's handled in on_message_complete callback
 }
