@@ -133,6 +133,10 @@ int init_daemon(const char *pid_file) {
         return -1;
     }
 
+    // Coordinate the PID mutex across the daemon fork, even before a PID
+    // file has been written.
+    (void)pthread_once(&owned_pid_atfork_once, register_owned_pid_atfork);
+
     // Fork the process
     pid_t pid = fork();
     if (pid < 0) {
