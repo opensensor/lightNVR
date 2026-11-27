@@ -2286,7 +2286,7 @@ int load_config(config_t *config) {
     config_t original;
     stream_config_t *original_streams = NULL;
     pthread_mutex_lock(&mp4_faststart_mutex);
-    original = *config;
+    memcpy(&original, config, sizeof(original));
     if (config->streams) {
         if (config->max_streams <= 0 || config->max_streams > MAX_STREAMS ||
             (size_t)config->max_streams > SIZE_MAX / sizeof(*original_streams)) {
