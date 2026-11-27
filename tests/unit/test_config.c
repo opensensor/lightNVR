@@ -1920,16 +1920,7 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
 
     TEST_ASSERT_EQUAL_INT64((long long)baseline_size, (long long)saved_size);
 
-    unsigned char saved_content[256], baseline_content[256];
-    while (true) {
-        size_t saved_read = fread(saved_content, 1, sizeof(saved_content), saved_config_file);
-        size_t baseline_read = fread(baseline_content, 1, sizeof(baseline_content), saved_baseline_file);
-        TEST_ASSERT_EQUAL_UINT(baseline_read, saved_read);
-        if (saved_read == 0) break;
-        TEST_ASSERT_EQUAL_MEMORY(baseline_content, saved_content, saved_read);
-    }
-    TEST_ASSERT_FALSE(ferror(saved_config_file));
-    TEST_ASSERT_FALSE(ferror(saved_baseline_file));
+    assert_files_equal_binary(saved_baseline_file, saved_config_file);
     fclose(saved_config_file);
     saved_config_file = NULL;
     fclose(saved_baseline_file);
