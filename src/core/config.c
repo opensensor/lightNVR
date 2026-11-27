@@ -1865,17 +1865,42 @@ int save_stream_configs(config_t *config) {
                 rollback_transaction();
                 return -1;
             }
-            if (get_stream_config_by_name(stream_name,
-                                          &streams_snapshot[i]) != 0) {
-                log_error("Failed to reload stable identity for stream: %s",
-                          stream_name);
-                free(streams_snapshot);
-                rollback_transaction();
-                return -1;
-            }
             saved++;
         }
     }
+
+    // Reload stable identities in one batch to avoid one query per stream.
+    stream_config_t *reloaded_streams = NULL;
+    int reloaded_count = get_all_stream_configs(&reloaded_streams);
+    if (reloaded_count < 0) {
+        log_error("Failed to reload stream configurations after save");
+        free(streams_snapshot);
+        rollback_transaction();
+        return -1;
+    }
+
+    for (int i = 0; i < max_streams; i++) {
+        if (strlen(streams_snapshot[i].name) == 0) continue;
+
+        bool found = false;
+        for (int j = 0; j < reloaded_count; j++) {
+            if (strcmp(streams_snapshot[i].name, reloaded_streams[j].name) == 0) {
+                streams_snapshot[i] = reloaded_streams[j];
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            log_error("Failed to reload stable identity for stream: %s",
+                      streams_snapshot[i].name);
+            free(reloaded_streams);
+            free(streams_snapshot);
+            rollback_transaction();
+            return -1;
+        }
+    }
+    free(reloaded_streams);
 
     int table_size = 1;
     while (table_size < (max_streams * 2)) table_size <<= 1;
