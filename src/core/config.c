@@ -384,11 +384,23 @@ static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAP
             }
             case CONFIG_TYPE_STRING: {
                 char *str_ptr = (char *)field_ptr;
+                bool is_sensitive = (strstr(mapping->env_name, "PASSWORD") != NULL ||
+                                     strstr(mapping->env_name, "SECRET") != NULL ||
+                                     strstr(mapping->env_name, "ICE_SERVERS") != NULL);
+                size_t env_len = strnlen(env_value, mapping->size);
+                if (env_len >= mapping->size) {
+                    if (is_sensitive) {
+                        log_warn("Oversized value for %s rejected: exceeds max length %zu",
+                                 env_name, mapping->size - 1);
+                    } else {
+                        log_warn("Oversized value for %s rejected: '%s' exceeds max length %zu",
+                                 env_name, env_value, mapping->size - 1);
+                    }
+                    break;
+                }
                 safe_strcpy(str_ptr, env_value, mapping->size, 0);
                 // Log with masked value for sensitive fields
-                if (strstr(mapping->env_name, "PASSWORD") != NULL ||
-                    strstr(mapping->env_name, "SECRET") != NULL ||
-                    strstr(mapping->env_name, "ICE_SERVERS") != NULL) {
+                if (is_sensitive) {
                     log_info("Applied env override: %s=*** (string, masked)",
                              env_name);
                 } else {
@@ -1610,12 +1622,14 @@ static int load_config_from_file(const char *filename, config_t *config, bool *i
 int load_stream_configs(config_t *config) {
     if (!config) return -1;
 
+    pthread_mutex_lock(&stream_save_mutex);
     pthread_mutex_lock(&mp4_faststart_mutex);
     stream_config_t *initial_streams = config->streams;
     int initial_max_streams = config->max_streams;
     if (!initial_streams || initial_max_streams <= 0 || initial_max_streams > MAX_STREAMS) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
         log_error("load_stream_configs: invalid max_streams value (%d)", initial_max_streams);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1623,6 +1637,7 @@ int load_stream_configs(config_t *config) {
     if (max_streams > SIZE_MAX / sizeof(stream_config_t)) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
         log_error("load_stream_configs: max_streams causes size overflow");
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     size_t snapshot_bytes = max_streams * sizeof(stream_config_t);
@@ -1630,6 +1645,7 @@ int load_stream_configs(config_t *config) {
     if (!initial_snapshot) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
         log_error("load_stream_configs: out of memory allocating stream snapshot");
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     memcpy(initial_snapshot, initial_streams, snapshot_bytes);
@@ -1640,6 +1656,7 @@ int load_stream_configs(config_t *config) {
     if (count < 0) {
         log_error("Failed to count stream configurations in database");
         free(initial_snapshot);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1650,6 +1667,7 @@ int load_stream_configs(config_t *config) {
             memcmp(config->streams, initial_snapshot, snapshot_bytes) != 0) {
             pthread_mutex_unlock(&mp4_faststart_mutex);
             free(initial_snapshot);
+            pthread_mutex_unlock(&stream_save_mutex);
             return -1;
         }
         for (size_t i = 0; i < max_streams; i++) {
@@ -1659,6 +1677,7 @@ int load_stream_configs(config_t *config) {
         free(initial_snapshot);
 
         log_info("No stream configurations found in database");
+        pthread_mutex_unlock(&stream_save_mutex);
         return 0;
     }
 
@@ -1674,6 +1693,7 @@ int load_stream_configs(config_t *config) {
     if (!db_streams) {
         log_error("load_stream_configs: out of memory allocating %zu stream configs", load_capacity);
         free(initial_snapshot);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
     int loaded = get_all_stream_configs(db_streams, (int)load_capacity);
@@ -1681,6 +1701,7 @@ int load_stream_configs(config_t *config) {
         log_error("Failed to load stream configurations from database");
         free(db_streams);
         free(initial_snapshot);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1692,6 +1713,7 @@ int load_stream_configs(config_t *config) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
         free(db_streams);
         free(initial_snapshot);
+        pthread_mutex_unlock(&stream_save_mutex);
         return -1;
     }
 
@@ -1709,6 +1731,7 @@ int load_stream_configs(config_t *config) {
     free(initial_snapshot);
 
     log_info("Loaded %d stream configurations from database", loaded);
+    pthread_mutex_unlock(&stream_save_mutex);
     return loaded;
 }
 
@@ -2175,13 +2198,21 @@ static int load_config_into(config_t *config) {
 
         for (int i = 0; config_paths[i] != NULL && !loaded; i++) {
             if (access(config_paths[i], R_OK) == 0) {
-                if (load_config_from_file(config_paths[i], config, ini_present) == 0) {
-                    log_info("Loaded configuration from %s", config_paths[i]);
-                    set_loaded_config_path(config_paths[i]);
+                char resolved_default_path[PATH_MAX];
+                const char *canon_default_path = realpath(config_paths[i], resolved_default_path);
+                if (!canon_default_path) {
+                    log_error("Failed to resolve config path '%s': %s",
+                              config_paths[i], strerror(errno));
+                    continue;
+                }
+
+                if (load_config_from_file(canon_default_path, config, ini_present) == 0) {
+                    log_info("Loaded configuration from %s", canon_default_path);
+                    set_loaded_config_path(canon_default_path);
                     loaded = 1;
                     break;
                 } else {
-                    log_error("Failed to load configuration from %s", config_paths[i]);
+                    log_error("Failed to load configuration from %s", canon_default_path);
                     return -1;
                 }
             }
