@@ -146,6 +146,7 @@ target_sources(test_stream_frame_rate PRIVATE
 add_layer2_test(test_config CI_UNIT CI_SANITIZER)
 target_link_options(test_config PRIVATE -Wl,--wrap=fchmod -Wl,--wrap=renameat -Wl,--wrap=fdopen -Wl,--wrap=pwrite)
 add_layer2_test(test_db_core_initialization CI_UNIT CI_SANITIZER)
+target_link_options(test_db_core_initialization PRIVATE -Wl,--wrap=sqlite3_open_v2)
 add_layer2_test(test_db_backup_publication CI_UNIT CI_SANITIZER)
 target_link_options(test_db_backup_publication PRIVATE -Wl,--wrap=rename -Wl,--wrap=fsync -Wl,--wrap=write)
 set_tests_properties(test_db_backup_publication PROPERTIES TIMEOUT 30)
