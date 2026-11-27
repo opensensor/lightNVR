@@ -241,9 +241,16 @@ static void create_readable_wal_database(void) {
         sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
+        sqlite3_exec(db, "PRAGMA wal_autocheckpoint=0;", NULL, NULL, NULL));
+    int no_ckpt_on_close = 1;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+                                            no_ckpt_on_close, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
         sqlite3_exec(db,
                      "INSERT OR REPLACE INTO sample(id, value) "
-                     "VALUES(1, 'unchanged');",
+                     "VALUES(1, 'wal_only');",
                      NULL, NULL, NULL));
     int persist_wal = 1;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK,
