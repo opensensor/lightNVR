@@ -27,21 +27,14 @@ static unsigned char *wal_after_bytes;
 static sqlite3 *tracked_fixture_db = NULL;
 static sqlite3_stmt *tracked_fixture_stmt = NULL;
 static int sqlite3_open_v2_call_count = 0;
-static char sqlite3_open_v2_last_path[8192];
 
 static void reset_sqlite_open_instrumentation(void) {
     sqlite3_open_v2_call_count = 0;
-    sqlite3_open_v2_last_path[0] = '\0';
 }
 
 int __real_sqlite3_open_v2(const char *filename, sqlite3 **ppDb, int flags, const char *zVfs);
 int __wrap_sqlite3_open_v2(const char *filename, sqlite3 **ppDb, int flags, const char *zVfs) {
     sqlite3_open_v2_call_count++;
-    if (filename != NULL) {
-        (void)snprintf(sqlite3_open_v2_last_path, sizeof(sqlite3_open_v2_last_path), "%s", filename);
-    } else {
-        sqlite3_open_v2_last_path[0] = '\0';
-    }
     return __real_sqlite3_open_v2(filename, ppDb, flags, zVfs);
 }
 #define TEST_DB_PATH test_db_path
@@ -260,6 +253,12 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
     TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
     TEST_ASSERT_EQUAL_INT(0, sqlite3_open_v2_call_count);
     TEST_ASSERT_NULL(get_db_handle());
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_open_v2(":memory:", &tracked_fixture_db,
+                                          SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL));
+    TEST_ASSERT_EQUAL_INT(1, sqlite3_open_v2_call_count);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(tracked_fixture_db));
+    tracked_fixture_db = NULL;
     DIR *parent_dir = opendir(overlong_deepest_dir);
     TEST_ASSERT_NOT_NULL(parent_dir);
     struct dirent *entry;
