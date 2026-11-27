@@ -104,7 +104,7 @@ static void stop_async_cb(uv_async_t *handle) {
         }
 
         // Stop the event loop - this will cause uv_run() to return after handles are closed
-        uv_stop(server->loop);
+        if (server->owns_loop) uv_stop(server->loop);
     }
 }
 
@@ -497,9 +497,19 @@ void libuv_server_stop(http_server_handle_t handle) {
     go2rtc_proxy_thread_shutdown();
     go2rtc_websocket_shutdown(server->loop);
 
-    // Walk all handles and close them
-    log_info("libuv_server_stop: Closing all active handles");
-    uv_walk(server->loop, close_walk_cb, NULL);
+    // Walk handles and close them only when this server owns the loop.
+    // For shared loops (init_with_loop), walking the whole loop could close
+    // unrelated handles belonging to other subsystems.
+    if (server->owns_loop) {
+        log_info("libuv_server_stop: Closing all active handles");
+        uv_walk(server->loop, close_walk_cb, NULL);
+    } else {
+        /* The caller owns this loop and stops this server on its loop thread.
+         * Close only handles owned by this server. */
+        for (libuv_connection_t *conn = server->connections; conn; conn = conn->server_next) {
+            libuv_connection_close(conn);
+        }
+    }
 
     // Warn after the diagnostic deadline; work cannot safely be abandoned.
     log_info("libuv_server_stop: Processing close callbacks");
@@ -512,8 +522,10 @@ void libuv_server_stop(http_server_handle_t handle) {
         // Run one iteration of the event loop
         int active = uv_run(server->loop, UV_RUN_NOWAIT);
 
-        // If no more active handles, we're done
-        if (active == 0) {
+        server_handle_scan_t scan = {.server = server, .present = false};
+        if (!server->owns_loop) uv_walk(server->loop, scan_server_handles_cb, &scan);
+        // A shared loop may retain unrelated active handles.
+        if (server->owns_loop ? active == 0 : (!scan.present && !server->connections)) {
             log_info("libuv_server_stop: All handles closed after %d ms", elapsed_ms);
             break;
         }
@@ -549,7 +561,17 @@ void libuv_server_stop(http_server_handle_t handle) {
         /* Workers still access request state, database and server/TLS objects.
          * Stop must finish their after-work callbacks before global teardown.
          * A timed-out drain is not permission to free a busy loop. */
-        while (uv_loop_alive(server->loop)) uv_run(server->loop, UV_RUN_DEFAULT);
+        if (server->owns_loop) {
+            while (uv_loop_alive(server->loop)) uv_run(server->loop, UV_RUN_DEFAULT);
+        } else {
+            server_handle_scan_t scan = {.server = server, .present = false};
+            do {
+                uv_run(server->loop, UV_RUN_NOWAIT);
+                scan.present = false;
+                uv_walk(server->loop, scan_server_handles_cb, &scan);
+                if (scan.present || server->connections) usleep(check_interval_ms * 1000);
+            } while (scan.present || server->connections);
+        }
     }
 
     log_info("libuv_server_stop: Server stopped");
@@ -612,6 +634,15 @@ int libuv_server_register_handler(http_server_handle_t handle, const char *path,
                                    const char *method, request_handler_t handler) {
     libuv_server_t *server = (libuv_server_t *)handle;
     if (!server || !path || !handler) {
+        return -1;
+    }
+
+    if (strlen(path) >= sizeof(server->handlers[0].path)) {
+        log_error("libuv_server_register_handler: Path too long for handler registry: %s", path);
+        return -1;
+    }
+    if (method && strlen(method) >= sizeof(server->handlers[0].method)) {
+        log_error("libuv_server_register_handler: Method too long for handler registry: %s", method);
         return -1;
     }
 
