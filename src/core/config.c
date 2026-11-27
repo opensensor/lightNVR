@@ -384,11 +384,23 @@ static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAP
             }
             case CONFIG_TYPE_STRING: {
                 char *str_ptr = (char *)field_ptr;
+                bool is_sensitive = (strstr(mapping->env_name, "PASSWORD") != NULL ||
+                                     strstr(mapping->env_name, "SECRET") != NULL ||
+                                     strstr(mapping->env_name, "ICE_SERVERS") != NULL);
+                size_t env_len = strnlen(env_value, mapping->size);
+                if (env_len >= mapping->size) {
+                    if (is_sensitive) {
+                        log_warn("Oversized value for %s rejected: exceeds max length %zu",
+                                 env_name, mapping->size - 1);
+                    } else {
+                        log_warn("Oversized value for %s rejected: '%s' exceeds max length %zu",
+                                 env_name, env_value, mapping->size - 1);
+                    }
+                    break;
+                }
                 safe_strcpy(str_ptr, env_value, mapping->size, 0);
                 // Log with masked value for sensitive fields
-                if (strstr(mapping->env_name, "PASSWORD") != NULL ||
-                    strstr(mapping->env_name, "SECRET") != NULL ||
-                    strstr(mapping->env_name, "ICE_SERVERS") != NULL) {
+                if (is_sensitive) {
                     log_info("Applied env override: %s=*** (string, masked)",
                              env_name);
                 } else {
