@@ -44,6 +44,49 @@ static void server_thread_func(void *arg);
 static void stop_async_cb(uv_async_t *handle);
 static void count_handles_cb(uv_handle_t *handle, void *arg);
 
+/* A failed initialization must not free embedded libuv handles until their
+ * close callbacks have run, including when the loop belongs to the caller. */
+static void free_failed_init(libuv_server_t *server) {
+    if (server->owns_loop) {
+        int rc = uv_loop_close(server->loop);
+        if (rc != 0) {
+            log_error("libuv_server_init: Failed to close event loop: %s", uv_strerror(rc));
+            return; /* Keep the loop and its embedded handles alive. */
+        }
+        safe_free(server->loop);
+    }
+    libuv_tls_context_free(server->tls_ctx);
+    safe_free(server);
+}
+
+static void failed_init_close_cb(uv_handle_t *handle) {
+    libuv_server_t *server = handle->data;
+    if (--server->init_close_pending == 0 && !server->owns_loop) {
+        free_failed_init(server);
+    }
+}
+
+static void close_failed_init_handles(libuv_server_t *server, bool close_async) {
+    server->init_close_pending = close_async ? 2 : 1;
+    uv_close((uv_handle_t *)&server->listener, failed_init_close_cb);
+    if (close_async) uv_close((uv_handle_t *)&server->stop_async, failed_init_close_cb);
+    if (server->owns_loop) {
+        while (server->init_close_pending > 0) uv_run(server->loop, UV_RUN_DEFAULT);
+        free_failed_init(server);
+    }
+}
+
+typedef struct {
+    const libuv_server_t *server;
+    bool present;
+} server_handle_scan_t;
+
+static void scan_server_handles_cb(uv_handle_t *handle, void *arg) {
+    server_handle_scan_t *scan = arg;
+    if (handle == (uv_handle_t *)&scan->server->listener ||
+        handle == (uv_handle_t *)&scan->server->stop_async) scan->present = true;
+}
+
 /**
  * @brief Async callback to wake up the event loop for shutdown
  * This is called when uv_async_send() is invoked from another thread
@@ -164,13 +207,7 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
     // Initialize async handle for cross-thread stop signaling
     if (uv_async_init(server->loop, &server->stop_async, stop_async_cb) != 0) {
         log_error("libuv_server_init: Failed to initialize async handle");
-        uv_close((uv_handle_t *)&server->listener, NULL);
-        if (server->owns_loop) {
-            uv_loop_close(server->loop);
-            safe_free(server->loop);
-        }
-        libuv_tls_context_free(server->tls_ctx);
-        safe_free(server);
+        close_failed_init_handles(server, false);
         return NULL;
     }
     server->stop_async.data = server;
@@ -179,13 +216,7 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
     server->handlers = safe_calloc(INITIAL_HANDLER_CAPACITY, sizeof(*server->handlers));
     if (!server->handlers) {
         log_error("libuv_server_init: Failed to allocate handler registry");
-        uv_close((uv_handle_t *)&server->listener, NULL);
-        if (server->owns_loop) {
-            uv_loop_close(server->loop);
-            safe_free(server->loop);
-        }
-        libuv_tls_context_free(server->tls_ctx);
-        safe_free(server);
+        close_failed_init_handles(server, true);
         return NULL;
     }
     server->handler_capacity = INITIAL_HANDLER_CAPACITY;
@@ -229,57 +260,6 @@ uv_loop_t *libuv_server_get_loop(http_server_handle_t handle) {
 }
 
 /**
- * @brief Create a fresh event loop, replacing the old dirty one
- *
- * When the event loop thread dies unexpectedly and handles are stuck in a
- * closing state, the only reliable recovery is to abandon the old loop and
- * create a fresh one.
- *
- * @return 0 on success, -1 on failure
- */
-static int libuv_server_reset_loop(libuv_server_t *server) {
-    log_info("libuv_server_reset_loop: Attempting to recycle the event loop");
-
-    // uv_loop_close() is the authoritative "is anything still referencing this
-    // loop" test: it returns UV_EBUSY while any handle OR request is still
-    // outstanding, including thread-pool work queued by uv_queue_work().
-    //
-    // A busy loop must NOT be abandoned. Every in-flight uv_work_t holds a
-    // pointer to this server and completes by scheduling its after-work
-    // callback on the loop it was submitted to. Replacing server->loop and
-    // re-running uv_tcp_init()/uv_async_init() over the embedded listener and
-    // stop_async handles -- which the old loop still has queued -- leaves two
-    // loops sharing one handle. When the stuck worker finally finishes it
-    // writes through freed state and the process dies with SIGSEGV.
-    //
-    // Blocked handlers are the common cause, and the common cause of *those*
-    // is a saturated thread pool, which restarting cannot fix. Report the
-    // condition and fail; the caller retries on the next health interval,
-    // by which time the pool has usually drained.
-    int close_result = uv_loop_close(server->loop);
-    if (close_result != 0) {
-        int active_handles = 0;
-        uv_walk(server->loop, count_handles_cb, &active_handles);
-        log_error("libuv_server_reset_loop: Refusing to abandon a busy event loop "
-                  "(close returned %d (%s); %d active handles). In-flight thread-pool "
-                  "work still references it -- recycling now would crash the process "
-                  "when that work completes. Leaving the loop intact.",
-                  close_result, uv_strerror(close_result), active_handles);
-        return -1;
-    }
-
-    // The loop closed cleanly, so nothing references it any more and the same
-    // allocation can be re-initialized in place.
-    if (uv_loop_init(server->loop) != 0) {
-        log_error("libuv_server_reset_loop: Failed to re-initialize event loop");
-        return -1;
-    }
-
-    log_info("libuv_server_reset_loop: Event loop recycled successfully");
-    return 0;
-}
-
-/**
  * @brief Start the HTTP server
  */
 int libuv_server_start(http_server_handle_t handle) {
@@ -299,35 +279,16 @@ int libuv_server_start(http_server_handle_t handle) {
     if (need_reinit) {
         log_info("libuv_server_start: Handles are closed, reinitializing");
 
-        // Wait for all closes to complete
-        int wait_count = 0;
-        while ((uv_is_closing((uv_handle_t *)&server->listener) ||
-                uv_is_closing((uv_handle_t *)&server->stop_async)) &&
-               wait_count < 100) {
-            uv_run(server->loop, UV_RUN_NOWAIT);
-            usleep(10000); // 10ms
-            wait_count++;
+        // uv_is_closing() remains true after a close callback has completed.
+        // Verify both old embedded handles have left the loop before reuse.
+        server_handle_scan_t scan = {.server = server, .present = false};
+        uv_walk(server->loop, scan_server_handles_cb, &scan);
+        if (scan.present) {
+            log_error("libuv_server_start: Cannot reuse handles before close callbacks finish");
+            return -1;
         }
 
-        if (uv_is_closing((uv_handle_t *)&server->listener) ||
-            uv_is_closing((uv_handle_t *)&server->stop_async)) {
-            // Handles stuck closing - the event loop is dirty.
-            // Create a fresh event loop as fallback.
-            log_warn("libuv_server_start: Handles still closing after timeout, "
-                     "creating fresh event loop");
-
-            if (server->owns_loop) {
-                if (libuv_server_reset_loop(server) != 0) {
-                    log_error("libuv_server_start: Failed to create fresh event loop");
-                    return -1;
-                }
-            } else {
-                log_error("libuv_server_start: Cannot reset shared event loop");
-                return -1;
-            }
-        }
-
-        // Reinitialize the TCP listener on the (possibly fresh) loop
+        // Reinitialize the TCP listener on the existing loop.
         if (uv_tcp_init(server->loop, &server->listener) != 0) {
             log_error("libuv_server_start: Failed to reinitialize TCP handle");
             return -1;
