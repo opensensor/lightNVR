@@ -95,6 +95,25 @@ static void create_readable_database(void) {
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(fixture));
 }
 
+static void test_legacy_database_enables_incremental_auto_vacuum(void) {
+    create_readable_database();
+    TEST_ASSERT_EQUAL_INT(0, init_database_ex(TEST_DB_PATH, DB_INIT_NO_BACKUP));
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(), "PRAGMA auto_vacuum;", -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_INT(2, sqlite3_column_int(stmt, 0));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
+}
+
+static void test_overlong_database_path_is_rejected_before_initialization(void) {
+    char path[8192];
+    memset(path, 'x', sizeof(path) - 1);
+    path[sizeof(path) - 1] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, init_database_ex(path, DB_INIT_NO_BACKUP));
+    TEST_ASSERT_NULL(get_db_handle());
+}
+
 void test_read_only_initialization_cannot_write(void) {
     struct stat before;
     struct stat after;
@@ -259,6 +278,8 @@ static void test_private_backup_creation_failure_is_reported_and_can_retry(void)
 
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_legacy_database_enables_incremental_auto_vacuum);
+    RUN_TEST(test_overlong_database_path_is_rejected_before_initialization);
     RUN_TEST(test_new_database_and_sidecars_are_private_with_permissive_umask);
     RUN_TEST(test_writable_startup_tightens_legacy_database_and_wal_permissions);
     RUN_TEST(test_backup_copy_is_private_without_changing_source_permissions);
