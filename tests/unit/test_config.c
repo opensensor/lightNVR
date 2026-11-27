@@ -183,6 +183,9 @@ void setUp(void) {
     group_replace_dir[0] = '\0';
     group_replace_path[0] = '\0';
     group_replace_cleanup_active = false;
+    malformed_ini_dir[0] = '\0';
+    malformed_ini_path[0] = '\0';
+    malformed_ini_cleanup_active = false;
     round_trip_dir[0] = '\0';
     hardlink_original_path[0] = '\0';
     pid_validation_dir[0] = '\0';
@@ -231,6 +234,17 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (malformed_ini_cleanup_active) {
+        if (saved_config_file) {
+            fclose(saved_config_file);
+            saved_config_file = NULL;
+        }
+        unlink(malformed_ini_path);
+        rmdir(malformed_ini_dir);
+        malformed_ini_cleanup_active = false;
+        malformed_ini_path[0] = '\0';
+        malformed_ini_dir[0] = '\0';
+    }
     if (stream_save_db_active) {
         shutdown_database();
         stream_save_db_active = false;
@@ -1149,13 +1163,14 @@ void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
     char config_path[MAX_PATH_LENGTH];
     snprintf(config_path, sizeof(config_path), "%s/bad.ini", dir);
     snprintf(malformed_ini_path, sizeof(malformed_ini_path), "%s", config_path);
-    FILE *file = fopen(config_path, "w");
-    TEST_ASSERT_NOT_NULL(file);
+    saved_config_file = fopen(config_path, "w");
+    TEST_ASSERT_NOT_NULL(saved_config_file);
     char ini_contents[128];
     snprintf(ini_contents, sizeof(ini_contents),
              "[streams]\nmax_streams = %d\ninvalid line\n", resize_target);
-    fputs(ini_contents, file);
-    fclose(file);
+    TEST_ASSERT_TRUE(fputs(ini_contents, saved_config_file) >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fclose(saved_config_file));
+    saved_config_file = NULL;
 
     load_default_config(&cfg);
     snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "preserve-camera");
@@ -1170,8 +1185,8 @@ void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
     TEST_ASSERT_TRUE(cfg.streams[DEFAULT_MAX_STREAMS - 1].streaming_enabled);
     cfg.streams[0].name[0] = '\0';
 
-    unlink(config_path);
-    rmdir(dir);
+    TEST_ASSERT_EQUAL_INT(0, unlink(config_path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(dir));
     malformed_ini_cleanup_active = false;
     malformed_ini_path[0] = '\0';
     malformed_ini_dir[0] = '\0';
