@@ -470,11 +470,12 @@ if(NOT LLHTTP_FOUND)
             endif()
             get_filename_component(LLHTTP_LOCAL_DIR "${LLHTTP_LOCAL_PATH}" DIRECTORY)
             file(MAKE_DIRECTORY "${LLHTTP_LOCAL_DIR}")
-            file(REMOVE "${LLHTTP_LOCAL_PATH}")
+            set(LLHTTP_TEMP_PATH "${LLHTTP_LOCAL_PATH}.tmp")
+            file(REMOVE "${LLHTTP_LOCAL_PATH}" "${LLHTTP_TEMP_PATH}")
 
             file(DOWNLOAD
                 "${LLHTTP_BASE_URL}/${LLHTTP_FILE}"
-                "${LLHTTP_LOCAL_PATH}"
+                "${LLHTTP_TEMP_PATH}"
                 SHOW_PROGRESS
                 STATUS LLHTTP_DOWNLOAD_STATUS
                 TLS_VERIFY ON
@@ -483,13 +484,16 @@ if(NOT LLHTTP_FOUND)
             list(GET LLHTTP_DOWNLOAD_STATUS 0 LLHTTP_STATUS_CODE)
             list(GET LLHTTP_DOWNLOAD_STATUS 1 LLHTTP_STATUS_MESSAGE)
             if(NOT LLHTTP_STATUS_CODE EQUAL 0)
+                file(REMOVE "${LLHTTP_TEMP_PATH}" "${LLHTTP_LOCAL_PATH}")
                 message(FATAL_ERROR
                     "Failed to download llhttp ${LLHTTP_FILE}: ${LLHTTP_STATUS_MESSAGE}")
             endif()
-            file(READ "${LLHTTP_LOCAL_PATH}" LLHTTP_FILE_PROBE LIMIT 1)
+            file(READ "${LLHTTP_TEMP_PATH}" LLHTTP_FILE_PROBE LIMIT 1)
             if(LLHTTP_FILE_PROBE STREQUAL "")
+                file(REMOVE "${LLHTTP_TEMP_PATH}" "${LLHTTP_LOCAL_PATH}")
                 message(FATAL_ERROR "Downloaded llhttp ${LLHTTP_FILE} is empty")
             endif()
+            file(RENAME "${LLHTTP_TEMP_PATH}" "${LLHTTP_LOCAL_PATH}")
         endif()
     endforeach()
 
