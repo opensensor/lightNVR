@@ -521,9 +521,17 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         const long long timeout_ns = 3000000000LL;
         pid_t wait_rc;
 
-        if (clock_gettime(CLOCK_MONOTONIC, &supervised_start_ts) != 0) {
+        if (setpgid(supervised, supervised) != 0 && errno != EACCES && errno != ESRCH) {
             (void)kill(supervised, SIGKILL);
-            (void)waitpid(supervised, &supervised_status, 0);
+            while (waitpid(supervised, &supervised_status, 0) < 0 && errno == EINTR) {
+            }
+            TEST_FAIL_MESSAGE("setpgid failed for supervised process");
+        }
+
+        if (clock_gettime(CLOCK_MONOTONIC, &supervised_start_ts) != 0) {
+            (void)kill(-supervised, SIGKILL);
+            while (waitpid(supervised, &supervised_status, 0) < 0 && errno == EINTR) {
+            }
             TEST_FAIL_MESSAGE("clock_gettime failed before PID lock wait");
         }
         while (1) {
@@ -534,8 +542,9 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
 
             usleep(10000);
             if (clock_gettime(CLOCK_MONOTONIC, &supervised_now_ts) != 0) {
-                (void)kill(supervised, SIGKILL);
-                (void)waitpid(supervised, &supervised_status, 0);
+                (void)kill(-supervised, SIGKILL);
+                while (waitpid(supervised, &supervised_status, 0) < 0 && errno == EINTR) {
+                }
                 TEST_FAIL_MESSAGE("clock_gettime failed during PID lock wait");
             }
             long long elapsed_ns = (long long)(supervised_now_ts.tv_sec - supervised_start_ts.tv_sec) * 1000000000LL
@@ -544,8 +553,9 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         }
 
         if (wait_rc == 0) {
-            kill(supervised, SIGKILL);
-            (void)waitpid(supervised, &supervised_status, 0);
+            (void)kill(-supervised, SIGKILL);
+            while (waitpid(supervised, &supervised_status, 0) < 0 && errno == EINTR) {
+            }
             TEST_FAIL_MESSAGE("lock-regression scenario timed out");
         }
 
