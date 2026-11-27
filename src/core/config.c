@@ -1182,6 +1182,11 @@ static int config_ini_handler(void* user, const char* section, const char* name,
                 return 0;
             }
             config->web_ssl_enabled = parsed_bool;
+            if (!parse_bool_strict(value, &parsed_bool)) {
+                log_error("Invalid boolean value for web.ssl_enabled: '%s'", value);
+                return 0;
+            }
+            config->web_ssl_enabled = parsed_bool;
         } else if (strcmp(name, "ssl_cert_path") == 0) {
             safe_strcpy(config->web_ssl_cert_path, value, sizeof(config->web_ssl_cert_path), 0);
         } else if (strcmp(name, "ssl_key_path") == 0) {
