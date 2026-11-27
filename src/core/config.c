@@ -2175,13 +2175,21 @@ static int load_config_into(config_t *config) {
 
         for (int i = 0; config_paths[i] != NULL && !loaded; i++) {
             if (access(config_paths[i], R_OK) == 0) {
-                if (load_config_from_file(config_paths[i], config, ini_present) == 0) {
-                    log_info("Loaded configuration from %s", config_paths[i]);
-                    set_loaded_config_path(config_paths[i]);
+                char resolved_default_path[PATH_MAX];
+                const char *canon_default_path = realpath(config_paths[i], resolved_default_path);
+                if (!canon_default_path) {
+                    log_error("Failed to resolve config path '%s': %s",
+                              config_paths[i], strerror(errno));
+                    continue;
+                }
+
+                if (load_config_from_file(canon_default_path, config, ini_present) == 0) {
+                    log_info("Loaded configuration from %s", canon_default_path);
+                    set_loaded_config_path(canon_default_path);
                     loaded = 1;
                     break;
                 } else {
-                    log_error("Failed to load configuration from %s", config_paths[i]);
+                    log_error("Failed to load configuration from %s", canon_default_path);
                     return -1;
                 }
             }
