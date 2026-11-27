@@ -78,6 +78,10 @@ test('settings preserve zero, mask credentials, and reject invalid formats befor
  expect(denied.response.status).toBe(400);expect(readFileSync(config)).toEqual(before);
  const result=await ok(server,'/api/settings',admin,'POST',{default_detection_threshold:0,mqtt_password:'fixture-mqtt-secret',turn_password:'fixture-turn-secret'});
  valid('SystemSettingsSaved',result);expect(result.success).toBe(true);
+ const persisted=readFileSync(config,'utf8');
+ expect(persisted).toContain('default_detection_threshold=0');
+ expect(persisted).toContain('mqtt_password=fixture-mqtt-secret');
+ expect(persisted).toContain('turn_password=fixture-turn-secret');
  const settings=await ok(server,'/api/settings');valid('SystemSettings',settings);
  expect(settings.default_detection_threshold).toBe(0);expect(settings.mqtt_password).toBe('********');expect(settings.turn_password).toBe('********');
  expect(JSON.stringify(settings)).not.toContain('fixture-mqtt-secret');expect(JSON.stringify(settings)).not.toContain('fixture-turn-secret');
