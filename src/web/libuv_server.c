@@ -615,6 +615,15 @@ int libuv_server_register_handler(http_server_handle_t handle, const char *path,
         return -1;
     }
 
+    if (strlen(path) >= sizeof(server->handlers[0].path)) {
+        log_error("libuv_server_register_handler: Path too long for handler registry: %s", path);
+        return -1;
+    }
+    if (method && strlen(method) >= sizeof(server->handlers[0].method)) {
+        log_error("libuv_server_register_handler: Method too long for handler registry: %s", method);
+        return -1;
+    }
+
     // Expand handler array if needed
     if (server->handler_count >= server->handler_capacity) {
         int new_capacity = server->handler_capacity * 2;
