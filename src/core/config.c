@@ -1381,6 +1381,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
                 } else {
                     log_error("Failed to realloc streams array for max_streams=%d, keeping %d",
                               new_max, config->max_streams);
+                    return 0;
                 }
             }
         }
@@ -2022,18 +2023,9 @@ int save_stream_configs(config_t *config) {
 
     for (int i = 0; i < max_streams; i++) {
         if (streams_snapshot[i].name[0] == '\0') continue;
-        unsigned long h = 5381;
-        for (const unsigned char *p = (const unsigned char *)streams_snapshot[i].name; *p; ++p) {
-            h = ((h << 5) + h) + (unsigned long)(*p);
-        }
-        int slot = (int)(h & (unsigned long)(table_size - 1));
-        while (hash_slots[slot] != -1) {
-            if (strcmp(streams_snapshot[hash_slots[slot]].name, streams_snapshot[i].name) == 0) {
-                break;
-            }
-            slot = (slot + 1) & (table_size - 1);
-        }
-        if (hash_slots[slot] == -1) hash_slots[slot] = i;
+        int slot = stream_name_index_slot(streams_snapshot, hash_slots,
+                                          table_size, streams_snapshot[i].name);
+        if (slot >= 0 && hash_slots[slot] == -1) hash_slots[slot] = i;
     }
 
     pthread_mutex_lock(&mp4_faststart_mutex);
@@ -2047,23 +2039,16 @@ int save_stream_configs(config_t *config) {
     }
     for (int j = 0; j < max_streams; j++) {
         if (config->streams[j].name[0] == '\0') continue;
-        unsigned long h = 5381;
-        for (const unsigned char *p = (const unsigned char *)config->streams[j].name; *p; ++p) {
-            h = ((h << 5) + h) + (unsigned long)(*p);
-        }
-        int slot = (int)(h & (unsigned long)(table_size - 1));
-        while (hash_slots[slot] != -1) {
+        int slot = stream_name_index_slot(streams_snapshot, hash_slots,
+                                          table_size, config->streams[j].name);
+        if (slot >= 0 && hash_slots[slot] != -1) {
             int idx = hash_slots[slot];
-            if (strcmp(streams_snapshot[idx].name, config->streams[j].name) == 0) {
-                safe_strcpy(config->streams[j].camera_uuid,
-                            streams_snapshot[idx].camera_uuid,
-                            sizeof(config->streams[j].camera_uuid), 0);
-                safe_strcpy(config->streams[j].location_uuid,
-                            streams_snapshot[idx].location_uuid,
-                            sizeof(config->streams[j].location_uuid), 0);
-                break;
-            }
-            slot = (slot + 1) & (table_size - 1);
+            safe_strcpy(config->streams[j].camera_uuid,
+                        streams_snapshot[idx].camera_uuid,
+                        sizeof(config->streams[j].camera_uuid), 0);
+            safe_strcpy(config->streams[j].location_uuid,
+                        streams_snapshot[idx].location_uuid,
+                        sizeof(config->streams[j].location_uuid), 0);
         }
     }
     pthread_mutex_unlock(&mp4_faststart_mutex);
@@ -3231,7 +3216,8 @@ void print_config(const config_t *config) {
     printf("    Models Path: %s\n", snapshot.models_path);
     
     printf("  API Detection Settings:\n");
-    printf("    API URL: %s\n", snapshot.api_detection_url);
+    printf("    API URL: %s\n",
+           snapshot.api_detection_url[0] ? "(configured)" : "(not configured)");
     
     printf("  Database Settings:\n");
     printf("    Database Path: %s\n", snapshot.db_path);
