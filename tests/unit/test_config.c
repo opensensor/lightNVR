@@ -406,10 +406,14 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         int supervised_status = 0;
         struct timespec start_ts;
         struct timespec now_ts;
-        const long timeout_ns = 3000000000L;
+        const long long timeout_ns = 3000000000LL;
         pid_t wait_rc;
 
-        TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_MONOTONIC, &start_ts));
+        if (clock_gettime(CLOCK_MONOTONIC, &start_ts) != 0) {
+            (void)kill(supervised, SIGKILL);
+            (void)waitpid(supervised, &supervised_status, 0);
+            TEST_FAIL_MESSAGE("clock_gettime failed before PID lock wait");
+        }
         while (1) {
             wait_rc = waitpid(supervised, &supervised_status, WNOHANG);
             if (wait_rc == supervised) break;
@@ -417,9 +421,13 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
             if (wait_rc < 0) break;
 
             usleep(10000);
-            TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_MONOTONIC, &now_ts));
-            long elapsed_ns = (now_ts.tv_sec - start_ts.tv_sec) * 1000000000L
-                            + (now_ts.tv_nsec - start_ts.tv_nsec);
+            if (clock_gettime(CLOCK_MONOTONIC, &now_ts) != 0) {
+                (void)kill(supervised, SIGKILL);
+                (void)waitpid(supervised, &supervised_status, 0);
+                TEST_FAIL_MESSAGE("clock_gettime failed during PID lock wait");
+            }
+            long long elapsed_ns = (long long)(now_ts.tv_sec - start_ts.tv_sec) * 1000000000LL
+                                 + (now_ts.tv_nsec - start_ts.tv_nsec);
             if (elapsed_ns >= timeout_ns) break;
         }
 
