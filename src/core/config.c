@@ -2642,21 +2642,17 @@ static int save_config_snapshot(const config_t *config, const char *path) {
 
         /* Validate the filename component: reject empty names, names
          * containing '/' (shouldn't happen after the split above, but
-         * defence-in-depth), the special names ".." / "." which would escape
-         * the resolved directory, and names that don't end with ".ini" to
-         * prevent overwriting arbitrary files. */
+         * defence-in-depth), and the special names ".." / "." which would
+         * escape the resolved directory. */
         if (fname[0] == '\0' || strchr(fname, '/') != NULL ||
             strcmp(fname, "..") == 0 || strcmp(fname, ".") == 0) {
             log_error("Invalid config filename: '%s'", fname);
             return -1;
         }
 
-        /* Allowlist: only permit config files ending in ".ini". */
-        size_t fname_len = strlen(fname);
-        if (fname_len < 4 || strcmp(fname + fname_len - 4, ".ini") != 0) {
-            log_error("Config filename must end with .ini: '%s'", fname);
-            return -1;
-        }
+        /* Do not enforce a filename extension here: loading may accept a
+         * trusted custom config path with a non-.ini suffix, and saving back
+         * to that tracked path must remain possible. */
 
         int n = snprintf(canonical_save_path, sizeof(canonical_save_path),
                          "%s/%s", resolved_dir, fname);
