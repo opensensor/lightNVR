@@ -114,12 +114,60 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
     TEST_ASSERT_NULL(get_db_handle());
 }
 
+static void create_readable_wal_database(void) {
+    sqlite3 *db = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &db));
+    TEST_ASSERT_NOT_NULL(db);
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(db,
+                     "CREATE TABLE IF NOT EXISTS sample("
+                     "id INTEGER PRIMARY KEY, value TEXT NOT NULL);",
+                     NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(db,
+                     "DELETE FROM sample; "
+                     "INSERT INTO sample(id, value) VALUES(1, 'unchanged');",
+                     NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(db, "PRAGMA wal_checkpoint(TRUNCATE);", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(db));
+
+    /* Re-open in WAL mode and write once so sidecars are present in fixture. */
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &db));
+    TEST_ASSERT_NOT_NULL(db);
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(db,
+                     "INSERT OR REPLACE INTO sample(id, value) "
+                     "VALUES(1, 'unchanged');",
+                     NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(db));
+
+    TEST_ASSERT_EQUAL_INT(0, access(TEST_DB_PATH "-wal", F_OK));
+    TEST_ASSERT_EQUAL_INT(0, access(TEST_DB_PATH "-shm", F_OK));
+}
+
 void test_read_only_initialization_cannot_write(void) {
     struct stat before;
     struct stat after;
-    create_readable_database();
+    struct stat wal_before;
+    struct stat wal_after;
+    struct stat shm_before;
+    struct stat shm_after;
+    create_readable_wal_database();
     TEST_ASSERT_EQUAL_INT(0, chmod(TEST_DB_PATH, 0400));
     TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &before));
+    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH "-wal", &wal_before));
+    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH "-shm", &shm_before));
 
     TEST_ASSERT_EQUAL_INT(
         0, init_database_ex(TEST_DB_PATH, DB_INIT_READ_ONLY));
@@ -143,10 +191,14 @@ void test_read_only_initialization_cannot_write(void) {
 
     shutdown_database();
     TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &after));
+    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH "-wal", &wal_after));
+    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH "-shm", &shm_after));
     TEST_ASSERT_EQUAL_INT64(before.st_size, after.st_size);
     TEST_ASSERT_EQUAL_UINT(before.st_mode, after.st_mode);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_sec, after.st_mtim.tv_sec);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_nsec, after.st_mtim.tv_nsec);
+    TEST_ASSERT_EQUAL_INT64(wal_before.st_size, wal_after.st_size);
+    TEST_ASSERT_EQUAL_INT64(shm_before.st_size, shm_after.st_size);
 }
 
 void test_writable_initialization_removes_only_stale_backup_artifacts(void) {
