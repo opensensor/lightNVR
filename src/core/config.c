@@ -1381,6 +1381,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
                 } else {
                     log_error("Failed to realloc streams array for max_streams=%d, keeping %d",
                               new_max, config->max_streams);
+                    return 0;
                 }
             }
         }
