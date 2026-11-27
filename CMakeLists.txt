@@ -878,17 +878,7 @@ set_target_properties(lightnvr rebuild_recordings PROPERTIES
 # Link libraries for main executable
 target_link_libraries(lightnvr
         lightnvr_lib
-        ${HTTP_BACKEND_LIBS}
-        inih_lib
-        PkgConfig::FFMPEG
-        PkgConfig::SQLITE
-        PkgConfig::CURL
-        ZLIB::ZLIB
-        ${SSL_LIBRARIES}
         atomic
-        pthread
-        dl
-        m
 )
 
 # Link libraries for rebuild_recordings utility
@@ -1044,14 +1034,10 @@ string(TIMESTAMP BUILD_DATE "%Y-%m-%d")
 
 # Create a version.h file in the build tree (out-of-source safe)
 file(MAKE_DIRECTORY "${GENERATED_INCLUDE_DIR}/core")
-file(READ
+configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in"
-        VERSION_H_IN
-)
-string(CONFIGURE "${VERSION_H_IN}" VERSION_H_OUT @ONLY)
-file(GENERATE
-        OUTPUT "${GENERATED_INCLUDE_DIR}/core/version.h"
-        CONTENT "${VERSION_H_OUT}"
+        "${GENERATED_INCLUDE_DIR}/core/version.h"
+        @ONLY
 )
 
 # Generate version.js for web interface
