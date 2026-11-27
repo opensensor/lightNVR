@@ -3231,7 +3231,8 @@ void print_config(const config_t *config) {
     printf("    Models Path: %s\n", snapshot.models_path);
     
     printf("  API Detection Settings:\n");
-    printf("    API URL: %s\n", snapshot.api_detection_url);
+    printf("    API URL: %s\n",
+           snapshot.api_detection_url[0] ? "(configured)" : "(not configured)");
     
     printf("  Database Settings:\n");
     printf("    Database Path: %s\n", snapshot.db_path);
