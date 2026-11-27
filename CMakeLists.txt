@@ -756,10 +756,12 @@ target_link_libraries(lightnvr_lib PUBLIC
         ${HTTP_BACKEND_LIBS}
         inih_lib
         faac_lib
-        ${FFMPEG_LIBRARIES}
-        ${SQLITE_LIBRARIES}
-        ${CURL_LIBRARIES}
-        ${CJSON_LIBRARIES}
+        PkgConfig::FFMPEG
+        PkgConfig::SQLITE3
+        PkgConfig::LIBCURL
+        PkgConfig::LIBCJSON
+        PkgConfig::LIBUV
+        PkgConfig::LLHTTP
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
         pthread
