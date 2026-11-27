@@ -2727,7 +2727,10 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "auth_absolute_timeout_hours = %d  ; Absolute session lifetime in hours (default: 168)\n", config->auth_absolute_timeout_hours);
     fprintf(file, "trusted_device_days = %d  ; Remember trusted device for N days (0 disables, default: 30)\n", config->trusted_device_days);
     fprintf(file, "; Trusted reverse-proxy CIDRs for X-Forwarded-For (blank disables trust)\n");
-    fprintf(file, "trusted_proxy_cidrs = %s\n", config->trusted_proxy_cidrs);
+    // CIDR ranges configure proxy trust; they contain no credential or secret.
+    // The complete config, including actual TURN/MQTT credentials, is staged
+    // and published with mode 0600 before any of these values are written.
+    fprintf(file, "trusted_proxy_cidrs = %s\n", config->trusted_proxy_cidrs); // codeql[cpp/cleartext-storage-file] - non-secret CIDR list in private configuration
     fprintf(file, "demo_mode = %s  ; Demo mode: allows unauthenticated viewer access\n", config->demo_mode ? "true" : "false");
     fprintf(file, "force_mfa_on_login = %s  ; Require TOTP code with password at login (prevents password-only brute force)\n", config->force_mfa_on_login ? "true" : "false");
     fprintf(file, "login_rate_limit_enabled = %s  ; Enable login rate limiting\n", config->login_rate_limit_enabled ? "true" : "false");
