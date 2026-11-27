@@ -31,6 +31,7 @@
 #include "core/daemon.h"
 #include "core/logger.h"
 #include "core/path_utils.h"
+#include "database/db_core.h"
 #include "video/streams.h"
 
 /* File-scope config used by most tests — setUp zeros it, tearDown frees
@@ -41,6 +42,8 @@ static FILE *saved_config_file;
 static FILE *saved_baseline_file;
 static void assert_files_equal_binary(FILE *expected, FILE *actual);
 static char concurrent_config_dir[MAX_PATH_LENGTH];
+static char stream_save_db_path[MAX_PATH_LENGTH];
+static bool stream_save_db_active;
 static char group_replace_dir[MAX_PATH_LENGTH];
 static char group_replace_path[MAX_PATH_LENGTH];
 static bool group_replace_cleanup_active;
@@ -155,6 +158,8 @@ void setUp(void) {
     saved_config_file = NULL;
     saved_baseline_file = NULL;
     concurrent_config_dir[0] = '\0';
+    stream_save_db_path[0] = '\0';
+    stream_save_db_active = false;
     saved_config_text = NULL;
     check_config_pwrite_mode = false;
     check_config_pwrite_saw_write = false;
@@ -182,6 +187,18 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (stream_save_db_active) {
+        shutdown_database();
+        stream_save_db_active = false;
+    }
+    if (stream_save_db_path[0]) {
+        char aux_path[MAX_PATH_LENGTH + 5];
+        unlink(stream_save_db_path);
+        snprintf(aux_path, sizeof(aux_path), "%s-wal", stream_save_db_path);
+        unlink(aux_path);
+        snprintf(aux_path, sizeof(aux_path), "%s-shm", stream_save_db_path);
+        unlink(aux_path);
+    }
     if (group_replace_cleanup_active) {
         unlink(group_replace_path);
         rmdir(group_replace_dir);
@@ -653,6 +670,30 @@ void test_config_reset_stream_slots_clears_stale_rows(void) {
     TEST_ASSERT_EQUAL_INT(10, cfg.streams[0].detection_interval);
 }
 
+void test_save_stream_configs_preserves_identities_after_batch_reload(void) {
+    char db_path[] = "/tmp/lightnvr_stream_save_XXXXXX";
+    int fd = mkstemp(db_path);
+    TEST_ASSERT_TRUE(fd >= 0);
+    close(fd);
+    snprintf(stream_save_db_path, sizeof(stream_save_db_path), "%s", db_path);
+    TEST_ASSERT_EQUAL_INT(0, init_database_ex(db_path, DB_INIT_NO_BACKUP));
+    stream_save_db_active = true;
+
+    load_default_config(&cfg);
+    snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "camera-one");
+    snprintf(cfg.streams[0].url, sizeof(cfg.streams[0].url), "rtsp://example.invalid/one");
+    TEST_ASSERT_EQUAL_INT(1, save_stream_configs(&cfg));
+    TEST_ASSERT_TRUE(cfg.streams[0].camera_uuid[0] != '\0');
+    char original_uuid[sizeof(cfg.streams[0].camera_uuid)];
+    snprintf(original_uuid, sizeof(original_uuid), "%s", cfg.streams[0].camera_uuid);
+
+    snprintf(cfg.streams[1].name, sizeof(cfg.streams[1].name), "camera-two");
+    snprintf(cfg.streams[1].url, sizeof(cfg.streams[1].url), "rtsp://example.invalid/two");
+    TEST_ASSERT_EQUAL_INT(2, save_stream_configs(&cfg));
+    TEST_ASSERT_EQUAL_STRING(original_uuid, cfg.streams[0].camera_uuid);
+    TEST_ASSERT_TRUE(cfg.streams[1].camera_uuid[0] != '\0');
+}
+
 void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
     char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
     char *dir = mkdtemp(temp_dir);
@@ -983,10 +1024,16 @@ void test_malformed_ini_after_stream_resize_keeps_streams_owned(void) {
     fputs(ini_contents, file);
     fclose(file);
 
+    load_default_config(&cfg);
+    snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "preserve-camera");
+    config_set_mp4_faststart(&cfg, false);
+    stream_config_t *original_streams = cfg.streams;
     set_custom_config_path(config_path);
     TEST_ASSERT_EQUAL_INT(-1, load_config(&cfg));
     TEST_ASSERT_EQUAL_INT(DEFAULT_MAX_STREAMS, cfg.max_streams);
-    TEST_ASSERT_NOT_NULL(cfg.streams);
+    TEST_ASSERT_EQUAL_PTR(original_streams, cfg.streams);
+    TEST_ASSERT_EQUAL_STRING("preserve-camera", cfg.streams[0].name);
+    TEST_ASSERT_FALSE(config_get_mp4_faststart(&cfg));
     TEST_ASSERT_TRUE(cfg.streams[DEFAULT_MAX_STREAMS - 1].streaming_enabled);
     cfg.streams[0].name[0] = '\0';
 
@@ -2159,6 +2206,7 @@ int main(void) {
     RUN_TEST(test_default_config_mp4_faststart_on);
     RUN_TEST(test_config_copy_owns_streams_after_source_reload);
     RUN_TEST(test_config_reset_stream_slots_clears_stale_rows);
+    RUN_TEST(test_save_stream_configs_preserves_identities_after_batch_reload);
     RUN_TEST(test_mp4_faststart_concurrent_reads_copies_and_saves);
     RUN_TEST(test_default_config_buffer_size);
     RUN_TEST(test_default_config_storage_path_nonempty);

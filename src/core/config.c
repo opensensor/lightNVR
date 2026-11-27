@@ -1865,17 +1865,49 @@ int save_stream_configs(config_t *config) {
                 rollback_transaction();
                 return -1;
             }
-            if (get_stream_config_by_name(stream_name,
-                                          &streams_snapshot[i]) != 0) {
-                log_error("Failed to reload stable identity for stream: %s",
-                          stream_name);
-                free(streams_snapshot);
-                rollback_transaction();
-                return -1;
-            }
             saved++;
         }
     }
+
+    // Reload stable identities in one batch to avoid one query per stream.
+    stream_config_t *reloaded_streams = calloc((size_t)max_streams, sizeof(*reloaded_streams));
+    if (!reloaded_streams) {
+        log_error("Failed to allocate stream identity reload buffer");
+        free(streams_snapshot);
+        rollback_transaction();
+        return -1;
+    }
+    int reloaded_count = get_all_stream_configs(reloaded_streams, max_streams);
+    if (reloaded_count < 0) {
+        log_error("Failed to reload stream configurations after save");
+        free(reloaded_streams);
+        free(streams_snapshot);
+        rollback_transaction();
+        return -1;
+    }
+
+    for (int i = 0; i < max_streams; i++) {
+        if (strlen(streams_snapshot[i].name) == 0) continue;
+
+        bool found = false;
+        for (int j = 0; j < reloaded_count; j++) {
+            if (strcmp(streams_snapshot[i].name, reloaded_streams[j].name) == 0) {
+                streams_snapshot[i] = reloaded_streams[j];
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            log_error("Failed to reload stable identity for stream: %s",
+                      streams_snapshot[i].name);
+            free(reloaded_streams);
+            free(streams_snapshot);
+            rollback_transaction();
+            return -1;
+        }
+    }
+    free(reloaded_streams);
 
     int table_size = 1;
     while (table_size < (max_streams * 2)) table_size <<= 1;
@@ -2014,8 +2046,9 @@ static void set_loaded_config_path(const char *path) {
     }
 }
 
-// Load configuration
-int load_config(config_t *config) {
+// Load configuration into a private destination. The public wrapper publishes
+// it only after every parse, validation, and directory check succeeds.
+static int load_config_into(config_t *config) {
     if (!config) return -1;
 
     // Reset loaded-path tracking for this load attempt.
@@ -2126,6 +2159,59 @@ int load_config(config_t *config) {
     }
     
     return 0;
+}
+
+int load_config(config_t *config) {
+    if (!config) return -1;
+
+    config_t original;
+    stream_config_t *original_streams = NULL;
+    pthread_mutex_lock(&mp4_faststart_mutex);
+    original = *config;
+    if (config->streams) {
+        if (config->max_streams <= 0 || config->max_streams > MAX_STREAMS ||
+            (size_t)config->max_streams > SIZE_MAX / sizeof(*original_streams)) {
+            pthread_mutex_unlock(&mp4_faststart_mutex);
+            return -1;
+        }
+        size_t bytes = (size_t)config->max_streams * sizeof(*original_streams);
+        original_streams = malloc(bytes);
+        if (!original_streams) {
+            pthread_mutex_unlock(&mp4_faststart_mutex);
+            return -1;
+        }
+        memcpy(original_streams, config->streams, bytes);
+    }
+    pthread_mutex_unlock(&mp4_faststart_mutex);
+
+    char previous_loaded_path[MAX_PATH_LENGTH];
+    safe_strcpy(previous_loaded_path, g_loaded_config_path,
+                sizeof(previous_loaded_path), 0);
+    config_t next_config = {0};
+    int result = load_config_into(&next_config);
+    if (result == 0) {
+        pthread_mutex_lock(&mp4_faststart_mutex);
+        bool changed = memcmp(config, &original, sizeof(original)) != 0;
+        if (!changed && original_streams) {
+            changed = memcmp(config->streams, original_streams,
+                             (size_t)original.max_streams * sizeof(*original_streams)) != 0;
+        }
+        if (!changed) {
+            free(config->streams);
+            *config = next_config;
+            next_config.streams = NULL;
+        } else {
+            result = -1;
+        }
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+    }
+    if (result != 0) {
+        safe_strcpy(g_loaded_config_path, previous_loaded_path,
+                    sizeof(g_loaded_config_path), 0);
+    }
+    free(next_config.streams);
+    free(original_streams);
+    return result;
 }
 
 static int copy_config_fd(int source_fd, int destination_fd) {
