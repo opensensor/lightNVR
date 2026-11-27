@@ -878,17 +878,7 @@ set_target_properties(lightnvr rebuild_recordings PROPERTIES
 # Link libraries for main executable
 target_link_libraries(lightnvr
         lightnvr_lib
-        ${HTTP_BACKEND_LIBS}
-        inih_lib
-        PkgConfig::FFMPEG
-        PkgConfig::SQLITE
-        PkgConfig::CURL
-        ZLIB::ZLIB
-        ${SSL_LIBRARIES}
         atomic
-        pthread
-        dl
-        m
 )
 
 # Link libraries for rebuild_recordings utility
