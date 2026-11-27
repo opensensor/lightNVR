@@ -790,6 +790,12 @@ static void static_file_resolve_handler(const http_request_t *req, http_response
     libuv_connection_t *conn = (libuv_connection_t *)req->user_data;
     const libuv_server_t *server = conn->server;
 
+    /* Reject ambiguous path spellings that can bypass path-based checks. */
+    if (strstr(req->path, "//") != NULL) {
+        http_response_set_json_error(res, 400, "Bad Request");
+        return;
+    }
+
     /* Backups contain system configuration and must not inherit the public
      * static asset policy merely because they live below web_root. */
     if (strcmp(req->path, "/backups") == 0 ||
