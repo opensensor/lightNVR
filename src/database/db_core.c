@@ -1410,20 +1410,24 @@ int init_database_ex(const char *db_path, unsigned flags) {
                     test_db = NULL;
                 }
 
-                test_file = fopen(db_backup_path, "r");
-                if (test_file) {
-                    log_info("Backup database file exists, attempting recovery");
-                    fclose(test_file);
+                if (rc == SQLITE_CORRUPT || rc == SQLITE_NOTADB) {
+                    test_file = fopen(db_backup_path, "r");
+                    if (test_file) {
+                        log_info("Backup database file exists, attempting recovery");
+                        fclose(test_file);
 
-                    if (restore_database_from_backup(db_backup_path, db_path) != 0) {
-                        log_error("Failed to restore database from backup");
-                        // Continue anyway, we'll try to repair the database
+                        if (restore_database_from_backup(db_backup_path, db_path) != 0) {
+                            log_error("Failed to restore database from backup");
+                            // Continue anyway, we'll try to repair the database
+                        } else {
+                            log_info("Successfully restored database from backup");
+                            restored_from_backup = true;
+                        }
                     } else {
-                        log_info("Successfully restored database from backup");
-                        restored_from_backup = true;
+                        log_warn("No backup database file found, will attempt to repair");
                     }
                 } else {
-                    log_warn("No backup database file found, will attempt to repair");
+                    log_warn("Skipping automatic restore: prepare failure was not a corruption indicator (rc=%d)", rc);
                 }
             }
             if (stmt) {
