@@ -29,8 +29,8 @@ interface Go2rtcTabProps extends SettingsTabProps {
 // Max UTF-8 byte length for the override — matches the server cap.
 const GO2RTC_OVERRIDE_MAX_BYTES = 65535;
 
-// Curated example presets (T9 scope). Inserts at cursor / end — never
-// overwrites existing content.
+// Curated example presets (T9 scope). Presets are merged into the parsed
+// root mapping and the YAML is reserialized; this may change formatting.
 const OVERRIDE_PRESETS = [
   {
     label: 'ffmpeg copy mode (no transcode)',
@@ -98,6 +98,8 @@ function utf8ByteLength(s: string) {
 }
 
 export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifySettings, t }: Go2rtcTabProps) {
+  const overrideBytes = utf8ByteLength(settings.go2rtcConfigOverride);
+  const overrideTooLarge = overrideBytes > GO2RTC_OVERRIDE_MAX_BYTES;
   // ---------- T9 — go2rtc override validation, preview, presets ----------
   const [overrideValidation, setOverrideValidation] = useState<Go2rtcOverrideValidation | null>(null); // null | { valid, error?, warnings, libyaml_available, skipped }
   const [overrideValidating, setOverrideValidating] = useState(false);
@@ -633,7 +635,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 <textarea
                   id="setting-go2rtc-config-override"
                   name="go2rtcConfigOverride"
-                  class={`p-2 border rounded bg-background text-foreground w-full font-mono text-sm overflow-x-auto whitespace-pre disabled:opacity-60 disabled:cursor-not-allowed ${(utf8ByteLength(settings.go2rtcConfigOverride) > GO2RTC_OVERRIDE_MAX_BYTES) || (overrideValidation && overrideValidation.valid === false && overrideValidation.error) ? 'border-red-500' : 'border-input'}`}
+                  class={`p-2 border rounded bg-background text-foreground w-full font-mono text-sm overflow-x-auto whitespace-pre disabled:opacity-60 disabled:cursor-not-allowed ${overrideTooLarge || (overrideValidation && overrideValidation.valid === false && overrideValidation.error) ? 'border-red-500' : 'border-input'}`}
                   rows={8}
                   spellcheck={false}
                   autocomplete="off"
@@ -644,35 +646,29 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onInput={handleOverrideChange}
                   onBlur={handleOverrideBlur}
                   disabled={!canModifySettings}
-                  aria-invalid={utf8ByteLength(settings.go2rtcConfigOverride) > GO2RTC_OVERRIDE_MAX_BYTES || !!(overrideValidation && overrideValidation.valid === false && overrideValidation.error)}
+                  aria-invalid={overrideTooLarge || !!(overrideValidation && overrideValidation.valid === false && overrideValidation.error)}
                   aria-describedby={[
-                    utf8ByteLength(settings.go2rtcConfigOverride) > GO2RTC_OVERRIDE_MAX_BYTES ? 'go2rtc-config-override-size-error' : '',
+                    overrideTooLarge ? 'go2rtc-config-override-size-error' : '',
                     overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'go2rtc-config-override-error' : '',
                   ].filter(Boolean).join(' ') || undefined}
                   placeholder={"ffmpeg:\n  h264_hw: \"-codec:v h264_v4l2m2m\"\n\nlog:\n  level: trace"}
                 />
 
                 {/* Size indicator */}
-                {(() => {
-                  const overrideBytes = utf8ByteLength(settings.go2rtcConfigOverride);
-                  const overrideTooLarge = overrideBytes > GO2RTC_OVERRIDE_MAX_BYTES;
-                  return (
-                    <div class="flex items-center justify-between text-xs text-muted-foreground">
-                      <span class={overrideTooLarge ? 'text-red-600 dark:text-red-400' : ''}>
-                        {formatBytes(overrideBytes)} / {formatBytes(GO2RTC_OVERRIDE_MAX_BYTES)}
-                        {overrideValidating ? t('settings.go2rtcValidating') : null}
-                        {overrideTooLarge ? (
-                          <span id="go2rtc-config-override-size-error" class="ms-2 text-red-600 dark:text-red-400">
-                            {t('settings.go2rtcOverrideTooLarge')}
-                          </span>
-                        ) : null}
+                <div class="flex items-center justify-between text-xs text-muted-foreground">
+                  <span class={overrideTooLarge ? 'text-red-600 dark:text-red-400' : ''}>
+                    {formatBytes(overrideBytes)} / {formatBytes(GO2RTC_OVERRIDE_MAX_BYTES)}
+                    {overrideValidating ? t('settings.go2rtcValidating') : null}
+                    {overrideTooLarge ? (
+                      <span id="go2rtc-config-override-size-error" class="ms-2 text-red-600 dark:text-red-400">
+                        {t('settings.go2rtcOverrideTooLarge')}
                       </span>
-                      {overrideValidation && overrideValidation.libyaml_available === false ? (
-                        <span class="text-yellow-700 dark:text-yellow-300">{t('settings.go2rtcValidationSkipped')}</span>
-                      ) : null}
-                    </div>
-                  );
-                })()}
+                    ) : null}
+                  </span>
+                  {overrideValidation && overrideValidation.libyaml_available === false ? (
+                    <span class="text-yellow-700 dark:text-yellow-300">{t('settings.go2rtcValidationSkipped')}</span>
+                  ) : null}
+                </div>
 
                 {/* Inline error */}
                 {overrideValidation && overrideValidation.valid === false && overrideValidation.error ? (
