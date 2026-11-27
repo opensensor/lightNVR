@@ -204,9 +204,15 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
     }
 
     TEST_ASSERT_TRUE(strlen(rejected_path) > PATH_MAX);
+    TEST_ASSERT_EQUAL_INT(-1, access(rejected_path, F_OK));
 
+    errno = 0;
     TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
+    TEST_ASSERT_EQUAL_INT(ENAMETOOLONG, errno);
     TEST_ASSERT_NULL(get_db_handle());
+    TEST_ASSERT_EQUAL_INT(-1, access(rejected_path, F_OK));
+    TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(rejected_path, "-wal"), F_OK));
+    TEST_ASSERT_EQUAL_INT(-1, access(path_with_suffix(rejected_path, "-shm"), F_OK));
 }
 
 static void create_readable_wal_database(void) {
