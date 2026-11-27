@@ -112,6 +112,10 @@ test('compressible responses vary by accepted content encoding', async () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('vary')?.toLowerCase()).toContain('accept-encoding');
       expect(response.headers.get('content-encoding')).toBe(encoding === 'gzip' ? 'gzip' : null);
+      const body = await response.text();
+      const openapi = JSON.parse(body) as {openapi?: unknown; paths?: unknown};
+      expect(typeof openapi.openapi).toBe('string');
+      expect(openapi.paths).toBeTruthy();
     }
   } finally {
     await server.stop();
