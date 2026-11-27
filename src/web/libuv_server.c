@@ -514,32 +514,36 @@ void libuv_server_stop(http_server_handle_t handle) {
     // Warn after the diagnostic deadline; work cannot safely be abandoned.
     log_info("libuv_server_stop: Processing close callbacks");
 
-    const int max_wait_ms = 3000;  // Diagnostic warning threshold
-    const int check_interval_ms = 50;  // Check every 50ms
-    int elapsed_ms = 0;
+    if (server->owns_loop) {
+        const int max_wait_ms = 3000;  // Diagnostic warning threshold
+        const int check_interval_ms = 50;  // Check every 50ms
+        int elapsed_ms = 0;
 
-    while (elapsed_ms < max_wait_ms) {
-        // Run one iteration of the event loop
-        int active = uv_run(server->loop, UV_RUN_NOWAIT);
+        while (elapsed_ms < max_wait_ms) {
+            // Run one iteration of the event loop
+            int active = uv_run(server->loop, UV_RUN_NOWAIT);
 
-        server_handle_scan_t scan = {.server = server, .present = false};
-        if (!server->owns_loop) uv_walk(server->loop, scan_server_handles_cb, &scan);
-        // A shared loop may retain unrelated active handles.
-        if (server->owns_loop ? active == 0 : (!scan.present && !server->connections)) {
-            log_info("libuv_server_stop: All handles closed after %d ms", elapsed_ms);
-            break;
+            if (active == 0) {
+                log_info("libuv_server_stop: All handles closed after %d ms", elapsed_ms);
+                break;
+            }
+
+            // Count remaining active handles for logging
+            if (elapsed_ms > 0 && elapsed_ms % 1000 == 0) {
+                int handle_count = 0;
+                uv_walk(server->loop, count_handles_cb, &handle_count);
+                log_info("libuv_server_stop: Still waiting for %d handles after %d ms",
+                         handle_count, elapsed_ms);
+            }
+
+            usleep(check_interval_ms * 1000);
+            elapsed_ms += check_interval_ms;
         }
-
-        // Count remaining active handles for logging
-        if (elapsed_ms > 0 && elapsed_ms % 1000 == 0) {
-            int handle_count = 0;
-            uv_walk(server->loop, count_handles_cb, &handle_count);
-            log_info("libuv_server_stop: Still waiting for %d handles after %d ms",
-                     handle_count, elapsed_ms);
-        }
-
-        usleep(check_interval_ms * 1000);
-        elapsed_ms += check_interval_ms;
+    } else {
+        /* Shared loop: do not call uv_run() here. stop() may be invoked from
+         * within a loop callback, and uv_run is not reentrant on the same loop.
+         * Close callbacks will be processed asynchronously by the loop owner. */
+        log_info("libuv_server_stop: Shared loop shutdown initiated asynchronously");
     }
 
     if (elapsed_ms >= max_wait_ms) {
