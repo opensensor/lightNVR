@@ -1582,8 +1582,11 @@ void test_env_integer_whitespace_handling(void) {
 void test_save_config_tightens_existing_permissions_before_writing_secrets(void) {
     char directory[] = "/tmp/lightnvr_private_config_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    snprintf(owned_pid_path, sizeof(owned_pid_path), "%s", directory);
+    owned_pid_fd = -1;
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(concurrent_config_dir, sizeof(concurrent_config_dir), "%s", path);
     FILE *old = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(old);
     fputs("old content", old); fclose(old);
@@ -1610,7 +1613,6 @@ void test_save_config_tightens_existing_permissions_before_writing_secrets(void)
     saved_text[saved_size] = '\0';
     fclose(saved_file);
     TEST_ASSERT_NOT_NULL(strstr(saved_text, "synthetic-private-password"));
-    unlink(path); rmdir(directory);
 }
 
 void test_save_config_rejects_hardlinks_without_truncation_or_mode_change(void) {
