@@ -2317,6 +2317,16 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         original_fd = openat(dir_fd, validated_filename,
                              O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
         if (original_fd >= 0) {
+            struct stat reopened_stat;
+            if (fstat(original_fd, &reopened_stat) != 0 ||
+                !S_ISREG(reopened_stat.st_mode) || reopened_stat.st_nlink != 1 ||
+                reopened_stat.st_dev != config_stat.st_dev ||
+                reopened_stat.st_ino != config_stat.st_ino) {
+                log_error("Config save target changed before reopening: %s", canonical_save_path);
+                close_original_config_fd(original_fd);
+                close(dir_fd);
+                return -1;
+            }
             if (fchmod(original_fd, 0600) != 0) {
                 if (errno != EPERM) {
                     log_error("Could not restrict config file: %s", strerror(errno));
@@ -2658,7 +2668,6 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     }
     if (fclose(file) != 0) write_failed = 1;
     if (!write_failed) {
-        pthread_mutex_lock(&config_in_place_mutex);
         /* Do not replace a symlink, hardlink, or changed target introduced
          * while the replacement was being written. */
         struct stat current;
@@ -2682,7 +2691,6 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         } else if (fsync(dir_fd) != 0) {
             log_warn("Could not sync config directory after replacement: %s", strerror(errno));
         }
-        pthread_mutex_unlock(&config_in_place_mutex);
     }
     if (staged_fd >= 0) close(staged_fd);
     if (external_staging) unlink(external_staging_path);
