@@ -47,6 +47,10 @@ static bool stream_save_db_active;
 static char group_replace_dir[MAX_PATH_LENGTH];
 static char group_replace_path[MAX_PATH_LENGTH];
 static bool group_replace_cleanup_active;
+static char pid_validation_dir[MAX_PATH_LENGTH];
+static char pid_validation_path[MAX_PATH_LENGTH];
+static char pid_validation_alias[MAX_PATH_LENGTH];
+static bool pid_validation_cleanup_active;
 static char read_only_test_dir[MAX_PATH_LENGTH];
 static char read_only_test_path[MAX_PATH_LENGTH];
 static bool read_only_test_cleanup_active;
@@ -174,6 +178,10 @@ void setUp(void) {
     group_replace_dir[0] = '\0';
     group_replace_path[0] = '\0';
     group_replace_cleanup_active = false;
+    pid_validation_dir[0] = '\0';
+    pid_validation_path[0] = '\0';
+    pid_validation_alias[0] = '\0';
+    pid_validation_cleanup_active = false;
     read_only_test_dir[0] = '\0';
     read_only_test_path[0] = '\0';
     read_only_test_cleanup_active = false;
@@ -236,6 +244,12 @@ void tearDown(void) {
         unlink(group_replace_path);
         rmdir(group_replace_dir);
         group_replace_cleanup_active = false;
+    }
+    if (pid_validation_cleanup_active) {
+        unlink(pid_validation_alias);
+        unlink(pid_validation_path);
+        rmdir(pid_validation_dir);
+        pid_validation_cleanup_active = false;
     }
     if (owned_private_config_path[0]) unlink(owned_private_config_path);
     if (owned_private_config_dir[0]) rmdir(owned_private_config_dir);
@@ -474,6 +488,7 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     pid_t supervised = fork();
     TEST_ASSERT_TRUE(supervised >= 0);
     if (supervised == 0) {
+        if (setpgid(0, 0) != 0) _exit(16);
         int malformed_fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0644);
         if (malformed_fd < 0) _exit(10);
         const char *bad_pid_text = "not-a-pid\n";
@@ -521,9 +536,17 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         const long long timeout_ns = 3000000000LL;
         pid_t wait_rc;
 
-        if (clock_gettime(CLOCK_MONOTONIC, &supervised_start_ts) != 0) {
+        if (setpgid(supervised, supervised) != 0 && errno != EACCES && errno != ESRCH) {
             (void)kill(supervised, SIGKILL);
-            (void)waitpid(supervised, &supervised_status, 0);
+            while (waitpid(supervised, &supervised_status, 0) < 0 && errno == EINTR) {
+            }
+            TEST_FAIL_MESSAGE("setpgid failed for supervised process");
+        }
+
+        if (clock_gettime(CLOCK_MONOTONIC, &supervised_start_ts) != 0) {
+            (void)kill(-supervised, SIGKILL);
+            while (waitpid(supervised, &supervised_status, 0) < 0 && errno == EINTR) {
+            }
             TEST_FAIL_MESSAGE("clock_gettime failed before PID lock wait");
         }
         while (1) {
@@ -534,8 +557,9 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
 
             usleep(10000);
             if (clock_gettime(CLOCK_MONOTONIC, &supervised_now_ts) != 0) {
-                (void)kill(supervised, SIGKILL);
-                (void)waitpid(supervised, &supervised_status, 0);
+                (void)kill(-supervised, SIGKILL);
+                while (waitpid(supervised, &supervised_status, 0) < 0 && errno == EINTR) {
+                }
                 TEST_FAIL_MESSAGE("clock_gettime failed during PID lock wait");
             }
             long long elapsed_ns = (long long)(supervised_now_ts.tv_sec - supervised_start_ts.tv_sec) * 1000000000LL
@@ -544,8 +568,9 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         }
 
         if (wait_rc == 0) {
-            kill(supervised, SIGKILL);
-            (void)waitpid(supervised, &supervised_status, 0);
+            (void)kill(-supervised, SIGKILL);
+            while (waitpid(supervised, &supervised_status, 0) < 0 && errno == EINTR) {
+            }
             TEST_FAIL_MESSAGE("lock-regression scenario timed out");
         }
 
@@ -563,6 +588,11 @@ void test_daemon_status_validates_opened_pid_file(void) {
     snprintf(path, sizeof(path), "%s/lightnvr.pid", directory);
     snprintf(alias, sizeof(alias), "%s/alias.pid", directory);
 
+    snprintf(pid_validation_dir, sizeof(pid_validation_dir), "%s", directory);
+    snprintf(pid_validation_path, sizeof(pid_validation_path), "%s", path);
+    snprintf(pid_validation_alias, sizeof(pid_validation_alias), "%s", alias);
+    pid_validation_cleanup_active = true;
+
     int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
     TEST_ASSERT_TRUE(fd >= 0);
     TEST_ASSERT_EQUAL_INT(0, close(fd));
@@ -578,6 +608,7 @@ void test_daemon_status_validates_opened_pid_file(void) {
     TEST_ASSERT_EQUAL_INT(0, unlink(alias));
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    pid_validation_cleanup_active = false;
 }
 
 void test_default_config_mp4_faststart_on(void) {
