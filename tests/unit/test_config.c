@@ -298,7 +298,29 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
         _exit(lock_result < 0 && (lock_error == EACCES || lock_error == EAGAIN) ? 0 : 4);
     }
     int status = 0;
-    TEST_ASSERT_EQUAL_INT(child, waitpid(child, &status, 0));
+    const int wait_step_us = 10000;       /* 10 ms */
+    const int wait_timeout_us = 2000000;  /* 2 s */
+    int waited_us = 0;
+    pid_t waited = -1;
+    while (waited_us < wait_timeout_us) {
+        waited = waitpid(child, &status, WNOHANG);
+        if (waited == child) {
+            break;
+        }
+        if (waited < 0) {
+            if (errno == EINTR) continue;
+            (void)kill(child, SIGKILL);
+            (void)waitpid(child, &status, 0);
+            TEST_FAIL_MESSAGE("waitpid failed while polling child");
+        }
+        usleep((useconds_t)wait_step_us);
+        waited_us += wait_step_us;
+    }
+    if (waited != child) {
+        (void)kill(child, SIGKILL);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(child, waitpid(child, &status, 0), "Timed out waiting for child and failed to reap it");
+        TEST_FAIL_MESSAGE("Timed out waiting for child process");
+    }
     TEST_ASSERT_TRUE(WIFEXITED(status));
     TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
 
@@ -1124,6 +1146,13 @@ void test_custom_config_path_roundtrip(void) {
     const char *path = get_custom_config_path();
     TEST_ASSERT_NOT_NULL(path);
     TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", path);
+
+    /* Empty and NULL inputs must not overwrite an existing stored value. */
+    set_custom_config_path("");
+    TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", get_custom_config_path());
+    set_custom_config_path(NULL);
+    TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", get_custom_config_path());
+
     set_custom_config_path("/tmp/..data/settings.ini");
     TEST_ASSERT_EQUAL_STRING("/tmp/..data/settings.ini", get_custom_config_path());
     set_custom_config_path("/tmp/../escape.ini");
