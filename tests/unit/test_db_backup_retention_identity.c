@@ -441,7 +441,7 @@ static void test_selected_inode_remains_pinned_during_replacement(void) {
 static void test_more_than_sixty_four_backups_preserve_configured_order(void) {
     for (unsigned i = 0; i < 70; ++i) {
         unsigned mm = i / 60, ss = i % 60;
-        char path[384]; snprintf(path, sizeof(path), "%s/20230101T0000%02u%02uZ.sqlite3", backups, mm, ss);
+        char path[384]; snprintf(path, sizeof(path), "%s/20230101T00%02u%02uZ.sqlite3", backups, mm, ss);
         TEST_ASSERT_EQUAL_INT(0, write_bytes(path, "older"));
     }
     TEST_ASSERT_EQUAL_INT(0, prune(2));
@@ -449,7 +449,7 @@ static void test_more_than_sixty_four_backups_preserve_configured_order(void) {
     assert_both_originals();
     for (unsigned i = 0; i < 70; ++i) {
         unsigned mm = i / 60, ss = i % 60;
-        char path[384]; snprintf(path, sizeof(path), "%s/20230101T0000%02u%02uZ.sqlite3", backups, mm, ss);
+        char path[384]; snprintf(path, sizeof(path), "%s/20230101T00%02u%02uZ.sqlite3", backups, mm, ss);
         TEST_ASSERT_FALSE(exists(path));
     }
 }
