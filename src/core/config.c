@@ -983,7 +983,17 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "path_hls") == 0) {
             safe_strcpy(config->storage_path_hls, value, MAX_PATH_LENGTH, 0);
         } else if (strcmp(name, "max_size") == 0) {
-            config->max_storage_size = strtoull(value, NULL, 10);
+            char *endptr = NULL;
+            errno = 0;
+            unsigned long long parsed = strtoull(value, &endptr, 10);
+            while (endptr && isspace((unsigned char)*endptr)) {
+                endptr++;
+            }
+            if (value[0] == '-' || endptr == value || (endptr && *endptr != '\0') || errno == ERANGE) {
+                log_warn("Ignoring invalid max_size '%s'", value);
+            } else {
+                config->max_storage_size = parsed;
+            }
         } else if (strcmp(name, "retention_days") == 0) {
             config->retention_days = safe_atoi(value, 0);
         } else if (strcmp(name, "auto_delete_oldest") == 0) {
