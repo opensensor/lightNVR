@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -131,10 +132,15 @@ static void test_legacy_database_enables_incremental_auto_vacuum(void) {
 }
 
 static void test_overlong_database_path_is_rejected_before_initialization(void) {
-    char path[8192];
-    memset(path, 'x', sizeof(path) - 1);
-    path[sizeof(path) - 1] = '\0';
-    TEST_ASSERT_EQUAL_INT(-1, init_database_ex(path, DB_INIT_NO_BACKUP));
+    char rejected_path[8192];
+    snprintf(rejected_path, sizeof(rejected_path), "%s", test_fixture_dir);
+    for (size_t i = 0; strlen(rejected_path) <= PATH_MAX; i++) {
+        size_t used = strlen(rejected_path);
+        int written = snprintf(rejected_path + used, sizeof(rejected_path) - used,
+                               "/segment%06zu", i);
+        TEST_ASSERT_TRUE(written > 0 && (size_t)written < sizeof(rejected_path) - used);
+    }
+    TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
     TEST_ASSERT_NULL(get_db_handle());
 }
 
