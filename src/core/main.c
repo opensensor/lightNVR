@@ -2054,36 +2054,29 @@ cleanup:
             // Shutdown logging before re-exec
             shutdown_logger();
 
-            // Get the executable path
-            char exe_path[MAX_PATH_LENGTH];
-            ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-            if (len > 0) {
-                exe_path[len] = '\0';
+            // Give the system a moment to release resources
+            usleep(500000);  // 500ms
 
-                // Give the system a moment to release resources
-                usleep(500000);  // 500ms
-
-                // Ensure termination signals are unblocked before exec; signal
-                // masks are inherited across exec and must not carry a blocked
-                // shutdown mask into the restarted process.
-                sigset_t restart_unblock_set;
-                if (sigemptyset(&restart_unblock_set) == 0) {
-                    sigaddset(&restart_unblock_set, SIGINT);
-                    sigaddset(&restart_unblock_set, SIGTERM);
-                    sigaddset(&restart_unblock_set, SIGHUP);
-                    if (pthread_sigmask(SIG_UNBLOCK, &restart_unblock_set, NULL) != 0) {
-                        fprintf(stderr, "Warning: failed to unblock restart signals before exec\n");
-                    }
+            // Ensure termination signals are unblocked before exec; signal
+            // masks are inherited across exec and must not carry a blocked
+            // shutdown mask into the restarted process.
+            sigset_t restart_unblock_set;
+            if (sigemptyset(&restart_unblock_set) == 0) {
+                sigaddset(&restart_unblock_set, SIGINT);
+                sigaddset(&restart_unblock_set, SIGTERM);
+                sigaddset(&restart_unblock_set, SIGHUP);
+                if (pthread_sigmask(SIG_UNBLOCK, &restart_unblock_set, NULL) != 0) {
+                    fprintf(stderr, "Warning: failed to unblock restart signals before exec\n");
                 }
-
-                // Re-exec the program with the same arguments
-                execv(exe_path, saved_argv);
-
-                // If execv returns, it failed
-                fprintf(stderr, "Failed to restart: %s\n", strerror(errno));
-            } else {
-                fprintf(stderr, "Failed to get executable path for restart: %s\n", strerror(errno));
             }
+
+            // Re-exec the currently running image directly via procfs. This
+            // avoids readlink("/proc/self/exe") paths that may end with
+            // " (deleted)" after in-place upgrades.
+            execv("/proc/self/exe", saved_argv);
+
+            // If execv returns, it failed
+            fprintf(stderr, "Failed to restart: %s\n", strerror(errno));
 
             // If we get here, restart failed
             return EXIT_FAILURE;
