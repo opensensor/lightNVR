@@ -407,8 +407,24 @@ static int cleanup_stale_backup_entry(int parent, const char *backup_dir,
 }
 
 static int cleanup_stale_backup_artifacts(const char *backup_dir) {
-    DIR *dir = opendir(backup_dir);
-    if (!dir) return errno == ENOENT ? 0 : -1;
+    int dfd = open(backup_dir, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (dfd < 0) return errno == ENOENT ? 0 : -1;
+
+    struct stat dir_st;
+    if (fstat(dfd, &dir_st) != 0 ||
+        !S_ISDIR(dir_st.st_mode) ||
+        dir_st.st_uid != geteuid() ||
+        (dir_st.st_mode & 077) != 0) {
+        close(dfd);
+        return -1;
+    }
+
+    DIR *dir = fdopendir(dfd);
+    if (!dir) {
+        close(dfd);
+        return -1;
+    }
+
     int result = 0;
     int parent = dirfd(dir);
     if (parent < 0) { closedir(dir); return -1; }
@@ -504,6 +520,11 @@ static int refresh_latest_backup(const char *timestamped_backup_path) {
     if (link(timestamped_backup_path, temp_latest_path) != 0) {
         log_warn("Failed to hard-link latest backup, falling back to copy: %s", strerror(errno));
         if (copy_file_contents(timestamped_backup_path, temp_latest_path) != 0) {
+            unlink(temp_latest_path);
+            return -1;
+        }
+        if (sync_path_if_exists(temp_latest_path) != 0) {
+            log_error("Failed to sync temporary latest backup before publish: %s", temp_latest_path);
             unlink(temp_latest_path);
             return -1;
         }
@@ -1410,20 +1431,25 @@ int init_database_ex(const char *db_path, unsigned flags) {
                     test_db = NULL;
                 }
 
-                test_file = fopen(db_backup_path, "r");
-                if (test_file) {
-                    log_info("Backup database file exists, attempting recovery");
-                    fclose(test_file);
+                int primary_rc = rc & 0xff;
+                if (primary_rc == SQLITE_CORRUPT || primary_rc == SQLITE_NOTADB) {
+                    test_file = fopen(db_backup_path, "r");
+                    if (test_file) {
+                        log_info("Backup database file exists, attempting recovery");
+                        fclose(test_file);
 
-                    if (restore_database_from_backup(db_backup_path, db_path) != 0) {
-                        log_error("Failed to restore database from backup");
-                        // Continue anyway, we'll try to repair the database
+                        if (restore_database_from_backup(db_backup_path, db_path) != 0) {
+                            log_error("Failed to restore database from backup");
+                            // Continue anyway, we'll try to repair the database
+                        } else {
+                            log_info("Successfully restored database from backup");
+                            restored_from_backup = true;
+                        }
                     } else {
-                        log_info("Successfully restored database from backup");
-                        restored_from_backup = true;
+                        log_warn("No backup database file found, will attempt to repair");
                     }
                 } else {
-                    log_warn("No backup database file found, will attempt to repair");
+                    log_warn("Skipping automatic restore: prepare failure was not a corruption indicator (rc=%d)", rc);
                 }
             }
             if (stmt) {
