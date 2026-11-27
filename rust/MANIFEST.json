@@ -1858,9 +1858,9 @@
     },
     {
       "c": "src/web/libuv_connection.c",
-      "c_sha256": "8df28ebc43ee7f06f6e19fca9164b3182c7c54de6bbef8de1f7e076c9beb3e94",
+      "c_sha256": "5b0d1fbecb289d08e44bb23afafdac0d3e615f8e4dbccc6025d43c7d8f50733f",
       "rust": "generated/src__web__libuv_connection.rs",
-      "rust_sha256": "5b9bad6406942526dc3ea55c058fc4c75ccb2d7f64f8b165c7d510d54f868edc",
+      "rust_sha256": "1ce0507682c7e1938215eadeb4b2ebd31417b01e36571484bcf90bd0b9ba6708",
       "adapted": false
     },
     {

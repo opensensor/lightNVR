@@ -109,6 +109,11 @@ unsafe extern "C" {
     unsafe fn go2rtc_websocket_disconnected(conn: *mut libuv_connection_t);
     unsafe fn update_health_metrics(request_succeeded: bool);
     unsafe fn httpd_peer_is_trusted_proxy(req: *const http_request_t) -> bool;
+    unsafe fn httpd_authorize_global_action(
+        req: *const http_request_t,
+        res: *mut http_response_t,
+        action: authorization_action_t,
+    ) -> ::core::ffi::c_int;
     unsafe fn audit_log_sensitive_operation_begin(
         req: *const http_request_t,
         context: *mut audit_sensitive_operation_context_t,
@@ -2359,6 +2364,21 @@ unsafe extern "C" fn static_file_resolve_handler(
 ) {
     let mut conn: *mut libuv_connection_t = (*req).user_data as *mut libuv_connection_t;
     let mut server: *const libuv_server_t = (*conn).server;
+    if strcmp(
+        &raw const (*req).path as *const ::core::ffi::c_char,
+        b"/backups\0".as_ptr() as *const ::core::ffi::c_char,
+    ) == 0 as ::core::ffi::c_int
+        || strncmp(
+            &raw const (*req).path as *const ::core::ffi::c_char,
+            b"/backups/\0".as_ptr() as *const ::core::ffi::c_char,
+            9 as size_t,
+        ) == 0 as ::core::ffi::c_int
+    {
+        if httpd_authorize_global_action(req, res, authorization_action_t::AUTHZ_SYSTEM_ADMIN) == 0
+        {
+            return;
+        }
+    }
     let mut file_path: [::core::ffi::c_char; 512] = [0; 512];
     snprintf(
         &raw mut file_path as *mut ::core::ffi::c_char,
