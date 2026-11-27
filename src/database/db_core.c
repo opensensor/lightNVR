@@ -513,8 +513,94 @@ typedef struct {
     struct stat selected;
 } selected_backup_t;
 
+static int parse_backup_name_components(const char *name,
+                                        const char **ts_start,
+                                        size_t *ts_len,
+                                        unsigned long *suffix) {
+    static const char ext[] = ".sqlite3";
+    size_t ext_len = sizeof(ext) - 1;
+    size_t len;
+    const char *dot;
+    const char *suffix_start;
+    char *endptr = NULL;
+    unsigned long parsed_suffix = 0;
+
+    if (!name || !ts_start || !ts_len || !suffix) {
+        return -1;
+    }
+
+    len = strlen(name);
+    if (len < 16 + ext_len) {
+        return -1;
+    }
+
+    dot = name + (len - ext_len);
+    if (strcmp(dot, ext) != 0) {
+        return -1;
+    }
+
+    /* Only generated YYYYMMDDTHHMMSSZ[-N].sqlite3 names receive numeric
+     * suffix ordering. Other .sqlite3 names retain their lexical order. */
+    for (size_t i = 0; i < 16; i++) {
+        if (i == 8 || i == 15) {
+            if (name[i] != (i == 8 ? 'T' : 'Z')) return -1;
+        } else if (name[i] < '0' || name[i] > '9') {
+            return -1;
+        }
+    }
+    suffix_start = name + 16;
+    if (suffix_start != dot) {
+        if (*suffix_start != '-' || suffix_start + 1 == dot) return -1;
+        for (const char *p = suffix_start + 1; p < dot; p++) {
+            if (*p < '0' || *p > '9') return -1;
+        }
+        errno = 0;
+        parsed_suffix = strtoul(suffix_start + 1, &endptr, 10);
+        if (errno != 0 || endptr != dot) return -1;
+    }
+
+    *ts_start = name;
+    *ts_len = 16;
+    *suffix = parsed_suffix;
+    return 0;
+}
+
 static int compare_selected_backups(const void *lhs, const void *rhs) {
     const selected_backup_t *left = lhs, *right = rhs;
+    const char *left_ts = NULL, *right_ts = NULL;
+    size_t left_ts_len = 0, right_ts_len = 0;
+    unsigned long left_suffix = 0, right_suffix = 0;
+    size_t min_len;
+    int cmp;
+
+    bool left_generated = parse_backup_name_components(
+        left->name, &left_ts, &left_ts_len, &left_suffix) == 0;
+    bool right_generated = parse_backup_name_components(
+        right->name, &right_ts, &right_ts_len, &right_suffix) == 0;
+    if (left_generated != right_generated) {
+        /* Keep malformed or foreign names ahead of generated snapshots. */
+        return left_generated ? 1 : -1;
+    }
+    if (!left_generated) {
+        return strcmp(left->name, right->name);
+    }
+
+    min_len = left_ts_len < right_ts_len ? left_ts_len : right_ts_len;
+    cmp = strncmp(left_ts, right_ts, min_len);
+    if (cmp != 0) {
+        return cmp;
+    }
+    if (left_ts_len != right_ts_len) {
+        return left_ts_len < right_ts_len ? -1 : 1;
+    }
+
+    if (left_suffix < right_suffix) {
+        return -1;
+    }
+    if (left_suffix > right_suffix) {
+        return 1;
+    }
+
     return strcmp(left->name, right->name);
 }
 
@@ -856,10 +942,10 @@ bool db_scheduled_backup_wait_idle(int timeout_ms) {
  * between-batches or verification check.  A settings-driven database
  * restart (api_handlers_settings.c) cannot use that never-reset flag because
  * the process keeps running, so the in-flight backup is cancelled on its own
- * instead.  Either way the wait is bounded; on expiry the handle is closed
- * regardless, with the process-level shutdown watchdogs as the backstop.
+ * instead. The wait is bounded; if the worker remains active, leave the
+ * database open so its private backup connection cannot outlive SQLite.
  */
-static void quiesce_scheduled_backup_worker(void) {
+static bool quiesce_scheduled_backup_worker(void) {
     pthread_mutex_lock(&scheduled_backup_lock);
     scheduled_backup_draining = true;
     bool in_flight = scheduled_backup_in_flight;
@@ -873,9 +959,9 @@ static void quiesce_scheduled_backup_worker(void) {
         // up on this worker: its budget is not granted twice.
         if (!db_scheduled_backup_wait_idle(DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS)) {
             log_error("Scheduled database backup worker has not stopped within its %d s budget; "
-                      "closing the database anyway",
+                      "deferring database close/reinitialization until worker exits",
                       DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
-            return;
+            return false;
         }
         log_info("In-flight scheduled database backup stopped");
     } else {
@@ -886,6 +972,7 @@ static void quiesce_scheduled_backup_worker(void) {
     // Idle: a cancel raised above (or by an earlier restart) must not leak
     // into the next database's initial or scheduled backups.
     db_backup_clear_cancel();
+    return true;
 }
 
 int maybe_run_scheduled_database_backup(void) {
@@ -1496,8 +1583,8 @@ int init_database_ex(const char *db_path, unsigned flags) {
 
     log_info("Database initialized successfully");
 
-    // Create an initial backup if this is a new database
-    if (is_new_database) {
+    // Create an initial backup if this is a new database and backups are enabled
+    if (is_new_database && !(flags & DB_INIT_NO_BACKUP)) {
         log_info("Creating initial backup of new database");
         if (perform_database_backup_cycle("initial", true, true) == 0) {
             log_info("Initial backup created successfully");
@@ -1543,7 +1630,10 @@ void shutdown_database(void) {
     // nothing below -- the final-backup decision, the handle close, or
     // sqlite3_shutdown() -- may run while a scheduled copy is still in
     // flight, and an aborted cycle must not read as a fresh backup.
-    quiesce_scheduled_backup_worker();
+    if (!quiesce_scheduled_backup_worker()) {
+        log_error("Database shutdown deferred while scheduled backup is active");
+        return;
+    }
 
     // Create a final backup before shutting down.
     //

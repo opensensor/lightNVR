@@ -272,6 +272,29 @@ void test_retention_within_limit_preserves_all_bytes(void) {
     assert_bytes(newer_path, "inspected-newer");
 }
 
+void test_retention_orders_same_second_suffixes_numerically(void) {
+    char suffix_two[384], suffix_ten[384];
+    snprintf(suffix_two, sizeof(suffix_two), "%s/20240103T000000Z-2.sqlite3", backups);
+    snprintf(suffix_ten, sizeof(suffix_ten), "%s/20240103T000000Z-10.sqlite3", backups);
+    TEST_ASSERT_EQUAL_INT(0, write_bytes(suffix_two, "suffix-two"));
+    TEST_ASSERT_EQUAL_INT(0, write_bytes(suffix_ten, "suffix-ten"));
+    TEST_ASSERT_EQUAL_INT(0, prune(1));
+    TEST_ASSERT_FALSE(exists(old_path));
+    TEST_ASSERT_FALSE(exists(newer_path));
+    TEST_ASSERT_FALSE(exists(suffix_two));
+    assert_bytes(suffix_ten, "suffix-ten");
+}
+
+void test_retention_places_foreign_names_before_generated_backups(void) {
+    char foreign[384];
+    snprintf(foreign, sizeof(foreign), "%s/operator-10.sqlite3", backups);
+    TEST_ASSERT_EQUAL_INT(0, write_bytes(foreign, "foreign"));
+    TEST_ASSERT_EQUAL_INT(0, prune(1));
+    TEST_ASSERT_FALSE(exists(foreign));
+    TEST_ASSERT_FALSE(exists(old_path));
+    assert_bytes(newer_path, "inspected-newer");
+}
+
 void test_parent_replacement_cannot_redirect_retention_unlink(void) {
     swap_kind = 1;
     int result = prune(1);
@@ -435,6 +458,8 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_retention_keeps_newest_and_excludes_unpublished_artifacts);
     RUN_TEST(test_retention_within_limit_preserves_all_bytes);
+    RUN_TEST(test_retention_orders_same_second_suffixes_numerically);
+    RUN_TEST(test_retention_places_foreign_names_before_generated_backups);
     RUN_TEST(test_parent_replacement_cannot_redirect_retention_unlink);
     RUN_TEST(test_changed_regular_leaf_is_retained_after_inspection);
     RUN_TEST(test_changed_symlink_leaf_and_target_are_retained);

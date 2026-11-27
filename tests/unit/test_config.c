@@ -690,6 +690,9 @@ void test_save_stream_configs_preserves_identities_after_batch_reload(void) {
     snprintf(stream_save_db_path, sizeof(stream_save_db_path), "%s", db_path);
     TEST_ASSERT_EQUAL_INT(0, init_database_ex(db_path, DB_INIT_NO_BACKUP));
     stream_save_db_active = true;
+    char backup_path[MAX_PATH_LENGTH + 5];
+    snprintf(backup_path, sizeof(backup_path), "%s.bak", db_path);
+    TEST_ASSERT_EQUAL_INT(-1, access(backup_path, F_OK));
 
     load_default_config(&cfg);
     snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "camera-one");
