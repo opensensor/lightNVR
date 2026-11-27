@@ -88,6 +88,12 @@ option(ENABLE_GO2RTC "Enable go2rtc integration for WebRTC streaming" ON)
 set(GO2RTC_BINARY_PATH "/usr/local/bin/go2rtc" CACHE STRING "Path to go2rtc binary")
 set(GO2RTC_CONFIG_DIR "/etc/lightnvr/go2rtc" CACHE STRING "Directory for go2rtc configuration files")
 set(GO2RTC_API_PORT 1984 CACHE STRING "Port for go2rtc HTTP API")
+if(NOT "${GO2RTC_API_PORT}" MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "GO2RTC_API_PORT must be a decimal integer in range 1..65535 (got: '${GO2RTC_API_PORT}')")
+endif()
+if(GO2RTC_API_PORT LESS 1 OR GO2RTC_API_PORT GREATER 65535)
+    message(FATAL_ERROR "GO2RTC_API_PORT must be in range 1..65535 (got: '${GO2RTC_API_PORT}')")
+endif()
 
 # llhttp download configuration. Avoid the LLHTTP_VERSION name because
 # pkg_check_modules(LLHTTP ...) owns that variable when libllhttp is probed.
@@ -210,7 +216,7 @@ endif()
 # find_library fallback's library list empty and broke the link.
 unset(MBEDTLS_DETECTION_DONE CACHE)
 macro(DETECT_MBEDTLS)
-    pkg_check_modules(PC_MBEDTLS QUIET IMPORTED_TARGET mbedtls mbedcrypto mbedx509)
+    pkg_check_modules(PC_MBEDTLS QUIET IMPORTED_TARGET mbedtls mbedx509 mbedcrypto)
     if (PC_MBEDTLS_FOUND)
         set(MBEDTLS_LIBRARIES PkgConfig::PC_MBEDTLS)
     else()
@@ -823,6 +829,7 @@ if(ENABLE_SENTRY)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_executable(lightnvr-ffmpeg-guard src/tools/ffmpeg_rss_guard.c)
+    add_dependencies(lightnvr lightnvr-ffmpeg-guard)
     set_target_properties(lightnvr-ffmpeg-guard PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     # Audio workers receive RLIMIT_AS. ASan reserves a large virtual shadow
