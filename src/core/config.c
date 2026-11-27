@@ -5,6 +5,7 @@
  * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2048,7 +2049,7 @@ static int publish_config_in_place_locked(int dir_fd, const char *filename,
         return -1;
     }
     char backup_path[] = "/tmp/lightnvr-config-backup-XXXXXX";
-#if defined(__GLIBC__) || defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__)
     int backup_fd = mkostemp(backup_path, O_CLOEXEC);
 #else
     int backup_fd = mkstemp(backup_path);
