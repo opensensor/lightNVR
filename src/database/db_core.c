@@ -407,8 +407,24 @@ static int cleanup_stale_backup_entry(int parent, const char *backup_dir,
 }
 
 static int cleanup_stale_backup_artifacts(const char *backup_dir) {
-    DIR *dir = opendir(backup_dir);
-    if (!dir) return errno == ENOENT ? 0 : -1;
+    int dfd = open(backup_dir, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (dfd < 0) return errno == ENOENT ? 0 : -1;
+
+    struct stat dir_st;
+    if (fstat(dfd, &dir_st) != 0 ||
+        !S_ISDIR(dir_st.st_mode) ||
+        dir_st.st_uid != getuid() ||
+        (dir_st.st_mode & 077) != 0) {
+        close(dfd);
+        return -1;
+    }
+
+    DIR *dir = fdopendir(dfd);
+    if (!dir) {
+        close(dfd);
+        return -1;
+    }
+
     int result = 0;
     int parent = dirfd(dir);
     if (parent < 0) { closedir(dir); return -1; }
