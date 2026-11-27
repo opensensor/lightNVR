@@ -22,10 +22,12 @@ unsafe extern "C" {
     ) -> llhttp_errno_t;
     unsafe fn llhttp_should_keep_alive(parser: *const llhttp_t) -> ::core::ffi::c_int;
     unsafe fn llhttp_get_error_reason(parser: *const llhttp_t) -> *const ::core::ffi::c_char;
+    unsafe fn llhttp_get_error_pos(parser: *const llhttp_t) -> *const ::core::ffi::c_char;
     unsafe fn llhttp_errno_name(err: llhttp_errno_t) -> *const ::core::ffi::c_char;
     unsafe fn llhttp_method_name(method: llhttp_method_t) -> *const ::core::ffi::c_char;
     unsafe fn uv_strerror(err: ::core::ffi::c_int) -> *const ::core::ffi::c_char;
     unsafe fn uv_close(handle: *mut uv_handle_t, close_cb: uv_close_cb);
+    unsafe fn uv_buf_init(base: *mut ::core::ffi::c_char, len: ::core::ffi::c_uint) -> uv_buf_t;
     unsafe fn uv_is_closing(handle: *const uv_handle_t) -> ::core::ffi::c_int;
     unsafe fn uv_tcp_init(_: *mut uv_loop_t, handle: *mut uv_tcp_t) -> ::core::ffi::c_int;
     unsafe fn uv_queue_work(
@@ -141,6 +143,11 @@ unsafe extern "C" {
         __src: *const ::core::ffi::c_void,
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
+    unsafe fn memmove(
+        __dest: *mut ::core::ffi::c_void,
+        __src: *const ::core::ffi::c_void,
+        __n: size_t,
+    ) -> *mut ::core::ffi::c_void;
     unsafe fn strcmp(
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
@@ -153,6 +160,10 @@ unsafe extern "C" {
     unsafe fn strchr(
         __s: *const ::core::ffi::c_char,
         __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
+    unsafe fn strstr(
+        __haystack: *const ::core::ffi::c_char,
+        __needle: *const ::core::ffi::c_char,
     ) -> *mut ::core::ffi::c_char;
     unsafe fn strtok_r(
         __s: *mut ::core::ffi::c_char,
@@ -1228,8 +1239,7 @@ pub struct libuv_connection {
     pub settings: llhttp_settings_t,
     pub request: http_request_t,
     pub response: http_response_t,
-    pub body_offset: size_t,
-    pub body_present: bool,
+    pub unread_bytes: size_t,
     pub server: *mut libuv_server_t,
     pub tls_session: *mut ::core::ffi::c_void,
     pub headers_complete: bool,
@@ -1712,6 +1722,7 @@ pub unsafe extern "C" fn libuv_connection_reset(mut conn: *mut libuv_connection_
     go2rtc_websocket_disconnected(conn);
     recording_archive_disconnected(conn);
     http_response_free(&raw mut (*conn).response);
+    safe_free((*conn).request.body);
     http_request_init(&raw mut (*conn).request);
     http_response_init(&raw mut (*conn).response);
     safe_strcpy(
@@ -1725,9 +1736,21 @@ pub unsafe extern "C" fn libuv_connection_reset(mut conn: *mut libuv_connection_
     (*conn).message_complete = r#false != 0;
     (*conn).current_header_field[0usize] = '\0' as ::core::ffi::c_char;
     (*conn).current_header_field_len = 0 as size_t;
+    let mut unread: size_t = (*conn).unread_bytes;
+    if unread > 0 as size_t && unread <= (*conn).recv_buffer_used {
+        memmove(
+            (*conn).recv_buffer as *mut ::core::ffi::c_void,
+            (*conn)
+                .recv_buffer
+                .offset((*conn).recv_buffer_used as isize)
+                .offset(-(unread as isize)) as *const ::core::ffi::c_void,
+            unread,
+        );
+    } else {
+        unread = 0 as size_t;
+    }
     (*conn).recv_buffer_used = 0 as size_t;
-    (*conn).body_offset = 0 as size_t;
-    (*conn).body_present = r#false != 0;
+    (*conn).unread_bytes = 0 as size_t;
     (*conn).handler_on_worker = r#false != 0;
     (*conn).deferred_file_serve = r#false != 0;
     (*conn).async_response_pending = r#false != 0;
@@ -1745,6 +1768,15 @@ pub unsafe extern "C" fn libuv_connection_reset(mut conn: *mut libuv_connection_
                     as unsafe extern "C" fn(*mut uv_stream_t, ssize_t, *const uv_buf_t) -> (),
             ),
         );
+        if unread > 0 as size_t {
+            let mut pending: uv_buf_t =
+                uv_buf_init((*conn).recv_buffer, unread as ::core::ffi::c_uint);
+            libuv_read_cb(
+                &raw mut (*conn).handle as *mut uv_stream_t,
+                unread as ssize_t,
+                &raw mut pending,
+            );
+        }
     }
 }
 #[unsafe(no_mangle)]
@@ -1769,6 +1801,7 @@ pub unsafe extern "C" fn libuv_connection_destroy(mut conn: *mut libuv_connectio
     go2rtc_websocket_disconnected(conn);
     recording_archive_disconnected(conn);
     http_response_free(&raw mut (*conn).response);
+    safe_free((*conn).request.body);
     libuv_tls_session_free(conn);
     if !(*conn).recv_buffer.is_null() {
         safe_free((*conn).recv_buffer as *mut ::core::ffi::c_void);
@@ -1860,6 +1893,22 @@ pub unsafe extern "C" fn libuv_read_cb(
         llhttp_execute(&raw mut (*conn).parser, (*buf).base, nread as size_t);
     if err.0 != llhttp_errno::HPE_OK.0 {
         if err.0 == llhttp_errno::HPE_PAUSED.0 {
+            let mut next: *const ::core::ffi::c_char =
+                llhttp_get_error_pos(&raw mut (*conn).parser);
+            (*conn).unread_bytes = 0 as size_t;
+            if !next.is_null() && next >= (*buf).base && next <= (*buf).base.offset(nread as isize)
+            {
+                (*conn).unread_bytes =
+                    (*buf).base.offset(nread as isize).offset_from(next) as size_t;
+            }
+            if (*conn).unread_bytes > 0 as size_t {
+                memmove(
+                    (*conn).recv_buffer as *mut ::core::ffi::c_void,
+                    next as *const ::core::ffi::c_void,
+                    (*conn).unread_bytes,
+                );
+            }
+            (*conn).recv_buffer_used = (*conn).unread_bytes;
             return;
         }
         if err.0 == llhttp_errno::HPE_CLOSED_CONNECTION.0 {
@@ -1894,6 +1943,8 @@ pub unsafe extern "C" fn libuv_read_cb(
         );
         return;
     }
+    (*conn).unread_bytes = 0 as size_t;
+    (*conn).recv_buffer_used = 0 as size_t;
 }
 unsafe extern "C" fn request_path_has_dot_segment(mut path: *const ::core::ffi::c_char) -> bool {
     if path.is_null() {
@@ -2180,20 +2231,28 @@ unsafe extern "C" fn on_body(
     mut length: size_t,
 ) -> ::core::ffi::c_int {
     let mut conn: *mut libuv_connection_t = (*parser).data as *mut libuv_connection_t;
-    if !(*conn).body_present {
-        if at >= (*conn).recv_buffer
-            && at
-                <= (*conn)
-                    .recv_buffer
-                    .offset((*conn).recv_buffer_size as isize)
-        {
-            (*conn).body_offset = at.offset_from((*conn).recv_buffer) as size_t;
-            (*conn).body_present = r#true != 0;
-            (*conn).request.body_len = length;
-        }
-    } else {
-        (*conn).request.body_len = (*conn).request.body_len.wrapping_add(length);
+    if length == 0 as size_t {
+        return 0 as ::core::ffi::c_int;
     }
+    let mut old_len: size_t = (*conn).request.body_len;
+    if length > LIBUV_RECV_BUFFER_MAX.wrapping_sub(old_len) {
+        return llhttp_errno::HPE_USER.0 as ::core::ffi::c_int;
+    }
+    let mut new_body: *mut ::core::ffi::c_char = safe_realloc(
+        (*conn).request.body,
+        old_len.wrapping_add(length).wrapping_add(1 as size_t),
+    ) as *mut ::core::ffi::c_char;
+    if new_body.is_null() {
+        return llhttp_errno::HPE_USER.0 as ::core::ffi::c_int;
+    }
+    memcpy(
+        new_body.offset(old_len as isize) as *mut ::core::ffi::c_void,
+        at as *const ::core::ffi::c_void,
+        length,
+    );
+    *new_body.offset(old_len.wrapping_add(length) as isize) = '\0' as ::core::ffi::c_char;
+    (*conn).request.body = new_body as *mut ::core::ffi::c_void;
+    (*conn).request.body_len = old_len.wrapping_add(length);
     return 0 as ::core::ffi::c_int;
 }
 unsafe extern "C" fn path_matches_pattern(
@@ -2364,6 +2423,19 @@ unsafe extern "C" fn static_file_resolve_handler(
 ) {
     let mut conn: *mut libuv_connection_t = (*req).user_data as *mut libuv_connection_t;
     let mut server: *const libuv_server_t = (*conn).server;
+    if !strstr(
+        &raw const (*req).path as *const ::core::ffi::c_char,
+        b"//\0".as_ptr() as *const ::core::ffi::c_char,
+    )
+    .is_null()
+    {
+        http_response_set_json_error(
+            res,
+            400 as ::core::ffi::c_int,
+            b"Bad Request\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return;
+    }
     if strcmp(
         &raw const (*req).path as *const ::core::ffi::c_char,
         b"/backups\0".as_ptr() as *const ::core::ffi::c_char,
@@ -2543,18 +2615,11 @@ unsafe extern "C" fn static_file_resolve_handler(
 unsafe extern "C" fn on_message_complete(mut parser: *mut llhttp_t) -> ::core::ffi::c_int {
     let mut conn: *mut libuv_connection_t = (*parser).data as *mut libuv_connection_t;
     (*conn).message_complete = r#true != 0;
-    if (*conn).body_present {
-        (*conn).request.body =
-            (*conn).recv_buffer.offset((*conn).body_offset as isize) as *mut ::core::ffi::c_void;
-    } else {
-        (*conn).request.body = NULL;
-        (*conn).request.body_len = 0 as size_t;
-    }
     let mut server: *mut libuv_server_t = (*conn).server;
     let mut handler: request_handler_t = None;
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    's_67: while i < (*server).handler_count {
-        's_36: {
+    's_44: while i < (*server).handler_count {
+        's_13: {
             if (*(*server).handlers.offset(i as isize)).method[0usize] as ::core::ffi::c_int
                 != '\0' as ::core::ffi::c_int
             {
@@ -2564,7 +2629,7 @@ unsafe extern "C" fn on_message_complete(mut parser: *mut llhttp_t) -> ::core::f
                     &raw mut (*conn).request.method_str as *mut ::core::ffi::c_char,
                 ) != 0 as ::core::ffi::c_int
                 {
-                    break 's_36;
+                    break 's_13;
                 }
             }
             if path_matches_pattern(
@@ -2572,7 +2637,7 @@ unsafe extern "C" fn on_message_complete(mut parser: *mut llhttp_t) -> ::core::f
                 &raw mut (*(*server).handlers.offset(i as isize)).path as *mut ::core::ffi::c_char,
             ) {
                 handler = (*(*server).handlers.offset(i as isize)).handler;
-                break 's_67;
+                break 's_44;
             }
         }
         i += 1;
@@ -2618,7 +2683,7 @@ unsafe extern "C" fn on_message_complete(mut parser: *mut llhttp_t) -> ::core::f
             b"Service temporarily unavailable\0".as_ptr() as *const ::core::ffi::c_char,
         );
         libuv_send_response_ex(conn, &raw mut (*conn).response, action);
-        return llhttp_errno::HPE_OK.0 as ::core::ffi::c_int;
+        return llhttp_errno::HPE_PAUSED.0 as ::core::ffi::c_int;
     }
     if handler.is_some() {
         libuv_connection_read_stop(conn);
@@ -2638,7 +2703,7 @@ unsafe extern "C" fn on_message_complete(mut parser: *mut llhttp_t) -> ::core::f
                 b"Internal Server Error\0".as_ptr() as *const ::core::ffi::c_char,
             );
             libuv_send_response_ex(conn, &raw mut (*conn).response, action);
-            return llhttp_errno::HPE_OK.0 as ::core::ffi::c_int;
+            return llhttp_errno::HPE_PAUSED.0 as ::core::ffi::c_int;
         }
         (*hw).work.data = hw as *mut ::core::ffi::c_void;
         (*hw).conn = conn;
@@ -2676,7 +2741,7 @@ unsafe extern "C" fn on_message_complete(mut parser: *mut llhttp_t) -> ::core::f
                 b"Internal Server Error\0".as_ptr() as *const ::core::ffi::c_char,
             );
             libuv_send_response_ex(conn, &raw mut (*conn).response, action);
-            return llhttp_errno::HPE_OK.0 as ::core::ffi::c_int;
+            return llhttp_errno::HPE_PAUSED.0 as ::core::ffi::c_int;
         }
         return llhttp_errno::HPE_PAUSED.0 as ::core::ffi::c_int;
     } else {
