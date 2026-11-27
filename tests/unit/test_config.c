@@ -56,6 +56,9 @@ static stream_config_t *owned_snapshot_streams;
 static int owned_pid_fd;
 static char owned_pid_path[MAX_PATH_LENGTH];
 static bool deny_config_chmod;
+static bool deny_config_chmod_target_set;
+static dev_t deny_config_chmod_target_dev;
+static ino_t deny_config_chmod_target_ino;
 static bool owned_bind_dir_active;
 static char owned_bind_dir_path[MAX_PATH_LENGTH];
 static char owned_bind_file_path[MAX_PATH_LENGTH];
@@ -90,11 +93,27 @@ static const char *const timeout_env_names[] = {
 static char *saved_timeout_env[2];
 int __real_fchmod(int, mode_t);
 FILE *__real_fdopen(int, const char *);
+static void arm_deny_config_chmod_target_from_fd(int fd) {
+    struct stat st;
+    if (fstat(fd, &st) == 0) {
+        deny_config_chmod_target_dev = st.st_dev;
+        deny_config_chmod_target_ino = st.st_ino;
+        deny_config_chmod_target_set = true;
+    } else {
+        deny_config_chmod_target_set = false;
+    }
+}
 int __wrap_fchmod(int fd, mode_t mode) {
     if (deny_config_chmod) {
-        deny_config_chmod = false;
-        errno = EPERM;
-        return -1;
+        struct stat st;
+        if (deny_config_chmod_target_set &&
+            fstat(fd, &st) == 0 &&
+            st.st_dev == deny_config_chmod_target_dev &&
+            st.st_ino == deny_config_chmod_target_ino) {
+            deny_config_chmod = false;
+            errno = EPERM;
+            return -1;
+        }
     }
     return __real_fchmod(fd, mode);
 }
