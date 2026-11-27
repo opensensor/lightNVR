@@ -136,6 +136,7 @@ test('setup discovery follows the current bootstrap state and global policy',asy
 
 test('restart and shutdown acknowledgments are followed by actual owned-process outcomes',async()=>{
  const server=await startFixture();
+ let expectedExitCode=0;
  try {
   const before=readFileSync(server.logPath,'utf8');
   valid('SystemActionAccepted',await ok(server,'/api/system/restart',admin,'POST'));
@@ -144,7 +145,9 @@ test('restart and shutdown acknowledgments are followed by actual owned-process 
   if(after.includes('native mode')){
    await expect.poll(async()=>{try{return (await server.request('/api/system/status')).status;}catch{return 0;}},{timeout:30000}).toBe(200);
    valid('SystemActionAccepted',await ok(server,'/api/system/shutdown',admin,'POST'));
+  } else {
+   expectedExitCode=75; // Container restart asks the orchestrator to relaunch us.
   }
   await expect.poll(()=>{try{process.kill(server.pid,0);return true;}catch{return false;}},{timeout:30000}).toBe(false);
- } finally {await server.stop();}
+ } finally {await server.stop({expectedExitCode});}
 });

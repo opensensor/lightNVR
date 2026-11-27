@@ -19,7 +19,7 @@ export interface ContractFixture {
   kill(signal?: 'SIGKILL' | 'SIGTERM'): Promise<void>;
   /** Test-only: start the next process generation on the same directory, config and port. */
   relaunch(): Promise<void>;
-  stop(options?: {failed?: boolean}): Promise<void>;
+  stop(options?: {failed?: boolean; expectedExitCode?: number}): Promise<void>;
 }
 export declare const credentials: Readonly<Record<'admin' | 'viewer', FixtureCredentials>>;
 export declare function basic(identity: FixtureCredentials): string;
