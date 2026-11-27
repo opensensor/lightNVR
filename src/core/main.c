@@ -498,9 +498,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             return -1;
         }
         int term_rc = -1;
+        int term_error = 0;
         if (used_pidfd) {
             term_rc = send_signal_via_pidfd(pidfd, SIGTERM);
-            if (term_rc != 0 && errno == ENOSYS) {
+            if (term_rc != 0) term_error = errno;
+            if (term_rc != 0 && term_error == ENOSYS) {
                 close(pidfd);
                 pidfd = -1;
                 used_pidfd = false;
@@ -510,7 +512,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             log_error("Cannot safely terminate previous instance without pidfd support; stop it through the service manager before starting LightNVR again");
             return -1;
         }
-        if (term_rc == 0) {
+        bool process_already_exited = (term_rc != 0 && term_error == ESRCH);
+        if (process_already_exited) {
+            log_info("Previous instance exited before SIGTERM could be delivered; waiting for PID file lock release");
+        }
+        if (term_rc == 0 || process_already_exited) {
             // Wait for graceful shutdown to complete before escalating to SIGKILL
             int timeout = SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS + 30;
             bool still_running = true;
@@ -1830,14 +1836,18 @@ cleanup:
         // Wait for detection stream readers to stop
         usleep(500000);  // 500ms
 
-        // Stop all streams to ensure clean shutdown
-        for (int i = 0; i < g_config.max_streams; i++) {
-            if (config.streams[i].name[0] != '\0') {
-                stream_handle_t stream = get_stream_by_name(config.streams[i].name);
-                if (stream) {
-                    log_info("Stopping stream: %s", config.streams[i].name);
-                    stop_stream(stream);
+        // Stop all streams to ensure clean shutdown.
+        // Enumerate currently registered runtime streams (not startup config),
+        // so streams added/renamed at runtime are also stopped.
+        int stream_capacity = get_stream_capacity();
+        for (int i = 0; i < stream_capacity; i++) {
+            stream_handle_t stream = get_stream_by_index(i);
+            if (stream) {
+                stream_config_t runtime_config = {0};
+                if (get_stream_config(stream, &runtime_config) == 0) {
+                    log_info("Stopping stream: %s", runtime_config.name);
                 }
+                stop_stream(stream);
             }
         }
 
