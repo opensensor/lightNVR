@@ -364,7 +364,7 @@ static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAP
                              env_name, env_value, *int_ptr);
                     break;
                 }
-                if (strcmp(mapping->env_name, "LIGHTNVR_GO2RTC_WEBRTC_LISTEN_PORT") == 0 &&
+                if (strcmp(mapping->env_name, "GO2RTC_WEBRTC_LISTEN_PORT") == 0 &&
                     (new_value < 0 || new_value > 65535)) {
                     log_warn("Invalid go2rtc WebRTC listen port for %s: '%s'; "
                              "must be between 0 and 65535; keeping existing value %d",
@@ -1616,25 +1616,33 @@ int load_stream_configs(config_t *config) {
     pthread_mutex_lock(&mp4_faststart_mutex);
     stream_config_t *initial_streams = config->streams;
     int initial_max_streams = config->max_streams;
-    uint64_t initial_stream_generation = config->stream_generation;
-    pthread_mutex_unlock(&mp4_faststart_mutex);
-    if (!initial_streams) return -1;
-
-    if (initial_max_streams <= 0 || initial_max_streams > MAX_STREAMS) {
+    if (!initial_streams || initial_max_streams <= 0 || initial_max_streams > MAX_STREAMS) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
         log_error("load_stream_configs: invalid max_streams value (%d)", initial_max_streams);
         return -1;
     }
 
     size_t max_streams = (size_t)initial_max_streams;
     if (max_streams > SIZE_MAX / sizeof(stream_config_t)) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
         log_error("load_stream_configs: max_streams causes size overflow");
         return -1;
     }
+    size_t snapshot_bytes = max_streams * sizeof(stream_config_t);
+    stream_config_t *initial_snapshot = malloc(snapshot_bytes);
+    if (!initial_snapshot) {
+        pthread_mutex_unlock(&mp4_faststart_mutex);
+        log_error("load_stream_configs: out of memory allocating stream snapshot");
+        return -1;
+    }
+    memcpy(initial_snapshot, initial_streams, snapshot_bytes);
+    pthread_mutex_unlock(&mp4_faststart_mutex);
 
     // Get stream count from database
     int count = count_stream_configs();
     if (count < 0) {
         log_error("Failed to count stream configurations in database");
+        free(initial_snapshot);
         return -1;
     }
 
@@ -1642,15 +1650,16 @@ int load_stream_configs(config_t *config) {
         pthread_mutex_lock(&mp4_faststart_mutex);
         if (config->streams != initial_streams ||
             config->max_streams != initial_max_streams ||
-            config->stream_generation != initial_stream_generation) {
+            memcmp(config->streams, initial_snapshot, snapshot_bytes) != 0) {
             pthread_mutex_unlock(&mp4_faststart_mutex);
+            free(initial_snapshot);
             return -1;
         }
         for (size_t i = 0; i < max_streams; i++) {
             init_stream_config_defaults(&config->streams[i]);
         }
-        config->stream_generation++;
         pthread_mutex_unlock(&mp4_faststart_mutex);
+        free(initial_snapshot);
 
         log_info("No stream configurations found in database");
         return 0;
@@ -1667,12 +1676,14 @@ int load_stream_configs(config_t *config) {
     stream_config_t *db_streams = calloc(load_capacity, sizeof(stream_config_t));
     if (!db_streams) {
         log_error("load_stream_configs: out of memory allocating %zu stream configs", load_capacity);
+        free(initial_snapshot);
         return -1;
     }
     int loaded = get_all_stream_configs(db_streams, (int)load_capacity);
     if (loaded < 0) {
         log_error("Failed to load stream configurations from database");
         free(db_streams);
+        free(initial_snapshot);
         return -1;
     }
 
@@ -1680,9 +1691,10 @@ int load_stream_configs(config_t *config) {
     pthread_mutex_lock(&mp4_faststart_mutex);
     if (config->streams != initial_streams ||
         config->max_streams != initial_max_streams ||
-        config->stream_generation != initial_stream_generation) {
+        memcmp(config->streams, initial_snapshot, snapshot_bytes) != 0) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
         free(db_streams);
+        free(initial_snapshot);
         return -1;
     }
 
@@ -1695,10 +1707,9 @@ int load_stream_configs(config_t *config) {
     for (int i = 0; i < loaded; i++) {
         memcpy(&config->streams[i], &db_streams[i], sizeof(stream_config_t));
     }
-    config->stream_generation++;
-
     pthread_mutex_unlock(&mp4_faststart_mutex);
     free(db_streams);
+    free(initial_snapshot);
 
     log_info("Loaded %d stream configurations from database", loaded);
     return loaded;
@@ -2485,7 +2496,7 @@ static int save_config_snapshot(const config_t *config, const char *path) {
             return -1;
         }
     }
-    if (target_exists) {
+    if (target_exists && original_fd >= 0) {
         if (fstat(original_fd, &config_stat) != 0 ||
             !S_ISREG(config_stat.st_mode) || config_stat.st_nlink != 1) {
             log_error("Config save target must be a regular file with one link: %s", canonical_save_path);
