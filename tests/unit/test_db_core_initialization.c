@@ -30,6 +30,28 @@ static const char *path_with_suffix(const char *base, const char *suffix) {
     return path;
 }
 
+static unsigned char *read_entire_file(const char *path, size_t *out_size) {
+    FILE *f = fopen(path, "rb");
+    TEST_ASSERT_NOT_NULL(f);
+
+    TEST_ASSERT_EQUAL_INT(0, fseek(f, 0, SEEK_END));
+    long file_size = ftell(f);
+    TEST_ASSERT_TRUE(file_size >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fseek(f, 0, SEEK_SET));
+
+    unsigned char *buffer = NULL;
+    if (file_size > 0) {
+        buffer = (unsigned char *)malloc((size_t)file_size);
+        TEST_ASSERT_NOT_NULL(buffer);
+        size_t read_count = fread(buffer, 1, (size_t)file_size, f);
+        TEST_ASSERT_EQUAL_UINT64((uint64_t)file_size, (uint64_t)read_count);
+    }
+
+    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+    *out_size = (size_t)file_size;
+    return buffer;
+}
+
 static void initialize_test_paths(void) {
     if (test_paths_initialized) return;
 
@@ -201,11 +223,26 @@ void test_read_only_initialization_cannot_write(void) {
     struct stat wal_after;
     struct stat shm_before;
     struct stat shm_after;
+    size_t wal_before_size = 0;
+    size_t wal_after_size = 0;
+    size_t shm_before_size = 0;
+    size_t shm_after_size = 0;
+    unsigned char *wal_before_bytes = NULL;
+    unsigned char *wal_after_bytes = NULL;
+    unsigned char *shm_before_bytes = NULL;
+    unsigned char *shm_after_bytes = NULL;
+    const char *wal_path = NULL;
+    const char *shm_path = NULL;
+
     create_readable_wal_database();
     TEST_ASSERT_EQUAL_INT(0, chmod(TEST_DB_PATH, 0400));
     TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &before));
-    TEST_ASSERT_EQUAL_INT(0, stat(path_with_suffix(TEST_DB_PATH, "-wal"), &wal_before));
-    TEST_ASSERT_EQUAL_INT(0, stat(path_with_suffix(TEST_DB_PATH, "-shm"), &shm_before));
+    wal_path = path_with_suffix(TEST_DB_PATH, "-wal");
+    TEST_ASSERT_EQUAL_INT(0, stat(wal_path, &wal_before));
+    wal_before_bytes = read_entire_file(wal_path, &wal_before_size);
+    shm_path = path_with_suffix(TEST_DB_PATH, "-shm");
+    TEST_ASSERT_EQUAL_INT(0, stat(shm_path, &shm_before));
+    shm_before_bytes = read_entire_file(shm_path, &shm_before_size);
 
     TEST_ASSERT_EQUAL_INT(
         0, init_database_ex(TEST_DB_PATH, DB_INIT_READ_ONLY));
@@ -229,14 +266,27 @@ void test_read_only_initialization_cannot_write(void) {
 
     shutdown_database();
     TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &after));
-    TEST_ASSERT_EQUAL_INT(0, stat(path_with_suffix(TEST_DB_PATH, "-wal"), &wal_after));
-    TEST_ASSERT_EQUAL_INT(0, stat(path_with_suffix(TEST_DB_PATH, "-shm"), &shm_after));
+    TEST_ASSERT_EQUAL_INT(0, stat(wal_path, &wal_after));
+    wal_after_bytes = read_entire_file(wal_path, &wal_after_size);
+    TEST_ASSERT_EQUAL_INT(0, stat(shm_path, &shm_after));
+    shm_after_bytes = read_entire_file(shm_path, &shm_after_size);
     TEST_ASSERT_EQUAL_INT64(before.st_size, after.st_size);
     TEST_ASSERT_EQUAL_UINT(before.st_mode, after.st_mode);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_sec, after.st_mtim.tv_sec);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_nsec, after.st_mtim.tv_nsec);
-    TEST_ASSERT_EQUAL_INT64(wal_before.st_size, wal_after.st_size);
-    TEST_ASSERT_EQUAL_INT64(shm_before.st_size, shm_after.st_size);
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)wal_before_size, (uint64_t)wal_after_size);
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)shm_before_size, (uint64_t)shm_after_size);
+    if (wal_before_size > 0) {
+        TEST_ASSERT_EQUAL_INT(0, memcmp(wal_before_bytes, wal_after_bytes, wal_before_size));
+    }
+    if (shm_before_size > 0) {
+        TEST_ASSERT_EQUAL_INT(0, memcmp(shm_before_bytes, shm_after_bytes, shm_before_size));
+    }
+
+    free(wal_before_bytes);
+    free(wal_after_bytes);
+    free(shm_before_bytes);
+    free(shm_after_bytes);
 }
 
 void test_writable_initialization_removes_only_stale_backup_artifacts(void) {
