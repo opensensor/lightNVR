@@ -1903,6 +1903,9 @@ static void test_save_config_preserves_owned_file_when_publish_fails(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(group_replace_dir, sizeof(group_replace_dir), "%s", directory);
+    snprintf(group_replace_path, sizeof(group_replace_path), "%s", path);
+    group_replace_cleanup_active = true;
     FILE *initial = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(initial);
     fputs("previous configuration", initial);
@@ -1912,14 +1915,16 @@ static void test_save_config_preserves_owned_file_when_publish_fails(void) {
     TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
     deny_config_rename = false;
     char content[64] = {0};
-    FILE *saved = fopen(path, "r");
-    TEST_ASSERT_NOT_NULL(saved);
+    saved_config_file = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(saved_config_file);
     TEST_ASSERT_EQUAL_UINT(strlen("previous configuration"),
-                           fread(content, 1, sizeof(content) - 1, saved));
-    fclose(saved);
+                           fread(content, 1, sizeof(content) - 1, saved_config_file));
+    fclose(saved_config_file);
+    saved_config_file = NULL;
     TEST_ASSERT_EQUAL_STRING("previous configuration", content);
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    group_replace_cleanup_active = false;
 }
 
 static void test_save_config_rejects_unsafe_credentials_before_writing(void) {
