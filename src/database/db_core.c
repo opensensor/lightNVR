@@ -460,6 +460,9 @@ static int copy_file_contents(const char *source_path, const char *dest_path) {
             break;
         }
         if (bytes_read < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             log_error("Failed to read source file during copy: %s (%s)", source_path, strerror(errno));
             close(src_fd);
             close(dst_fd);
@@ -469,7 +472,11 @@ static int copy_file_contents(const char *source_path, const char *dest_path) {
         ssize_t total_written = 0;
         while (total_written < bytes_read) {
             ssize_t bytes_written = write(dst_fd, buffer + total_written, (size_t)(bytes_read - total_written));
-            if (bytes_written < 0) {
+            if (bytes_written <= 0) {
+                if (bytes_written < 0 && errno == EINTR) {
+                    continue;
+                }
+                if (bytes_written == 0) errno = EIO;
                 log_error("Failed to write destination file during copy: %s (%s)", dest_path, strerror(errno));
                 close(src_fd);
                 close(dst_fd);
@@ -1034,9 +1041,15 @@ int maybe_run_scheduled_database_backup(void) {
     time_t interval_seconds = (time_t)g_config.db_backup_interval_minutes * 60;
     time_t last_cycle = last_scheduled_backup_finished > last_backup_time
         ? last_scheduled_backup_finished : last_backup_time;
-    if (last_cycle != 0 && now - last_cycle < interval_seconds) {
-        pthread_mutex_unlock(&scheduled_backup_lock);
-        return 0;
+    if (last_cycle != 0) {
+        if (now < last_cycle) {
+            pthread_mutex_unlock(&scheduled_backup_lock);
+            return 0;
+        }
+        if (now - last_cycle < interval_seconds) {
+            pthread_mutex_unlock(&scheduled_backup_lock);
+            return 0;
+        }
     }
 
     // Nothing is in flight here, so a cancel that shutdown_database() could
@@ -1758,21 +1771,14 @@ int init_database_ex(const char *db_path, unsigned flags) {
     return 0;
 }
 
-// Reset SQLite internal state to prevent memory leaks
+// Ask SQLite to release unused heap memory back to the system.
 static void reset_sqlite_internal_state(void) {
-    log_info("Resetting SQLite internal state to prevent memory leaks");
+    log_info("Releasing unused SQLite memory");
 
-    // Reset SQLite's internal memory management
-    sqlite3_config(SQLITE_CONFIG_MEMSTATUS, 1);
-
-    // Release unused memory back to the system
+    // Valid while initialized; returns amount of memory actually released.
     sqlite3_release_memory(INT_MAX);
 
-    // Reset SQLite's internal thread-local storage
-    sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
-    sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
-
-    log_info("SQLite internal state reset complete");
+    log_info("SQLite memory release request complete");
 }
 
 // Shutdown the database
