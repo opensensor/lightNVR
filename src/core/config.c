@@ -2763,31 +2763,37 @@ int save_config(const config_t *config, const char *path) {
 // Print configuration to stdout (for debugging)
 void print_config(const config_t *config) {
     if (!config) return;
-    
+
+    config_t snapshot = {0};
+    if (!config_copy_settings_only(&snapshot, config)) {
+        log_error("Could not create config snapshot for printing");
+        return;
+    }
+
     printf("LightNVR Configuration:\n");
     printf("  General Settings:\n");
-    printf("    PID File: %s\n", config->pid_file);
-    printf("    Log File: %s\n", config->log_file);
-    printf("    Log Level: %d\n", config->log_level);
+    printf("    PID File: %s\n", snapshot.pid_file);
+    printf("    Log File: %s\n", snapshot.log_file);
+    printf("    Log Level: %d\n", snapshot.log_level);
     
     printf("  Storage Settings:\n");
-    printf("    Storage Path: %s\n", config->storage_path);
-    if (config->storage_path_hls[0] != '\0') {
-        printf("    HLS Storage Path: %s\n", config->storage_path_hls);
+    printf("    Storage Path: %s\n", snapshot.storage_path);
+    if (snapshot.storage_path_hls[0] != '\0') {
+        printf("    HLS Storage Path: %s\n", snapshot.storage_path_hls);
     }
-    printf("    Max Storage Size: %llu bytes\n", (unsigned long long)config->max_storage_size);
-    printf("    Retention Days: %d\n", config->retention_days);
-    printf("    Auto Delete Oldest: %s\n", config->auto_delete_oldest ? "true" : "false");
-    printf("    MP4 Faststart: %s\n", config_get_mp4_faststart(config) ? "true" : "false");
+    printf("    Max Storage Size: %llu bytes\n", (unsigned long long)snapshot.max_storage_size);
+    printf("    Retention Days: %d\n", snapshot.retention_days);
+    printf("    Auto Delete Oldest: %s\n", snapshot.auto_delete_oldest ? "true" : "false");
+    printf("    MP4 Faststart: %s\n", config_get_mp4_faststart(&snapshot) ? "true" : "false");
 
     printf("  Health Settings:\n");
-    printf("    Enabled: %s\n", config->health.enabled ? "true" : "false");
-    printf("    Profile: %s\n", config->health.profile);
+    printf("    Enabled: %s\n", snapshot.health.enabled ? "true" : "false");
+    printf("    Profile: %s\n", snapshot.health.profile);
     printf("    Sampling intervals: %u/%u/%u/%u seconds\n",
-           config->health.fast_interval_seconds,
-           config->health.normal_interval_seconds,
-           config->health.slow_interval_seconds,
-           config->health.device_interval_seconds);
+           snapshot.health.fast_interval_seconds,
+           snapshot.health.normal_interval_seconds,
+           snapshot.health.slow_interval_seconds,
+           snapshot.health.device_interval_seconds);
     
     printf("  Models Settings:\n");
     printf("    Models Path: %s\n", config->models_path);
