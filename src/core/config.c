@@ -1341,7 +1341,20 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "swap_file") == 0) {
             safe_strcpy(config->swap_file, value, MAX_PATH_LENGTH, 0);
         } else if (strcmp(name, "swap_size") == 0) {
-            config->swap_size = strtoull(value, NULL, 10);
+            char *endptr = NULL;
+            errno = 0;
+
+            if (value[0] == '\0' || strspn(value, "0123456789") != strlen(value)) {
+                log_warn("Invalid swap_size '%s': expected a non-negative integer. Keeping previous value.", value);
+            } else {
+                unsigned long long parsed = strtoull(value, &endptr, 10);
+                if (errno == ERANGE || endptr == value || *endptr != '\0') {
+                    log_warn("Invalid swap_size '%s': expected a non-negative integer in range. Keeping previous value.",
+                             value);
+                } else {
+                    config->swap_size = parsed;
+                }
+            }
         }
     }
     // Hardware acceleration
@@ -2910,7 +2923,9 @@ bool config_set_api_detection_format(config_t *config, const char *name) {
     if (!config || !api_detection_format_parse(name, &format)) {
         return false;
     }
+    pthread_mutex_lock(&mp4_faststart_mutex);
     safe_strcpy(config->api_detection_format, api_detection_format_name(format),
                 sizeof(config->api_detection_format), 0);
+    pthread_mutex_unlock(&mp4_faststart_mutex);
     return true;
 }
