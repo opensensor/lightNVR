@@ -267,14 +267,16 @@ static bool parse_env_bool(const char *value) {
 /**
  * Apply environment variable overrides to configuration
  * This function reads LIGHTNVR_ prefixed environment variables and applies
- * them to config fields that are still at their default values.
+ * them only to config options that are absent from the INI file.
  *
  * The logic ensures that:
- * 1. Values explicitly set in the config file are NOT overridden
- * 2. Values that are still at defaults CAN be overridden by env vars
+ * 1. Values explicitly present in the config file are NOT overridden
+ * 2. Values not present in the config file CAN be overridden by env vars
  * 3. This allows container deployments to inject settings via env vars
  *
  * @param config Pointer to config structure to modify
+ * @param ini_present Per-mapping presence flags indicating whether each
+ *                    option was explicitly present in the INI file
  */
 static void apply_env_overrides(config_t *config, const bool ini_present[ENV_MAPPING_COUNT]) {
     if (!config) return;
