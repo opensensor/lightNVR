@@ -7,7 +7,7 @@
     "clang_major": 21
   },
   "toolchain_json_sha256": "d209c76d137638a5a234a3e209bf39225a2c7afe3e202de476fa4f479f93e739",
-  "repairs_sha256": "e027d2d20e9179bf9a3383b470f7f118caf5087b4833e04670ee700258171250",
+  "repairs_sha256": "883b57091c9015633adc1036619371bdee6b6f62b3bd2d7d9d949f18056ed828",
   "translated_not_linked": [
     "src/sod/sod_ingenic_mxu.c",
     "src/tools/ffmpeg_rss_guard.c",
