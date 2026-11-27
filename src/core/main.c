@@ -1752,15 +1752,9 @@ cleanup:
                 }
 
                 if (parent_exited) {
-                    // Get the executable path
-                    char exe_path[MAX_PATH_LENGTH];
-                    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-                    if (len > 0) {
-                        exe_path[len] = '\0';
-
-                        // Re-exec the program with the same arguments
-                        execv(exe_path, saved_argv);
-                    }
+                    // Re-exec using /proc/self/exe directly to avoid failures
+                    // when readlink("/proc/self/exe") yields a " (deleted)" suffix.
+                    execv("/proc/self/exe", saved_argv);
                 }
             }
         }
