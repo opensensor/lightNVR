@@ -3053,24 +3053,16 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "webrtc_listen_port = %d\n", config->go2rtc_webrtc_listen_port);
     fprintf(file, "stun_enabled = %s\n", config->go2rtc_stun_enabled ? "true" : "false");
     fprintf(file, "stun_server = %s\n", config->go2rtc_stun_server);
-    if (config->go2rtc_external_ip[0] != '\0') {
-        fprintf(file, "external_ip = %s\n", config->go2rtc_external_ip);
-    }
-    if (config->go2rtc_ice_servers[0] != '\0') {
-        fprintf(file, "ice_servers = %s\n", config->go2rtc_ice_servers);
-    }
+    fprintf(file, "external_ip = %s\n", config->go2rtc_external_ip);
+    fprintf(file, "ice_servers = %s\n", config->go2rtc_ice_servers);
     fprintf(file, "webrtc_connection_timeout_ms = %d\n", config->webrtc_connection_timeout_ms);
     fprintf(file, "webrtc_ice_recovery_timeout_ms = %d\n", config->webrtc_ice_recovery_timeout_ms);
     fprintf(file, "force_native_hls = %s\n", config->go2rtc_force_native_hls ? "true" : "false");
     fprintf(file, "proxy_max_inflight = %d\n", config->go2rtc_proxy_max_inflight);
     // TURN server settings
     fprintf(file, "turn_enabled = %s\n", config->turn_enabled ? "true" : "false");
-    if (config->turn_server_url[0] != '\0') {
-        fprintf(file, "turn_server_url = %s\n", config->turn_server_url);
-    }
-    if (config->turn_username[0] != '\0') {
-        fprintf(file, "turn_username = %s\n", config->turn_username);
-    }
+    fprintf(file, "turn_server_url = %s\n", config->turn_server_url);
+    fprintf(file, "turn_username = %s\n", config->turn_username);
     if (config->turn_password[0] != '\0') {
         fprintf(file, "turn_password = %s\n", config->turn_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
