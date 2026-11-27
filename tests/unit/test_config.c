@@ -131,6 +131,10 @@ void setUp(void) {
     memset(&reloaded_cfg, 0, sizeof(reloaded_cfg));
     owned_pid_fd = -1;
     owned_pid_path[0] = '\0';
+    owned_bind_dir_active = false;
+    owned_bind_dir_path[0] = '\0';
+    owned_bind_file_path[0] = '\0';
+    owned_bind_baseline_path[0] = '\0';
     saved_config_file = NULL;
     saved_baseline_file = NULL;
     concurrent_config_dir[0] = '\0';
@@ -157,6 +161,12 @@ void setUp(void) {
     }
 }
 void tearDown(void) {
+    if (owned_bind_dir_active) {
+        unlink(owned_bind_file_path);
+        unlink(owned_bind_baseline_path);
+        rmdir(owned_bind_dir_path);
+        owned_bind_dir_active = false;
+    }
     if (concurrent_config_dir[0]) {
         char path[MAX_PATH_LENGTH];
         snprintf(path, sizeof(path), "%s/settings.ini", concurrent_config_dir);
@@ -1902,6 +1912,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
     if (!fail_copy) unlink(baseline_path);
     unlink(path);
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+    owned_bind_dir_active = false;
 }
 
 static void test_save_config_bind_mount_fallback(void) {
