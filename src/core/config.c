@@ -2295,30 +2295,13 @@ int load_config(config_t *config) {
                              (size_t)original.max_streams * sizeof(*original_streams)) != 0;
         }
         if (!changed) {
-            if (config->streams) {
+            if (config->streams && next_config.streams &&
+                config->max_streams == next_config.max_streams) {
                 stream_config_t *preserved_streams = config->streams;
-                int preserved_max_streams = config->max_streams;
-                if (next_config.max_streams == preserved_max_streams) {
-                    *config = next_config;
-                    config->streams = preserved_streams;
-                } else {
-                    stream_config_t *migrated_streams = calloc(
-                        (size_t)next_config.max_streams, sizeof(*migrated_streams));
-                    if (!migrated_streams) {
-                        result = -1;
-                    } else {
-                        int copy_count = preserved_max_streams < next_config.max_streams
-                                             ? preserved_max_streams
-                                             : next_config.max_streams;
-                        if (copy_count > 0) {
-                            memcpy(migrated_streams, preserved_streams,
-                                   (size_t)copy_count * sizeof(*migrated_streams));
-                        }
-                        free(preserved_streams);
-                        *config = next_config;
-                        config->streams = migrated_streams;
-                    }
-                }
+                memcpy(preserved_streams, next_config.streams,
+                       (size_t)next_config.max_streams * sizeof(*preserved_streams));
+                *config = next_config;
+                config->streams = preserved_streams;
             } else {
                 free(config->streams);
                 *config = next_config;
