@@ -87,13 +87,13 @@ test('settings preserve zero, mask credentials, and reject invalid formats befor
 test('workspace preferences belong to the interactive owner and do not grant camera access',async({server})=>{
  const before=await ok(server,'/api/ui/workspaces');valid('WorkspacesResponse',before);
  const updated=await ok(server,'/api/ui/workspaces',viewer,'PUT',{workspaces:{'live.navigator':false,investigation:false}});valid('WorkspacesResponse',updated);
- const updatedLiveNavigator=updated.workspaces.find((w:{workspace:string;visible:boolean})=>w.workspace==='live.navigator');
- const updatedInvestigation=updated.workspaces.find((w:{workspace:string;visible:boolean})=>w.workspace==='investigation');
+ const updatedLiveNavigator=updated.workspaces.find((w:{key:string;visible:boolean})=>w.key==='live.navigator');
+ const updatedInvestigation=updated.workspaces.find((w:{key:string;visible:boolean})=>w.key==='investigation');
  expect(updatedLiveNavigator).toBeDefined();expect(updatedLiveNavigator?.visible).toBe(false);
  expect(updatedInvestigation).toBeDefined();expect(updatedInvestigation?.visible).toBe(false);
  const persisted=await ok(server,'/api/ui/workspaces',viewer);valid('WorkspacesResponse',persisted);
- const persistedLiveNavigator=persisted.workspaces.find((w:{workspace:string;visible:boolean})=>w.workspace==='live.navigator');
- const persistedInvestigation=persisted.workspaces.find((w:{workspace:string;visible:boolean})=>w.workspace==='investigation');
+ const persistedLiveNavigator=persisted.workspaces.find((w:{key:string;visible:boolean})=>w.key==='live.navigator');
+ const persistedInvestigation=persisted.workspaces.find((w:{key:string;visible:boolean})=>w.key==='investigation');
  expect(persistedLiveNavigator).toBeDefined();expect(persistedLiveNavigator?.visible).toBe(false);
  expect(persistedInvestigation).toBeDefined();expect(persistedInvestigation?.visible).toBe(false);
  expect(await ok(server,'/api/ui/workspaces')).toEqual(before);
@@ -129,8 +129,8 @@ test('backup creates parseable private bytes only in an owned web root',async()=
   expect(JSON.parse(bytes.toString())).toEqual(expect.any(Object));
   expect(statSync(file).mode&0o777).toBe(0o600);expect(readdirSync(path.dirname(file))).toEqual([result.filename]);
  } finally {
-  if(server)await server.stop();
-  rmSync(webRoot,{recursive:true,force:true});
+  try {if(server)await server.stop();}
+  finally {rmSync(webRoot,{recursive:true,force:true});}
  }
 });
 
@@ -172,7 +172,7 @@ test('shutdown acknowledgment is followed by process exit in any runtime mode',a
  try {
   const before=readFileSync(server.logPath,'utf8');
   valid('SystemActionAccepted',await ok(server,'/api/system/shutdown',admin,'POST'));
-  await expect.poll(()=>readFileSync(server.logPath,'utf8').slice(before.length),{timeout:30000}).toMatch(/Shutdown requested in (native|container) mode/);
+  await expect.poll(()=>readFileSync(server.logPath,'utf8').slice(before.length),{timeout:30000}).toMatch(/System shutdown requested via API/);
   await expect.poll(()=>{try{process.kill(server.pid,0);return true;}catch{return false;}},{timeout:30000}).toBe(false);
  } finally {await server.stop();}
 });
