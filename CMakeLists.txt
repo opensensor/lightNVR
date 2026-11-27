@@ -210,7 +210,7 @@ endif()
 # find_library fallback's library list empty and broke the link.
 unset(MBEDTLS_DETECTION_DONE CACHE)
 macro(DETECT_MBEDTLS)
-    pkg_check_modules(PC_MBEDTLS QUIET IMPORTED_TARGET mbedtls mbedcrypto mbedx509)
+    pkg_check_modules(PC_MBEDTLS QUIET IMPORTED_TARGET mbedtls mbedx509 mbedcrypto)
     if (PC_MBEDTLS_FOUND)
         set(MBEDTLS_LIBRARIES PkgConfig::PC_MBEDTLS)
     else()
