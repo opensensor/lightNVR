@@ -819,13 +819,22 @@ static void static_file_resolve_handler(const http_request_t *req, http_response
     }
 
     char file_path[MAX_PATH_LENGTH];
-    snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, req->path);
+    int file_path_written = snprintf(file_path, sizeof(file_path), "%s%s",
+                                     server->config.web_root, req->path);
+    if (file_path_written < 0 || (size_t)file_path_written >= sizeof(file_path)) {
+        http_response_set_json_error(res, 400, "Bad Request");
+        return;
+    }
 
     struct stat st;
     bool original_exists = stat(file_path, &st) == 0;
     if (original_exists && S_ISDIR(st.st_mode)) {
-        snprintf(file_path, sizeof(file_path), "%s%s/index.html",
-                 server->config.web_root, req->path);
+        file_path_written = snprintf(file_path, sizeof(file_path), "%s%s/index.html",
+                                     server->config.web_root, req->path);
+        if (file_path_written < 0 || (size_t)file_path_written >= sizeof(file_path)) {
+            http_response_set_json_error(res, 400, "Bad Request");
+            return;
+        }
         original_exists = stat(file_path, &st) == 0 && S_ISREG(st.st_mode);
     }
 
