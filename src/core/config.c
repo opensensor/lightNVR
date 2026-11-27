@@ -1609,6 +1609,7 @@ int load_stream_configs(config_t *config) {
     pthread_mutex_lock(&mp4_faststart_mutex);
     stream_config_t *initial_streams = config->streams;
     int initial_max_streams = config->max_streams;
+    uint64_t initial_stream_generation = config->stream_generation;
     pthread_mutex_unlock(&mp4_faststart_mutex);
     if (!initial_streams) return -1;
 
@@ -1632,13 +1633,16 @@ int load_stream_configs(config_t *config) {
 
     if (count == 0) {
         pthread_mutex_lock(&mp4_faststart_mutex);
-        if (config->streams != initial_streams || config->max_streams != initial_max_streams) {
+        if (config->streams != initial_streams ||
+            config->max_streams != initial_max_streams ||
+            config->stream_generation != initial_stream_generation) {
             pthread_mutex_unlock(&mp4_faststart_mutex);
             return -1;
         }
         for (size_t i = 0; i < max_streams; i++) {
             init_stream_config_defaults(&config->streams[i]);
         }
+        config->stream_generation++;
         pthread_mutex_unlock(&mp4_faststart_mutex);
 
         log_info("No stream configurations found in database");
@@ -1667,7 +1671,9 @@ int load_stream_configs(config_t *config) {
 
     // Publish stream configurations under the same mutex used by snapshot readers.
     pthread_mutex_lock(&mp4_faststart_mutex);
-    if (config->streams != initial_streams || config->max_streams != initial_max_streams) {
+    if (config->streams != initial_streams ||
+        config->max_streams != initial_max_streams ||
+        config->stream_generation != initial_stream_generation) {
         pthread_mutex_unlock(&mp4_faststart_mutex);
         free(db_streams);
         return -1;
@@ -1682,6 +1688,7 @@ int load_stream_configs(config_t *config) {
     for (int i = 0; i < loaded; i++) {
         memcpy(&config->streams[i], &db_streams[i], sizeof(stream_config_t));
     }
+    config->stream_generation++;
 
     pthread_mutex_unlock(&mp4_faststart_mutex);
     free(db_streams);
